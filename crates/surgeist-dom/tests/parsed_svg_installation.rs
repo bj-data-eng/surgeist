@@ -1,7 +1,9 @@
 //! Completed contextual SVG state through the actual public parse/install owners.
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
-use surgeist_html::{HtmlBrowsingContextPresence, HtmlParserScriptingMode};
+use surgeist_html::{
+    parsing::HtmlParserScriptingMode, security::nonce::HtmlBrowsingContextPresence,
+};
 use surgeist_html_parser::{
     HtmlFragmentParseRequest, HtmlParseCompletion, HtmlParseLimits, HtmlParseMetadataDocument,
     HtmlParseMetadataStep, HtmlParseReadiness, HtmlParseSvgScriptOrigin, HtmlSource,
@@ -276,7 +278,10 @@ fn install_limits() -> DomParsedHtmlInstallLimits {
 
 fn source_scripts(
     report: &surgeist_html_parser::HtmlParseReport,
-) -> Vec<(surgeist_html::HtmlNodeId, HtmlParseSvgScriptOrigin)> {
+) -> Vec<(
+    surgeist_html::construction::HtmlNodeId,
+    HtmlParseSvgScriptOrigin,
+)> {
     let mut result = Vec::new();
     let mut cursor = report.metadata();
     loop {

@@ -10,6 +10,7 @@ use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
+use surgeist_html::values::DocumentString;
 
 fn error(error: CssColorError) -> DomError {
     DomError::Meta(if let Some(value) = error.unavailable() {
@@ -143,14 +144,14 @@ pub(super) fn parse(
     let mut end = units.len();
     while start < end {
         draft.meta_step(cancel)?;
-        if !surgeist_html::bounded::is_ascii_whitespace(units[start]) {
+        if !surgeist_html::bounded::lexical::is_ascii_whitespace(units[start]) {
             break;
         }
         start += 1;
     }
     while start < end {
         draft.meta_step(cancel)?;
-        if !surgeist_html::bounded::is_ascii_whitespace(units[end - 1]) {
+        if !surgeist_html::bounded::lexical::is_ascii_whitespace(units[end - 1]) {
             break;
         }
         end -= 1;

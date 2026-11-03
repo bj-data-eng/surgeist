@@ -1,7 +1,8 @@
 //! Positive owner fixtures start at structural state, not a completed native
 //! ShowModal invocation. No watcher receipt, focus effect or callback is faked.
 use super::*;
-use crate::{DomTopLayerUaRule, Namespace};
+use crate::DomTopLayerUaRule;
+use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -505,7 +506,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
                     captured.subject(node).unwrap(),
                     HtmlSemanticQuery::Inertness,
                 )],
-                surgeist_html::HtmlValueInterpreter::new(8192),
+                surgeist_html::values::HtmlValueInterpreter::new(8192),
                 HtmlSemanticLimits::new(1000000, 16, 1024, 64, 1000000, 1024),
                 HtmlSemanticCancellation::new(),
             )
@@ -539,7 +540,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
                 current.subject(document.node()).unwrap(),
                 HtmlSemanticQuery::Inertness,
             )],
-            surgeist_html::HtmlValueInterpreter::new(8192),
+            surgeist_html::values::HtmlValueInterpreter::new(8192),
             HtmlSemanticLimits::new(1000000, 16, 1024, 64, 1000000, 1024),
             HtmlSemanticCancellation::new(),
         )

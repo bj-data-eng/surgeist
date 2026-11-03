@@ -1,5 +1,8 @@
 //! Native ShadowRoot state from the selected DOM §4.8/attach-shadow clauses.
-use crate::{DomRegistryBinding, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+use crate::DomRegistryBinding;
+use surgeist_html::construction::{
+    HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+};
 
 /// Native attach options. Mode is required; the other source defaults are
 /// named slot assignment and false delegates-focus, clonable and serializable.

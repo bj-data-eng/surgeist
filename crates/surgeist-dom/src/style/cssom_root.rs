@@ -135,6 +135,7 @@ impl DomStyleCssomRoot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn root() -> DomStyleCssomRoot {
         let mut dom = crate::Dom::new(
             crate::DomLimits::new(

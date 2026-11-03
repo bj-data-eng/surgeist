@@ -336,7 +336,7 @@ impl Draft {
             if self.node(node)?.image().is_some() {
                 self.start_image_update(
                     node,
-                    surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                    surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false),
                     cancelled,
                 )?;
             }
@@ -869,7 +869,7 @@ impl Draft {
                         2 => self.select_removal(key, limits, cancel)?,
                         3 => self.image_tree_change(
                             key,
-                            surgeist_html::HtmlImageTreeChange::Removed,
+                            surgeist_html::elements::image::HtmlImageTreeChange::Removed,
                             root,
                             Some(parent),
                             cancel,
@@ -926,7 +926,7 @@ impl Draft {
                         1 => self.control_insertion_node(key, cancel)?,
                         2 => self.image_tree_change(
                             key,
-                            surgeist_html::HtmlImageTreeChange::Inserted,
+                            surgeist_html::elements::image::HtmlImageTreeChange::Inserted,
                             root,
                             None,
                             cancel,
@@ -936,7 +936,7 @@ impl Draft {
                         5 => self.select_insertion(key, limits, cancel)?,
                         6 => self.details_exclusivity(
                             key,
-                            surgeist_html::HtmlDetailsExclusivity::CloseGiven,
+                            surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven,
                             limits,
                             cancel,
                         )?,
@@ -1052,7 +1052,7 @@ impl Draft {
         Ok(())
     }
     fn insertion_nonce(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        use surgeist_html::{
+        use surgeist_html::security::nonce::{
             HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceConnection,
             HtmlNonceInsertionEffect,
         };
@@ -1081,7 +1081,7 @@ impl Draft {
                 break;
             }
         }
-        match surgeist_html::nonce_insertion_effect(
+        match surgeist_html::security::nonce::nonce_insertion_effect(
             element.name(),
             content,
             connection,
@@ -1134,12 +1134,12 @@ mod tests {
         let document = batch.create_document();
         let parent = batch.create_element_ns(
             &document,
-            crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+            surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
             "div",
         );
         let child = batch.create_element_ns(
             &document,
-            crate::Namespace::from_uri("http://www.w3.org/2000/svg"),
+            surgeist_html::values::Namespace::from_uri("http://www.w3.org/2000/svg"),
             "g",
         );
         batch.set_attribute(&child, "nonce", "child");
@@ -1219,6 +1219,7 @@ pub(super) mod scratch_observation {
 #[cfg(test)]
 mod scratch_lifetime_tests {
     use super::*;
+
     fn attempt(scratch: usize, deep: bool) -> (bool, bool, bool) {
         let cancel = AtomicBool::new(false);
         let configured = DomLimits::new(
@@ -1237,12 +1238,16 @@ mod scratch_lifetime_tests {
         let mut dom = Dom::new(configured).unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let select = b.create_element_ns(&d, crate::Namespace::html(), "select");
-        let option = b.create_element_ns(&d, crate::Namespace::html(), "option");
+        let select = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "select");
+        let option = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "option");
         if deep {
             let mut chain = Vec::new();
             for _ in 0..32 {
-                chain.push(b.create_element_ns(&d, crate::Namespace::html(), "span"));
+                chain.push(b.create_element_ns(
+                    &d,
+                    surgeist_html::values::Namespace::html(),
+                    "span",
+                ));
             }
             b.insert_before(&chain[0], &option, None);
             for pair in chain.windows(2) {
@@ -1256,7 +1261,11 @@ mod scratch_lifetime_tests {
                 b.insert_before(&text, &option, None);
             }
         }
-        let content = b.create_element_ns(&d, crate::Namespace::html(), "selectedcontent");
+        let content = b.create_element_ns(
+            &d,
+            surgeist_html::values::Namespace::html(),
+            "selectedcontent",
+        );
         b.insert_before(&option, &select, None);
         b.insert_before(&content, &select, None);
         b.insert_before(&select, &d, None);

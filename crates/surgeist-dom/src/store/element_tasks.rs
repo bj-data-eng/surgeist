@@ -2,6 +2,7 @@
 use super::*;
 use crate::element_tasks::{Binding, DomElementTaskRetention, DomElementTaskSource};
 use std::sync::atomic::AtomicUsize;
+
 impl Dom {
     /// Whether a task source was already installed, including an expired one.
     pub fn has_element_task_source(&self) -> bool {

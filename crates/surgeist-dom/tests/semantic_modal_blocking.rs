@@ -1,7 +1,7 @@
 //! Document blocking facts and flat-tree facts have independent availability.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlInertFactLimits, HtmlLanguageDirectionLimits, HtmlSemanticCancellation,
     HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,

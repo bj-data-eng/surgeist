@@ -1,5 +1,12 @@
 //! Actual original native graph custody, not a policy-byte estimate from source.
 use super::*;
+use surgeist_html::{
+    security::csp::{
+        HtmlCspError, HtmlCspNativePolicy, HtmlCspProcessorProfile, HtmlMetaCspOutcome,
+        HtmlMetaCspProcessor, HtmlMetaCspRequest,
+    },
+    values::DocumentString,
+};
 
 #[derive(Debug)]
 struct OriginalPolicy {

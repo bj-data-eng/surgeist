@@ -196,12 +196,12 @@ pub struct DomHostedEmbedderPolicyInputs {
     pub(crate) parent_document: DomDocumentStamp,
     pub(crate) parent_origin: crate::DomOpaqueOrigin,
     pub(crate) parent_policy: DomInitialPermissionsPolicy,
-    pub(crate) parent_sandbox: surgeist_html::HtmlSandboxFlags,
-    pub(crate) embedder_sandbox: surgeist_html::HtmlSandboxFlags,
-    pub(crate) sandbox: Option<crate::DocumentString>,
-    pub(crate) srcdoc: Option<crate::DocumentString>,
-    pub(crate) src: Option<crate::DocumentString>,
-    pub(crate) allow: Option<crate::DocumentString>,
+    pub(crate) parent_sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
+    pub(crate) embedder_sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
+    pub(crate) sandbox: Option<surgeist_html::values::DocumentString>,
+    pub(crate) srcdoc: Option<surgeist_html::values::DocumentString>,
+    pub(crate) src: Option<surgeist_html::values::DocumentString>,
+    pub(crate) allow: Option<surgeist_html::values::DocumentString>,
     pub(crate) allow_fullscreen: bool,
     pub(crate) _retained: Retained,
 }
@@ -218,24 +218,24 @@ impl DomHostedEmbedderPolicyInputs {
     pub fn parent_policy(&self) -> DomInitialPermissionsPolicy {
         self.parent_policy
     }
-    pub fn parent_sandbox_flags(&self) -> surgeist_html::HtmlSandboxFlags {
+    pub fn parent_sandbox_flags(&self) -> surgeist_html::attributes::sandbox::HtmlSandboxFlags {
         self.parent_sandbox
     }
-    pub fn embedder_sandbox_flags(&self) -> surgeist_html::HtmlSandboxFlags {
+    pub fn embedder_sandbox_flags(&self) -> surgeist_html::attributes::sandbox::HtmlSandboxFlags {
         self.embedder_sandbox
     }
     /// The actual raw attribute used by Permissions Policy's declared-origin
     /// step. It is independent of the retained creation sandbox flag set.
-    pub fn sandbox(&self) -> Option<&crate::DocumentString> {
+    pub fn sandbox(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.sandbox.as_ref()
     }
-    pub fn srcdoc(&self) -> Option<&crate::DocumentString> {
+    pub fn srcdoc(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.srcdoc.as_ref()
     }
-    pub fn src(&self) -> Option<&crate::DocumentString> {
+    pub fn src(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.src.as_ref()
     }
-    pub fn allow(&self) -> Option<&crate::DocumentString> {
+    pub fn allow(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.allow.as_ref()
     }
     pub fn allow_fullscreen(&self) -> bool {

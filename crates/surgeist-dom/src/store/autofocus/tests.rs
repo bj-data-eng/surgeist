@@ -1,7 +1,7 @@
 //! Explicit canonical history fixtures, without a fabricated active Window or
 //! completed insertion/focus receipt. Runtime tests own actual hosted insertion.
 use super::*;
-use crate::Namespace;
+use surgeist_html::values::Namespace;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
@@ -482,7 +482,7 @@ fn hosted_shadow_closure_retirement_cleans_exact_historical_candidates() {
     let mut b = DomBatch::new();
     let root = b.attach_shadow(
         ids[0],
-        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Closed),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Closed),
     );
     b.insert_before(ids[1], &root, None);
     dom.apply(b, &cancel()).unwrap();

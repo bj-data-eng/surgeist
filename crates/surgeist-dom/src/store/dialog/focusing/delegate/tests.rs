@@ -41,28 +41,36 @@ fn fixture(autofocus: bool) -> (Dom, NodeId, Vec<NodeId>, NodeId) {
     let mut dom = dom();
     let mut b = DomBatch::new();
     let document = b.create_document();
-    let root = b.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let root = b.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     let text = b.create_text(&document, "ordinary text descendant");
     let svg = b.create_element_ns(
         &document,
-        crate::Namespace::from_uri("http://www.w3.org/2000/svg"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/2000/svg"),
         "g",
     );
-    let host = b.create_element_ns(&document, crate::Namespace::html(), "div");
+    let host = b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     let light = b.create_comment(&document, "ordinary light descendant");
-    let tail = b.create_element_ns(&document, crate::Namespace::html(), "span");
+    let tail = b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "span");
     let shadow = b.attach_shadow(
         &host,
-        crate::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Closed),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Closed),
     );
-    let hidden = b.create_element_ns(&document, crate::Namespace::html(), "button");
+    let hidden = b.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "button",
+    );
     b.set_attribute(&hidden, "autofocus", "");
     if autofocus {
         b.set_attribute(&svg, "autofocus", "false");
     } else {
         b.set_attribute_ns(
             &svg,
-            crate::Namespace::from_uri("urn:test"),
+            surgeist_html::values::Namespace::from_uri("urn:test"),
             "q:autofocus",
             "",
         );
@@ -109,7 +117,7 @@ fn empty_dialog_completes_both_called_producers_without_a_focusability_reply() {
     let mut dom = dom();
     let mut b = DomBatch::new();
     let doc = b.create_document();
-    let root = b.create_element_ns(&doc, crate::Namespace::html(), "dialog");
+    let root = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "dialog");
     let c = dom.apply(b, &cancel()).unwrap();
     let d = draft(&dom);
     let root = d
@@ -200,7 +208,7 @@ fn admitted_wide_walk_is_linear_without_a_per_sibling_payload_rescan() {
     let mut dom = dom();
     let mut b = DomBatch::new();
     let doc = b.create_document();
-    let root = b.create_element_ns(&doc, crate::Namespace::html(), "dialog");
+    let root = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "dialog");
     let mut tickets = Vec::new();
     for _ in 0..96 {
         let child = b.create_comment(&doc, "leaf");
@@ -241,11 +249,11 @@ fn deep_walk_keeps_only_indexed_ancestors_and_releases_actual_capacity() {
     let mut dom = dom();
     let mut b = DomBatch::new();
     let doc = b.create_document();
-    let root = b.create_element_ns(&doc, crate::Namespace::html(), "dialog");
+    let root = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "dialog");
     let mut parent = root.clone();
     let mut tickets = Vec::new();
     for _ in 0..48 {
-        let child = b.create_element_ns(&doc, crate::Namespace::html(), "div");
+        let child = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "div");
         b.insert_before(&child, &parent, None);
         parent = child.clone();
         tickets.push(child);
@@ -355,7 +363,9 @@ fn nested_method_marks_restore_shared_frontier_top_updates_without_refunding_wor
     delegate.walk.begin(&d, root, &cancel()).unwrap();
     d.method = Some(method::Frame::Dialog(dialog::MethodFrame {
         subject: root,
-        cursor: surgeist_html::HtmlDialogCursor::new(surgeist_html::HtmlDialogOperation::Show),
+        cursor: surgeist_html::elements::dialog::HtmlDialogCursor::new(
+            surgeist_html::elements::dialog::HtmlDialogOperation::Show,
+        ),
         state: dialog::MethodState::Ready,
         invocation: source::Invocation::Unissued,
         locals: dialog::MethodLocals::Show {
@@ -363,7 +373,7 @@ fn nested_method_marks_restore_shared_frontier_top_updates_without_refunding_wor
             popover_endpoint: None,
         },
         focusing: Some(super::super::FocusingFrame {
-            cursor: surgeist_html::HtmlDialogFocusingCursor::new(),
+            cursor: surgeist_html::elements::dialog::HtmlDialogFocusingCursor::new(),
             delegate: None,
             top_document: None,
             invocation: source::Invocation::Unissued,

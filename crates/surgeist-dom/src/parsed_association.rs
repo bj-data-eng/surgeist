@@ -201,6 +201,7 @@ impl std::error::Error for DomParsedHtmlAssociationAdmissionError {
 mod tests {
     use super::*;
     use std::error::Error as _;
+
     use surgeist_html_parser::HtmlParseHistoryError as Read;
 
     #[test]

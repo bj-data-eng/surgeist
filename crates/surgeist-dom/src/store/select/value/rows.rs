@@ -2,6 +2,7 @@
 //! builder subjects stay in their original ordered buffer exactly once.
 use super::*;
 use source::effects::ScratchRetained;
+
 #[cfg(test)]
 mod tests;
 

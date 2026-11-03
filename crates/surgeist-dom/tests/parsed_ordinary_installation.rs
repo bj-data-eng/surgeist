@@ -14,7 +14,7 @@ mod pending_associations;
 mod meta_csp;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
-use surgeist_html::{HtmlCustomElementState, HtmlDocumentMode};
+use surgeist_html::{construction::HtmlDocumentMode, elements::native::HtmlCustomElementState};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };
@@ -132,7 +132,7 @@ fn selected_encoding_context(
     let selected = HtmlSemanticSession::new(
         capture.capture(),
         &semantic,
-        surgeist_html::HtmlValueInterpreter::new(65536),
+        surgeist_html::values::HtmlValueInterpreter::new(65536),
         HtmlSemanticLimits::new(10_000_000, 16, 4096, 0, 10_000_000, 0),
         HtmlSemanticCancellation::new(),
     )
@@ -431,7 +431,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
                 doc.subject().clone(),
                 HtmlSemanticQuery::DocumentEncodingUrlContext,
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(10_000_000, 16, 4096, 0, 10_000_000, 0),
             HtmlSemanticCancellation::new(),
         )
@@ -758,7 +758,7 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
                 captured_doc.subject().clone(),
                 HtmlSemanticQuery::DocumentEncodingUrlContext,
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(10_000_000, 16, 4096, 0, 10_000_000, 0),
             HtmlSemanticCancellation::new(),
         )
@@ -1038,7 +1038,7 @@ fn fragment_report(
             source,
             context,
             parse_limits(),
-            surgeist_html::HtmlParserScriptingMode::Inert,
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
             dsd,
         )
         .unwrap()
@@ -1208,7 +1208,7 @@ fn contextual_disabled_script_prefix_and_style_keep_distinct_actual_parser_histo
     assert_eq!(script.script_type(), None);
     assert_eq!(
         script.result(),
-        surgeist_html::HtmlScriptResult::Uninitialized
+        surgeist_html::elements::script::HtmlScriptResult::Uninitialized
     );
     assert_eq!(
         installed
@@ -1381,7 +1381,9 @@ fn contextual_foreign_stale_cancelled_and_missing_intrinsic_inputs_are_atomic() 
 
 #[test]
 fn contextual_inactive_img_retains_original_wait_then_native_update_advances_its_identity() {
-    use surgeist_html::{HtmlBrowsingContextPresence, HtmlImgFreshRequestState};
+    use surgeist_html::{
+        elements::image::HtmlImgFreshRequestState, security::nonce::HtmlBrowsingContextPresence,
+    };
     use surgeist_html_parser::{
         HtmlParseImageUpdate, HtmlParseMetadataDocument, HtmlParseMetadataStep,
     };
@@ -1588,7 +1590,7 @@ fn contextual_exact_combined_owned_and_captured_admission_and_empty_result_are_r
 
 #[test]
 fn contextual_all_modes_and_current_target_platform_remain_distinct_from_new_auxiliary_selection() {
-    use surgeist_html::{
+    use surgeist_html::elements::input::{
         HtmlInputEmptySelectionSupport, HtmlInputNoneDirectionSupport, HtmlInputSelectionDirection,
     };
     use surgeist_html_semantics::HtmlCaptureLimits;
@@ -2021,7 +2023,7 @@ fn declarative_template_reference_does_not_own_adopted_destroyed_or_cloned_conte
             .unwrap();
         assert_eq!(
             captured_template.template_contents_kind(),
-            Some(surgeist_html::HtmlTemplateContentsKind::ShadowReference)
+            Some(surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference)
         );
         let Some(surgeist_html_semantics::HtmlCapturedTemplateContents::Present(root)) =
             captured_template.template_contents()
@@ -2372,11 +2374,11 @@ fn disabled_script_keeps_all_flags_preparation_document_nonce_and_real_parser_ca
     assert_eq!(script.preparation_document(), Some(result.document()));
     assert_eq!(
         script.script_type(),
-        Some(surgeist_html::HtmlScriptKind::Classic)
+        Some(surgeist_html::elements::script::HtmlScriptKind::Classic)
     );
     assert_eq!(
         script.result(),
-        surgeist_html::HtmlScriptResult::Uninitialized
+        surgeist_html::elements::script::HtmlScriptResult::Uninitialized
     );
     assert_eq!(script.steps_when_result_ready(), None);
     assert_eq!(
@@ -2833,7 +2835,7 @@ fn full_original_and_environment_backing_admit_exact_budget_and_refuse_one_byte_
 
 #[test]
 fn closed_canvas_none_state_uses_actual_parsed_dimensions_and_later_owner_attribute_rules() {
-    use surgeist_html::HtmlCanvasBitmapDimension;
+    use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
     let report = parse(HtmlSource::utf8(
         "<!doctype html><canvas width=' +0042trailing' height='-1'>fallback</canvas>",
     ));
@@ -3114,7 +3116,7 @@ fn absent_hyperlink_is_actual_null_but_missing_present_href_observation_refuses_
 
 #[test]
 fn parsed_img_wait_is_real_owned_work_then_later_update_and_exact_retirement_use_canonical_ids() {
-    use surgeist_html::HtmlImgFreshRequestState;
+    use surgeist_html::elements::image::HtmlImgFreshRequestState;
     // Both the original controlled owner and an independent captured native
     // target support this lifecycle, retaining their distinct parser flags.
     for native_context in [false, true] {
@@ -3649,7 +3651,7 @@ fn meta_language(snapshot: &DomSnapshot, document: DocumentId) -> Option<&Docume
 
 #[test]
 fn parsed_meta_history_and_untouched_inert_owner_transfer_without_native_work() {
-    use surgeist_html::HtmlReferrerPolicy;
+    use surgeist_html::attributes::HtmlReferrerPolicy;
     use surgeist_html_semantics::{
         HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseFactsLimits, HtmlParseBaseFacts,
     };
@@ -3836,7 +3838,7 @@ fn every_unavailable_meta_domain_refuses_after_independent_history_without_publi
         assert_eq!(document, source_document);
         assert_eq!(reason, expected);
         assert!(
-            matches!(report.document().unwrap().node(&subject).unwrap().kind(), surgeist_html::HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("meta"))
+            matches!(report.document().unwrap().node(&subject).unwrap().kind(), surgeist_html::construction::HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("meta"))
         );
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         assert_eq!(dom.usage(), usage);
@@ -4557,7 +4559,7 @@ fn dialog_bearing_report_refusal_and_cancellation_leave_maps_unpublished_then_re
 
 #[test]
 fn same_store_input_adoption_preserves_selection_then_uses_destination_platform_for_effects() {
-    use surgeist_html::{
+    use surgeist_html::elements::input::{
         HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
         HtmlInputSelectionDirection as Direction,
     };
@@ -4720,7 +4722,7 @@ fn same_store_input_adoption_preserves_selection_then_uses_destination_platform_
 
 #[test]
 fn parsed_input_image_history_transfers_never_entered_absent_empty_and_nonempty_sources() {
-    use surgeist_html::{HtmlInputImagesDisabled, HtmlInputType};
+    use surgeist_html::{attributes::HtmlInputType, elements::input::HtmlInputImagesDisabled};
     use surgeist_html_parser::{HtmlInputImageSource, HtmlParseMetadataStep};
     for (markup, expected_type, expected_source) in [
         ("<input src='unobserved'>", HtmlInputType::Text, None),
@@ -4893,7 +4895,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
     let mut source_texts = Vec::new();
     while let Some(node) = pending.pop() {
         match node.kind() {
-            surgeist_html::HtmlNodeKind::Element(element)
+            surgeist_html::construction::HtmlNodeKind::Element(element)
                 if element.name().local_name() == &DocumentString::from("input") =>
             {
                 let bank = element.attributes().shared_attributes();
@@ -4915,7 +4917,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
                     fields,
                 ));
             }
-            surgeist_html::HtmlNodeKind::Text(text) => {
+            surgeist_html::construction::HtmlNodeKind::Text(text) => {
                 assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
                 source_texts.push((
                     node.id(),
@@ -5094,7 +5096,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
             .eq(markup.encode_utf16())
     );
     for (id, pointer, capacity, buffer, fields) in source_inputs {
-        let surgeist_html::HtmlNodeKind::Element(element) =
+        let surgeist_html::construction::HtmlNodeKind::Element(element) =
             report.document().unwrap().node(&id).unwrap().kind()
         else {
             panic!("same report Input");
@@ -5109,7 +5111,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
         }
     }
     for (id, pointer, capacity) in source_texts {
-        let surgeist_html::HtmlNodeKind::Text(text) =
+        let surgeist_html::construction::HtmlNodeKind::Text(text) =
             report.document().unwrap().node(&id).unwrap().kind()
         else {
             panic!("same report Text");

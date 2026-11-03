@@ -1,4 +1,5 @@
 use super::*;
+
 mod work_measurement;
 use std::{
     collections::HashSet,
@@ -588,8 +589,14 @@ fn public_binding_precedes_insertion_and_changes_only_operational_state() {
     assert_eq!(dom.usage().history_entries(), 0);
     let mut setup = crate::DomBatch::new();
     let document = setup.create_document();
-    let element = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-    setup.set_attribute_ns(&element, crate::Namespace::html(), "p:div", "unchanged");
+    let element =
+        setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+    setup.set_attribute_ns(
+        &element,
+        surgeist_html::values::Namespace::html(),
+        "p:div",
+        "unchanged",
+    );
     let commit = dom.apply(setup, &cancel).unwrap();
     let snapshot = dom.snapshot();
     let element = snapshot
@@ -675,7 +682,11 @@ fn real_source_preflight_retains_names_across_restore_and_competing_child_public
             .unwrap(),
     );
     let mut batch = DomBatch::new();
-    let ticket = batch.create_element_ns(document, crate::Namespace::none(), "mandatory");
+    let ticket = batch.create_element_ns(
+        document,
+        surgeist_html::values::Namespace::none(),
+        "mandatory",
+    );
     let mut draft = Draft::new_source(
         &dom,
         batch.owner.clone(),

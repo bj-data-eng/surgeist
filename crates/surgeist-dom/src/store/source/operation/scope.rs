@@ -1,6 +1,7 @@
 //! One original entry association, independent of Draft/checkpoint rebuilding.
 use super::*;
 use crate::{DomHostedHostId, DomHostedSource, DomSourceExecutionEntryScope};
+
 #[derive(Clone, Copy)]
 pub(super) enum EntryScope {
     NativeEntry,

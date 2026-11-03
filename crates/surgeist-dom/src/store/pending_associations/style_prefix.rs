@@ -2,11 +2,16 @@
 use super::control::Meter;
 use super::*;
 use crate::parsed_style::*;
-use crate::{DocumentString, DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
+use crate::{DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
 use std::sync::{MutexGuard, TryLockError};
+
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    HtmlCspAssociation, HtmlStyleExecutionProfile, HtmlStyleUpdateAction as Action,
-    HtmlStyleUpdateCursor, HtmlStyleUpdateReply as Reply,
+    elements::style::{
+        HtmlStyleExecutionProfile, HtmlStyleUpdateAction as Action, HtmlStyleUpdateCursor,
+        HtmlStyleUpdateReply as Reply,
+    },
+    security::csp::HtmlCspAssociation,
 };
 use surgeist_html_parser::{
     HtmlParseAssociationContextRequirement as Requirement, HtmlParseAssociationContextRole as Role,
@@ -82,7 +87,7 @@ pub(super) enum CompletedOutcome {
 pub(super) struct Selection {
     qualification: DomParsedHtmlStyleQualification,
     origin: StylePolicyOrigin,
-    state: surgeist_html::HtmlStyleState,
+    state: surgeist_html::elements::style::HtmlStyleState,
     cursor: HtmlStyleUpdateCursor,
 }
 impl Graph {
@@ -278,7 +283,7 @@ impl Dom {
 /// authentic awaiting qualification. This does not form or evaluate a request:
 /// ```no_run
 /// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
-/// use surgeist_html::HtmlCspAssociation;
+/// use surgeist_html::security::csp::HtmlCspAssociation;
 /// use std::sync::atomic::AtomicBool;
 /// fn bind(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 ///         limits: DomParsedHtmlAssociationLimits, input: &mut Option<HtmlCspAssociation>,
@@ -557,7 +562,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                 .value()
                 .value
                 .effective_scripting_mode()
-                != surgeist_html::HtmlParserScriptingMode::Disabled
+                != surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         {
             return Err(DomParsedHtmlStyleError::WrongExecutionProfile { profile });
         }
@@ -958,7 +963,7 @@ fn form_text_nonce(
                 meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                 let text = DocumentString::from_utf16(units);
                 let nonce = if let Some(group) =
-                    inputs.attribute(surgeist_html::KnownHtmlAttribute::Nonce)
+                    inputs.attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Nonce)
                 {
                     let mut units = Vec::new();
                     append_group(report, group, &mut units, meter, cancel)?;

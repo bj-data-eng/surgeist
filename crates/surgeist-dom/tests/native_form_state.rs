@@ -1,7 +1,7 @@
 //! HTML877d native Form scalars, canonical owner relations and real lifecycle.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

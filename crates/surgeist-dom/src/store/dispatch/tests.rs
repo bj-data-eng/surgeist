@@ -317,19 +317,27 @@ fn owner_destruction_records_shadow_and_template_descendants_in_their_actual_doc
     let cancel = AtomicBool::new(false);
     let (mut dom, document, _, _) = fixture(configured(1, 4));
     let mut batch = DomBatch::new();
-    let host = batch.create_element_ns(document.node(), crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(
+        document.node(),
+        surgeist_html::values::Namespace::html(),
+        "div",
+    );
     batch.insert_before(&host, document.node(), None);
     let shadow = batch.attach_shadow(
         &host,
-        crate::HtmlShadowRootProperties::new(
-            crate::HtmlShadowRootMode::Open,
-            crate::HtmlSlotAssignment::Manual,
+        surgeist_html::construction::HtmlShadowRootProperties::new(
+            surgeist_html::construction::HtmlShadowRootMode::Open,
+            surgeist_html::construction::HtmlSlotAssignment::Manual,
             false,
             false,
             false,
         ),
     );
-    let template = batch.create_element_ns(document.node(), crate::Namespace::html(), "template");
+    let template = batch.create_element_ns(
+        document.node(),
+        surgeist_html::values::Namespace::html(),
+        "template",
+    );
     batch.insert_before(&template, &shadow, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let host = commit.created(&host).unwrap().unwrap();

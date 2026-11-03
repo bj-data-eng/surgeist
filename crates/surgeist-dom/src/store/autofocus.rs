@@ -2,7 +2,7 @@
 use super::focus::AllowFocusPermission;
 use super::*;
 use crate::autofocus::DocumentAutofocusState as State;
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusInsertionAction as A, HtmlAutofocusInsertionCursor,
     HtmlAutofocusInsertionReply as R,
 };
@@ -196,8 +196,8 @@ impl Draft {
         }
         let autofocus = self.focus_boolean(
             subject,
-            surgeist_html::HtmlBooleanAttribute::Autofocus,
-            surgeist_html::KnownHtmlAttribute::Autofocus,
+            surgeist_html::attributes::HtmlBooleanAttribute::Autofocus,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Autofocus,
             cancel,
         )?;
         if !self.dialog_subject_focus_no_change(subject, cancel)?
@@ -248,7 +248,7 @@ impl Draft {
                     self.source_step(cancel)?;
                 }
             }
-            if surgeist_html::autofocus_presence(element.name(), Some(attribute)) {
+            if surgeist_html::focus::autofocus_presence(element.name(), Some(attribute)) {
                 return Ok(true);
             }
         }
@@ -317,7 +317,7 @@ impl Draft {
                         .map(|i| {
                             R::SandboxAutomaticFeatures(
                                 i.0.active_sandbox
-                                    .contains(surgeist_html::HtmlSandboxFlag::AutomaticFeatures),
+                                    .contains(surgeist_html::attributes::sandbox::HtmlSandboxFlag::AutomaticFeatures),
                             )
                         })
                 }
@@ -326,8 +326,11 @@ impl Draft {
                     cancel,
                 )? {
                     AllowFocusPermission::Allowed
-                        if surgeist_html::allow_focus_decision(Some(true), None)
-                            == surgeist_html::HtmlAllowFocusDecision::Allowed =>
+                        if surgeist_html::elements::dialog::allow_focus_decision(
+                            Some(true),
+                            None,
+                        )
+                            == surgeist_html::elements::dialog::HtmlAllowFocusDecision::Allowed =>
                     {
                         Some(R::AllowFocus(true))
                     }

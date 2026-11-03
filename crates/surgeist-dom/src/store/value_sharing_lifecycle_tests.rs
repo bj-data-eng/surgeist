@@ -31,7 +31,8 @@ fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidate
     let value = DocumentString::from_utf16(units);
     let unused = Arc::downgrade(value.shared_code_units());
     let mut first = DomBatch::new();
-    let element = first.create_element_ns(document, crate::Namespace::html(), "div");
+    let element =
+        first.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     first.set_attribute(&element, "data-first", value);
     let first = dom.prepare(first, &cancel).unwrap();
     assert!(unused.upgrade().is_some());

@@ -125,7 +125,7 @@ impl Draft {
             return Ok(());
         };
         if state.flags.children_changed()
-            == surgeist_html::HtmlTextareaRawValueAction::ReplaceWithChildText
+            == surgeist_html::elements::form::HtmlTextareaRawValueAction::ReplaceWithChildText
         {
             let (raw, payload) = self.textarea_child_text(key, limits, cancel)?;
             self.textarea_put_raw(key, raw, payload, limits, cancel)?;
@@ -176,7 +176,7 @@ impl Draft {
             new_api_formation.as_ref(),
             cancel,
         )?;
-        let mut cursor = surgeist_html::HtmlInputValueComparisonCursor::new(
+        let mut cursor = surgeist_html::elements::input::HtmlInputValueComparisonCursor::new(
             old_api.code_units(),
             new_api.code_units(),
         );
@@ -184,19 +184,19 @@ impl Draft {
             self.source_step(cancel)?;
             cursor.advance();
         }
-        if surgeist_html::textarea_value_setter_finish(
+        if surgeist_html::elements::form::textarea_value_setter_finish(
             cursor.result().expect("completed actual API comparison"),
         )
-            == surgeist_html::HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
+            == surgeist_html::elements::form::HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
         {
             let platform = self
                 .document_metadata(self.node(key)?.document())?
                 .document_environment()
                 .input_platform();
             self.with_textarea_state(key, cancel, |state| {
-                state.selection = surgeist_html::HtmlInputSelection::cursor(
+                state.selection = surgeist_html::elements::input::HtmlInputSelection::cursor(
                     new_api.len(),
-                    surgeist_html::HtmlInputSelectionDirection::None
+                    surgeist_html::elements::input::HtmlInputSelectionDirection::None
                         .resolve_none(platform.none_direction()),
                 )
             })?;
@@ -254,9 +254,13 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_html::{
-        HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
-        HtmlInputSelection, HtmlInputSelectionDirection as Direction, HtmlTextareaFlags,
+    use surgeist_html::elements::{
+        form::HtmlTextareaFlags,
+        input::{
+            HtmlInputEmptySelectionSupport as Empty,
+            HtmlInputNoneDirectionSupport as NoneDirection, HtmlInputSelection,
+            HtmlInputSelectionDirection as Direction,
+        },
     };
 
     #[test]
@@ -323,7 +327,8 @@ mod tests {
                 let cancel = AtomicBool::new(false);
                 let mut b = DomBatch::new();
                 let d = b.create_document();
-                let textarea = b.create_element_ns(&d, crate::Namespace::html(), "textarea");
+                let textarea =
+                    b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "textarea");
                 b.set_textarea_default_value(&textarea, "A\r\nBC");
                 b.set_custom_validity(&textarea, "error");
                 let c = dom.apply(b, &cancel).unwrap();
@@ -430,8 +435,9 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
-            let form = b.create_element_ns(&d, crate::Namespace::html(), "form");
-            let textarea = b.create_element_ns(&d, crate::Namespace::html(), "textarea");
+            let form = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "form");
+            let textarea =
+                b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "textarea");
             b.insert_before(&form, &d, None);
             b.insert_before(&textarea, &form, None);
             b.set_textarea_default_value(&textarea, "initial");

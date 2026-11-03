@@ -106,7 +106,7 @@ fn real_contents_cache_defaults_class_and_opaque_origin_have_exact_costs() {
     assert_eq!(m.custom_element_registry(), DomRegistryBinding::Null);
     assert_eq!(
         m.document_environment().browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert_eq!(s.node(f).unwrap().fragment_host(), Some(t));
     assert_eq!(s.node(f).unwrap().parent(), None);

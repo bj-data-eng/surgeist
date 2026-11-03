@@ -3,6 +3,7 @@
 use super::*;
 use crate::DomFocusedAreaDesignation::Unavailable;
 use crate::*;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 fn unqualified_owner_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
     unqualified_owner_with_meta(None)

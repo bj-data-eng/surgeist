@@ -2,9 +2,13 @@
 use super::*;
 use crate::hyperlink::{DomEncodingUrlFactsError as Failure, Parsed};
 use surgeist_html::{
-    HtmlHyperlinkAttributeEffect, HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
-    HtmlHyperlinkSetUrlReply as Reply, HtmlHyperlinkTreeMutation, KnownHtmlAttribute,
+    elements::link::{
+        HtmlHyperlinkAttributeEffect, HtmlHyperlinkSetUrlAction as Action,
+        HtmlHyperlinkSetUrlCursor, HtmlHyperlinkSetUrlReply as Reply, HtmlHyperlinkTreeMutation,
+    },
+    vocabulary::KnownHtmlAttribute,
 };
+
 use surgeist_html_semantics::{
     HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
     HtmlDocumentFirstBase, HtmlEncodingUrlLookupError, HtmlEncodingUrlParseFacts,
@@ -391,11 +395,11 @@ impl Draft {
             }
             _ => false,
         };
-        match surgeist_html::hyperlink_attribute_effect(
-            &name
-                .namespace_uri()
-                .cloned()
-                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+        match surgeist_html::elements::link::hyperlink_attribute_effect(
+            &name.namespace_uri().cloned().map_or_else(
+                surgeist_html::values::Namespace::none,
+                surgeist_html::values::Namespace::from_uri,
+            ),
             attribute,
             equal,
         ) {
@@ -445,7 +449,7 @@ impl Draft {
                 self.node(key)?.document(),
             )
         };
-        if surgeist_html::hyperlink_tree_considers_speculative_loads(mutation) {
+        if surgeist_html::elements::link::hyperlink_tree_considers_speculative_loads(mutation) {
             self.hyperlink_speculation(document, cancel)?;
         }
         Ok(())
@@ -455,7 +459,8 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Namespace;
+    use surgeist_html::values::Namespace;
+
     use surgeist_html_semantics::*;
     fn policy(work: u64, units: usize) -> DomLimits {
         DomLimits::new(
@@ -607,7 +612,8 @@ mod tests {
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let anchor = setup.create_element_ns(&document, crate::Namespace::html(), "a");
+        let anchor =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "a");
         setup.insert_before(&anchor, &document, None);
         let created = dom.apply(setup, &cancel).unwrap();
         let document = created.document(&document).unwrap();

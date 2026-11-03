@@ -1,5 +1,6 @@
 //! Whole settlement is distinct from the original synchronous End.
 use super::*;
+
 #[derive(Debug)]
 pub enum DomParsedHtmlTerminalError {
     Frontier(crate::DomParsedHtmlFrontierError),

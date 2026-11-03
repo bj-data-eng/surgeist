@@ -277,6 +277,7 @@ impl Dom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn fixture(unrelated: usize) -> (Dom, NodeId) {
         let cancel = AtomicBool::new(false);

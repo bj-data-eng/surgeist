@@ -1,7 +1,9 @@
 //! Owning qualification fixtures; nonempty raw state is privately constructed,
 //! without claiming public modal/top-layer execution can produce that state.
 use super::*;
-use crate::{Dom, DomBatch, DomLimits, Namespace};
+use crate::{Dom, DomBatch, DomLimits};
+use surgeist_html::values::HtmlValueInterpreter;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{
     HtmlInertFactError, HtmlSemanticFact, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticValue,
 };

@@ -1,7 +1,10 @@
 //! Native Meta source hooks against actual staged Document history.
 use super::*;
 use crate::DomMetaError as Failure;
-use surgeist_html::{HtmlMetaPragmaState as Pragma, KnownHtmlAttribute as Attr};
+
+use surgeist_html::{
+    attributes::meta_pragma::HtmlMetaPragmaState as Pragma, vocabulary::KnownHtmlAttribute as Attr,
+};
 mod color;
 mod scheme;
 #[cfg(test)]
@@ -122,7 +125,9 @@ impl Draft {
         let Some(raw) = self.meta_attribute(key, Attr::HttpEquiv, cancel)? else {
             return Ok(());
         };
-        let state = surgeist_html::bounded::meta_pragma_state_with(raw, || self.meta_step(cancel))?;
+        let state = surgeist_html::bounded::attributes::meta_pragma_state_with(raw, || {
+            self.meta_step(cancel)
+        })?;
         let Some(state) = state else {
             return Ok(());
         };
@@ -153,7 +158,7 @@ impl Draft {
         match state {
             Pragma::ContentLanguage => {
                 let Some(range) =
-                    surgeist_html::bounded::meta_language_token_with(content, || {
+                    surgeist_html::bounded::attributes::meta_language_token_with(content, || {
                         self.meta_step(cancel)
                     })?
                 else {
@@ -222,12 +227,13 @@ impl Draft {
                 if history.will_declaratively_refresh() {
                     return Ok(());
                 }
-                let target = surgeist_html::bounded::meta_refresh_syntax_with(content, |_| {
-                    self.meta_step(cancel)
-                })?;
+                let target =
+                    surgeist_html::bounded::attributes::meta_refresh_syntax_with(content, |_| {
+                        self.meta_step(cancel)
+                    })?;
                 match target {
                     None => (),
-                    Some(surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
+                    Some(surgeist_html::bounded::attributes::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
                         let surgeist_html_semantics::HtmlEncodingUrlParseOutcome::Parsed(url) =
                             self.resolve_encoding_url_units(
                                 document,
@@ -247,7 +253,7 @@ impl Draft {
                                 .will_declaratively_refresh = true
                         })?;
                     }
-                    Some(surgeist_html::bounded::HtmlMetaRefreshSyntaxTarget::DocumentUrl) => {
+                    Some(surgeist_html::bounded::attributes::HtmlMetaRefreshSyntaxTarget::DocumentUrl) => {
                         // This branch selects the actual current Document URL;
                         // it does not parse URL text or reconstruct its history.
                         self.with_meta_metadata(document, cancel, |metadata| {
@@ -296,7 +302,9 @@ impl Draft {
             return Ok(());
         }
         if let Some(policy) =
-            surgeist_html::bounded::meta_referrer_policy_with(content, || self.meta_step(cancel))?
+            surgeist_html::bounded::attributes::meta_referrer_policy_with(content, || {
+                self.meta_step(cancel)
+            })?
         {
             let current = self
                 .document_metadata(document)?
@@ -348,7 +356,7 @@ impl Draft {
                             self.meta_step(cancel)?;
                             for unit in media.code_units() {
                                 self.meta_step(cancel)?;
-                                if !surgeist_html::bounded::is_ascii_whitespace(*unit) {
+                                if !surgeist_html::bounded::lexical::is_ascii_whitespace(*unit) {
                                     return Err(DomError::Meta(
                                         Failure::ThemeColorMediaUnavailable,
                                     ));
@@ -501,6 +509,7 @@ impl Draft {
 mod source_observation {
     use super::*;
     use std::{cell::Cell, sync::atomic::Ordering};
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Read {
         pub required: usize,
@@ -552,6 +561,7 @@ mod source_observation {
 mod token_observation {
     use super::*;
     use std::{cell::Cell, sync::atomic::Ordering};
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Copy {
         pub count: usize,
@@ -589,7 +599,8 @@ mod token_observation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Namespace;
+    use surgeist_html::values::Namespace;
+
     pub(super) fn policy() -> DomLimits {
         DomLimits::new(
             32,
@@ -643,7 +654,7 @@ mod tests {
                     .metadata()
                     .policy_container()
                     .referrer_policy(),
-                Some(surgeist_html::HtmlReferrerPolicy::NoReferrer)
+                Some(surgeist_html::attributes::HtmlReferrerPolicy::NoReferrer)
             );
             assert_eq!(
                 before
@@ -652,7 +663,7 @@ mod tests {
                     .metadata()
                     .policy_container()
                     .referrer_policy(),
-                Some(surgeist_html::HtmlReferrerPolicy::StrictOriginWhenCrossOrigin)
+                Some(surgeist_html::attributes::HtmlReferrerPolicy::StrictOriginWhenCrossOrigin)
             );
         } else if result.is_err() {
             assert_eq!(lease.snapshot().stamp(), before.stamp());

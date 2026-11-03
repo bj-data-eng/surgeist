@@ -107,8 +107,10 @@ fn fixture(unrelated: usize, with_target: bool) -> Fixture {
     let mut batch = DomBatch::new();
     // Target identity and topology stay fixed when unrelated roots increase.
     let document = batch.create_document();
-    let element = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-    let style = batch.create_element_ns(&document, crate::Namespace::html(), "style");
+    let element =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+    let style =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
     let others = (0..unrelated)
         .map(|_| batch.create_document())
         .collect::<Vec<_>>();
@@ -166,7 +168,7 @@ fn creation_request(
     };
     assert_eq!(
         create.action(),
-        DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CreateSheet)
+        DomStyleAction::Update(surgeist_html::elements::style::HtmlStyleUpdateAction::CreateSheet)
     );
     create
 }
@@ -408,7 +410,7 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
     let mut batch = DomBatch::new();
     let shadow = batch.attach_shadow(
         element,
-        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
     let shadow = commit.created(&shadow).unwrap().unwrap();
@@ -440,10 +442,14 @@ fn retirement_releases_only_the_exact_generation_and_preserves_external_owner_cu
         );
     }
     let mut batch = DomBatch::new();
-    let host = batch.create_element_ns(document.node(), crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(
+        document.node(),
+        surgeist_html::values::Namespace::html(),
+        "div",
+    );
     let replacement = batch.attach_shadow(
         &host,
-        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
     let replacement = commit.created(&replacement).unwrap().unwrap();
@@ -477,7 +483,7 @@ fn adopted_shadow_owner_updates_only_its_documents_and_retirement_preserves_othe
     let mut batch = DomBatch::new();
     let shadow = batch.attach_shadow(
         element,
-        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
     );
     let commit = dom.apply(batch, &cancel).unwrap();
     let shadow = commit.created(&shadow).unwrap().unwrap();

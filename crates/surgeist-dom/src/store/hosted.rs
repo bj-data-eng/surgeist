@@ -21,8 +21,8 @@ struct ConstructorFormation {
 pub(in crate::store) struct ChildConstructor<'a> {
     pub(in crate::store) parent: &'a DomDocumentMetadata,
     pub(in crate::store) creator_base: &'a surgeist_html_semantics::HtmlBaseUrlRecord,
-    pub(in crate::store) top_policy: &'a surgeist_html::HtmlOpenerPolicy,
-    pub(in crate::store) sandbox: surgeist_html::HtmlSandboxFlags,
+    pub(in crate::store) top_policy: &'a surgeist_html::security::opener_policy::HtmlOpenerPolicy,
+    pub(in crate::store) sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
 }
 impl crate::document::HostedDocumentInputs {
     pub(crate) fn form(
@@ -61,8 +61,8 @@ impl crate::document::HostedDocumentInputs {
         parent: Option<(
             &DomDocumentMetadata,
             &surgeist_html_semantics::HtmlBaseUrlRecord,
-            &surgeist_html::HtmlOpenerPolicy,
-            surgeist_html::HtmlSandboxFlags,
+            &surgeist_html::security::opener_policy::HtmlOpenerPolicy,
+            surgeist_html::attributes::sandbox::HtmlSandboxFlags,
         )>,
         formation: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
@@ -256,7 +256,7 @@ impl crate::document::HostedDocumentInputs {
                 let selected_opener = if parent.origin() == top_origin {
                     opener.clone()
                 } else {
-                    surgeist_html::HtmlOpenerPolicy::initial()
+                    surgeist_html::security::opener_policy::HtmlOpenerPolicy::initial()
                 };
                 (
                     HtmlAboutBaseUrl::KnownRecord(base.clone()),
@@ -269,10 +269,10 @@ impl crate::document::HostedDocumentInputs {
             } else {
                 (
                     HtmlAboutBaseUrl::KnownNull,
-                    surgeist_html::HtmlOpenerPolicy::initial(),
+                    surgeist_html::security::opener_policy::HtmlOpenerPolicy::initial(),
                     None,
                     origin.clone(),
-                    surgeist_html::HtmlSandboxFlags::empty(),
+                    surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty(),
                     None,
                 )
             };

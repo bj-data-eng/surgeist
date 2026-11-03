@@ -41,6 +41,7 @@ impl Invocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
     use surgeist_html_semantics::HtmlAboutBaseUrl;
 
     fn cancel() -> AtomicBool {
@@ -74,7 +75,11 @@ mod tests {
             let mut batch = DomBatch::new();
             let parent = batch.create_document();
             let child = batch.create_document();
-            let container = batch.create_element_ns(&parent, crate::Namespace::html(), "iframe");
+            let container = batch.create_element_ns(
+                &parent,
+                surgeist_html::values::Namespace::html(),
+                "iframe",
+            );
             batch.insert_before(&container, &parent, None);
             let commit = dom.apply(batch, &c).unwrap();
             let documents = [

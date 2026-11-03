@@ -2,6 +2,7 @@
 use super::*;
 use source::checkpoint::Charge;
 use source::storage::Payload;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::*;
 mod rows;
 
@@ -446,6 +447,7 @@ pub(super) mod observation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::Namespace;
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
     fn fixture() -> (Dom, NodeId, NodeId, usize) {

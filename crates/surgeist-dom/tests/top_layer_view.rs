@@ -1,7 +1,7 @@
 //! Qualified public readback of canonical layer state and generated UA input.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlStyleUpdateAction;
+use surgeist_html::elements::style::HtmlStyleUpdateAction;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

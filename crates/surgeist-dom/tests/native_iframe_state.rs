@@ -1,7 +1,7 @@
 //! Actual native never-BC Iframe state and canonical DOM lifecycle.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlIframeInitialState;
+use surgeist_html::elements::frame::HtmlIframeInitialState;
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {
@@ -38,14 +38,17 @@ fn state(snapshot: &DomSnapshot, node: NodeId) -> HtmlIframeInitialState {
         .unwrap()
         .child_navigable_presence()
         .unwrap();
-    assert_eq!(content, surgeist_html::HtmlChildNavigablePresence::Null);
     assert_eq!(
-        content.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        content,
+        surgeist_html::elements::frame::HtmlChildNavigablePresence::Null
     );
     assert_eq!(
         content.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        content.content_access(),
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
     );
     assert!(!state.current_navigation_was_lazy_loaded());
     assert!(state.pending_resource_timing_start_time_is_null());
@@ -54,7 +57,7 @@ fn state(snapshot: &DomSnapshot, node: NodeId) -> HtmlIframeInitialState {
     assert!(state.potentially_delays_load());
     assert_eq!(
         content.load_delay(),
-        surgeist_html::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+        surgeist_html::elements::frame::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
     );
     state
 }

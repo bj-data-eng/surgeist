@@ -2,8 +2,10 @@
 //! the public parser. Fixtures use the same admitted Template relation barrier
 //! as parsed installation; retirement and publication use the real tree owner.
 use super::*;
-use crate::{DomChange, DomSnapshot, Namespace, template::TemplatePatch};
+use crate::{DomChange, DomSnapshot, template::TemplatePatch};
 use std::sync::atomic::Ordering;
+use surgeist_html::values::DocumentString;
+use surgeist_html::values::Namespace;
 
 type Patch = [Option<NodeId>; 3];
 

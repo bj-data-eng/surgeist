@@ -56,7 +56,7 @@ impl DomSourceCloseWatcherInvocationId {
 /// Exact original watcher service, or release of its started invocation custody.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceCloseWatcherStep {
-    Action(surgeist_html::HtmlCloseWatcherRequestAction),
+    Action(surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction),
     SettleInvocation,
 }
 /// Immutable original-operation qualification, without execution authority.
@@ -92,8 +92,8 @@ impl DomSourceCloseWatcherRequest {
 /// Exact externally stopped native action retained while cleanup is pending.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceStoppedAction {
-    Dialog(surgeist_html::HtmlDialogAction),
-    CloseWatcher(surgeist_html::HtmlCloseWatcherRequestAction),
+    Dialog(surgeist_html::elements::dialog::HtmlDialogAction),
+    CloseWatcher(surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction),
 }
 /// A native disposition for one actually reached source assertion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,20 +103,20 @@ pub enum DomSourceInvariantReason {
 /// Frozen actual assertion basis. Cleanup cannot reinterpret this observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomSourceInvariantFailure {
-    pub(crate) dialog_operation: surgeist_html::HtmlDialogOperation,
+    pub(crate) dialog_operation: surgeist_html::elements::dialog::HtmlDialogOperation,
     pub(crate) subject: crate::NodeId,
-    pub(crate) action: surgeist_html::HtmlDialogAction,
+    pub(crate) action: surgeist_html::elements::dialog::HtmlDialogAction,
     pub(crate) basis: crate::DomStamp,
     pub(crate) reason: DomSourceInvariantReason,
 }
 impl DomSourceInvariantFailure {
-    pub const fn dialog_operation(self) -> surgeist_html::HtmlDialogOperation {
+    pub const fn dialog_operation(self) -> surgeist_html::elements::dialog::HtmlDialogOperation {
         self.dialog_operation
     }
     pub const fn subject(self) -> crate::NodeId {
         self.subject
     }
-    pub const fn action(self) -> surgeist_html::HtmlDialogAction {
+    pub const fn action(self) -> surgeist_html::elements::dialog::HtmlDialogAction {
         self.action
     }
     pub const fn basis(self) -> crate::DomStamp {
@@ -139,7 +139,7 @@ pub enum DomSourceCleanupCause {
 #[derive(Debug)]
 pub struct DomCloseWatcherRequestPreparation {
     pub(crate) request: DomSourceCloseWatcherRequest,
-    pub(crate) cursor: surgeist_html::HtmlCloseWatcherRequestCursor,
+    pub(crate) cursor: surgeist_html::elements::dialog::HtmlCloseWatcherRequestCursor,
 }
 impl DomCloseWatcherRequestPreparation {
     pub fn request(&self) -> &DomSourceCloseWatcherRequest {
@@ -147,9 +147,9 @@ impl DomCloseWatcherRequestPreparation {
     }
     pub fn publish_reply(
         self,
-        reply: surgeist_html::HtmlCloseWatcherRequestReply,
+        reply: surgeist_html::elements::dialog::HtmlCloseWatcherRequestReply,
     ) -> Result<DomCloseWatcherRequestPublication, crate::DomError> {
-        use surgeist_html::HtmlCloseWatcherRequestAction as A;
+        use surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction as A;
         if !matches!(self.request.step, DomSourceCloseWatcherStep::Action(action) if !matches!(action, A::CaptureWindow | A::RunCancelAction { .. } | A::RunCloseAction | A::Complete(_)))
         {
             return Err(crate::DomError::InvalidSourceOperation);
@@ -177,7 +177,7 @@ impl DomCloseWatcherRequestPreparation {
 #[derive(Debug)]
 pub struct DomCloseWatcherRequestPublication {
     pub(crate) request: DomSourceCloseWatcherRequest,
-    pub(crate) reply: Option<surgeist_html::HtmlCloseWatcherRequestReply>,
+    pub(crate) reply: Option<surgeist_html::elements::dialog::HtmlCloseWatcherRequestReply>,
 }
 
 /// Admitted original-Window history-consumption targets. The original hosted

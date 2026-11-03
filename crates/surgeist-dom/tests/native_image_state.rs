@@ -2,7 +2,8 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::{
-    HtmlConstructionLimits, HtmlFragment, HtmlImageUpdateFlags, HtmlImgFreshRequestState,
+    construction::{HtmlConstructionLimits, HtmlFragment},
+    elements::image::{HtmlImageUpdateFlags, HtmlImgFreshRequestState},
 };
 
 fn cancel() -> AtomicBool {

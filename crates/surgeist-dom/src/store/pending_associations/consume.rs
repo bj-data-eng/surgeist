@@ -3,11 +3,12 @@ use super::control::Meter;
 use super::*;
 use crate::parsed_meta::*;
 use crate::{
-    DocumentString, DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError,
-    DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage, DomStyleCssomRoot,
+    DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationLimits,
+    DomParsedHtmlAssociationRuntimeUsage, DomStyleCssomRoot,
 };
 use std::sync::MutexGuard;
 use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot};
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{
     HtmlParseAssociationCaptureDisposition as Capture, HtmlParseAssociationOccurrenceKind as Kind,
     HtmlParseMetadataDocument, HtmlParsePendingAssociationStep as Step,

@@ -2,9 +2,10 @@
 //! owner work; ordinary atomic edits stop without publishing that work.
 use super::source::headroom;
 use super::*;
-use surgeist_html::{
+use surgeist_html::elements::style::{
     HtmlStyleUpdateAction as Action, HtmlStyleUpdateCursor, HtmlStyleUpdateReply as Reply,
 };
+
 #[cfg(test)]
 mod body_presence_tests;
 
@@ -34,14 +35,14 @@ impl Cursor {
     pub(in crate::store) fn reply(
         &mut self,
         reply: Reply,
-    ) -> Result<(), surgeist_html::HtmlStyleProtocolError> {
+    ) -> Result<(), surgeist_html::elements::style::HtmlStyleProtocolError> {
         match self {
             Self::Update(cursor) => cursor.reply(reply),
             Self::OwnerAttributes | Self::SetDisabled(_) if reply == Reply::Applied => {
                 *self = Self::Complete;
                 Ok(())
             }
-            _ => Err(surgeist_html::HtmlStyleProtocolError),
+            _ => Err(surgeist_html::elements::style::HtmlStyleProtocolError),
         }
     }
 }
@@ -59,15 +60,21 @@ impl Draft {
             .style_state()
             .expect("Style")
             .creation_state();
-        let explicit = surgeist_html::blocking_tokens_with(
-            self.control_attribute(key, surgeist_html::KnownHtmlAttribute::Blocking, cancel)?,
+        let explicit = surgeist_html::elements::style::blocking_tokens_with(
+            self.control_attribute(
+                key,
+                surgeist_html::vocabulary::KnownHtmlAttribute::Blocking,
+                cancel,
+            )?,
             || self.source_step(cancel),
         )?;
-        Ok(surgeist_html::style_is_potentially_render_blocking(
-            explicit,
-            state,
-            node.style_parser_document() == Some(node.document()),
-        ))
+        Ok(
+            surgeist_html::elements::style::style_is_potentially_render_blocking(
+                explicit,
+                state,
+                node.style_parser_document() == Some(node.document()),
+            ),
+        )
     }
     fn style_render_blocking_required(
         &self,
@@ -77,15 +84,21 @@ impl Draft {
         if !self.style_potentially_render_blocking(key, cancel)? {
             return Ok(Some(false));
         }
-        let media =
-            self.control_attribute(key, surgeist_html::KnownHtmlAttribute::Media, cancel)?;
+        let media = self.control_attribute(
+            key,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Media,
+            cancel,
+        )?;
         let Some(media) = media else {
             self.source_step(cancel)?;
             // Style's absent-media default is distinct from an absent media value.
             return Ok(Some(true));
         };
-        let mut cursor = surgeist_html::HtmlMediaValueCursor::new(Some(media.code_units()));
-        while cursor.next_action() != surgeist_html::HtmlMediaCursorAction::Complete {
+        let mut cursor =
+            surgeist_html::elements::media::HtmlMediaValueCursor::new(Some(media.code_units()));
+        while cursor.next_action()
+            != surgeist_html::elements::media::HtmlMediaCursorAction::Complete
+        {
             self.source_step(cancel)?;
             cursor.advance();
         }
@@ -105,7 +118,7 @@ impl Draft {
         #[cfg(test)]
         let _observation =
             scale_metrics::ENABLED.then(|| body_presence_tests::BodyRead::begin(self));
-        use surgeist_html::HtmlDocumentBodyRole as Role;
+        use surgeist_html::elements::style::HtmlDocumentBodyRole as Role;
         self.source_step(cancel)?;
         let Some(root) = self
             .role_facts
@@ -116,8 +129,9 @@ impl Draft {
         let transaction::KindRead::Element(element) = self.node(root)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        if surgeist_html::document_body_role_with(element.name(), |_| self.source_step(cancel))?
-            != Role::Html
+        if surgeist_html::elements::style::document_body_role_with(element.name(), |_| {
+            self.source_step(cancel)
+        })? != Role::Html
         {
             return Ok(false);
         }
@@ -137,7 +151,7 @@ impl Draft {
             return Ok(());
         }
         let body = self.style_document_has_body(document, cancel)?;
-        if !surgeist_html::document_allows_render_blocking(html, body) {
+        if !surgeist_html::elements::style::document_allows_render_blocking(html, body) {
             return Ok(());
         }
         self.style_add_render_blocking(key, cancel)
@@ -267,7 +281,7 @@ impl Draft {
             select::Effect::Style(Frame {
                 key,
                 cursor: Cursor::Update(HtmlStyleUpdateCursor::new(
-                    surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+                    surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
                 )),
                 invocation,
             }),
@@ -321,10 +335,16 @@ impl Draft {
                 Reply::Applied
             }
             Action::ReadConnected => Reply::Connected(self.shadow_connected(frame.key, cancel)?),
-            Action::ReadType => Reply::TypeEligible(surgeist_html::style_type_allows_css_with(
-                self.control_attribute(frame.key, surgeist_html::KnownHtmlAttribute::Type, cancel)?,
-                || self.effect_step(cancel),
-            )?),
+            Action::ReadType => {
+                Reply::TypeEligible(surgeist_html::elements::style::style_type_allows_css_with(
+                    self.control_attribute(
+                        frame.key,
+                        surgeist_html::vocabulary::KnownHtmlAttribute::Type,
+                        cancel,
+                    )?,
+                    || self.effect_step(cancel),
+                )?)
+            }
             // This native owner has no executable-JavaScript engine. The
             // selected operation excludes bookkeeping, without inventing a
             // normative predicate result from parser provenance or media.
@@ -428,25 +448,25 @@ impl Draft {
         if self.element(key)?.language().style_state().is_none() {
             return Ok(());
         }
-        let attribute = surgeist_html::KnownHtmlAttribute::from_name(name);
+        let attribute = surgeist_html::vocabulary::KnownHtmlAttribute::from_name(name);
         let Some(attribute) = attribute else {
             return Ok(());
         };
         if name.namespace_uri().is_none()
-            && attribute == surgeist_html::KnownHtmlAttribute::Blocking
+            && attribute == surgeist_html::vocabulary::KnownHtmlAttribute::Blocking
         {
             if !self.style_potentially_render_blocking(key, cancel)? {
                 self.style_unblock_rendering(key, cancel)?;
             }
             return Ok(());
         }
-        if surgeist_html::style_attribute_effect(
-            &name
-                .namespace_uri()
-                .cloned()
-                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+        if surgeist_html::elements::style::style_attribute_effect(
+            &name.namespace_uri().cloned().map_or_else(
+                surgeist_html::values::Namespace::none,
+                surgeist_html::values::Namespace::from_uri,
+            ),
             attribute,
-        ) != surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes
+        ) != surgeist_html::elements::style::HtmlStyleAttributeEffect::OwnerAttributes
         {
             return Ok(());
         }
@@ -491,18 +511,18 @@ impl Draft {
             return Ok(());
         };
         let trigger = if let Some(parent) = old_parent {
-            surgeist_html::HtmlStyleTrigger::Removal {
+            surgeist_html::elements::style::HtmlStyleTrigger::Removal {
                 disconnected: self.shadow_connected(parent, cancel)?
                     && !self.shadow_connected(key, cancel)?,
                 on_parser_stack: state.on_parser_stack(),
             }
         } else {
-            surgeist_html::HtmlStyleTrigger::Insertion {
+            surgeist_html::elements::style::HtmlStyleTrigger::Insertion {
                 connected: self.shadow_connected(key, cancel)?,
                 on_parser_stack: state.on_parser_stack(),
             }
         };
-        if surgeist_html::style_update_is_required(trigger) {
+        if surgeist_html::elements::style::style_update_is_required(trigger) {
             self.style_update(key, limits, cancel)?;
         }
         Ok(())

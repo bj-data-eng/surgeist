@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use crate::DomDocumentStamp;
 use crate::view_transition::*;
-use crate::{DocumentId, DocumentString, DomSnapshot, Namespace, NodeId};
+use crate::{DocumentId, DomSnapshot, NodeId};
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
+use surgeist_html::values::{DocumentString, Namespace};
 
 #[derive(Debug)]
 pub(crate) struct BatchIdentity;

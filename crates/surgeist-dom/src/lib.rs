@@ -300,8 +300,11 @@ pub use store::{
     DomUsage,
 };
 pub use surgeist_html::{
-    Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, HtmlShadowRootMode,
-    HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    elements::native::HtmlCustomElementState,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 pub use svg_script::{DomSvgScript, DomSvgScriptOrigin};
 pub use template::{DomTemplate, DomTemplateDocumentRole, DomTemplatePatch};

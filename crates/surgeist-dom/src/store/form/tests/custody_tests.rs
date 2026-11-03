@@ -1,5 +1,6 @@
 use super::*;
 use crate::form::{FormPastNames, History};
+use surgeist_html::values::DocumentString;
 
 fn raw_extent(names: &FormPastNames<NodeId>) -> custody::Usage {
     let Some(payload) = names.payload() else {
@@ -51,7 +52,7 @@ fn empty_form(reserved: bool) -> (Dom, NodeId) {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let form = batch.create_element_ns(&document, crate::Namespace::html(), "form");
+    let form = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "form");
     let cancel = AtomicBool::new(false);
     let mut draft = Draft::new(&dom, batch.owner.clone(), &cancel).unwrap();
     for command in &batch.commands {

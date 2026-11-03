@@ -1,7 +1,7 @@
 //! HTML877d native Script state and source hooks through the Disabled return.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlScriptKind as Kind, HtmlScriptResult};
+use surgeist_html::elements::script::{HtmlScriptKind as Kind, HtmlScriptResult};
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {

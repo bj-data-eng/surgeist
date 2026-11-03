@@ -229,10 +229,10 @@ fn queue_preparation_requires_known_prefix_and_closing_phase_headroom_before_eff
         };
         assert_eq!(
             frame.cursor.action(),
-            surgeist_html::HtmlDialogAction::QueueToggle {
-                old: surgeist_html::HtmlDialogState::Closed,
-                new: surgeist_html::HtmlDialogState::Open,
-                source: surgeist_html::HtmlDialogEventSource::Null,
+            surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle {
+                old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+                new: surgeist_html::elements::dialog::HtmlDialogState::Open,
+                source: surgeist_html::elements::dialog::HtmlDialogEventSource::Null,
             }
         );
     }

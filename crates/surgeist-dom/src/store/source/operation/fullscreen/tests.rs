@@ -123,7 +123,11 @@ pub(super) fn fixture_with_limits(
         .document_element()
         .unwrap();
     let mut batch = DomBatch::new();
-    let subject = batch.create_element_ns(document, crate::Namespace::none(), "fullscreen-subject");
+    let subject = batch.create_element_ns(
+        document,
+        surgeist_html::values::Namespace::none(),
+        "fullscreen-subject",
+    );
     batch.insert_before(&subject, parent, None);
     batch.fullscreen_element_model(&subject);
     let subject = dom
@@ -415,7 +419,8 @@ fn recorded_bound_descendant_context_refuses_context_free_handoff_before_either_
     let cancel = AtomicBool::new(false);
     let (mut dom, source, document, subject) = fixture();
     let mut batch = DomBatch::new();
-    let descendant = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    let descendant =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&descendant, subject, None);
     let descendant = dom
         .apply(batch, &cancel)
@@ -432,7 +437,8 @@ fn recorded_bound_descendant_context_refuses_context_free_handoff_before_either_
     let snapshot = dom.snapshot();
     let document_view = snapshot.document(document).unwrap();
     let parser = CssParserContext::new(
-        if document_view.metadata().mode() == crate::HtmlDocumentMode::Quirks {
+        if document_view.metadata().mode() == surgeist_html::construction::HtmlDocumentMode::Quirks
+        {
             CssParserMode::Quirks
         } else {
             CssParserMode::Standards
@@ -572,7 +578,8 @@ fn bound_descendant_handoff_commits_context_once_and_resumes_original_removal() 
     let cancel = AtomicBool::new(false);
     let (mut dom, source, document, subject) = fixture();
     let mut batch = DomBatch::new();
-    let descendant = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    let descendant =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&descendant, subject, None);
     batch.set_attribute(&descendant, "style", "width: 5px");
     let descendant = dom
@@ -590,7 +597,8 @@ fn bound_descendant_handoff_commits_context_once_and_resumes_original_removal() 
     let snapshot = dom.snapshot();
     let document_view = snapshot.document(document).unwrap();
     let parser = CssParserContext::new(
-        if document_view.metadata().mode() == crate::HtmlDocumentMode::Quirks {
+        if document_view.metadata().mode() == surgeist_html::construction::HtmlDocumentMode::Quirks
+        {
             CssParserMode::Quirks
         } else {
             CssParserMode::Standards

@@ -92,10 +92,11 @@ impl Draft {
             check_cancel(cancelled)?;
             valid |= name.code_units().iter().copied().eq(builtin.encode_utf16());
         }
-        let custom = surgeist_html::bounded::validate_custom_element_name_with(name, |_| {
-            check_cancel(cancelled)
-        })?
-        .is_ok();
+        let custom =
+            surgeist_html::bounded::lexical::validate_custom_element_name_with(name, |_| {
+                check_cancel(cancelled)
+            })?
+            .is_ok();
         if !valid && !custom {
             return Err(DomError::NotSupported);
         }
@@ -107,7 +108,8 @@ impl Draft {
         );
         debug_assert!(matches!(
             element.custom_element_state(),
-            crate::HtmlCustomElementState::Uncustomized | crate::HtmlCustomElementState::Undefined
+            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized
+                | surgeist_html::elements::native::HtmlCustomElementState::Undefined
         ));
         if node.shadow_root().is_some() {
             // Every admitted root is non-declarative. Declarative reuse has no
@@ -149,12 +151,13 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn host(dom: &mut Dom) -> NodeId {
         let mut batch = DomBatch::new();
         let doc = batch.create_document();
         let host = batch.create_element_ns(
             &doc,
-            crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+            surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
             "div",
         );
         dom.apply(batch, &AtomicBool::new(false))
@@ -185,7 +188,7 @@ mod tests {
         let mut batch = DomBatch::new();
         batch.attach_shadow(
             host,
-            crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Closed),
+            crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Closed),
         );
         let prepared = dom.prepare(batch, &AtomicBool::new(false)).unwrap();
         assert!(
@@ -227,7 +230,7 @@ mod tests {
         let mut batch = DomBatch::new();
         batch.attach_shadow(
             host,
-            crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+            crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
         );
         assert_eq!(
             dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),

@@ -2,6 +2,10 @@
 use super::*;
 use crate::*;
 use std::sync::{Arc, atomic::AtomicBool};
+use surgeist_html::security::csp::{
+    HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspLayout, HtmlCspOwner,
+    HtmlCspPolicyArtifact, HtmlCspProcessorAuthority, HtmlCspStorage,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };
@@ -130,7 +134,7 @@ pub(in crate::store::pending_associations) fn binding(
         .clone()
 }
 use std::sync::atomic::{AtomicUsize, Ordering};
-use surgeist_html::*;
+
 #[derive(Debug)]
 struct NativePolicy {
     clauses: [u8; 8],

@@ -195,7 +195,7 @@ fn source_phase_keeps_original_transition_and_record_ids_in_final_receipts() {
     let cancel = AtomicBool::new(false);
     let mut create = DomBatch::new();
     let parent = create.create_element(document, "parent");
-    let style = create.create_element_ns(document, crate::Namespace::html(), "style");
+    let style = create.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
     create.insert_before(&parent, document, None);
     let created = dom.apply(create, &cancel).unwrap();
     let parent = created.created(&parent).unwrap().unwrap();

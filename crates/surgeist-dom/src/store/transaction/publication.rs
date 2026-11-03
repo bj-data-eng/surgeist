@@ -946,6 +946,7 @@ struct CandidateState {
 mod tests {
     use super::*;
     use scale_metrics::{Counters, Hooks, Measurement};
+    use surgeist_html::values::DocumentString;
 
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
         let mut dom = Dom::new(
@@ -964,8 +965,13 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let form = batch.create_element_ns(&document, crate::Namespace::html(), "form");
-        let button = batch.create_element_ns(&document, crate::Namespace::html(), "button");
+        let form =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "form");
+        let button = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "button",
+        );
         batch.insert_before(&form, &document, None);
         batch.insert_before(&button, &form, None);
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();

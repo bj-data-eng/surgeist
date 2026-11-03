@@ -6,8 +6,8 @@ use surgeist_dom::{
     DomHtmlCaptureResource, DomLimits, DomSnapshot, Namespace, NodeId, Observed,
 };
 use surgeist_html::{
-    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
-    HtmlValueInterpreter,
+    security::nonce::{HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp},
+    values::{DocumentString, HtmlValueInterpreter},
 };
 use surgeist_html_semantics::{
     HtmlCaptureError, HtmlCaptureLimits, HtmlCapturedChildren, HtmlCapturedCustomElementState,

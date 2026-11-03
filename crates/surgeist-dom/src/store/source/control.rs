@@ -18,11 +18,11 @@ pub(in crate::store) enum Undo {
     },
 
     DialogReply {
-        cursor: surgeist_html::HtmlDialogCursor,
+        cursor: surgeist_html::elements::dialog::HtmlDialogCursor,
         invocation: Invocation,
     },
     FocusingReply {
-        cursor: surgeist_html::HtmlDialogFocusingCursor,
+        cursor: surgeist_html::elements::dialog::HtmlDialogFocusingCursor,
         invocation: Invocation,
     },
     EffectPushed(Arc<super::effects::FrameLife>),

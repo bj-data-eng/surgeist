@@ -1,7 +1,7 @@
 //! Final-publication retry through the original live Source loan. Public Drop
 //! intentionally discards a wholly unpublished operation without observations.
 use super::*;
-use crate::Namespace;
+use surgeist_html::values::Namespace;
 
 fn policy(outputs: usize) -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 100_000_000, 1, outputs, 0, 1)

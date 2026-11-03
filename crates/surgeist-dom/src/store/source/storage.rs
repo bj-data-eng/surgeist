@@ -48,7 +48,7 @@ impl Payload {
     }
     pub(crate) fn name(
         &mut self,
-        name: &(impl surgeist_html::HtmlNameInput + ?Sized),
+        name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
     ) -> Result<(), DomError> {
         if let Some(uri) = name.namespace_uri() {
             self.string(uri)?;
@@ -151,7 +151,7 @@ pub(crate) fn input_state(value: &crate::DomInputState) -> Result<custody::Usage
     let mut payload = Payload::default();
     payload.string(&value.current)?;
     payload.string(&value.control.message)?;
-    if let surgeist_html::HtmlInputImageHistory::Last {
+    if let surgeist_html::elements::input::HtmlInputImageHistory::Last {
         source: Some(source),
         ..
     } = &value.image
@@ -462,7 +462,10 @@ pub(in crate::store) fn commands(
                 value,
                 ..
             } => {
-                if let Some(uri) = namespace.as_ref().and_then(crate::Namespace::uri) {
+                if let Some(uri) = namespace
+                    .as_ref()
+                    .and_then(surgeist_html::values::Namespace::uri)
+                {
                     payload.string(uri)?;
                 }
                 payload.string(name)?;
@@ -471,7 +474,10 @@ pub(in crate::store) fn commands(
             Command::RemoveAttribute {
                 namespace, name, ..
             } => {
-                if let Some(uri) = namespace.as_ref().and_then(crate::Namespace::uri) {
+                if let Some(uri) = namespace
+                    .as_ref()
+                    .and_then(surgeist_html::values::Namespace::uri)
+                {
                     payload.string(uri)?;
                 }
                 payload.string(name)?;
@@ -498,13 +504,15 @@ pub(in crate::store) fn commands(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
     use surgeist_html_semantics::*;
 
     #[test]
     fn original_assign_slot_input_capacity_is_cached_once_with_the_commands() {
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let slot = batch.create_element_ns(&document, crate::Namespace::html(), "slot");
+        let slot =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "slot");
         let mut incoming = Vec::with_capacity(7);
         incoming.push(NodeOperand::from(&slot));
         batch.assign_slot(&slot, incoming);

@@ -1,8 +1,9 @@
 //! Slot discovery excludes unrelated ordinary Comment descendants.
 //! Public setup and real Source formation precede the selected work window.
 use crate::store::Draft;
-use crate::{Dom, DomBatch, DomLimits, DomSourceLimits, Namespace, NodeId};
+use crate::{Dom, DomBatch, DomLimits, DomSourceLimits, NodeId};
 use std::sync::atomic::{AtomicBool, Ordering};
+use surgeist_html::values::Namespace;
 
 fn fixture(comments: usize, slots: usize) -> (Dom, NodeId) {
     let cancel = AtomicBool::new(false);

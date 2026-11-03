@@ -56,14 +56,17 @@ fn frame_slottable_clone_and_adoption_preserve_both_canonical_families() {
         .unwrap()
         .child_navigable_presence()
         .unwrap();
-    assert_eq!(state, surgeist_html::HtmlChildNavigablePresence::Null);
     assert_eq!(
-        state.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        state,
+        surgeist_html::elements::frame::HtmlChildNavigablePresence::Null
     );
     assert_eq!(
         state.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert_eq!(
+        state.content_access(),
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
     );
     assert_eq!(old.slot(slot).unwrap().assigned_nodes(), &[frame]);
     assert_eq!(

@@ -1,34 +1,41 @@
 //! Actual native family state; cloning this storage preserves snapshots, while
 //! DOM single-node cloning selects fresh initialization before copied attrs.
 use super::ElementFormation;
+use crate::DomError;
 use crate::store::payload::Payload as Materialized;
 use crate::store::source::{formation::Formation, storage::Payload};
-#[cfg(test)]
-use crate::{Attribute, QualifiedName};
-use crate::{DocumentString, DomError};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use surgeist_html::bounded::{
-    IntegerPrefixScanner, IntegerUnitStepError, NumericMaterializationError,
+use surgeist_html::bounded::numeric::{
+    HtmlIntegerPrefixScanner, HtmlIntegerUnitStepError, HtmlNumericMaterializationError,
 };
+use surgeist_html::values::DocumentString;
+#[cfg(test)]
+use surgeist_html::values::{Attribute, QualifiedName};
 use surgeist_html::{
-    HtmlAttributeInput, HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlIframeInitialState,
-    HtmlLoading, HtmlMarqueeState, HtmlNameInput, HtmlNonNegativeInteger, HtmlValueInterpreter,
-    KnownHtmlAttribute,
+    attributes::HtmlLoading,
+    elements::{
+        frame::HtmlIframeInitialState,
+        marquee::HtmlMarqueeState,
+        media::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState},
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{HtmlAttributeInput, HtmlNameInput, HtmlValueInterpreter},
+    vocabulary::KnownHtmlAttribute,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct IframeState {
     pub(super) fullscreen: bool,
     pub(super) initial: HtmlIframeInitialState,
-    pub(super) sandbox: surgeist_html::HtmlSandboxFlags,
+    pub(super) sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
 }
 impl IframeState {
     pub(crate) fn fresh() -> Self {
         Self {
             fullscreen: false,
             initial: HtmlIframeInitialState::fresh(),
-            sandbox: surgeist_html::HtmlSandboxFlags::empty(),
+            sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty(),
         }
     }
 }
@@ -38,7 +45,7 @@ pub(super) struct AttributeMutation<'a, N: HtmlNameInput + ?Sized, A: HtmlAttrib
     pub name: &'a N,
     pub previous: &'a [A],
     pub attributes: &'a [A],
-    pub content: Option<surgeist_html::HtmlChildNavigablePresence>,
+    pub content: Option<surgeist_html::elements::frame::HtmlChildNavigablePresence>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,7 +62,7 @@ pub(crate) enum NativeFamily {
     Source,
     Hyperlink,
     Template,
-    Form(surgeist_html::HtmlFormNativeState),
+    Form(surgeist_html::elements::form::HtmlFormNativeState),
     Fieldset(Arc<Materialized<crate::DomFieldsetState>>),
     Button(Arc<Materialized<crate::DomButtonState>>),
     Input(Arc<Materialized<crate::DomInputState>>),
@@ -174,8 +181,12 @@ impl NativeFamily {
                             }
                         }
                         let sandbox = match raw {
-                            Some(raw) => surgeist_html::HtmlSandboxFlags::parse_with(raw, admit)?,
-                            None => surgeist_html::HtmlSandboxFlags::empty(),
+                            Some(raw) => {
+                                surgeist_html::attributes::sandbox::HtmlSandboxFlags::parse_with(
+                                    raw, admit,
+                                )?
+                            }
+                            None => surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty(),
                         };
                         return Self::Iframe(IframeState { sandbox, ..*state })
                             .shared(budget, cancel);
@@ -184,7 +195,7 @@ impl NativeFamily {
                     let old = loading_state(element_name, previous, admit, budget, cancel)?;
                     let current = loading_state(element_name, attributes, admit, budget, cancel)?;
                     admit()?;
-                    if surgeist_html::iframe_loading_became_eager(old, current)
+                    if surgeist_html::elements::frame::iframe_loading_became_eager(old, current)
                         && !state.initial.lazy_load_resumption_is_null()
                     {
                         // A resource-capable representation must clear before
@@ -355,7 +366,7 @@ fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
                 budget.step(cancel)?;
             }
         }
-        for known in surgeist_html::KnownHtmlElement::ALL {
+        for known in surgeist_html::vocabulary::KnownHtmlElement::ALL {
             budget.step(cancel)?;
             for _ in 0..=known.local_name().len() {
                 budget.step(cancel)?;
@@ -410,7 +421,7 @@ fn parse_dimension(
     budget: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<HtmlNonNegativeInteger>, DomError> {
-    let mut scanner = IntegerPrefixScanner::new(true);
+    let mut scanner = HtmlIntegerPrefixScanner::new(true);
     for unit in raw.code_units() {
         admit()?;
         if !scanner.feed(*unit) {
@@ -457,8 +468,8 @@ fn parse_dimension(
     let materialized =
         HtmlNonNegativeInteger::try_from_borrowed_digits(digits, digits.len(), digits.len())
             .map_err(|failure| match failure.kind() {
-                NumericMaterializationError::Boundary(
-                    IntegerUnitStepError::RepresentationExhausted,
+                HtmlNumericMaterializationError::Boundary(
+                    HtmlIntegerUnitStepError::RepresentationExhausted,
                 ) => DomError::RepresentationExhausted,
                 _ => DomError::AllocationFailed,
             })?;
@@ -481,6 +492,7 @@ fn parse_dimension(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+
     fn registry() -> crate::store::bank::CustodyRegistry {
         crate::store::bank::CustodyRegistry::new(&crate::store::custody::Ledger::default(), |_| {
             Ok(())
@@ -502,11 +514,14 @@ mod tests {
     }
     #[test]
     fn iframe_sandbox_mutation_updates_only_the_actual_nonnull_content_slot() {
-        use surgeist_html::{HtmlChildNavigablePresence as Presence, HtmlSandboxFlag};
+        use surgeist_html::{
+            attributes::sandbox::HtmlSandboxFlag,
+            elements::frame::HtmlChildNavigablePresence as Presence,
+        };
         let cancel = AtomicBool::new(false);
         let registry = registry();
-        let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
-        let name = QualifiedName::new(crate::Namespace::none(), None, "sandbox");
+        let element = QualifiedName::new(surgeist_html::values::Namespace::html(), None, "iframe");
+        let name = QualifiedName::new(surgeist_html::values::Namespace::none(), None, "sandbox");
         let update = |family: &NativeFamily, attributes: &[Attribute], content| {
             family
                 .after_attribute(
@@ -548,14 +563,14 @@ mod tests {
     #[test]
     fn cancelled_iframe_sandbox_parse_preserves_the_original_family() {
         let family = NativeFamily::Iframe(IframeState::fresh());
-        let name = QualifiedName::new(crate::Namespace::none(), None, "sandbox");
+        let name = QualifiedName::new(surgeist_html::values::Namespace::none(), None, "sandbox");
         let attributes = [Attribute::new(
             name.clone(),
             "allow-same-origin allow-scripts",
         )];
         let cancel = AtomicBool::new(false);
         let registry = registry();
-        let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
+        let element = QualifiedName::new(surgeist_html::values::Namespace::html(), None, "iframe");
         let mut reads = 0;
         let result = family.after_attribute(
             AttributeMutation {
@@ -563,7 +578,7 @@ mod tests {
                 name: &name,
                 previous: &[],
                 attributes: &attributes,
-                content: Some(surgeist_html::HtmlChildNavigablePresence::Present),
+                content: Some(surgeist_html::elements::frame::HtmlChildNavigablePresence::Present),
             },
             &mut || {
                 reads += 1;
@@ -581,12 +596,12 @@ mod tests {
     #[test]
     fn cancellation_during_actual_dimension_scan_stops_without_mutating_family() {
         let family = canvas();
-        let name = QualifiedName::new(crate::Namespace::none(), None, "width");
+        let name = QualifiedName::new(surgeist_html::values::Namespace::none(), None, "width");
         let attributes = [Attribute::new(name.clone(), "123456789")];
         let cancel = AtomicBool::new(false);
         let registry = registry();
         let mut reads = 0;
-        let element = QualifiedName::new(crate::Namespace::html(), None, "canvas");
+        let element = QualifiedName::new(surgeist_html::values::Namespace::html(), None, "canvas");
         let result = family.after_attribute(
             AttributeMutation {
                 element_name: &element,

@@ -2,6 +2,7 @@
 //! external agent, Global or completed hosted Document is fabricated here.
 use super::*;
 use crate::document::{HostedDocumentInputData, HostedDocumentInputs};
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlBaseUrlRecord;
 
 fn cancel() -> AtomicBool {
@@ -466,11 +467,11 @@ fn hosted_constructor_requested_and_actual_byte_refusals_keep_policy_and_release
     ));
     assert_eq!(
         request.opener_policy().value(),
-        surgeist_html::HtmlOpenerPolicyValue::UnsafeNone
+        surgeist_html::security::opener_policy::HtmlOpenerPolicyValue::UnsafeNone
     );
     assert_eq!(
         request.opener_policy().report_only_value(),
-        surgeist_html::HtmlOpenerPolicyValue::UnsafeNone
+        surgeist_html::security::opener_policy::HtmlOpenerPolicyValue::UnsafeNone
     );
     assert!(request.opener_policy().reporting_endpoint().is_none());
     assert!(

@@ -1,5 +1,6 @@
 //! Contextual parse history is distinct from later canonical insertion effects.
 use super::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::HtmlParseMetadataStep;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
@@ -712,9 +713,9 @@ fn assert_checked_report(report: &HtmlParseReport) {
                     assert_eq!(
                         flags.input_type(),
                         if index < 2 {
-                            surgeist_html::HtmlInputType::Radio
+                            surgeist_html::attributes::HtmlInputType::Radio
                         } else {
-                            surgeist_html::HtmlInputType::Checkbox
+                            surgeist_html::attributes::HtmlInputType::Checkbox
                         }
                     );
                     assert_eq!(flags.checkedness(), PARSED_CHECKED[index]);

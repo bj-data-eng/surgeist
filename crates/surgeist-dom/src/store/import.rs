@@ -381,7 +381,7 @@ impl Draft {
         if let transaction::KindRead::Element(element) = original.kind() {
             let cause = if element
                 .input_state()
-                .is_some_and(|s| s.input_type() == surgeist_html::HtmlInputType::Color)
+                .is_some_and(|s| s.input_type() == surgeist_html::attributes::HtmlInputType::Color)
             {
                 attributes::AttributeCause::CloneInputColor
             } else {

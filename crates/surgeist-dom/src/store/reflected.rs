@@ -1,6 +1,7 @@
 //! Shared actual nullable reflected-target writes and permitted-weak retirement.
 use super::*;
 use crate::reflected::ReflectedTarget;
+
 impl Draft {
     pub(super) fn set_reflected_target(
         &mut self,
@@ -23,7 +24,7 @@ impl Draft {
         cancel: &AtomicBool,
         admit_effect: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
-        use surgeist_html::{
+        use surgeist_html::elements::native::{
             HtmlReflectedElementSetter as Cursor, HtmlReflectedElementSetterEffect as Effect,
         };
         if self
@@ -68,7 +69,7 @@ impl Draft {
                     )?;
                     self.remove_attribute(
                         node,
-                        Some(&crate::Namespace::none()),
+                        Some(&surgeist_html::values::Namespace::none()),
                         &name,
                         limits,
                         cancel,
@@ -84,7 +85,7 @@ impl Draft {
                     let value = source::formation::string("", operand.as_ref(), cancel)?;
                     self.set_attribute(
                         node,
-                        Some(&crate::Namespace::none()),
+                        Some(&surgeist_html::values::Namespace::none()),
                         &name,
                         &value,
                         limits,
@@ -120,8 +121,10 @@ impl Draft {
             let mut fields = self.control_fields_mut(node, cancel)?;
             if let Some(targets) = fields.reflected_targets.as_mut() {
                 for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
-                    if surgeist_html::reflected_element_attribute_change(key.attribute(), changed)
-                        && let Some(slot) = targets.slot_mut(key)
+                    if surgeist_html::elements::native::reflected_element_attribute_change(
+                        key.attribute(),
+                        changed,
+                    ) && let Some(slot) = targets.slot_mut(key)
                     {
                         *slot = None;
                     }
@@ -170,6 +173,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn stopping_between_reflected_setter_effects_observes_actual_asymmetric_order() {
         let mut dom = Dom::new(
@@ -189,7 +193,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let button = b.create_element_ns(&d, crate::Namespace::html(), "button");
+        let button = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "button");
         let other = b.create_element(&d, "other");
         b.set_command_for_element(&button, Some((&button).into()));
         let c = dom.apply(b, &cancel).unwrap();

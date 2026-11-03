@@ -21,11 +21,12 @@ use std::time::{Duration, Instant};
 
 use super::scale_metrics::{self, Domain, Hooks, Measurement};
 use crate::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomDispatchCustody,
-    DomDispatchCustodyLimits, DomError, DomLimits, DomSnapshot, DomSourceEdit, DomSourceLimits,
-    DomSourceOutput, DomSourceProgress, DomSourceRequest, DomStyleCssomOwnerBinding,
-    DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomDispatchCustody, DomDispatchCustodyLimits,
+    DomError, DomLimits, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceOutput,
+    DomSourceProgress, DomSourceRequest, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+    DomStyleInlineCspObservation, NodeId,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 mod memory;
 
@@ -2388,7 +2389,7 @@ fn show_sequence_bound() -> usize {
         bulk_mul(32, size_of::<super::Key>()),
         bulk_mul(32, size_of::<NodeId>()),
         bulk_mul(32, size_of::<usize>()),
-        bulk_mul(16, size_of::<crate::Attribute>()),
+        bulk_mul(16, size_of::<surgeist_html::values::Attribute>()),
         bulk_mul(512, size_of::<u16>()),
     ];
     let bound = terms.into_iter().fold(0, bulk_add);
@@ -2484,8 +2485,14 @@ fn postsetup_native_source_park_resume_reentry_scale() {
             assert_eq!(fixture.dom.snapshot().stamp(), before.stamp());
             assert_eq!(event.kind(), crate::DomSourceEventKind::BeforeToggle);
             let toggle = event.toggle_event().unwrap();
-            assert_eq!(toggle.old_state(), surgeist_html::HtmlDialogState::Closed);
-            assert_eq!(toggle.new_state(), surgeist_html::HtmlDialogState::Open);
+            assert_eq!(
+                toggle.old_state(),
+                surgeist_html::elements::dialog::HtmlDialogState::Closed
+            );
+            assert_eq!(
+                toggle.new_state(),
+                surgeist_html::elements::dialog::HtmlDialogState::Open
+            );
             let start = Instant::now();
             let permit = executor
                 .begin_dispatch(&fixture.dom, &event, &cancel)

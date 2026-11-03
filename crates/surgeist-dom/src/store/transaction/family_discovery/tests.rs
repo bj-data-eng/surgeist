@@ -1,6 +1,7 @@
 //! New private-owner characterizations. The original public/native discovery
 //! failures remain unchanged in the owning Details and Select tests.
 use super::*;
+use surgeist_html::values::DocumentString;
 
 fn limits() -> DomLimits {
     DomLimits::new(
@@ -44,20 +45,44 @@ fn canonical_participants_recompute_actual_payload_and_keep_exact_names_and_orde
     let raw = DocumentString::from_utf16(vec![0xd800]);
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-    let first = batch.create_element_ns(&document, crate::Namespace::html(), "details");
+    let root = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+    let first = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     batch.set_attribute(&first, "name", raw.clone());
     batch.insert_before(&first, &root, None);
-    let other = batch.create_element_ns(&document, crate::Namespace::html(), "details");
+    let other = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     batch.set_attribute(&other, "name", "\u{fffd}");
     batch.insert_before(&other, &root, None);
-    let last = batch.create_element_ns(&document, crate::Namespace::html(), "details");
+    let last = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     batch.set_attribute(&last, "name", raw.clone());
     batch.insert_before(&last, &root, None);
-    let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
-    let option = batch.create_element_ns(&document, crate::Namespace::html(), "option");
+    let select = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "select",
+    );
+    let option = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "option",
+    );
     batch.insert_before(&option, &select, None);
-    let target = batch.create_element_ns(&document, crate::Namespace::html(), "selectedcontent");
+    let target = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "selectedcontent",
+    );
     batch.insert_before(&target, &select, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let key = |ticket: &CreatedNode| Key::Existing(commit.created(ticket).unwrap().unwrap());
@@ -90,9 +115,21 @@ fn one_stored_enabled_target_has_separate_containing_groups_and_source_undo() {
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let outer = batch.create_element_ns(&document, crate::Namespace::html(), "select");
-    let inner = batch.create_element_ns(&document, crate::Namespace::html(), "select");
-    let target = batch.create_element_ns(&document, crate::Namespace::html(), "selectedcontent");
+    let outer = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "select",
+    );
+    let inner = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "select",
+    );
+    let target = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "selectedcontent",
+    );
     batch.insert_before(&target, &inner, None);
     batch.insert_before(&inner, &outer, None);
     let commit = dom.apply(batch, &cancel).unwrap();

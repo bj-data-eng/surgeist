@@ -191,7 +191,7 @@ fn fact(
         let parent = order.node(position.parent)?;
         if let Some(shadow) = parent.shadow_root() {
             let root = order.node(shadow)?;
-            if matches!(root.kind(),KindRead::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
+            if matches!(root.kind(),KindRead::ShadowRoot(state) if state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
                 && root.host().map(|host| order.normalize(host)) == Some(position.parent)
             {
                 let (value, usage) = read_name(

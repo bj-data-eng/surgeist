@@ -6,7 +6,8 @@ use super::{
     CHUNK, Context, Duration, Fixture, Instant, SAMPLES, WARMUPS, apply, attribute, black_box,
     fixture, fixture_with_capacity, report, require_release, scale_metrics,
 };
-use crate::{DocumentString, DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
+use crate::{DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
+use surgeist_html::values::DocumentString;
 
 mod features;
 mod names;

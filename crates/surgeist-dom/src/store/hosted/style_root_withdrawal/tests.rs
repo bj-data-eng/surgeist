@@ -121,7 +121,8 @@ fn style_resource(
     CssomSnapshot,
 ) {
     let mut setup = DomBatch::new();
-    let style = setup.create_element_ns(document, crate::Namespace::html(), "style");
+    let style =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
     let text = setup.create_text(document, "a { color: red }");
     setup.insert_before(&text, &style, None);
     let style = dom
@@ -284,10 +285,10 @@ impl Fixture {
         let (mut dom, mut source, document) = constructor();
         let mut batch = DomBatch::new();
         // A genuine detached participant belongs to the selected Document group.
-        batch.create_element_ns(document, crate::Namespace::html(), "style");
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
         for _ in 0..unrelated {
             let other = batch.create_document();
-            batch.create_element_ns(&other, crate::Namespace::html(), "style");
+            batch.create_element_ns(&other, surgeist_html::values::Namespace::html(), "style");
         }
         dom.apply(batch, &cancel()).unwrap();
         let document_element = dom
@@ -298,13 +299,14 @@ impl Fixture {
             .unwrap();
         let shadow = |dom: &mut Dom| {
             let mut setup = DomBatch::new();
-            let host = setup.create_element_ns(document, crate::Namespace::html(), "div");
+            let host =
+                setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
             setup.insert_before(&host, document_element, None);
             let shadow = setup.attach_shadow(
                 &host,
-                surgeist_html::HtmlShadowRootProperties::new(
-                    surgeist_html::HtmlShadowRootMode::Open,
-                    surgeist_html::HtmlSlotAssignment::Manual,
+                surgeist_html::construction::HtmlShadowRootProperties::new(
+                    surgeist_html::construction::HtmlShadowRootMode::Open,
+                    surgeist_html::construction::HtmlSlotAssignment::Manual,
                     false,
                     true,
                     false,
@@ -844,7 +846,11 @@ fn actual_issuer_revision_change_refuses_stale_cleanup_without_withdrawing_custo
 fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() {
     let mut f = Fixture::new(true, 0);
     let mut setup = DomBatch::new();
-    let style = setup.create_element_ns(f.document, crate::Namespace::html(), "style");
+    let style = setup.create_element_ns(
+        f.document,
+        surgeist_html::values::Namespace::html(),
+        "style",
+    );
     let text = setup.create_text(f.document, "b {}");
     setup.insert_before(&text, &style, None);
     let style = f

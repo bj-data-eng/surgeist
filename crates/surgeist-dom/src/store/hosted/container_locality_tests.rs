@@ -1,6 +1,7 @@
 //! Fixed actual container participants; unrelated nodes share the active Document.
 use super::*;
-use crate::{DomShadowRootInit, HtmlShadowRootMode};
+use crate::DomShadowRootInit;
+use surgeist_html::construction::HtmlShadowRootMode;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -32,24 +33,56 @@ fn fixture(unrelated: usize, populated: bool) -> Fixture {
     let (top, _, preparation_work) = f.issue(0);
     drop(preparation_work);
     let mut batch = DomBatch::new();
-    let root = batch.create_element_ns(top.document, crate::Namespace::html(), "div");
+    let root = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "div",
+    );
     batch.insert_before(&root, top.document, None);
     for _ in 0..unrelated {
-        let ordinary = batch.create_element_ns(top.document, crate::Namespace::html(), "span");
+        let ordinary = batch.create_element_ns(
+            top.document,
+            surgeist_html::values::Namespace::html(),
+            "span",
+        );
         batch.insert_before(&ordinary, &root, None);
     }
-    let preceding = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+    let preceding = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&preceding, &root, None);
-    let host = batch.create_element_ns(top.document, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "div",
+    );
     batch.insert_before(&host, &root, None);
     let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
-    let shadow_child = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+    let shadow_child = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&shadow_child, &shadow, None);
-    let light_child = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+    let light_child = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&light_child, &host, None);
-    let null = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+    let null = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&null, &root, None);
-    let mismatch = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+    let mismatch = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&mismatch, &root, None);
     let commit = f.dom.apply(batch, &cancel()).unwrap();
     let containers = [preceding, shadow_child, light_child, null, mismatch]
@@ -273,15 +306,27 @@ fn empty_output_steps(unrelated: usize, containers: usize) -> u64 {
     let (top, _, preparation_work) = f.issue(0);
     drop(preparation_work);
     let mut batch = DomBatch::new();
-    let root = batch.create_element_ns(top.document, crate::Namespace::html(), "div");
+    let root = batch.create_element_ns(
+        top.document,
+        surgeist_html::values::Namespace::html(),
+        "div",
+    );
     batch.insert_before(&root, top.document, None);
     for _ in 0..unrelated {
-        let node = batch.create_element_ns(top.document, crate::Namespace::html(), "span");
+        let node = batch.create_element_ns(
+            top.document,
+            surgeist_html::values::Namespace::html(),
+            "span",
+        );
         batch.insert_before(&node, &root, None);
     }
     let mut nulls = Vec::new();
     for _ in 0..containers {
-        let node = batch.create_element_ns(top.document, crate::Namespace::html(), "iframe");
+        let node = batch.create_element_ns(
+            top.document,
+            surgeist_html::values::Namespace::html(),
+            "iframe",
+        );
         batch.insert_before(&node, &root, None);
         nulls.push(node);
     }
