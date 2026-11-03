@@ -980,7 +980,7 @@ pub(crate) enum TemporalInputFormat {
     LocalDateTime,
 }
 #[derive(Clone, Copy, Debug)]
-enum TemporalScanStep {
+enum TemporalScanStep<'a> {
     Year,
     YearEnd,
     Hyphen,
@@ -988,12 +988,46 @@ enum TemporalScanStep {
     Pair(TemporalPair),
     AfterPair(TemporalPair),
     Colon,
-    TimeTail,
-    FractionTail,
-    Fraction,
+    /// After the minutes; `minute_end` is the offset just past them.
+    TimeTail {
+        minute_end: usize,
+    },
+    FractionTail(TemporalTimeEnds),
+    Fraction(TemporalTimeEnds),
     Separator,
-    Finish,
-    Done,
+    Finish(TemporalFinish),
+    /// The recognition is over; the outcome is the plan with its normalization, or the first
+    /// failure.
+    Done(Result<(BorrowedTemporalPlan<'a>, TemporalInputPlan), HtmlTemporalError>),
+}
+/// Where the time component ended, as far as the scan has read it. The scan learns each offset at
+/// the step that reads it, and a later step needs it only to choose the normalized end of a local
+/// date and time.
+#[derive(Clone, Copy, Debug)]
+enum TemporalTimeEnds {
+    /// Only the hour and minute were read.
+    Minute { end: usize },
+    /// Seconds were read; `end` is the offset just past them.
+    Second { minute_end: usize, end: usize },
+}
+impl TemporalTimeEnds {
+    /// The offset just past the shortest spelling that keeps the value: the minutes when the
+    /// seconds and fraction are zero, the seconds when only the fraction is zero, and the last
+    /// nonzero fraction digit otherwise.
+    fn retained_end(self, seconds_are_zero: bool, fraction_last: usize) -> usize {
+        match self {
+            Self::Minute { end } => end,
+            Self::Second { minute_end, .. } if seconds_are_zero => minute_end,
+            Self::Second { end, .. } if fraction_last == 0 => end,
+            Self::Second { .. } => fraction_last,
+        }
+    }
+}
+/// What the scan finishes with: a calendar-only format, or a time component with its offsets.
+#[derive(Clone, Copy, Debug)]
+enum TemporalFinish {
+    Calendar,
+    Time(TemporalTimeEnds),
 }
 #[derive(Clone, Copy, Debug)]
 enum TemporalPair {
@@ -1002,7 +1036,10 @@ enum TemporalPair {
     Week,
     Hour,
     Minute,
-    Second,
+    /// The seconds pair of a time that read its minutes up to `minute_end`.
+    Second {
+        minute_end: usize,
+    },
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TemporalInputPlan {
@@ -1014,7 +1051,7 @@ pub(crate) struct TemporalValidationCursor<'a> {
     format: TemporalInputFormat,
     full: bool,
     position: usize,
-    step: TemporalScanStep,
+    step: TemporalScanStep<'a>,
     year_end: usize,
     positive: bool,
     remainder: u16,
@@ -1026,14 +1063,11 @@ pub(crate) struct TemporalValidationCursor<'a> {
     second: u8,
     pair_count: usize,
     pair: u8,
-    second_start: Option<usize>,
     fraction_start: usize,
     fraction_len: usize,
     fraction_last: usize,
     millisecond: u16,
-    separator: Option<usize>,
     replacement: Option<usize>,
-    result: Option<Result<BorrowedTemporalPlan<'a>, HtmlTemporalError>>,
 }
 impl<'a> TemporalValidationCursor<'a> {
     pub(crate) fn new(input: &'a [u16], format: TemporalInputFormat, full: bool) -> Self {
@@ -1058,18 +1092,15 @@ impl<'a> TemporalValidationCursor<'a> {
             second: 0,
             pair_count: 0,
             pair: 0,
-            second_start: None,
             fraction_start: 0,
             fraction_len: 0,
             fraction_last: 0,
             millisecond: 0,
-            separator: None,
             replacement: None,
-            result: None,
         }
     }
     pub(crate) fn finished(&self) -> bool {
-        matches!(self.step, TemporalScanStep::Done)
+        matches!(self.step, TemporalScanStep::Done(_))
     }
     pub(crate) fn inspects_unit(&self) -> bool {
         matches!(
@@ -1079,15 +1110,14 @@ impl<'a> TemporalValidationCursor<'a> {
                 | TemporalScanStep::WeekMarker
                 | TemporalScanStep::Pair(_)
                 | TemporalScanStep::Colon
-                | TemporalScanStep::TimeTail
-                | TemporalScanStep::FractionTail
-                | TemporalScanStep::Fraction
+                | TemporalScanStep::TimeTail { .. }
+                | TemporalScanStep::FractionTail(_)
+                | TemporalScanStep::Fraction(_)
                 | TemporalScanStep::Separator
         ) && self.position < self.input.len()
     }
     fn fail(&mut self, error: HtmlTemporalError) {
-        self.result = Some(Err(error));
-        self.step = TemporalScanStep::Done;
+        self.step = TemporalScanStep::Done(Err(error));
     }
     fn pair_step(&mut self, field: TemporalPair) {
         self.pair_count = 0;
@@ -1096,7 +1126,7 @@ impl<'a> TemporalValidationCursor<'a> {
     }
     pub(crate) fn advance(&mut self) {
         match self.step {
-            TemporalScanStep::Done => {}
+            TemporalScanStep::Done(_) => {}
             TemporalScanStep::Year => {
                 if let Some(unit @ 0x30..=0x39) = self.input.get(self.position).copied() {
                     let digit = (unit - 0x30) as u8;
@@ -1165,7 +1195,7 @@ impl<'a> TemporalValidationCursor<'a> {
                         if !(1..=12).contains(&self.month) {
                             self.fail(HtmlTemporalError::MonthOutOfRange);
                         } else if self.format == TemporalInputFormat::Month {
-                            self.step = TemporalScanStep::Finish;
+                            self.step = TemporalScanStep::Finish(TemporalFinish::Calendar);
                         } else {
                             self.step = TemporalScanStep::Hyphen;
                         }
@@ -1180,12 +1210,12 @@ impl<'a> TemporalValidationCursor<'a> {
                         } else if self.format == TemporalInputFormat::LocalDateTime {
                             self.step = TemporalScanStep::Separator;
                         } else {
-                            self.step = TemporalScanStep::Finish;
+                            self.step = TemporalScanStep::Finish(TemporalFinish::Calendar);
                         }
                     }
                     TemporalPair::Week => {
                         self.week = self.pair;
-                        self.step = TemporalScanStep::Finish;
+                        self.step = TemporalScanStep::Finish(TemporalFinish::Calendar);
                     }
                     // §2.3.5.4 steps 2 and 5 reject an out-of-range hour or
                     // minute before any later step can be reached.
@@ -1202,12 +1232,17 @@ impl<'a> TemporalValidationCursor<'a> {
                         if self.minute > 59 {
                             self.fail(HtmlTemporalError::MinuteOutOfRange);
                         } else {
-                            self.step = TemporalScanStep::TimeTail;
+                            self.step = TemporalScanStep::TimeTail {
+                                minute_end: self.position,
+                            };
                         }
                     }
-                    TemporalPair::Second => {
+                    TemporalPair::Second { minute_end } => {
                         self.second = self.pair;
-                        self.step = TemporalScanStep::FractionTail;
+                        self.step = TemporalScanStep::FractionTail(TemporalTimeEnds::Second {
+                            minute_end,
+                            end: self.position,
+                        });
                     }
                 }
             }
@@ -1220,7 +1255,6 @@ impl<'a> TemporalValidationCursor<'a> {
                         return;
                     }
                 }
-                self.separator = Some(self.position);
                 self.position += 1;
                 self.pair_step(TemporalPair::Hour);
             }
@@ -1232,25 +1266,27 @@ impl<'a> TemporalValidationCursor<'a> {
                     self.pair_step(TemporalPair::Minute);
                 }
             }
-            TemporalScanStep::TimeTail => {
+            TemporalScanStep::TimeTail { minute_end } => {
                 if self.input.get(self.position) == Some(&0x3a) {
                     self.position += 1;
-                    self.second_start = Some(self.position);
-                    self.pair_step(TemporalPair::Second);
+                    self.pair_step(TemporalPair::Second { minute_end });
                 } else {
-                    self.step = TemporalScanStep::Finish;
+                    self.step =
+                        TemporalScanStep::Finish(TemporalFinish::Time(TemporalTimeEnds::Minute {
+                            end: minute_end,
+                        }));
                 }
             }
-            TemporalScanStep::FractionTail => {
+            TemporalScanStep::FractionTail(ends) => {
                 if self.input.get(self.position) == Some(&0x2e) {
                     self.position += 1;
                     self.fraction_start = self.position;
-                    self.step = TemporalScanStep::Fraction;
+                    self.step = TemporalScanStep::Fraction(ends);
                 } else {
-                    self.step = TemporalScanStep::Finish;
+                    self.step = TemporalScanStep::Finish(TemporalFinish::Time(ends));
                 }
             }
-            TemporalScanStep::Fraction => {
+            TemporalScanStep::Fraction(ends) => {
                 if let Some(unit @ 0x30..=0x39) = self.input.get(self.position).copied() {
                     if self.fraction_len == 3 {
                         self.fail(HtmlTemporalError::InvalidSyntax);
@@ -1265,10 +1301,10 @@ impl<'a> TemporalValidationCursor<'a> {
                 } else if self.fraction_len == 0 {
                     self.fail(HtmlTemporalError::InvalidSyntax);
                 } else {
-                    self.step = TemporalScanStep::Finish;
+                    self.step = TemporalScanStep::Finish(TemporalFinish::Time(ends));
                 }
             }
-            TemporalScanStep::Finish => {
+            TemporalScanStep::Finish(finish) => {
                 if matches!(
                     self.format,
                     TemporalInputFormat::Time | TemporalInputFormat::LocalDateTime
@@ -1303,9 +1339,13 @@ impl<'a> TemporalValidationCursor<'a> {
                     month,
                     day: self.day,
                 };
-                let seconds = self
-                    .second_start
-                    .map_or(&[0x30][..], |start| &self.input[start..start + 2]);
+                let seconds = match finish {
+                    TemporalFinish::Time(TemporalTimeEnds::Second { end, .. }) => {
+                        &self.input[end - 2..end]
+                    }
+                    TemporalFinish::Calendar
+                    | TemporalFinish::Time(TemporalTimeEnds::Minute { .. }) => &[0x30][..],
+                };
                 let fraction =
                     &self.input[self.fraction_start..self.fraction_start + self.fraction_len];
                 let ms = match self.fraction_len {
@@ -1321,7 +1361,7 @@ impl<'a> TemporalValidationCursor<'a> {
                     fraction_digits: fraction,
                     millisecond: ms,
                 };
-                self.result = Some(Ok(match self.format {
+                let plan = match self.format {
                     TemporalInputFormat::Month => BorrowedTemporalPlan::Month(month),
                     TemporalInputFormat::Date => BorrowedTemporalPlan::Date(date),
                     TemporalInputFormat::Week => BorrowedTemporalPlan::Week(BorrowedWeek {
@@ -1332,41 +1372,47 @@ impl<'a> TemporalValidationCursor<'a> {
                     TemporalInputFormat::LocalDateTime => {
                         BorrowedTemporalPlan::LocalDateTime(BorrowedLocalDateTime { date, time })
                     }
-                }));
-                self.step = TemporalScanStep::Done;
+                };
+                // A local date and time keeps the shortest spelling of its time; every other
+                // format keeps everything that was read.
+                let retained_end = match (self.format, finish) {
+                    (TemporalInputFormat::LocalDateTime, TemporalFinish::Time(ends)) => ends
+                        .retained_end(
+                            self.second == 0 && self.millisecond == 0,
+                            self.fraction_last,
+                        ),
+                    _ => self.position,
+                };
+                self.step = TemporalScanStep::Done(Ok((
+                    plan,
+                    TemporalInputPlan {
+                        retained_end,
+                        replacement: self.replacement,
+                    },
+                )));
             }
         }
     }
+    #[cfg(test)]
     pub(crate) fn result(&self) -> Option<Result<BorrowedTemporalPlan<'a>, HtmlTemporalError>> {
-        self.result
+        match self.step {
+            TemporalScanStep::Done(outcome) => Some(outcome.map(|(plan, _)| plan)),
+            _ => None,
+        }
     }
     pub(crate) fn normalization(&self) -> Option<TemporalInputPlan> {
-        if !matches!(self.result, Some(Ok(_))) {
-            return None;
+        match self.step {
+            TemporalScanStep::Done(Ok((_, plan))) => Some(plan),
+            _ => None,
         }
-        let end = if self.format == TemporalInputFormat::LocalDateTime {
-            if self.second == 0 && self.millisecond == 0 {
-                self.separator.expect("local separator validated") + 6
-            } else if self.fraction_last == 0 {
-                self.second_start.expect("nonzero seconds has seconds") + 2
-            } else {
-                self.fraction_last
-            }
-        } else {
-            self.position
-        };
-        Some(TemporalInputPlan {
-            retained_end: end,
-            replacement: self.replacement,
-        })
     }
     fn ordinary(mut self) -> Result<(BorrowedTemporalPlan<'a>, usize), HtmlTemporalError> {
-        while !self.finished() {
+        loop {
+            if let TemporalScanStep::Done(outcome) = self.step {
+                return outcome.map(|(plan, _)| (plan, self.position));
+            }
             self.advance();
         }
-        self.result()
-            .expect("completed recognizer")
-            .map(|plan| (plan, self.position))
     }
 }
 
