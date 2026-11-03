@@ -4,7 +4,15 @@ use super::super::*;
 use super::consumption::{envelope, environment, installation, parsing, report};
 use std::{convert::Infallible, mem::size_of, sync::Arc};
 use surgeist_dom::*;
-use surgeist_html::*;
+use surgeist_html::{
+    elements::style::HtmlStyleUpdateAction,
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspLayout,
+        HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
+        HtmlCspProcessorProfile, HtmlCspStorage,
+    },
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseReport, HtmlSource};
 
 pub(super) fn install_into(

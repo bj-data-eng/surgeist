@@ -1,5 +1,13 @@
 use crate::semantics::support::{builder_with, context};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::token_declarations::HtmlIconSizeError,
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    elements::link::{HtmlRelEffect, HtmlRelKeyword},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,

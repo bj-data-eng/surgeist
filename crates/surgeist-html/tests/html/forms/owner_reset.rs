@@ -2,7 +2,7 @@
 //! The cursor has no tree; real candidate lookup and peer-state regressions
 //! additionally execute through the consuming parser and semantics owners.
 
-use surgeist_html::bounded::{
+use surgeist_html::bounded::form::{
     HtmlFormOwnerLookup as Lookup, HtmlFormOwnerResetAction as A,
     HtmlFormOwnerResetCursor as Cursor, HtmlFormOwnerResetReply as R, form_owner_lookup,
 };

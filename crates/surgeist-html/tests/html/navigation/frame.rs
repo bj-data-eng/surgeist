@@ -1,7 +1,10 @@
 use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlChildNavigableAccessDecision,
-    HtmlChildNavigableLoadDelayDecision, HtmlChildNavigablePresence,
-    HtmlFramePostConnectionDecision, frame_post_connection, frame_potentially_delays_load,
+    elements::frame::{
+        HtmlChildNavigableAccessDecision, HtmlChildNavigableLoadDelayDecision,
+        HtmlChildNavigablePresence, HtmlFramePostConnectionDecision, frame_post_connection,
+        frame_potentially_delays_load,
+    },
+    security::nonce::HtmlBrowsingContextPresence,
 };
 
 #[test]

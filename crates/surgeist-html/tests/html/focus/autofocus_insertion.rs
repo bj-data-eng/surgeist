@@ -1,5 +1,5 @@
 //! Independent literal insertion traces from HTML877d raw60684–60707/1479–1485.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusInsertionAction as A, HtmlAutofocusInsertionCursor as C,
     HtmlAutofocusInsertionReply as R,
 };
@@ -146,7 +146,10 @@ fn permission_suspension_preserves_target_capture_and_exact_pending_stage() {
 
 #[test]
 fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spelling() {
-    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
+    use surgeist_html::{
+        focus::autofocus_presence,
+        values::{Attribute, DocumentString, Namespace, QualifiedName},
+    };
     let element = QualifiedName::new(Namespace::html(), None, "dialog");
     for value in [
         DocumentString::from(""),
@@ -169,7 +172,7 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
     assert!(autofocus_presence(&element, Some(&prefixed)));
     assert!(!autofocus_presence(
         &element,
-        None::<&surgeist_html::Attribute>
+        None::<&surgeist_html::values::Attribute>
     ));
     for local in [
         "",
@@ -204,7 +207,10 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
 
 #[test]
 fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
-    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
+    use surgeist_html::{
+        focus::autofocus_presence,
+        values::{Attribute, DocumentString, Namespace, QualifiedName},
+    };
     let actual = Attribute::new(
         QualifiedName::new(Namespace::none(), None, "autofocus"),
         "false",
@@ -225,7 +231,7 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
             assert!(autofocus_presence(&element, Some(&actual)));
             assert!(!autofocus_presence(
                 &element,
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             ));
         }
     }

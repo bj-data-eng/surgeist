@@ -1,9 +1,10 @@
 //! Canonical name binding at DOM-owned ingress. Language validation and case
 //! processing finish before immutable owner-qualified values enter a node.
 use super::super::*;
+use crate::DomQualifiedName;
 use crate::name::{AttributeStorage, AttributeValues};
-use crate::{DomQualifiedName, Namespace, QualifiedName};
-use surgeist_html::HtmlNameInput;
+use surgeist_html::values::HtmlNameInput;
+use surgeist_html::values::{Namespace, QualifiedName};
 
 pub(in crate::store) struct AttributeInput {
     pub entries: Vec<crate::DomAttribute>,

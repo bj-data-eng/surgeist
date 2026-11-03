@@ -1,6 +1,10 @@
 //! One actual external observation, never policy evaluation by DOM.
 use super::*;
-use surgeist_html::*;
+use surgeist_html::security::csp::{
+    HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspLayout,
+    HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
+    HtmlCspStorage,
+};
 
 // A bounded external backend fixture, not a CSP parser. Its native immutable
 // artifact owns the fixture directive; Meta attestation only constructs policy

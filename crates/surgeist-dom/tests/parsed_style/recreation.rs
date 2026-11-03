@@ -1,6 +1,13 @@
 //! Two genuine original invocations; known-null removal is not publication.
 use super::*;
-use surgeist_html::*;
+use surgeist_html::{
+    elements::style::HtmlStyleExecutionProfile,
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspLayout,
+        HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
+        HtmlCspStorage,
+    },
+};
 
 // An external native backend fixture allows precisely this known text. It is
 // not a CSP parser, and decisions are obtained from the actual request inputs.

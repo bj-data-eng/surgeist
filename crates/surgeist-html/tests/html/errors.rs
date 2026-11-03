@@ -10,37 +10,68 @@ use std::error::Error;
 use crate::html::support::construction_limits;
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    AutocompleteMaterializationError, FloatingPointAllocationError, IntegerRecoveryError,
-    IntegerUnitStepError, NumericMaterializationError, NumericParseError, RangeNumericError,
+    attributes::HtmlAutocompleteMaterializationError,
+    numeric::{
+        HtmlFloatingPointAllocationError, HtmlIntegerRecoveryError, HtmlIntegerUnitStepError,
+        HtmlNumericMaterializationError, HtmlNumericParseError, HtmlRangeNumericError,
+    },
 };
 use surgeist_html::{
-    DocumentString, HtmlAcceptSpecifierError, HtmlAreaCoordinatesAuthorError,
-    HtmlAttributeConformanceError, HtmlAttributeContextConformanceError,
-    HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutofillField,
-    HtmlCustomCommandError, HtmlCustomElementNameError, HtmlDecimalDigitsError,
-    HtmlDuplicateTokenError, HtmlIconSizeError, HtmlImageAttributeConformanceError,
-    HtmlInputImageAttributeError, HtmlInputSelection, HtmlInputSelectionDirection,
-    HtmlLinkDestinationContextError, HtmlMeterAuthorRelation, HtmlMeterNativeError,
-    HtmlMeterNumberRole, HtmlMicrodataTokenListError, HtmlNavigableTargetError,
-    HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericAttributeConformanceError,
-    HtmlOrderedTokenSet, HtmlProcessingInstructionError, HtmlProgressNumberAuthorError,
-    HtmlRationalError, HtmlSandboxRedundancy, HtmlSandboxValueError, HtmlSpaceToken,
-    HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation, HtmlSrcsetDensityError,
-    HtmlSrcsetInterpretationError, HtmlSrcsetParseError, HtmlSrcsetUrlTokenError,
-    HtmlTemporalError, HtmlTokenComparison, HtmlTokenDeclarationError, HtmlTokenError,
-    HtmlUtf8EncodingLabel, HtmlValueAdmissionError, HtmlValueFailure, HtmlValueInterpreter,
-    HtmlValueRepresentationError, HtmlValueSyntaxError, input_filename_setter,
+    attributes::{
+        HtmlAttributeConformanceError, HtmlAttributeContextConformanceError,
+        accept::HtmlAcceptSpecifierError,
+        area::HtmlAreaCoordinatesAuthorError,
+        autocomplete::{
+            HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutofillField,
+        },
+        command::HtmlCustomCommandError,
+        encoding_label::HtmlUtf8EncodingLabel,
+        image_values::{HtmlImageAttributeConformanceError, HtmlInputImageAttributeError},
+        link_destination::HtmlLinkDestinationContextError,
+        meter::{HtmlMeterAuthorRelation, HtmlMeterNativeError, HtmlMeterNumberRole},
+        microdata::HtmlMicrodataTokenListError,
+        navigable_target::HtmlNavigableTargetError,
+        progress::HtmlProgressNumberAuthorError,
+        sandbox::{HtmlSandboxRedundancy, HtmlSandboxValueError},
+        scalar::HtmlNumericAttributeConformanceError,
+        srcset::{
+            HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation, HtmlSrcsetDensityError,
+            HtmlSrcsetInterpretationError, HtmlSrcsetParseError, HtmlSrcsetUrlTokenError,
+        },
+        token_declarations::{HtmlIconSizeError, HtmlTokenDeclarationError},
+    },
+    construction::HtmlProcessingInstructionError,
+    elements::input::{HtmlInputSelection, HtmlInputSelectionDirection, input_filename_setter},
+    microsyntax::{
+        numeric::{
+            HtmlDecimalDigitsError, HtmlNonNegativeInteger, HtmlNonNegativeRational,
+            HtmlRationalError,
+        },
+        temporal::HtmlTemporalError,
+        tokens::{
+            HtmlDuplicateTokenError, HtmlOrderedTokenSet, HtmlSpaceToken, HtmlTokenComparison,
+            HtmlTokenError,
+        },
+    },
+    values::{
+        DocumentString, HtmlCustomElementNameError, HtmlValueAdmissionError, HtmlValueFailure,
+        HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
+    },
 };
 
 use surgeist_html::bounded::{
-    HtmlMediaActionError, HtmlMediaInterpretation, HtmlMicrodataTokenActionError,
-    HtmlMicrodataTokenInterpretation, HtmlRelActionError, HtmlRelInterpretation,
-    HtmlTimeElementInterpretation,
+    media::{HtmlMediaActionError, HtmlMediaInterpretation},
+    microdata::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation},
+    rel::{HtmlRelActionError, HtmlRelInterpretation},
+    temporal::HtmlTimeElementInterpretation,
 };
 use surgeist_html::{
-    Attribute, HtmlConstructionLimits, HtmlConstructionResource, HtmlCspError, HtmlCspOwner,
-    HtmlCspProcessorAuthority, HtmlDocument, HtmlDocumentMode, HtmlFragment, Namespace,
-    OrderedAttributes, QualifiedName,
+    construction::{
+        HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode,
+        HtmlFragment,
+    },
+    security::csp::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority},
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 
 /// The admission error of a three-unit value against a two-unit capacity.
@@ -69,19 +100,19 @@ fn cause(error: &dyn Error) -> Option<String> {
 #[test]
 fn numeric_parse_errors_name_the_violated_rule() {
     assert_eq!(
-        message(&NumericParseError::InvalidSyntax),
+        message(&HtmlNumericParseError::InvalidSyntax),
         "value does not match the HTML numeric syntax"
     );
     assert_eq!(
-        message(&NumericParseError::Negative),
+        message(&HtmlNumericParseError::Negative),
         "value is negative where a nonnegative value is required"
     );
     assert_eq!(
-        message(&NumericParseError::FloatingPointOverflow),
+        message(&HtmlNumericParseError::FloatingPointOverflow),
         "value overflows the finite binary64 range"
     );
     assert_eq!(
-        message(&NumericParseError::ZeroDimension),
+        message(&HtmlNumericParseError::ZeroDimension),
         "dimension is zero where a nonzero value is required"
     );
 }
@@ -89,25 +120,25 @@ fn numeric_parse_errors_name_the_violated_rule() {
 #[test]
 fn integer_digit_boundaries_report_their_exact_numbers() {
     assert_eq!(
-        message(&IntegerUnitStepError::RepresentationExhausted),
+        message(&HtmlIntegerUnitStepError::RepresentationExhausted),
         "integer digit count cannot be represented on this platform"
     );
     assert_eq!(
-        message(&IntegerUnitStepError::DigitLimitExceeded {
+        message(&HtmlIntegerUnitStepError::DigitLimitExceeded {
             limit: 4,
             required: 9
         }),
         "integer needs 9 digits, exceeding the limit of 4"
     );
     assert_eq!(
-        message(&IntegerUnitStepError::RequestedCapacityLimitExceeded {
+        message(&HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
             limit: 16,
             required: 40
         }),
         "integer needs 40 bytes of digit storage, exceeding the limit of 16"
     );
     assert_eq!(
-        message(&IntegerUnitStepError::ActualCapacityLimitExceeded {
+        message(&HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
             limit: 16,
             requested: 10,
             capacity_bytes: 32
@@ -115,7 +146,7 @@ fn integer_digit_boundaries_report_their_exact_numbers() {
         "allocating 10 bytes of digit storage produced 32 bytes, exceeding the limit of 16"
     );
     assert_eq!(
-        message(&IntegerUnitStepError::AllocationFailed { requested: 7 }),
+        message(&HtmlIntegerUnitStepError::AllocationFailed { requested: 7 }),
         "allocating 7 bytes of digit storage failed"
     );
 }
@@ -123,12 +154,12 @@ fn integer_digit_boundaries_report_their_exact_numbers() {
 #[test]
 fn floating_point_allocation_boundaries_report_their_exact_numbers() {
     assert_eq!(
-        message(&FloatingPointAllocationError::RepresentationExhausted),
+        message(&HtmlFloatingPointAllocationError::RepresentationExhausted),
         "floating-point token length cannot be represented on this platform"
     );
     assert_eq!(
         message(
-            &FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+            &HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
                 limit: 8,
                 required: 12
             }
@@ -136,29 +167,33 @@ fn floating_point_allocation_boundaries_report_their_exact_numbers() {
         "floating-point token needs 12 bytes of storage, exceeding the limit of 8"
     );
     assert_eq!(
-        message(&FloatingPointAllocationError::ActualCapacityLimitExceeded {
-            limit: 8,
-            requested: 6,
-            capacity_bytes: 24
-        }),
+        message(
+            &HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded {
+                limit: 8,
+                requested: 6,
+                capacity_bytes: 24
+            }
+        ),
         "allocating 6 bytes of floating-point token storage produced 24 bytes, exceeding the limit of 8"
     );
     assert_eq!(
-        message(&FloatingPointAllocationError::AllocationFailed { requested: 5 }),
+        message(&HtmlFloatingPointAllocationError::AllocationFailed { requested: 5 }),
         "allocating 5 bytes of floating-point token storage failed"
     );
 }
 
 #[test]
 fn numeric_wrappers_chain_the_wrapped_failure() {
-    let syntax = IntegerRecoveryError::Syntax(NumericParseError::Negative);
+    let syntax = HtmlIntegerRecoveryError::Syntax(HtmlNumericParseError::Negative);
     assert_eq!(message(&syntax), "integer recovery rejected the input");
     assert_eq!(
         cause(&syntax).as_deref(),
         Some("value is negative where a nonnegative value is required")
     );
     let allocation =
-        IntegerRecoveryError::Allocation(IntegerUnitStepError::AllocationFailed { requested: 3 });
+        HtmlIntegerRecoveryError::Allocation(HtmlIntegerUnitStepError::AllocationFailed {
+            requested: 3,
+        });
     assert_eq!(
         message(&allocation),
         "integer recovery could not store its digits"
@@ -168,7 +203,7 @@ fn numeric_wrappers_chain_the_wrapped_failure() {
         Some("allocating 3 bytes of digit storage failed")
     );
 
-    let digits = NumericMaterializationError::Digits(HtmlDecimalDigitsError::Empty);
+    let digits = HtmlNumericMaterializationError::Digits(HtmlDecimalDigitsError::Empty);
     assert_eq!(
         message(&digits),
         "numeric digits are not a valid decimal magnitude"
@@ -177,8 +212,9 @@ fn numeric_wrappers_chain_the_wrapped_failure() {
         cause(&digits).as_deref(),
         Some("HTML integer magnitude has no decimal digits")
     );
-    let boundary =
-        NumericMaterializationError::Boundary(IntegerUnitStepError::RepresentationExhausted);
+    let boundary = HtmlNumericMaterializationError::Boundary(
+        HtmlIntegerUnitStepError::RepresentationExhausted,
+    );
     assert_eq!(
         message(&boundary),
         "numeric materialization reached an allocation boundary"
@@ -201,19 +237,19 @@ fn rational_with_zero_denominator_says_so() {
 #[test]
 fn range_numeric_errors_name_the_failed_step() {
     assert_eq!(
-        message(&RangeNumericError::Integrity),
+        message(&HtmlRangeNumericError::Integrity),
         "range numeric reply does not match its pending request"
     );
     assert_eq!(
-        message(&RangeNumericError::Representation),
+        message(&HtmlRangeNumericError::Representation),
         "range numeric length cannot be represented on this platform"
     );
     assert_eq!(
-        message(&RangeNumericError::Overflow),
+        message(&HtmlRangeNumericError::Overflow),
         "range numeric value exceeds the representable range"
     );
     assert_eq!(
-        message(&RangeNumericError::InvalidSyntax),
+        message(&HtmlRangeNumericError::InvalidSyntax),
         "range numeric input does not match the HTML numeric syntax"
     );
 }
@@ -372,38 +408,38 @@ fn meter_errors_name_the_attribute_roles_and_the_ordering_rule() {
 #[test]
 fn autocomplete_materialization_errors_report_the_charged_resource() {
     assert_eq!(
-        message(&AutocompleteMaterializationError::BytesLimit {
+        message(&HtmlAutocompleteMaterializationError::BytesLimit {
             limit: 10,
             required: 20
         }),
         "autocomplete materialization needs 20 allocated bytes, exceeding the limit of 10"
     );
     assert_eq!(
-        message(&AutocompleteMaterializationError::OutputLimit {
+        message(&HtmlAutocompleteMaterializationError::OutputLimit {
             limit: 1,
             required: 2
         }),
         "autocomplete materialization needs 2 nested output records, exceeding the limit of 1"
     );
     assert_eq!(
-        message(&AutocompleteMaterializationError::ScratchLimit {
+        message(&HtmlAutocompleteMaterializationError::ScratchLimit {
             limit: 3,
             required: 5
         }),
         "autocomplete materialization needs 5 scratch records, exceeding the limit of 3"
     );
     assert_eq!(
-        message(&AutocompleteMaterializationError::Allocation {
+        message(&HtmlAutocompleteMaterializationError::Allocation {
             requested_bytes: 64
         }),
         "allocating 64 bytes for autocomplete materialization failed"
     );
     assert_eq!(
-        message(&AutocompleteMaterializationError::Representation),
+        message(&HtmlAutocompleteMaterializationError::Representation),
         "autocomplete materialization size cannot be represented on this platform"
     );
     let admission = refused_admission();
-    let refused = AutocompleteMaterializationError::RawAdmission(admission);
+    let refused = HtmlAutocompleteMaterializationError::RawAdmission(admission);
     assert_eq!(
         message(&refused),
         "autocomplete value was refused by raw-value admission"
@@ -1134,17 +1170,17 @@ fn owned_causes_convert_into_their_wrapping_error() {
         HtmlSrcsetInterpretationError::RawAdmission(admission)
     );
     assert_eq!(
-        AutocompleteMaterializationError::from(admission),
-        AutocompleteMaterializationError::RawAdmission(admission)
+        HtmlAutocompleteMaterializationError::from(admission),
+        HtmlAutocompleteMaterializationError::RawAdmission(admission)
     );
     assert_eq!(
-        IntegerRecoveryError::from(NumericParseError::Negative),
-        IntegerRecoveryError::Syntax(NumericParseError::Negative)
+        HtmlIntegerRecoveryError::from(HtmlNumericParseError::Negative),
+        HtmlIntegerRecoveryError::Syntax(HtmlNumericParseError::Negative)
     );
-    let allocation = IntegerUnitStepError::AllocationFailed { requested: 1 };
+    let allocation = HtmlIntegerUnitStepError::AllocationFailed { requested: 1 };
     assert_eq!(
-        IntegerRecoveryError::from(allocation),
-        IntegerRecoveryError::Allocation(allocation)
+        HtmlIntegerRecoveryError::from(allocation),
+        HtmlIntegerRecoveryError::Allocation(allocation)
     );
     assert_eq!(
         HtmlAutocompleteSectionError::from(HtmlTokenError::EmptySpaceToken),
@@ -1205,7 +1241,9 @@ fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
 
 #[test]
 fn natural_arithmetic_and_value_pool_errors_state_the_misuse() {
-    use surgeist_html::bounded::{HtmlValuePoolError, NaturalArithmeticError as Natural};
+    use surgeist_html::bounded::{
+        numeric::HtmlNaturalArithmeticError as Natural, values::HtmlValuePoolError,
+    };
     assert_eq!(
         message(&Natural::NonCanonical),
         "natural number digits are empty or have a leading zero"
@@ -1284,7 +1322,7 @@ fn duplicate_token_and_redundant_sandbox_errors_state_the_conflict_in_prose() {
 
 #[test]
 fn refused_pool_seal_returns_the_open_root_with_the_cause() {
-    use surgeist_html::bounded::{HtmlStringPool, HtmlValuePoolError};
+    use surgeist_html::bounded::values::{HtmlStringPool, HtmlValuePoolError};
     let mut pool = HtmlStringPool::new();
     let root = pool.begin_root().expect("fresh pool root");
     let _unresolved = pool.mark(&root).expect("nested mark");
@@ -1305,7 +1343,9 @@ fn refused_pool_seal_returns_the_open_root_with_the_cause() {
 
 #[test]
 fn wrappers_describe_their_own_operation_and_expose_the_cause_once() {
-    use surgeist_html::{HtmlControlLengthError, HtmlInputNumericConstraintsError};
+    use surgeist_html::attributes::{
+        control_length::HtmlControlLengthError, input_bounds::HtmlInputNumericConstraintsError,
+    };
     let admission = refused_admission();
 
     let duplicate = HtmlSandboxValueError::Duplicate(duplicate_token());

@@ -1,4 +1,18 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
+            HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin,
+        },
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueSyntax, HtmlValueSyntaxError, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 type OffsetReport = HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>;
 fn raw(value: impl Into<DocumentString>) -> Attribute {

@@ -1,13 +1,15 @@
 //! Public retained time interpretation, using the pinned time-element rules.
 #![forbid(unsafe_code)]
 use surgeist_html::{
-    DocumentString, HtmlMachineReadableTime, HtmlTimeElementValue, HtmlValueAuthorState,
-    HtmlValueInterpreter, HtmlValueRecoveryState,
     bounded::{
-        HtmlTimeElementInterpretation as Interpretation,
-        HtmlTimeElementInterpretationActionKind as Kind, IntegerUnitStepError,
-        NumericMaterializationError,
+        numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
+        temporal::{
+            HtmlTimeElementInterpretation as Interpretation,
+            HtmlTimeElementInterpretationActionKind as Kind,
+        },
     },
+    microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
+    values::{DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState},
 };
 
 fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
@@ -205,8 +207,8 @@ fn failed_fraction_retains_owner_and_observes_earlier_capacity_once() {
     assert_eq!(observed, 1);
     assert!(matches!(
         error.processing_failure(),
-        Some(NumericMaterializationError::Boundary(
-            IntegerUnitStepError::RequestedCapacityLimitExceeded { required: 5, .. }
+        Some(HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required: 5, .. }
         ))
     ));
     assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
@@ -260,8 +262,8 @@ fn raw_admission_and_processing_digit_limits_preserve_the_original_operand() {
     };
     assert!(matches!(
         error.processing_failure(),
-        Some(NumericMaterializationError::Boundary(
-            IntegerUnitStepError::DigitLimitExceeded {
+        Some(HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 4,
                 required: 5
             }

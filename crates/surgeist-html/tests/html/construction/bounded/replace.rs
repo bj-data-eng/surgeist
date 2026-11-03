@@ -8,8 +8,9 @@
 use super::*;
 use crate::html::support::cause;
 use surgeist_html::{
-    Attribute, HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlLinkFlags,
-    HtmlProcessingInstruction,
+    construction::{HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlProcessingInstruction},
+    elements::link::HtmlLinkFlags,
+    values::Attribute,
 };
 
 const HTML_URI: &str = "http://www.w3.org/1999/xhtml";

@@ -1,6 +1,7 @@
 //! Exact executed-unit counters, independently qualified by tiny raw inputs.
 use super::*;
 use crate::store::scale_metrics::{self, Hooks, Measurement};
+use surgeist_html::values::DocumentString;
 
 #[test]
 #[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1"]

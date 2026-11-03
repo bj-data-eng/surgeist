@@ -5,7 +5,7 @@ use crate::{DomNode, NodeId};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomSelectState {
     pub(crate) control: crate::control::NativeControlState,
-    pub(crate) flags: surgeist_html::HtmlSelectFlags,
+    pub(crate) flags: surgeist_html::elements::form::HtmlSelectFlags,
 }
 impl DomSelectState {
     pub(crate) fn fresh() -> Self {
@@ -14,10 +14,10 @@ impl DomSelectState {
             flags: Default::default(),
         }
     }
-    pub fn flags(&self) -> surgeist_html::HtmlSelectFlags {
+    pub fn flags(&self) -> surgeist_html::elements::form::HtmlSelectFlags {
         self.flags
     }
-    pub fn custom_validity_message(&self) -> &crate::DocumentString {
+    pub fn custom_validity_message(&self) -> &surgeist_html::values::DocumentString {
         &self.control.message
     }
     pub fn parser_inserted(&self) -> bool {
@@ -27,10 +27,10 @@ impl DomSelectState {
 /// An Option's selectedness/dirty flags. Cached identity is exposed by its node view.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DomOptionState {
-    pub(crate) flags: surgeist_html::HtmlOptionFlags,
+    pub(crate) flags: surgeist_html::elements::form::HtmlOptionFlags,
 }
 impl DomOptionState {
-    pub fn flags(self) -> surgeist_html::HtmlOptionFlags {
+    pub fn flags(self) -> surgeist_html::elements::form::HtmlOptionFlags {
         self.flags
     }
 }
@@ -94,7 +94,7 @@ impl DomSelectedcontent<'_> {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Edit {
-    Value(crate::DocumentString),
+    Value(surgeist_html::values::DocumentString),
     Index(i64),
     Reset,
     OptionSelected(bool),

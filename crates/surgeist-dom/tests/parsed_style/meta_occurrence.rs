@@ -1,5 +1,6 @@
 //! Exact original Meta progress after the genuine two-invocation Style prefix.
 use super::*;
+
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceId, HtmlParseAssociationOccurrenceKind as K,
     HtmlParsePendingAssociationStep as S,
@@ -48,7 +49,7 @@ fn pair(
         drop(dead);
         h.exclude_script_bookkeeping(
             &binding_q,
-            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
             &flag(),
         )
         .unwrap();
@@ -87,7 +88,7 @@ fn pair(
         drop(dead);
         h.exclude_script_bookkeeping(
             &q,
-            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
             &flag(),
         )
         .unwrap();

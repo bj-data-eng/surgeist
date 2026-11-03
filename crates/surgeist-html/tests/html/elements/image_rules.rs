@@ -2,7 +2,20 @@
 //! #reacting-to-dom-mutations and Img/Source HTML element tree hooks.
 use crate::html::support::known_text_attribute as raw;
 use std::cmp::Ordering;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlLoading,
+    elements::image::{
+        HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
+        HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageTreeInapplicable,
+        HtmlImageUpdateFlags, HtmlImageUpdateOrderError, HtmlImageUpdateStartDecision,
+        HtmlImgFreshRequestState, HtmlImgFreshState, image_attribute_effect,
+        image_crossorigin_changed, image_loading_became_eager, image_referrerpolicy_changed,
+        image_source_attribute_affects_following, image_tree_effect, image_update_is_superseded,
+        image_update_start,
+    },
+    values::{HtmlValueInterpreter, Namespace},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 #[test]
 fn fresh_image_retains_the_unavailable_request_and_distinct_null_slots() {

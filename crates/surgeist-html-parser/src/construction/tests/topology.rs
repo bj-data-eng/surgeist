@@ -1,4 +1,9 @@
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 #[test]
 fn batch_cycle_guard_preserves_earlier_sibling_before_later_ancestor_refusal() {
@@ -38,7 +43,7 @@ fn batch_cycle_guard_preserves_earlier_sibling_before_later_ancestor_refusal() {
             .node_at(from.index)
             .unwrap()
             .children()
-            .map(bounded::HtmlConstructionNode::position)
+            .map(surgeist_html::bounded::construction::HtmlConstructionNode::position)
             .collect::<Vec<_>>(),
         [earlier.index, branch.index]
     );

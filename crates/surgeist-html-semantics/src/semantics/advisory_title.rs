@@ -5,6 +5,7 @@
 //! compute title-of-link, stylesheet-set names or tooltip/accessibility policy.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
 /// Normalized advisory information and its actual selecting attribute holder.
 ///

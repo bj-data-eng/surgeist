@@ -1,6 +1,7 @@
 //! Immediate first-base hooks in the canonical construction effects owner.
 use super::*;
 use crate::{HtmlBaseMissing, HtmlBaseUrlRecord, HtmlParseBaseFacts};
+use surgeist_html::construction::HtmlNodeKind;
 
 #[derive(Clone, Copy)]
 pub(super) enum ResponseDomain {
@@ -45,7 +46,9 @@ std::thread_local! {
 
 /// A fixed filter, at most 4+28 native name units. It does not scan attributes,
 /// registers, ancestors or source; the owning transition already polls.
-pub(super) fn is_base(record: bounded::HtmlConstructionNode<'_>) -> bool {
+pub(super) fn is_base(
+    record: surgeist_html::bounded::construction::HtmlConstructionNode<'_>,
+) -> bool {
     let HtmlNodeKind::Element(element) = record.kind() else {
         return false;
     };
@@ -472,6 +475,7 @@ impl SessionStorage {
 pub(super) mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
     pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =

@@ -1,9 +1,9 @@
 //! Literal Select setter outcomes from HTML877d40372–40385 and40411–40423.
-use surgeist_html::HtmlOptionFlags;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::select::{
     HtmlSelectSetterAction as Action, HtmlSelectSetterCursor as Cursor,
     HtmlSelectSetterReply as Reply,
 };
+use surgeist_html::elements::form::HtmlOptionFlags;
 
 #[derive(Debug, Eq, PartialEq)]
 struct Outcome {

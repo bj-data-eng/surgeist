@@ -1,6 +1,10 @@
 //! Where a managed string lives, and the storage bookkeeping for attribute and text values.
 
 use super::*;
+use surgeist_html::{
+    construction::HtmlNodeKind,
+    values::{Attribute, DocumentString, OrderedAttributes},
+};
 
 pub(super) enum AttributeStorage {
     Removing {

@@ -1,6 +1,6 @@
 use super::*;
 use std::collections::hash_map::DefaultHasher;
-use surgeist_html::{HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
+use surgeist_html::values::{HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
 
 // Each fresh spelling below has one record within its owner. Registry lifecycle
 // and collision tests belong to the actual interning owner, not this fixture.

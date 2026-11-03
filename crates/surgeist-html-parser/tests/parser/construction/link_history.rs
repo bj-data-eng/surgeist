@@ -1,5 +1,5 @@
 use crate::parser::support::small_limits as limits;
-use surgeist_html::*;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlSource,
 };

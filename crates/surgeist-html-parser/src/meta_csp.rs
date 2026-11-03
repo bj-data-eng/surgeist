@@ -9,7 +9,11 @@ use std::{
     cell::{Cell, RefCell},
     mem::size_of,
 };
-use surgeist_html::*;
+use surgeist_html::security::csp::{
+    HtmlCspError, HtmlCspLayout, HtmlCspProcessorProfile, HtmlCspProtocolError, HtmlCspStorage,
+    HtmlCspUnavailable, HtmlMetaCspOutcome, HtmlMetaCspPrepared, HtmlMetaCspProcessor,
+    HtmlMetaCspRequest,
+};
 
 /// Original external failure; no owned native error is erased or stringified.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -435,6 +439,7 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
 mod tests {
     use super::*;
     use crate::HtmlParseCancellation;
+    use surgeist_html::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
 
     fn limits() -> crate::HtmlParseLimits {
         crate::HtmlParseLimits::builder()

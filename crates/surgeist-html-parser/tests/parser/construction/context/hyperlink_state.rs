@@ -1,5 +1,11 @@
 use crate::parser::support::{limits_builder, revision};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 

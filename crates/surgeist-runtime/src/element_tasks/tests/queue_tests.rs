@@ -86,7 +86,7 @@ fn queue_request(prior: bool) -> (DomSession, NodeId, DomSourceDialogRequest) {
             DomSourceProgress::Request(DomSourceRequest::Dialog(request))
                 if matches!(
                     request.action(),
-                    surgeist_html::HtmlDialogAction::QueueToggle { .. }
+                    surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle { .. }
                 ) =>
             {
                 request
@@ -173,7 +173,7 @@ fn queue_runtime_exact_candidate_peak_succeeds_and_one_short_has_no_effect() {
                     owner.tasks[old].value.id()
                 );
                 assert!(
-                    matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement)
+                    matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement)
                 );
                 assert_eq!(
                     lease
@@ -255,7 +255,7 @@ fn queue_cancellation_precedes_effect_and_published_proof_survives_refused_accep
     assert_eq!(owner.borrow().tasks[0].value.id(), id);
     assert!(owner.borrow().tasks[0].publication.is_none());
     assert!(
-        matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::HtmlDialogAction::RememberFocusedElement)
+        matches!(lease.advance(&cancel()).unwrap(), DomSourceProgress::Request(DomSourceRequest::Dialog(ref next)) if next.action() == surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement)
     );
     assert_eq!(
         lease

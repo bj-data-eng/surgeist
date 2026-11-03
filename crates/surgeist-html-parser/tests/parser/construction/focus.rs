@@ -1,6 +1,10 @@
 //! Original HTML constructor state travels in the retained arena, not parser metadata.
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlFocusedAreaDesignation},
+    elements::dialog::HtmlDialogAction,
+    security::nonce::HtmlBrowsingContextPresence,
+};
 use surgeist_html_parser::*;
 
 #[test]

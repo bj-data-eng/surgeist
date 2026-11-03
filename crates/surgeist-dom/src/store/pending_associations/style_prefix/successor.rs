@@ -311,7 +311,8 @@ fn select_next(
         meter,
         cancel,
     )?;
-    if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+    if row.kind()
+        != Kind::StyleUpdate(surgeist_html::elements::style::HtmlStyleTrigger::ParserPopped)
         || row.subject().id() != *old.qualification.subject()
         || document != old.qualification.document()
     {
@@ -401,7 +402,10 @@ pub(super) fn qualify_creation(
         match cursor.advance() {
             Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if &row.id() == q.occurrence() => {
-                if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+                if row.kind()
+                    != Kind::StyleUpdate(
+                        surgeist_html::elements::style::HtmlStyleTrigger::ParserPopped,
+                    )
                     || row.subject().id() != *q.subject()
                     || row.context().epoch() != *q.context_epoch()
                     || !origin_matches(&current.origin, &row.context())

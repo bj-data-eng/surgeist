@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
 
 #[test]
 fn document_mode_update_rejects_fragment_and_work_stop_before_the_real_mode_write() {

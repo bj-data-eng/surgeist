@@ -3,7 +3,7 @@
 //! latched stop, that nothing was credited, and that the owner's own release
 //! path still drains the controller afterwards.
 use super::*;
-use crate::{Attribute, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
 const FOREIGN: HtmlParseStop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl);
 const MISMATCH: HtmlParseStop =
@@ -245,12 +245,15 @@ fn characterization_final_attribute_release_with_an_unrepresentable_byte_count_h
     assert_drained(&c);
 }
 
-fn text(units: &[u16]) -> crate::DocumentString {
-    crate::DocumentString::from_utf16(units.to_vec())
+fn text(units: &[u16]) -> surgeist_html::values::DocumentString {
+    surgeist_html::values::DocumentString::from_utf16(units.to_vec())
 }
 
 /// A pending ticket describing `value`, as a valid append leaves it.
-fn ticket_for(c: &mut ParseControl, value: &crate::DocumentString) -> DocumentStringAllocation {
+fn ticket_for(
+    c: &mut ParseControl,
+    value: &surgeist_html::values::DocumentString,
+) -> DocumentStringAllocation {
     let mut ticket = c.prepare_text_append_allocation().unwrap();
     ticket.vector_capacity = value.shared_code_units().capacity();
     ticket.units = value.len() as u64;

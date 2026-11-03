@@ -6,7 +6,7 @@ use surgeist_dom::{
     DomSourceCloseWatcherRequest, DomSourceCloseWatcherStep, DomSourceDialogRequest,
     DomSourceLease, NodeId,
 };
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlCloseWatcherManager, HtmlCloseWatcherPlacement, HtmlCloseWatcherRequestAction,
     HtmlCloseWatcherRequestReply, HtmlCloseWatcherState, HtmlDialogAction,
 };

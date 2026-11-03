@@ -1,7 +1,7 @@
 //! Finite public-native lending and independent recipe expectations.
 use super::*;
 use crate::captured::{Fault, Plan, Verdict, check};
-use surgeist_html::bounded::HtmlConstructionResult;
+use surgeist_html::bounded::construction::HtmlConstructionResult;
 
 pub(super) struct Expected {
     op: Option<usize>,

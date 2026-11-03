@@ -6,7 +6,7 @@ use surgeist_dom::{
     DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomShadowRootInit, DomSnapshot,
     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, NodeId,
 };
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlCapturedChildren, HtmlCapturedFragmentKind, HtmlCapturedHost,
     HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCapturedRegistry, HtmlCapturedShadowRoot,

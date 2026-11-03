@@ -1,7 +1,7 @@
 //! Raw source transitions and immediate consuming handoff; no task delivery.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlDetailsState::{Closed, Open};
+use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -48,15 +48,15 @@ fn facts(
     t: &DomDetailsToggleTransfer,
 ) -> Vec<(
     NodeId,
-    surgeist_html::HtmlDetailsState,
-    surgeist_html::HtmlDetailsState,
+    surgeist_html::elements::details::HtmlDetailsState,
+    surgeist_html::elements::details::HtmlDetailsState,
 )> {
     t.intentions()
         .iter()
         .map(|i| (i.target(), i.old_state(), i.new_state()))
         .collect()
 }
-fn state(d: &Dom, id: NodeId) -> surgeist_html::HtmlDetailsState {
+fn state(d: &Dom, id: NodeId) -> surgeist_html::elements::details::HtmlDetailsState {
     d.snapshot().node(id).unwrap().as_details().unwrap().state()
 }
 
@@ -311,7 +311,7 @@ fn clone_copies_attributes_into_fresh_hooks_and_preserves_source_history() {
 
 #[test]
 fn native_immutable_installation_creates_fresh_attribute_transitions_and_mapping() {
-    use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+    use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
     let (mut d, doc, root, a, _) = pair(8);
     let mut batch = DomBatch::new();
     batch.set_attribute(a, "open", "");

@@ -1055,7 +1055,7 @@ mod url_configuration_tests {
         DomBatch, DomError, DomHostedChildStep, DomHostedRecordLimits, DomLimits, DomSourceEdit,
         DomSourceLimits, DomSourceRequest, DomSourceUrlStage,
     };
-    use surgeist_html::Namespace;
+    use surgeist_html::values::Namespace;
     use surgeist_html_semantics::{
         HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome, HtmlBaseProducerId,
     };

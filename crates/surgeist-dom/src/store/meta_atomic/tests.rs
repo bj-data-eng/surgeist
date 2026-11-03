@@ -6,6 +6,7 @@ use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn flag() -> AtomicBool {
     AtomicBool::new(false)

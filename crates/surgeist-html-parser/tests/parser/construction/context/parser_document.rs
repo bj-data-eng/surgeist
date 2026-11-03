@@ -1,5 +1,11 @@
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlReferrerPolicy,
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::native::HtmlCommonScope,
+    parsing::HtmlParserScriptingMode,
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 

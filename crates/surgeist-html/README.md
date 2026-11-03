@@ -276,7 +276,7 @@ Document history, URL facts, CSS/CSSOM, policy enforcement and affected UI.
 `default_document_referrer_policy` supplies the selected initial Document policy,
 which is separate from a fetching attribute's empty fallback.
 
-HTML also provides the [neutral Meta CSP protocol](src/csp_policy.rs) for an
+HTML also provides the [neutral Meta CSP protocol](src/internal/security/csp_policy.rs) for an
 explicitly supplied external processor. A consumer session issues qualified
 Document associations and exact UTF-16 insertion requests. The external backend
 declares supported semantic profiles under its processor authority; the caller
@@ -343,7 +343,7 @@ validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree
 records, allocation identities and mutable backing remain private.
 
-`bounded::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
+`bounded::values::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
 weak sharing of completed immutable values. Probe a whole validated attribute
 bank before processing component strings; offer only the final formed bank.
 Exact ordered names, prefix presence and raw UTF-16 decide equality. Public

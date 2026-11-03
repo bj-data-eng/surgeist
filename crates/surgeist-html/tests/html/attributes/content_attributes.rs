@@ -1,23 +1,26 @@
 use crate::html::support::{html_element as element, unqualified_text_attribute as attr};
-use surgeist_html::HtmlCustomControlAttributeContext;
-use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability as Applicability,
-    HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
-    HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlAutocapitalize, HtmlAutocapitalizeState, HtmlAutocorrect, HtmlBooleanAttribute,
-    HtmlButtonType, HtmlButtonTypeState, HtmlClosedBy, HtmlClosedByState, HtmlContentEditable,
-    HtmlContentEditableState, HtmlDecoding, HtmlDir, HtmlDirState, HtmlDraggable,
-    HtmlDraggableState, HtmlEnterKeyHint, HtmlFormAutocomplete, HtmlFormEnctype, HtmlFormMethod,
-    HtmlHidden, HtmlHiddenState, HtmlInputMode, HtmlInputType, HtmlLoading, HtmlOlType,
-    HtmlPopover, HtmlPopoverState, HtmlPreload, HtmlPreloadState, HtmlShadowRootMode,
-    HtmlSlotAssignment, HtmlSpellcheck, HtmlSpellcheckState, HtmlTrackKind, HtmlTranslate,
-    HtmlTranslateState, HtmlValueInterpreter, HtmlWritingSuggestions, HtmlWritingSuggestionsState,
-    KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
-};
-use surgeist_html::{
+use surgeist_html::attributes::HtmlCustomControlAttributeContext;
+use surgeist_html::attributes::{
     HtmlCrossOrigin, HtmlCrossOriginState, HtmlFetchPriority, HtmlScriptAttributeContext,
 };
-use surgeist_html::{HtmlHyperlinkAttributeContext, HtmlReferrerPolicy};
+use surgeist_html::attributes::{HtmlHyperlinkAttributeContext, HtmlReferrerPolicy};
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability as Applicability, HtmlAttributeAuthorState as Author,
+        HtmlAttributeConformanceError as Conformance, HtmlAttributeObservation as Observation,
+        HtmlAttributeRecognition as Recognition, HtmlAutocapitalize, HtmlAutocapitalizeState,
+        HtmlAutocorrect, HtmlBooleanAttribute, HtmlButtonType, HtmlButtonTypeState, HtmlClosedBy,
+        HtmlClosedByState, HtmlContentEditable, HtmlContentEditableState, HtmlDecoding, HtmlDir,
+        HtmlDirState, HtmlDraggable, HtmlDraggableState, HtmlEnterKeyHint, HtmlFormAutocomplete,
+        HtmlFormEnctype, HtmlFormMethod, HtmlHidden, HtmlHiddenState, HtmlInputMode, HtmlInputType,
+        HtmlLoading, HtmlOlType, HtmlPopover, HtmlPopoverState, HtmlPreload, HtmlPreloadState,
+        HtmlSpellcheck, HtmlSpellcheckState, HtmlTrackKind, HtmlTranslate, HtmlTranslateState,
+        HtmlWritingSuggestions, HtmlWritingSuggestionsState,
+    },
+    construction::{HtmlShadowRootMode, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 #[test]
 fn disabled_local_presence_uses_each_standard_elements_defining_clause() {
@@ -33,7 +36,7 @@ fn disabled_local_presence_uses_each_standard_elements_defining_clause() {
     ] {
         let context = element(local);
         let missing = interpreter
-            .disabled(&context, None::<&surgeist_html::Attribute>)
+            .disabled(&context, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(missing.applicability(), Applicability::Applicable);
         assert_eq!(missing.intrinsic(), Some(&false));
@@ -132,7 +135,11 @@ fn disabled_custom_controls_require_actual_supplied_form_association() {
         );
     }
     let missing = interpreter
-        .disabled_for_custom_control(&context, None::<&surgeist_html::Attribute>, FormAssociated)
+        .disabled_for_custom_control(
+            &context,
+            None::<&surgeist_html::values::Attribute>,
+            FormAssociated,
+        )
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&false));
     let empty = attr("disabled", "");
@@ -233,7 +240,7 @@ fn disabled_admits_exact_raw_units_before_even_unapplied_contexts() {
     }
     assert_eq!(
         HtmlValueInterpreter::new(0)
-            .disabled(&element("input"), None::<&surgeist_html::Attribute>)
+            .disabled(&element("input"), None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&false)
@@ -310,7 +317,7 @@ fn referrerpolicy_empty_default_stays_unresolved_and_raw_states_remain_distinct(
     let interpreter = HtmlValueInterpreter::new(100);
     let context = element("iframe");
     let missing = interpreter
-        .referrerpolicy(&context, None::<&surgeist_html::Attribute>)
+        .referrerpolicy(&context, None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
     assert_eq!(missing.observation(), Observation::Missing);
@@ -360,7 +367,7 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
         DataBlock, ExternalClassic, ExternalModule, ImportMap, InlineClassic, InlineModule,
         SpeculationRules,
     };
-    use surgeist_html::{
+    use surgeist_html::attributes::{
         HtmlAttributeContextAuthorState as ContextAuthor,
         HtmlAttributeContextConformanceError as ContextConformance,
     };
@@ -497,7 +504,7 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
     );
     assert_eq!(
         interpreter
-            .crossorigin(&element("img"), None::<&surgeist_html::Attribute>)
+            .crossorigin(&element("img"), None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .vocabulary_source_clause(),
         None
@@ -569,7 +576,7 @@ fn cors_intrinsic_defaults_do_not_claim_a_request_mode() {
     for local in ["audio", "video", "img", "link"] {
         let context = element(local);
         let missing = interpreter
-            .crossorigin(&context, None::<&surgeist_html::Attribute>)
+            .crossorigin(&context, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
         assert_eq!(missing.author(), Author::Missing);
@@ -654,7 +661,7 @@ fn fetchpriority_is_a_literal_intrinsic_hint_with_no_empty_keyword() {
         let context = element(local);
         assert_eq!(
             interpreter
-                .fetchpriority(&context, None::<&surgeist_html::Attribute>)
+                .fetchpriority(&context, None::<&surgeist_html::values::Attribute>)
                 .unwrap()
                 .intrinsic(),
             Some(&HtmlFetchPriority::Auto)
@@ -810,7 +817,11 @@ fn script_fetch_attributes_require_supplied_source_table_facts() {
         );
     }
     let missing = interpreter
-        .crossorigin_for_script(&script, None::<&surgeist_html::Attribute>, ExternalModule)
+        .crossorigin_for_script(
+            &script,
+            None::<&surgeist_html::values::Attribute>,
+            ExternalModule,
+        )
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
     let inline = interpreter
@@ -865,7 +876,7 @@ fn fetch_attribute_names_raw_units_and_admission_remain_exact() {
     for local in ["audio", "video", "iframe", "div"] {
         assert_eq!(
             interpreter
-                .fetchpriority(&element(local), None::<&surgeist_html::Attribute>)
+                .fetchpriority(&element(local), None::<&surgeist_html::values::Attribute>)
                 .unwrap()
                 .applicability(),
             Applicability::DifferentElement
@@ -955,7 +966,7 @@ fn input_text_fallback_preserves_missing_empty_and_unrecognized_authorship() {
     let interpreter = HtmlValueInterpreter::new(100);
     let context = element("input");
     let omitted = interpreter
-        .input_type(&context, None::<&surgeist_html::Attribute>)
+        .input_type(&context, None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(omitted.intrinsic(), Some(&HtmlInputType::Text));
     assert_eq!(omitted.observation(), Observation::Missing);
@@ -1027,7 +1038,7 @@ fn button_type_keywords_do_not_turn_auto_fallback_into_a_valid_keyword() {
         assert_eq!(report.raw_attribute(), Some(&raw));
     }
     let missing = interpreter
-        .button_type(&context, None::<&surgeist_html::Attribute>)
+        .button_type(&context, None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlButtonTypeState::Auto));
     assert_eq!(missing.author(), Author::Missing);
@@ -1299,7 +1310,7 @@ fn preload_has_no_guessed_missing_or_invalid_hint_and_empty_is_automatic() {
     for local in ["audio", "video"] {
         let context = element(local);
         let missing = interpreter
-            .preload(&context, None::<&surgeist_html::Attribute>)
+            .preload(&context, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(
             missing.intrinsic(),
@@ -1593,7 +1604,11 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
         for local in elements {
             let context = element(local);
             let omitted = interpreter
-                .boolean_attribute(selected, &context, None::<&surgeist_html::Attribute>)
+                .boolean_attribute(
+                    selected,
+                    &context,
+                    None::<&surgeist_html::values::Attribute>,
+                )
                 .unwrap();
             assert_eq!(omitted.intrinsic(), Some(&false));
             assert_eq!(omitted.author(), Author::Missing);
@@ -1638,7 +1653,11 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
         }
         assert_eq!(
             interpreter
-                .boolean_attribute(selected, &element("div"), None::<&surgeist_html::Attribute>)
+                .boolean_attribute(
+                    selected,
+                    &element("div"),
+                    None::<&surgeist_html::values::Attribute>
+                )
                 .unwrap()
                 .intrinsic(),
             None
@@ -1662,7 +1681,7 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
             .boolean_attribute(
                 HtmlBooleanAttribute::DialogOpen,
                 &element("details"),
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             )
             .unwrap()
             .applicability(),
@@ -1764,7 +1783,7 @@ fn boolean_false_text_is_nonconforming_but_presence_is_true() {
         .boolean_attribute(
             HtmlBooleanAttribute::Inert,
             &element,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(omitted.intrinsic(), Some(&false));
@@ -2047,7 +2066,9 @@ fn autocapitalize_aliases_are_recognized_and_canonical_authoring_is_explicit() {
 fn bdo_required_direction_conformance_is_independent_of_intrinsic_state() {
     let i = HtmlValueInterpreter::new(100);
     let bdo = element("bdo");
-    let missing = i.dir(&bdo, None::<&surgeist_html::Attribute>).unwrap();
+    let missing = i
+        .dir(&bdo, None::<&surgeist_html::values::Attribute>)
+        .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlDirState::Undefined));
     assert_eq!(
         missing.author(),
@@ -2089,7 +2110,7 @@ fn bdo_required_direction_conformance_is_independent_of_intrinsic_state() {
     );
     // Exact uppercase local name is an unknown HTML name, not the bdo identity.
     assert_eq!(
-        i.dir(&element("BDO"), None::<&surgeist_html::Attribute>)
+        i.dir(&element("BDO"), None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .author(),
         Author::Missing
@@ -2101,13 +2122,13 @@ fn keyboard_hints_have_no_guessed_missing_invalid_or_empty_default() {
     let i = HtmlValueInterpreter::new(100);
     let e = element("input");
     assert_eq!(
-        i.inputmode(&e, None::<&surgeist_html::Attribute>)
+        i.inputmode(&e, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         None
     );
     assert_eq!(
-        i.enterkeyhint(&e, None::<&surgeist_html::Attribute>)
+        i.enterkeyhint(&e, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         None
@@ -2238,7 +2259,7 @@ fn raw_value_admission_precedes_even_unapplied_name_processing() {
     assert_eq!(error.required(), 1);
     assert_eq!(error.capacity(), 0);
     assert_eq!(
-        i.hidden(&element("div"), None::<&surgeist_html::Attribute>)
+        i.hidden(&element("div"), None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&HtmlHiddenState::NotHidden)
@@ -2266,7 +2287,7 @@ fn declarative_modes_are_template_only_and_do_not_claim_root_creation() {
     let i = HtmlValueInterpreter::new(100);
     let template = KnownHtmlElement::Template.qualified_name();
     assert_eq!(
-        i.shadowrootmode(&template, None::<&surgeist_html::Attribute>)
+        i.shadowrootmode(&template, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         None
@@ -2296,7 +2317,7 @@ fn declarative_modes_are_template_only_and_do_not_claim_root_creation() {
         attr("shadowrootmode", "open")
     );
     assert_eq!(
-        i.shadowrootslotassignment(&template, None::<&surgeist_html::Attribute>)
+        i.shadowrootslotassignment(&template, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&HtmlSlotAssignment::Named)
@@ -2417,7 +2438,7 @@ fn metadata_selects_actual_defining_headingreset_clause_and_existing_rows() {
         .boolean_attribute(
             HtmlBooleanAttribute::HeadingReset,
             &element("h1"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(report.attribute(), KnownHtmlAttribute::Headingreset);

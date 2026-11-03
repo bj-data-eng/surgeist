@@ -1,6 +1,12 @@
 //! Actual managed lexical field replacement/removal over the existing registry.
 //! Family policies remain source-specific; this owner is the single backing edit.
 use super::*;
+#[cfg(test)]
+use surgeist_html::values::{DocumentString, Namespace, QualifiedName};
+use surgeist_html::{
+    construction::HtmlNodeKind,
+    values::{Attribute, OrderedAttributes},
+};
 
 #[cfg(test)]
 #[derive(Clone, Copy)]
@@ -41,14 +47,14 @@ enum ManagedEffect {
     Style,
     BaseHref,
     BaseTarget,
-    LinkFlags(Option<crate::HtmlLinkFlags>),
-    Details(crate::HtmlDetailsAttributeEffect),
+    LinkFlags(Option<surgeist_html::elements::link::HtmlLinkFlags>),
+    Details(surgeist_html::elements::details::HtmlDetailsAttributeEffect),
     InputName,
     InputType,
     InputSource,
     InputColor,
     InputValue,
-    InputChecked(Option<crate::HtmlInputCheckedAttributeChange>),
+    InputChecked(Option<surgeist_html::elements::input::HtmlInputCheckedAttributeChange>),
 }
 impl SessionStorage {
     #[cfg(test)]
@@ -86,16 +92,18 @@ impl SessionStorage {
                 };
                 ManagedEffect::LinkFlags(flags)
             }
-            ManagedFamily::Details => ManagedEffect::Details(crate::details_attribute_effect(
-                &Namespace::none(),
-                if local == "name" {
-                    crate::HtmlDetailsAttribute::Name
-                } else {
-                    crate::HtmlDetailsAttribute::Open
-                },
-                old,
-                new,
-            )),
+            ManagedFamily::Details => {
+                ManagedEffect::Details(surgeist_html::elements::details::details_attribute_effect(
+                    &Namespace::none(),
+                    if local == "name" {
+                        surgeist_html::elements::details::HtmlDetailsAttribute::Name
+                    } else {
+                        surgeist_html::elements::details::HtmlDetailsAttribute::Open
+                    },
+                    old,
+                    new,
+                ))
+            }
             ManagedFamily::Input if local == "type" => ManagedEffect::InputType,
             ManagedFamily::Input if local == "src" => ManagedEffect::InputSource,
             ManagedFamily::Input if local == "name" => ManagedEffect::InputName,
@@ -105,8 +113,12 @@ impl SessionStorage {
             ManagedFamily::Input if local == "value" => ManagedEffect::InputValue,
             ManagedFamily::Input => {
                 ManagedEffect::InputChecked(match (old.is_some(), new.is_some()) {
-                    (false, true) => Some(crate::HtmlInputCheckedAttributeChange::Added),
-                    (true, false) => Some(crate::HtmlInputCheckedAttributeChange::Removed),
+                    (false, true) => {
+                        Some(surgeist_html::elements::input::HtmlInputCheckedAttributeChange::Added)
+                    }
+                    (true, false) => Some(
+                        surgeist_html::elements::input::HtmlInputCheckedAttributeChange::Removed,
+                    ),
                     _ => None,
                 })
             }
@@ -121,7 +133,9 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         if matches!(
             effect,
-            ManagedEffect::Details(crate::HtmlDetailsAttributeEffect::Notify { .. })
+            ManagedEffect::Details(
+                surgeist_html::elements::details::HtmlDetailsAttributeEffect::Notify { .. }
+            )
         ) {
             self.require_details_notification(c, node)?;
         }
@@ -143,7 +157,7 @@ impl SessionStorage {
             ManagedEffect::LinkFlags(flags) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(flags) = flags {
-                    payload_write::<crate::HtmlLinkFlags>(c, 1)?;
+                    payload_write::<surgeist_html::elements::link::HtmlLinkFlags>(c, 1)?;
                     let view = self
                         .construction
                         .node_at(node)
@@ -152,7 +166,7 @@ impl SessionStorage {
                     let element = view.handle();
                     self.construction.apply(
                         c,
-                        bounded::HtmlConstructionCommand::SetLinkFlags { element, flags },
+                        surgeist_html::bounded::construction::HtmlConstructionCommand::SetLinkFlags { element, flags },
                         &[],
                     )?;
                 }
@@ -200,7 +214,7 @@ impl SessionStorage {
                         slot,
                         container,
                         state,
-                        crate::HtmlInputType::Text,
+                        surgeist_html::attributes::HtmlInputType::Text,
                     ),
                 }
             }
@@ -208,7 +222,7 @@ impl SessionStorage {
                 let (slot, state) = self
                     .radio_input(c, node)?
                     .ok_or(SessionError::InputMetadataUnavailable)?;
-                if state.flags.input_type() == crate::HtmlInputType::Color
+                if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color
                     && (!matches!(effect, ManagedEffect::InputValue) || !state.flags.dirty_value())
                 {
                     self.update_input_color(c, node, slot)?;
@@ -219,7 +233,7 @@ impl SessionStorage {
                 let (slot, state) = self
                     .radio_input(c, node)?
                     .ok_or(SessionError::InputMetadataUnavailable)?;
-                if state.flags.input_type() == crate::HtmlInputType::Image {
+                if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Image {
                     self.image_source_changed(c, node, slot)?;
                 }
                 Ok(())
@@ -426,10 +440,15 @@ impl SessionStorage {
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
             {
-                let style_effect =
-                    surgeist_html::KnownHtmlAttribute::from_name(attr.name()).map(|attribute| {
-                        surgeist_html::style_attribute_effect(attr.name().namespace(), attribute)
-                    });
+                let style_effect = surgeist_html::vocabulary::KnownHtmlAttribute::from_name(
+                    attr.name(),
+                )
+                .map(|attribute| {
+                    surgeist_html::elements::style::style_attribute_effect(
+                        attr.name().namespace(),
+                        attribute,
+                    )
+                });
                 selected = Some((index, style_effect));
                 break;
             }
@@ -551,7 +570,8 @@ impl SessionStorage {
         if local == "open" {
             self.dialog_open_changed(c, node, true, false)?;
         }
-        if style_effect == Some(surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes)
+        if style_effect
+            == Some(surgeist_html::elements::style::HtmlStyleAttributeEffect::OwnerAttributes)
             && self.html_local(c, node, "style")?
         {
             self.record_association(
@@ -640,23 +660,27 @@ impl ParserArenaSession {
                 let next = input_type_state(c, attr.value.value.text())?;
                 let file_image = matches!(
                     state.flags.input_type(),
-                    crate::HtmlInputType::File | crate::HtmlInputType::Image
+                    surgeist_html::attributes::HtmlInputType::File
+                        | surgeist_html::attributes::HtmlInputType::Image
                 ) || matches!(
                     next,
-                    crate::HtmlInputType::File | crate::HtmlInputType::Image
+                    surgeist_html::attributes::HtmlInputType::File
+                        | surgeist_html::attributes::HtmlInputType::Image
                 );
-                let radio = next == crate::HtmlInputType::Radio
+                let radio = next == surgeist_html::attributes::HtmlInputType::Radio
                     && matches!(
                         state.flags.input_type(),
-                        crate::HtmlInputType::Radio | crate::HtmlInputType::Checkbox
+                        surgeist_html::attributes::HtmlInputType::Radio
+                            | surgeist_html::attributes::HtmlInputType::Checkbox
                     );
-                let color = state.flags.input_type() == crate::HtmlInputType::Color
-                    || next == crate::HtmlInputType::Color;
+                let color = state.flags.input_type()
+                    == surgeist_html::attributes::HtmlInputType::Color
+                    || next == surgeist_html::attributes::HtmlInputType::Color;
                 if !(radio || file_image || color) {
                     return Err(SessionError::WrongToken);
                 }
             } else if matches!(local, "value" | "alpha" | "colorspace")
-                && state.flags.input_type() != crate::HtmlInputType::Color
+                && state.flags.input_type() != surgeist_html::attributes::HtmlInputType::Color
             {
                 return Err(SessionError::WrongToken);
             }

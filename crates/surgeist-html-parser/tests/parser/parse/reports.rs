@@ -1,5 +1,11 @@
 use crate::parser::support::{fragment_context, limits};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::{HtmlDocumentMode, HtmlElement, HtmlNode, HtmlNodeId, HtmlNodeKind},
+    elements::input::HtmlInputValueMode,
+    parsing::HtmlParserScriptingMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlFragmentParseRequest,
     HtmlParseAssociationRelation, HtmlParseConstructionOperation, HtmlParseDestination,

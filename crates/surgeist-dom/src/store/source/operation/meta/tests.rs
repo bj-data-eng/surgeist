@@ -22,7 +22,11 @@ fn reconstructed_segment_charge_uses_its_own_mirrors_and_releases_only_its_posit
     let mut dom = Dom::new(policy).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let dialog = setup.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let dialog = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     setup.insert_before(&dialog, &document, None);
     let created = dom.apply(setup, &cancel).unwrap();
     let dialog = created.created(&dialog).unwrap().unwrap();

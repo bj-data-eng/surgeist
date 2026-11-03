@@ -1,6 +1,7 @@
 //! The active session storage: one arena with its payload registry, effects and evidence.
 
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 pub(super) struct SessionStorage {
     pub(super) csp_slot: Option<usize>,
@@ -29,7 +30,7 @@ pub(super) struct SessionStorage {
     pub(super) lose_association_row: Option<Option<(usize, RetainedPayload)>>,
     #[cfg(test)]
     pub(super) cancel_after_range_append: Option<(
-        Option<surgeist_html::bounded::RangeScratchRole>,
+        Option<surgeist_html::bounded::numeric::HtmlRangeScratchRole>,
         crate::HtmlParseCancellation,
     )>,
     #[cfg(test)]

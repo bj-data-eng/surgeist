@@ -3,6 +3,7 @@ use super::*;
 use crate::*;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_cssom::*;
+
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };

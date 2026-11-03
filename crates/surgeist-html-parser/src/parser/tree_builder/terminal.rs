@@ -643,7 +643,7 @@ impl FrozenStandaloneParts {
         Ok(())
     }
     #[cfg(test)]
-    pub(super) fn immutable_document(&self) -> Option<&crate::HtmlDocument> {
+    pub(super) fn immutable_document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.arena.as_ref()?.document()
     }
     #[cfg(test)]
@@ -678,7 +678,9 @@ impl FrozenStandaloneParts {
         )
     }
     #[cfg(test)]
-    pub(crate) fn document(&mut self) -> Result<&crate::HtmlDocument, StandaloneError> {
+    pub(crate) fn document(
+        &mut self,
+    ) -> Result<&surgeist_html::construction::HtmlDocument, StandaloneError> {
         self.control.checkpoint()?;
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.arena

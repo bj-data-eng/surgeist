@@ -2,6 +2,14 @@
 use super::*;
 use history::{FrozenHistory, HistoryView, HtmlParseOriginGroup};
 use provenance::{AssociationView, ConstructionCause, NativeAssociation, NativeDestination};
+use surgeist_html::{
+    construction::HtmlNode,
+    elements::{
+        form::HtmlNativeFormAssociationKind,
+        script::{HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
+    },
+    values::DocumentString,
+};
 
 /// What a reference of a published report denotes to a reader.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -672,16 +680,24 @@ impl<'a> HtmlParseRangeComputation<'a> {
             value: self.value.operands.copy(role),
         }
     }
-    pub fn minimum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+    pub fn minimum_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin> {
         self.value.minimum
     }
-    pub fn maximum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+    pub fn maximum_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin> {
         self.value.maximum
     }
-    pub fn step_origin(&self) -> Option<crate::HtmlInputNumericStepOrigin> {
+    pub fn step_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepOrigin> {
         self.value.step
     }
-    pub fn base_origin(&self) -> Option<crate::HtmlInputNumericStepBaseOrigin> {
+    pub fn base_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepBaseOrigin> {
         self.value.base
     }
 }
@@ -702,7 +718,7 @@ impl<'a> HtmlParseColorComputation<'a> {
     pub fn source(&self) -> provenance::HtmlParseColorValueSource {
         self.value.source
     }
-    pub fn colorspace(&self) -> crate::HtmlInputColorSpace {
+    pub fn colorspace(&self) -> surgeist_html::attributes::input_colorspace::HtmlInputColorSpace {
         self.value.space
     }
     pub fn alpha_present(&self) -> bool {
@@ -1065,7 +1081,7 @@ impl<'a> report::HtmlParseMetadata<'a> {
     pub fn cryptographic_nonce(&self) -> Option<&'a DocumentString> {
         self.nonce()
     }
-    pub fn input_flags(&self) -> Option<&'a crate::HtmlInputFlags> {
+    pub fn input_flags(&self) -> Option<&'a surgeist_html::elements::input::HtmlInputFlags> {
         self.input().map(|(s, _)| &s.flags)
     }
     pub fn input_raw_value(&self) -> Option<&'a DocumentString> {
@@ -1078,17 +1094,22 @@ impl<'a> report::HtmlParseMetadata<'a> {
         self.input().and_then(|(state, _)| state.email_value_count)
     }
     /// Established actual File resources. Other input states have no File view.
-    pub fn input_file_selection(&self) -> Option<crate::HtmlInputFileSelection> {
+    pub fn input_file_selection(
+        &self,
+    ) -> Option<surgeist_html::elements::input::HtmlInputFileSelection> {
         self.input().and_then(|(state, _)| {
-            (state.flags.input_type() == crate::HtmlInputType::File && state.selected_files_empty)
-                .then_some(crate::HtmlInputFileSelection::Empty)
+            (state.flags.input_type() == surgeist_html::attributes::HtmlInputType::File
+                && state.selected_files_empty)
+                .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty)
         })
     }
     /// Initial selected coordinates of actual Image construction, not geometry.
-    pub fn input_image_coordinate(&self) -> Option<crate::HtmlInputImageCoordinate> {
+    pub fn input_image_coordinate(
+        &self,
+    ) -> Option<surgeist_html::elements::input::HtmlInputImageCoordinate> {
         self.input().and_then(|(state, _)| match state.image {
             input_image::ImageState::Last { coordinate, .. }
-                if state.flags.input_type() == crate::HtmlInputType::Image =>
+                if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Image =>
             {
                 Some(coordinate)
             }
@@ -1119,7 +1140,7 @@ impl<'a> report::HtmlParseMetadata<'a> {
     pub fn input_creation_writeback(&self) -> Option<bool> {
         self.input().map(|(s, _)| s.value_rewritten_during_creation)
     }
-    pub fn textarea_flags(&self) -> Option<&'a crate::HtmlTextareaFlags> {
+    pub fn textarea_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlTextareaFlags> {
         self.textarea().map(|(s, _)| &s.flags)
     }
     pub fn textarea_raw_value(&self) -> Option<&'a DocumentString> {
@@ -1128,10 +1149,10 @@ impl<'a> report::HtmlParseMetadata<'a> {
     pub fn output_default_override(&self) -> Option<HtmlParseOutputOverride> {
         self.output().map(|s| s.default_value_override)
     }
-    pub fn select_flags(&self) -> Option<&'a crate::HtmlSelectFlags> {
+    pub fn select_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlSelectFlags> {
         self.select().map(|s| &s.flags)
     }
-    pub fn option_flags(&self) -> Option<&'a crate::HtmlOptionFlags> {
+    pub fn option_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlOptionFlags> {
         self.option().map(|s| &s.flags)
     }
     pub fn selectedcontent_disabled(&self) -> Option<bool> {

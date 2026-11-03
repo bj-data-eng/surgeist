@@ -1,11 +1,14 @@
 //! Input type classification and the copies of an input value between owners.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::values::DocumentString;
 
 pub(crate) fn input_tag_state(
     control: &mut ParseControl,
     tag: &Tag,
-) -> Result<surgeist_html::HtmlInputType, SessionError> {
+) -> Result<surgeist_html::attributes::HtmlInputType, SessionError> {
     control.require_document_string(tag.name.value.allocation(), tag.name.value.text())?;
     tag.attributes.require_disposal_owner(control)?;
     for attribute in tag.attributes.as_slice() {
@@ -16,27 +19,29 @@ pub(crate) fn input_tag_state(
             return input_type_state(control, value);
         }
     }
-    Ok(crate::HtmlInputType::missing_value_default())
+    Ok(surgeist_html::attributes::HtmlInputType::missing_value_default())
 }
 
 pub(super) fn input_type_state(
     control: &mut ParseControl,
     value: &DocumentString,
-) -> Result<surgeist_html::HtmlInputType, SessionError> {
-    let mut cursor = crate::HtmlInputTypeCursor::new(Some(value));
+) -> Result<surgeist_html::attributes::HtmlInputType, SessionError> {
+    let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(Some(value));
     while let Some(work) = cursor.required_work() {
         match work {
-            crate::HtmlInputRuleWork::ReadField => {
+            surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
                 control.charge(HtmlParseWorkCategory::RecordVisit, 1)?
             }
-            crate::HtmlInputRuleWork::ReadValueLengths => {
+            surgeist_html::elements::input::HtmlInputRuleWork::ReadValueLengths => {
                 control.charge(HtmlParseWorkCategory::RecordVisit, 2)?
             }
-            crate::HtmlInputRuleWork::CompareAsciiUnit => {
+            surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit => {
                 control.charge_unit_literal_comparison()?
             }
-            crate::HtmlInputRuleWork::CompareValueUnits
-            | crate::HtmlInputRuleWork::InspectValueUnit => control.charge_unit_inspection()?,
+            surgeist_html::elements::input::HtmlInputRuleWork::CompareValueUnits
+            | surgeist_html::elements::input::HtmlInputRuleWork::InspectValueUnit => {
+                control.charge_unit_inspection()?
+            }
         }
         cursor.advance();
     }
@@ -48,8 +53,9 @@ pub(super) fn validate_initial_input_origins(
     control: &mut ParseControl,
     tag: &Tag,
 ) -> Result<(), SessionError> {
-    let mut policy =
-        crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::StripCrLf);
+    let mut policy = surgeist_html::elements::input::HtmlInputValueSanitization::String(
+        surgeist_html::elements::input::HtmlInputSanitization::StripCrLf,
+    );
     for attribute in tag.attributes.as_slice() {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
@@ -69,8 +75,9 @@ pub(super) fn validate_initial_input_origins(
             {
                 return Err(SessionError::OriginSplitUnavailable);
             }
-            if let crate::HtmlInputValueSanitization::String(policy) = policy
-                && policy != crate::HtmlInputSanitization::Preserve
+            if let surgeist_html::elements::input::HtmlInputValueSanitization::String(policy) =
+                policy
+                && policy != surgeist_html::elements::input::HtmlInputSanitization::Preserve
             {
                 let Some(units) = text.value.text().code_units().get(origin.start..origin.end)
                 else {
@@ -191,7 +198,7 @@ pub(super) fn copy_input_value(
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
     slot: usize,
-    policy: crate::HtmlInputSanitization,
+    policy: surgeist_html::elements::input::HtmlInputSanitization,
 ) -> Result<FieldCopy, SessionError> {
     Ok(copy_input_value_core(
         payloads,
@@ -200,7 +207,7 @@ pub(super) fn copy_input_value(
         slot,
         policy,
         None,
-        crate::HtmlInputEmailMode::Single,
+        surgeist_html::elements::input::HtmlInputEmailMode::Single,
     )?
     .0)
 }
@@ -219,9 +226,9 @@ pub(super) fn copy_preserved_input_value(
         evidence,
         control,
         slot,
-        crate::HtmlInputSanitization::Preserve,
+        surgeist_html::elements::input::HtmlInputSanitization::Preserve,
         None,
-        crate::HtmlInputEmailMode::Single,
+        surgeist_html::elements::input::HtmlInputEmailMode::Single,
     )?
     .0)
 }
@@ -231,8 +238,8 @@ pub(super) fn copy_selected_input_value(
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
     slot: usize,
-    policy: crate::HtmlInputSanitization,
-    mode: crate::HtmlInputEmailMode,
+    policy: surgeist_html::elements::input::HtmlInputSanitization,
+    mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
@@ -242,8 +249,12 @@ pub(super) fn copy_selected_input_value(
         return Err(SessionError::InputMetadataUnavailable);
     };
     control.require_document_string(allocation, value)?;
-    payload_write::<crate::HtmlInputSanitizationCursor<'_>>(control, 1)?;
-    let cursor = crate::HtmlInputSanitizationCursor::new(policy, value.code_units(), mode);
+    payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(control, 1)?;
+    let cursor = surgeist_html::elements::input::HtmlInputSanitizationCursor::new(
+        policy,
+        value.code_units(),
+        mode,
+    );
     copy_input_value_core(
         payloads,
         evidence,
@@ -263,17 +274,21 @@ fn copy_whole_generated_input_value(
     evidence: Option<&ParseEvidence>,
     c: &mut ParseControl,
     source: usize,
-    policy: crate::HtmlInputSanitization,
-    mode: crate::HtmlInputEmailMode,
+    policy: surgeist_html::elements::input::HtmlInputSanitization,
+    mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     let value = admitted_input_string(payloads, c, source)?;
-    payload_write::<crate::HtmlInputSanitizationCursor<'_>>(c, 1)?;
-    let mut cursor = crate::HtmlInputSanitizationCursor::new(policy, value.code_units(), mode);
+    payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(c, 1)?;
+    let mut cursor = surgeist_html::elements::input::HtmlInputSanitizationCursor::new(
+        policy,
+        value.code_units(),
+        mode,
+    );
     let mut range = next_input_range(c, &mut cursor)?;
     let mut retained = 0usize;
     for (position, &unit) in value.code_units().iter().enumerate() {
         while range.is_some_and(|range| range.end() <= position) {
-            payload_write::<Option<crate::HtmlInputRetainedRange>>(c, 1)?;
+            payload_write::<Option<surgeist_html::elements::input::HtmlInputRetainedRange>>(c, 1)?;
             range = next_input_range(c, &mut cursor)?;
         }
         c.charge_unit_inspection()?;
@@ -321,15 +336,21 @@ fn copy_whole_generated_input_value(
 
 fn next_input_range(
     control: &mut ParseControl,
-    cursor: &mut crate::HtmlInputSanitizationCursor<'_>,
-) -> Result<Option<crate::HtmlInputRetainedRange>, SessionError> {
+    cursor: &mut surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>,
+) -> Result<Option<surgeist_html::elements::input::HtmlInputRetainedRange>, SessionError> {
     while let Some(work) = cursor.required_work() {
         match work {
-            crate::HtmlInputRuleWork::InspectValueUnit => control.charge_unit_inspection()?,
+            surgeist_html::elements::input::HtmlInputRuleWork::InspectValueUnit => {
+                control.charge_unit_inspection()?
+            }
             _ => control.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
         }
-        payload_write::<crate::HtmlInputSanitizationCursor<'_>>(control, 1)?;
-        payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
+        payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(
+            control, 1,
+        )?;
+        payload_write::<Option<surgeist_html::elements::input::HtmlInputRetainedRange>>(
+            control, 1,
+        )?;
         if let Some(range) = cursor.advance() {
             return Ok(Some(range));
         }
@@ -342,9 +363,9 @@ fn copy_input_value_core(
     evidence: Option<&ParseEvidence>,
     control: &mut ParseControl,
     slot: usize,
-    policy: crate::HtmlInputSanitization,
-    mut selection: Option<crate::HtmlInputSanitizationCursor<'_>>,
-    generated_mode: crate::HtmlInputEmailMode,
+    policy: surgeist_html::elements::input::HtmlInputSanitization,
+    mut selection: Option<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>,
+    generated_mode: surgeist_html::elements::input::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
@@ -389,7 +410,9 @@ fn copy_input_value_core(
                         control.charge_unit_inspection()?;
                         let keep = if let Some(cursor) = &mut selection {
                             while range.is_some_and(|range| range.end() <= position) {
-                                payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
+                                payload_write::<
+                                    Option<surgeist_html::elements::input::HtmlInputRetainedRange>,
+                                >(control, 1)?;
                                 range = next_input_range(control, cursor)?;
                             }
                             range.is_some_and(|range| {
@@ -409,7 +432,10 @@ fn copy_input_value_core(
                     if omitted == 0 {
                         let start = buffer.len();
                         let mut transformed = false;
-                        if matches!(policy, crate::HtmlInputSanitization::Temporal(_)) {
+                        if matches!(
+                            policy,
+                            surgeist_html::elements::input::HtmlInputSanitization::Temporal(_)
+                        ) {
                             for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
                                 control.charge_unit_inspection()?;
                                 let replacement = selection

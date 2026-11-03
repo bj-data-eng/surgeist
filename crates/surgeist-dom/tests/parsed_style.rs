@@ -126,9 +126,9 @@ fn install(
         installed.pending_association().unwrap(),
     )
 }
-fn empty_policy() -> surgeist_html::HtmlCspAssociation {
-    let mut admit = |_: surgeist_html::HtmlCspLayout| Ok::<_, ()>(());
-    let mut owner = surgeist_html::HtmlCspOwner::new_with(&mut admit).unwrap();
+fn empty_policy() -> surgeist_html::security::csp::HtmlCspAssociation {
+    let mut admit = |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = surgeist_html::security::csp::HtmlCspOwner::new_with(&mut admit).unwrap();
     owner.initial_document_with(&mut admit).unwrap()
 }
 fn qualifier(dom: &Dom, id: DomParsedHtmlAssociationId) -> DomParsedHtmlStyleQualification {
@@ -215,7 +215,7 @@ fn original_prefix_keeps_spent_admission_work_then_binds_exact_policy_and_reques
         );
         assert_eq!(
             req.action(),
-            surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
         );
         assert_eq!(req.policy().policy().id(), &expected);
     }

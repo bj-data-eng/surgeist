@@ -3,7 +3,7 @@
 //! second real buffer for ASCII strip/collapse; both capacities are cumulative.
 
 use super::*;
-use crate::bounded::is_ascii_whitespace;
+use surgeist_html::{bounded::lexical::is_ascii_whitespace, values::DocumentString};
 
 /// Normalized document title and the actual selected title element.
 ///

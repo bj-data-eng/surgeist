@@ -1,4 +1,12 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        table_header_scope::{HtmlTableHeaderScope, HtmlTableHeaderScopeState},
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 const SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-th-scope";
 
@@ -97,7 +105,7 @@ fn four_exact_ascii_case_insensitive_keywords_select_conforming_states() {
 fn absent_and_empty_select_auto_with_distinct_raw_author_and_presence_evidence() {
     let interpreter = HtmlValueInterpreter::new(0);
     let missing = interpreter
-        .th_scope(&th(), None::<&surgeist_html::Attribute>)
+        .th_scope(&th(), None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);
@@ -354,7 +362,7 @@ fn prefixes_and_normative_source_metadata_are_independent_of_lexical_defaults() 
     let row_type = HtmlValueInterpreter::new(8)
         .ol_type(
             &KnownHtmlElement::Ol.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(row_type.context_source_clause(), None);

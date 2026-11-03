@@ -1,4 +1,9 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlElement, HtmlNodeKind},
+    elements::form::HtmlNativeFormAssociationKind,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn assert_listed_owner(
     session: &ParserArenaSession,

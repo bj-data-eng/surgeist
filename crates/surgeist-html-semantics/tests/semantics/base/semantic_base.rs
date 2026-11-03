@@ -1,5 +1,7 @@
 use crate::semantics::support::tenth_builder as builder;
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::select_frozen_base;
 use surgeist_html_semantics::{
     HtmlAboutBaseUrl, HtmlBaseAllowed, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsError,

@@ -1,7 +1,24 @@
 //! Literal oracles from HTML #attr-area-shape/#attr-area-coords and
 //! #image-map-processing-model, plus exact authored number meaning in §2.3.4.3.
 use crate::html::support::known_attribute as attr;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeRecognition,
+        area::{
+            HtmlAreaCircle, HtmlAreaCoordinatesAuthorError, HtmlAreaCoordinatesAuthorState,
+            HtmlAreaCoordinatesReport, HtmlAreaEmptyReason, HtmlAreaIntegerPoint,
+            HtmlAreaNativeError, HtmlAreaPolygon, HtmlAreaProcessedPoint, HtmlAreaProcessedShape,
+            HtmlAreaRectangle, HtmlAreaShape, HtmlAuthoredArea,
+        },
+    },
+    microsyntax::numeric::{HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeInteger},
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueInterpreter,
+        HtmlValueRecoveryState, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn read(shape: Option<&str>, coords: Option<&str>) -> HtmlAreaCoordinatesReport {
     let shape = shape.map(|value| attr(KnownHtmlAttribute::Shape, value));
@@ -316,7 +333,7 @@ fn applicability_uses_expanded_names_preserves_exact_raw_and_admits_first() {
     let admission = HtmlValueInterpreter::new(5)
         .area_coordinates(
             &KnownHtmlElement::Div.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&huge_wrong),
         )
         .unwrap_err();

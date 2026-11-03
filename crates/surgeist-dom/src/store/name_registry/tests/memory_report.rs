@@ -4,6 +4,7 @@
 use super::*;
 use crate::{DomAttribute, DomQualifiedName};
 use std::collections::BTreeSet;
+use surgeist_html::values::DocumentString;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::store) enum Population {
@@ -498,8 +499,8 @@ fn small_name_populations_report_index_keys_and_dead_weak_lifetimes() {
         size_of::<NameRecord>(),
         size_of::<Vec<u16>>(),
         size_of::<DocumentString>(),
-        size_of::<surgeist_html::QualifiedName>(),
-        size_of::<surgeist_html::Attribute>(),
+        size_of::<surgeist_html::values::QualifiedName>(),
+        size_of::<surgeist_html::values::Attribute>(),
         size_of::<index::Row>(),
         size_of::<Index>(),
         size_of::<Mutex<State>>()

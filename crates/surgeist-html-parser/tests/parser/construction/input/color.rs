@@ -1,6 +1,14 @@
 use crate::parser::support::limits;
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{HtmlInputType, input_colorspace::HtmlInputColorSpace},
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::input::{
+        HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputValueMode,
+        HtmlInputValueSanitization,
+    },
+    values::{Attribute, DocumentString},
+};
 use surgeist_html_parser::{
     HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlParseColorOperandRole,
     HtmlParseColorValueSource, HtmlParseCompletion, HtmlParseFailureReason, HtmlParseHistoryFrame,

@@ -1,5 +1,5 @@
 use crate::parser::support::{bank, environment, limits, record};
-use surgeist_html::{DocumentString, HtmlReferrerPolicy};
+use surgeist_html::{attributes::HtmlReferrerPolicy, values::DocumentString};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -444,7 +444,8 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     loop {
         match cursor.advance() {
             HtmlParseMetadataStep::Record(row) if row.creation().is_some() => {
-                if let surgeist_html::HtmlNodeKind::Element(element) = row.node().kind()
+                if let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                    row.node().kind()
                     && element.name().local_name() == &DocumentString::from("meta")
                 {
                     subjects.push(row.node().id());

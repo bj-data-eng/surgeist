@@ -1,6 +1,6 @@
 //! Show's empty popover prelude uses the actual current Document before focusing.
 use super::*;
-use surgeist_html::HtmlDialogState;
+use surgeist_html::elements::dialog::HtmlDialogState;
 
 fn empty_popover_prelude_waits_for_dialog_focusing(
     session: &mut DomSession,
@@ -32,7 +32,7 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
         resume(session, event.operation(), scope).unwrap(),
         if association.is_some() {
             HtmlDialogFocusingAction::RunFocusingSteps {
-                control: surgeist_html::HtmlDialogFocusControl::Subject,
+                control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
             }
         } else {
             HtmlDialogFocusingAction::ReadAllowFocus
@@ -131,7 +131,7 @@ fn empty_popover_prelude_waits_for_dialog_focusing(
         resume(session, event.operation(), None).unwrap(),
         if association.is_some() {
             HtmlDialogFocusingAction::RunFocusingSteps {
-                control: surgeist_html::HtmlDialogFocusControl::Subject,
+                control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
             }
         } else {
             HtmlDialogFocusingAction::ReadAllowFocus

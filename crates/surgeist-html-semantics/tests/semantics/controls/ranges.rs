@@ -1,5 +1,11 @@
 use crate::semantics::support::context;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,

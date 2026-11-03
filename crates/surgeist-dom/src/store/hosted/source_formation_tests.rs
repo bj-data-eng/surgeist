@@ -5,6 +5,7 @@ use super::*;
 use crate::DomSourceLimits;
 use crate::document::{HostedDocumentInputData, HostedDocumentInputs};
 use source::formation::Formation;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlBaseUrlRecord;
 
 fn cancel() -> AtomicBool {
@@ -110,7 +111,7 @@ impl Fixture {
                 parent: &self.parent,
                 creator_base: parent_inputs.0.facts.document_url().unwrap(),
                 top_policy: &parent_inputs.0.opener,
-                sandbox: surgeist_html::HtmlSandboxFlags::empty(),
+                sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty(),
             },
             Some(formation),
             c,

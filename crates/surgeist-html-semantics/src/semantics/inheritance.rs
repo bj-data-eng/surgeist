@@ -4,10 +4,12 @@
 //! distinct where the selected algorithms require them.
 
 use super::*;
-use crate::{
-    HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlContentEditable, HtmlContentEditableState,
-    HtmlSpellcheck, HtmlSpellcheckState, HtmlTranslate, HtmlTranslateState,
+use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::attributes::{
+    HtmlContentEditable, HtmlContentEditableState, HtmlSpellcheck, HtmlSpellcheckState,
+    HtmlTranslate, HtmlTranslateState,
 };
+use surgeist_html::{attributes::HtmlBooleanAttribute, values::DocumentString};
 
 #[derive(Clone, Debug)]
 pub struct HtmlGlobalInheritanceProducerId(Arc<()>);
@@ -683,8 +685,11 @@ impl<'a> HtmlSemanticSession<'a> {
                         .admit_attribute_raw(Some(raw.value()))
                         .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
                     self.numeric_budget(raw.value().len())?;
-                    let offset = crate::bounded::parse_nonnegative_integer_capped(raw.value(), 9)
-                        .unwrap_or(0);
+                    let offset = surgeist_html::bounded::numeric::parse_nonnegative_integer_capped(
+                        raw.value(),
+                        9,
+                    )
+                    .unwrap_or(0);
                     self.poll()?;
                     level = (usize::from(level) + offset).min(9) as u8;
                     if level == 9 {

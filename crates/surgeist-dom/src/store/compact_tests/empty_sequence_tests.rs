@@ -1,6 +1,7 @@
 use super::*;
 use crate::store::empty_sequence_observation::{Kind, Observation};
 use crate::{DomProcessingInstruction, DomStyleInlineCspObservation};
+use surgeist_html::values::DocumentString;
 
 fn string_extent(value: &DocumentString) -> (usize, usize) {
     let capacity = value.shared_code_units().capacity();

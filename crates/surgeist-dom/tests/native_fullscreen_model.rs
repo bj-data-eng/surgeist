@@ -477,7 +477,7 @@ fn inactive_removal_keeps_the_last_flag_after_exit_rejection_but_removes_lingeri
                 .metadata()
                 .document_environment()
                 .browsing_context(),
-            surgeist_html::HtmlBrowsingContextPresence::Absent
+            surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
         );
         if source {
             complete(&mut dom, DomSourceEdit::detach(host));

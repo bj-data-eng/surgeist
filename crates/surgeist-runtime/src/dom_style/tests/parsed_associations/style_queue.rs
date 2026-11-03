@@ -4,7 +4,7 @@ use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_dom::*;
-use surgeist_html::HtmlStyleTrigger;
+use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };

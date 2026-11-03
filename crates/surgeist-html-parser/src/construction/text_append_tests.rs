@@ -1,6 +1,11 @@
 use super::tests::{control, limits, native_text, owned_text, storage_zero};
 use super::*;
 use crate::HtmlParseCancellation;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode,
+    construction::{HtmlElement, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn aggregate(c: &mut ParseControl) -> (ParserArenaSession, ParserNode, ParserNode) {
     let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
@@ -555,7 +560,7 @@ fn text_append_preserving_copy_has_exact_managed_boundary_and_retains_failed_buf
 // operation; only the requested size is made impossible.
 #[test]
 fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatch() {
-    use crate::bounded::HtmlConstructionTextAppend as Append;
+    use surgeist_html::bounded::construction::HtmlConstructionTextAppend as Append;
     let mut c = control();
     let (mut session, _root, node) = aggregate(&mut c);
     let storage = session.active_mut().unwrap();
@@ -762,8 +767,9 @@ fn a_failed_backing_initialization_keeps_the_stop_and_releases_the_prepared_tick
 /// The dimensions an append operation observes on the real text of a node, as
 /// the controller receives them. Only the observation is kept: the session that
 /// produced it is released here, so the value carries no custody.
-pub(crate) fn observed_capacity() -> crate::bounded::HtmlConstructionTextAppendCapacity {
-    use crate::bounded::HtmlConstructionTextAppend as Append;
+pub(crate) fn observed_capacity()
+-> surgeist_html::bounded::construction::HtmlConstructionTextAppendCapacity {
+    use surgeist_html::bounded::construction::HtmlConstructionTextAppend as Append;
     let mut c = control();
     let (mut session, _root, node) = aggregate(&mut c);
     let storage = session.active_mut().unwrap();

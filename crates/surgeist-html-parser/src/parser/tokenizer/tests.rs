@@ -1,6 +1,7 @@
 use super::*;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use states::{HtmlTokenizerRawState, HtmlTokenizerState};
+use surgeist_html::values::{Attribute, DocumentString};
 
 /// Install the existing decoded-read hook on the actual driver-owned cursor.
 pub(crate) fn cancel_after_consumed(

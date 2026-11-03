@@ -299,9 +299,9 @@ fn shallow_host_clone_copies_clonable_shadow_scripts_true_and_false_before_conne
     let mut b = DomBatch::new();
     let connected = b.create_element_ns(d, Namespace::html(), "span");
     let detached = b.create_element_ns(d, Namespace::html(), "span");
-    let properties = surgeist_html::HtmlShadowRootProperties::new(
+    let properties = surgeist_html::construction::HtmlShadowRootProperties::new(
         HtmlShadowRootMode::Closed,
-        surgeist_html::HtmlSlotAssignment::Named,
+        surgeist_html::construction::HtmlSlotAssignment::Named,
         false,
         true,
         false,
@@ -394,9 +394,9 @@ fn insert_then_detach_leaves_processed_state_and_later_edits_do_not_restart() {
 fn native_installation_processes_svg_and_clone_history_survives_disconnected_template_contents() {
     let mut dom = dom();
     let (d, root) = setup(&mut dom);
-    let mut b = surgeist_html::HtmlFragment::builder(surgeist_html::HtmlConstructionLimits::new(
-        16, 16, 16, 1024, 16,
-    ))
+    let mut b = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
+    )
     .unwrap();
     let n = b
         .append_element(
@@ -477,7 +477,7 @@ fn svg_and_html_scripts_preserve_real_slot_intentions_and_distinct_processing_st
     assert_eq!(actual.preparation_document(), Some(d));
     assert_eq!(
         actual.script_type(),
-        Some(surgeist_html::HtmlScriptKind::Classic)
+        Some(surgeist_html::elements::script::HtmlScriptKind::Classic)
     );
     assert!(s.node(html).unwrap().as_svg_script().is_none());
     assert_eq!(s.slot(slot).unwrap().assigned_nodes(), &[svg, html]);

@@ -10,7 +10,19 @@ use surgeist_fuzz::{
     registry::FuzzManifest,
     *,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlHidden,
+    construction::{
+        ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlBuilderNode,
+        HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource,
+        HtmlConstructionUsage, HtmlDoctype, HtmlDocument, HtmlDocumentBuilder, HtmlDocumentMode,
+        HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNode, HtmlNodeId, HtmlNodeKind,
+        HtmlProcessingInstructionError, HtmlShadowRootMode, HtmlShadowRootProperties,
+        HtmlSlotAssignment,
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::KnownHtmlElement,
+};
 
 pub(super) const CAPS: [usize; 5] = [64, 128, 128, 8192, 8];
 pub(super) const MAX_BYTES: usize = 65536;

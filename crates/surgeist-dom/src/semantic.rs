@@ -14,7 +14,9 @@ use std::{
 };
 
 use surgeist_html::{
-    HtmlDoctype, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlValueInterpreter,
+    construction::HtmlDoctype,
+    security::nonce::{HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment},
+    values::HtmlValueInterpreter,
 };
 #[cfg(test)]
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -957,9 +959,11 @@ impl DomSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DocumentString, Dom, DomBatch, DomLimits, DomNameLimits, Namespace};
+    use crate::{Dom, DomBatch, DomLimits, DomNameLimits};
     use std::{mem::size_of, sync::Arc};
-    use surgeist_html::{Attribute, QualifiedName};
+    use surgeist_html::values::{Attribute, QualifiedName};
+    use surgeist_html::values::{DocumentString, Namespace};
+
     use surgeist_html_semantics::{HtmlCaptureResource, HtmlCapturedNodeKind};
 
     fn fixture() -> (Dom, DomSnapshot, DocumentId, NodeId) {
@@ -1138,7 +1142,7 @@ mod tests {
                 HtmlCaptureBuilder::new(limits(1_000_000), HtmlHostFactsRevision::fresh());
             let document = builder
                 .add_document(
-                    crate::HtmlDocumentMode::NoQuirks,
+                    surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                     HtmlScriptingStatus::Disabled,
                     HtmlCaptureRegistryInput::Null,
                 )

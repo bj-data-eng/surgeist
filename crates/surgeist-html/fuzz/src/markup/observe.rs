@@ -6,8 +6,11 @@ use crate::observe::{
     Expect, Props, Spec, context_for, verify_failure, verify_immutable, verify_report,
 };
 use surgeist_fuzz::*;
-use surgeist_html::bounded::HtmlConstructionResult;
-use surgeist_html::*;
+use surgeist_html::bounded::construction::HtmlConstructionResult;
+use surgeist_html::{
+    parsing::HtmlParserScriptingMode,
+    values::{DocumentString, Namespace},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseCancellation, HtmlParseFailure,
     HtmlParseReport, HtmlSource,

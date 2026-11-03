@@ -36,7 +36,11 @@ fn options_case(unrelated: usize, has_option: bool) {
     let mut dom = Dom::new(policy()).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+    let select = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "select",
+    );
     // Multiple makes selectedcontent refresh an immediate semantic no-op, so
     // its separate target-discovery path cannot account for these observations.
     setup.set_attribute(&select, "multiple", "");
@@ -45,7 +49,11 @@ fn options_case(unrelated: usize, has_option: bool) {
         setup.insert_before(&node, &select, None);
     }
     let option = has_option.then(|| {
-        let option = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let option = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.set_attribute(&option, "selected", "");
         setup.set_attribute(&option, "value", "literal");
         setup.insert_before(&option, &select, None);
@@ -108,22 +116,37 @@ fn targets_case(unrelated: usize, target_count: usize) {
     let mut dom = Dom::new(policy()).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-    let chosen = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+    let select = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "select",
+    );
+    let chosen = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "option",
+    );
     setup.set_attribute(&chosen, "selected", "");
     setup.set_attribute(&chosen, "value", "chosen");
     let text = setup.create_text(&document, "chosen");
     setup.insert_before(&text, &chosen, None);
     setup.insert_before(&chosen, &select, None);
-    let blocker = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+    let blocker = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "option",
+    );
     setup.set_attribute(&blocker, "value", "unselected");
     setup.insert_before(&blocker, &select, None);
     let mut disabled = Vec::new();
     for _ in 0..unrelated {
         let comment = setup.create_comment(&document, "unrelated target candidate");
         setup.insert_before(&comment, &select, None);
-        let target =
-            setup.create_element_ns(&document, crate::Namespace::html(), "selectedcontent");
+        let target = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "selectedcontent",
+        );
         // HTML's actual Option ancestor disables this target. It is outside
         // the chosen Option, so it does not enlarge the cloned payload.
         setup.insert_before(&target, &blocker, None);
@@ -131,8 +154,11 @@ fn targets_case(unrelated: usize, target_count: usize) {
     }
     let mut targets = Vec::new();
     for _ in 0..target_count {
-        let target =
-            setup.create_element_ns(&document, crate::Namespace::html(), "selectedcontent");
+        let target = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "selectedcontent",
+        );
         setup.insert_before(&target, &select, None);
         targets.push(target);
     }
@@ -214,9 +240,17 @@ fn option_capture_child_identity_mapping_does_not_rescan_prior_rows() {
         let mut dom = Dom::new(policy()).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
         setup.set_attribute(&select, "multiple", "");
-        let option = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let option = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         let first = setup.create_text(&document, " \ta\n");
         setup.insert_before(&first, &option, None);
         for _ in 0..comments {

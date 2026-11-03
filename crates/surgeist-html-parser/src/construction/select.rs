@@ -3,11 +3,14 @@
 
 use super::effects::{EffectFrame, FragmentStage, IntrinsicTask, TargetStage, WorkListKind};
 use super::*;
-use crate::{HtmlOptionFlags, HtmlSelectFlags};
-use surgeist_html::bounded::{
+use surgeist_html::bounded::select::{
     HtmlSelectAction, HtmlSelectCursor, HtmlSelectFirstSelectedAction,
     HtmlSelectFirstSelectedCursor, HtmlSelectFirstSelection, HtmlSelectOperation, HtmlSelectReply,
 };
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::elements::form::{HtmlOptionFlags, HtmlSelectFlags};
+use surgeist_html::{construction::HtmlNodeKind, vocabulary::KnownHtmlElement};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
@@ -121,11 +124,11 @@ impl SessionStorage {
                 else {
                     return Err(SessionError::SelectMetadataUnavailable);
                 };
-                if surgeist_html::bounded::selectedcontent_update(
+                if surgeist_html::bounded::select::selectedcontent_update(
                     false,
                     state.disabled,
                     HtmlSelectFirstSelection::Unavailable,
-                ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+                ) == surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip
                 {
                     return Ok(());
                 }
@@ -348,13 +351,13 @@ impl SessionStorage {
                         .map_err(|_| SessionError::WrongToken)?;
                 }
                 HtmlSelectFirstSelectedAction::Complete(selection) => {
-                    match surgeist_html::bounded::selectedcontent_update(false, false, selection) {
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
+                    match surgeist_html::bounded::select::selectedcontent_update(false, false, selection) {
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
                             break Some(self.work_list_node(c, list, ordinal)?.ok_or(SessionError::WrongToken)?);
                         }
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Clear => break None,
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Unavailable => return Err(SessionError::SelectMetadataUnavailable),
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip => return Err(SessionError::WrongToken),
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Clear => break None,
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Unavailable => return Err(SessionError::SelectMetadataUnavailable),
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip => return Err(SessionError::WrongToken),
                     }
                 }
             }
@@ -367,11 +370,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         select: usize,
     ) -> Result<(), SessionError> {
-        if surgeist_html::bounded::selectedcontent_update(
+        if surgeist_html::bounded::select::selectedcontent_update(
             self.form_attribute(c, select, "multiple")?.is_some(),
             false,
             HtmlSelectFirstSelection::Unavailable,
-        ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+        ) == surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip
         {
             return Ok(());
         }
@@ -473,8 +476,8 @@ impl SessionStorage {
         };
         state.disabled = false;
         self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
-        payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
-        let mut decisions = surgeist_html::bounded::HtmlSelectedcontentAncestors::default();
+        payload_write::<surgeist_html::bounded::select::HtmlSelectedcontentAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::select::HtmlSelectedcontentAncestors::default();
         let mut nearest = None;
         let mut next = self.ordinary_parent(c, node, None)?;
         for _ in 0..self.construction.storage(c)?.len() {
@@ -490,20 +493,20 @@ impl SessionStorage {
             } else {
                 None
             };
-            payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
+            payload_write::<surgeist_html::bounded::select::HtmlSelectedcontentAncestors>(c, 1)?;
             match decisions.observe(kind) {
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::RememberNearestSelect => {
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::RememberNearestSelect => {
                     payload_write::<Option<usize>>(c, 1)?;
                     nearest = Some(ancestor);
                     next = self.ordinary_parent(c, ancestor, None)?;
                     continue;
                 }
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::StopDisabled => {
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::StopDisabled => {
                     state.disabled = decisions.disabled();
                     self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
                     return Ok(nearest);
                 }
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::Continue => {}
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::Continue => {}
             }
             next = self.ordinary_parent(c, ancestor, None)?;
         }
@@ -638,13 +641,15 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
-        let mut decisions = surgeist_html::bounded::HtmlOptionSelectAncestors::default();
+        payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::select::HtmlOptionSelectAncestors::default();
         for _ in 0..self.construction.storage(c)?.len() {
             let Some(node) = next else {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 return match decisions.finish_complete() {
-                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => Ok(None),
+                    surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect => {
+                        Ok(None)
+                    }
                     _ => Err(SessionError::WrongToken),
                 };
             };
@@ -654,9 +659,11 @@ impl SessionStorage {
                 KnownHtmlElement::Option,
             ] {
                 if self.html_local(c, node, barrier.local_name())? {
-                    payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                    payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(
+                        c, 1,
+                    )?;
                     return match decisions.observe(Some(barrier)) {
-                        surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => {
+                        surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect => {
                             Ok(None)
                         }
                         _ => Err(SessionError::WrongToken),
@@ -664,17 +671,17 @@ impl SessionStorage {
                 }
             }
             if self.html_local(c, node, "optgroup")? {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 if decisions.observe(Some(KnownHtmlElement::Optgroup))
-                    == surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect
+                    == surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect
                 {
                     return Ok(None);
                 }
             }
             if self.html_local(c, node, "select")? {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 return match decisions.observe(Some(KnownHtmlElement::Select)) {
-                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NearestSelect => {
+                    surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NearestSelect => {
                         Ok(Some(node))
                     }
                     _ => Err(SessionError::WrongToken),
@@ -704,12 +711,12 @@ impl SessionStorage {
                 KnownHtmlElement::Optgroup,
             ] {
                 if self.html_local(c, node, kind.local_name())? {
-                    match surgeist_html::bounded::option_disabled_ancestor(Some(kind)) {
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled => return Ok(false),
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                    match surgeist_html::bounded::select::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Enabled => return Ok(false),
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
                             return Ok(self.form_attribute(c, node, "disabled")?.is_some());
                         }
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue => {}
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Continue => {}
                     }
                 }
             }
@@ -723,18 +730,18 @@ impl SessionStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         let multiple = self.form_attribute(c, node, "multiple")?.is_some();
-        let fallback = usize::from(surgeist_html::bounded::select_display_size_default(
+        let fallback = usize::from(surgeist_html::bounded::select::select_display_size_default(
             multiple,
         ));
         let Some(value) = self.form_attribute(c, node, "size")? else {
             return Ok(fallback);
         };
-        payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
+        payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
         payload_write::<usize>(c, 1)?;
-        let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
+        let mut scanner = surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner::new(true);
         for &unit in value.code_units() {
             c.charge_unit_inspection()?;
-            payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
+            payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
             if !scanner.feed(unit) {
                 break;
             }
@@ -1010,14 +1017,14 @@ impl SessionStorage {
                 KnownHtmlElement::Optgroup,
             ] {
                 if self.uncharged_html_local(ancestor, kind.local_name()) {
-                    match surgeist_html::bounded::option_disabled_ancestor(Some(kind)) {
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled => {
+                    match surgeist_html::bounded::select::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Enabled => {
                             return false;
                         }
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
                             return self.uncharged_attribute(ancestor, "disabled");
                         }
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue => {}
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Continue => {}
                     }
                 }
             }

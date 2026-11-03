@@ -988,7 +988,8 @@ mod tests {
         .unwrap();
         let mut setup = crate::DomBatch::new();
         let document = setup.create_document();
-        let element = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let element =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.set_attribute(&element, "data-a", "first");
         setup.set_attribute(&element, "data-b", "second");
         let observed = attribute_child_observation::Observation::begin();

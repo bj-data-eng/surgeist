@@ -18,6 +18,7 @@
 //! only scalar values.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
 /// Why one bundled case is not asserted to match: the pinned HTML edition
 /// defines different output. The case must still diverge from the corpus, and

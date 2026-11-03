@@ -1,7 +1,8 @@
 //! DOM3071 #slot-assigned-nodes starts empty, including outside a shadow tree.
 //! HTML877d dir=auto uses ordinary contained text for a non-shadow Slot.
 use surgeist_html::{
-    Attribute, HtmlDocumentMode, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+    construction::HtmlDocumentMode,
+    values::{Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,

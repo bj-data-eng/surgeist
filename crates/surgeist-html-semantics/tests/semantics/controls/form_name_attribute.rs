@@ -1,4 +1,12 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport, form_name::HtmlFormName,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 use surgeist_html_semantics::HtmlSemanticQuery;
 
 fn raw(value: impl Into<DocumentString>) -> Attribute {

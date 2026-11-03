@@ -2,6 +2,7 @@
 //! Captured owner reuse preserves the existing canonical qualification.
 use super::*;
 use DomFocusedAreaDesignation::KnownNull;
+use surgeist_html::values::Namespace;
 use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
@@ -168,7 +169,7 @@ fn focused_designation_contextual_auxiliary_is_qualified_and_captured_owners_are
                 HtmlSource::utf8("<style type=text/plain></style><template><b>x</b></template>"),
                 context,
                 parse_limits(),
-                surgeist_html::HtmlParserScriptingMode::Inert,
+                surgeist_html::parsing::HtmlParserScriptingMode::Inert,
                 false,
             )
             .unwrap()

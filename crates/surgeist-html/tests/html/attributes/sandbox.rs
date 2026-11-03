@@ -1,11 +1,19 @@
 use std::collections::HashSet;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeObservation,
-    HtmlSandboxAuthorDiagnostics, HtmlSandboxAuthorState, HtmlSandboxDirectiveState,
-    HtmlSandboxFlag as F, HtmlSandboxFlags, HtmlSandboxKeyword as K, HtmlSandboxRedundancy as R,
-    HtmlSandboxReport, HtmlSandboxValue, HtmlSandboxValueError, HtmlSpaceToken,
-    HtmlTokenComparison, HtmlValueInterpreter, HtmlValueRecoveryState, KnownHtmlAttribute as A,
-    KnownHtmlElement as E, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        sandbox::{
+            HtmlSandboxAuthorDiagnostics, HtmlSandboxAuthorState, HtmlSandboxDirectiveState,
+            HtmlSandboxFlag as F, HtmlSandboxFlags, HtmlSandboxKeyword as K,
+            HtmlSandboxRedundancy as R, HtmlSandboxReport, HtmlSandboxValue, HtmlSandboxValueError,
+        },
+    },
+    microsyntax::tokens::{HtmlSpaceToken, HtmlTokenComparison},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, HtmlValueRecoveryState, Namespace,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 // Independent named expectations from HTML #parse-a-sandboxing-directive,
@@ -73,7 +81,7 @@ fn missing_is_absent_while_empty_and_whitespace_parse_to_all_restrictions() {
     let missing = interpreter
         .iframe_sandbox(
             &E::Iframe.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(
@@ -451,7 +459,7 @@ fn raw_unit_admission_precedes_wrong_names_and_zero_admits_missing_or_empty() {
     assert_eq!(
         zero.iframe_sandbox(
             &E::Iframe.qualified_name(),
-            None::<&surgeist_html::Attribute>
+            None::<&surgeist_html::values::Attribute>
         )
         .unwrap()
         .intrinsic(),

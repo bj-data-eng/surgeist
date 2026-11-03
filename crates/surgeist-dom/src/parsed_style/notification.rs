@@ -1,6 +1,7 @@
 //! Original notification authority and its canonical synchronous dispatch gate.
 use super::*;
 use crate::{DomStyleAssociationId, DomStyleNotificationToken, NodeId};
+
 use surgeist_html_parser::{HtmlParseAssociationMissingKind, HtmlParseAssociationOccurrenceKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

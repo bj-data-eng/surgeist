@@ -1,6 +1,8 @@
 //! Actual Frame/Iframe child-navigable hooks over the canonical staged owner.
 use super::*;
-use surgeist_html::{HtmlFramePostConnectionDecision, HtmlIframePostConnectionDecision};
+use surgeist_html::elements::frame::{
+    HtmlFramePostConnectionDecision, HtmlIframePostConnectionDecision,
+};
 
 impl Draft {
     /// Per-node family decision, after the shared native post-connection list
@@ -22,12 +24,12 @@ impl Draft {
         let context = document.document_environment().browsing_context();
         let returned = if element.iframe_initial_state().is_none() {
             matches!(
-                surgeist_html::frame_post_connection(context),
+                surgeist_html::elements::frame::frame_post_connection(context),
                 HtmlFramePostConnectionDecision::Return
             )
         } else {
             matches!(
-                surgeist_html::iframe_post_connection(context),
+                surgeist_html::elements::frame::iframe_post_connection(context),
                 HtmlIframePostConnectionDecision::Return
             )
         };
@@ -43,12 +45,13 @@ impl Draft {
             if self.element(key)?.iframe_initial_state().is_some() {
                 let sandbox = match self.control_attribute(
                     key,
-                    surgeist_html::KnownHtmlAttribute::Sandbox,
+                    surgeist_html::vocabulary::KnownHtmlAttribute::Sandbox,
                     cancel,
                 )? {
-                    Some(raw) => surgeist_html::HtmlSandboxFlags::parse_with(raw, || {
-                        self.source_step(cancel)
-                    })?,
+                    Some(raw) => surgeist_html::attributes::sandbox::HtmlSandboxFlags::parse_with(
+                        raw,
+                        || self.source_step(cancel),
+                    )?,
                     None => self
                         .element(key)?
                         .iframe_sandbox_flags()
@@ -76,7 +79,7 @@ impl Draft {
             return Ok(());
         };
         let destroy = element.child_navigable_presence().is_some_and(
-            surgeist_html::HtmlChildNavigablePresence::removal_requires_child_destruction,
+            surgeist_html::elements::frame::HtmlChildNavigablePresence::removal_requires_child_destruction,
         );
         if destroy {
             let navigable = self
@@ -134,7 +137,7 @@ mod tests {
         let document = batch.create_document();
         let frame = batch.create_element_ns(
             &document,
-            crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+            surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
             local_name,
         );
         batch.insert_before(&frame, &document, None);
@@ -146,7 +149,7 @@ mod tests {
         let mut batch = DomBatch::new();
         let temporary = batch.create_element_ns(
             document,
-            crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+            surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
             local_name,
         );
         batch.insert_before(&temporary, frame, None);

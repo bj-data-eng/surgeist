@@ -1,7 +1,7 @@
 //! Actual original creation then explicit no-engine disposition, never a bool.
 use super::*;
 use surgeist_cssom::{CssomRevision, CssomSheetId};
-use surgeist_html::HtmlStyleExecutionProfile;
+use surgeist_html::elements::style::HtmlStyleExecutionProfile;
 
 struct Created {
     dom: Dom,

@@ -1,8 +1,11 @@
 //! Document-owned native Meta processing history and explicit service boundaries.
 
-use crate::DocumentString;
 use std::sync::Arc;
-use surgeist_html::{HtmlCspArtifactLayout, HtmlCspAssociation, HtmlReferrerPolicy};
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    attributes::HtmlReferrerPolicy,
+    security::csp::{HtmlCspArtifactLayout, HtmlCspAssociation},
+};
 
 /// Last completed theme selection at this publication, independently qualified
 /// from Meta processing history. Current-tree interpretation requires a complete
@@ -145,7 +148,9 @@ pub struct DomDocumentPolicyContainer {
 impl DomDocumentPolicyContainer {
     pub(crate) const fn native() -> Self {
         Self {
-            referrer: Some(surgeist_html::default_document_referrer_policy()),
+            referrer: Some(
+                surgeist_html::attributes::meta_processing::default_document_referrer_policy(),
+            ),
             csp: CspState::ConstructorInitialEmpty,
         }
     }

@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 #[test]
 fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_empty_attrs() {

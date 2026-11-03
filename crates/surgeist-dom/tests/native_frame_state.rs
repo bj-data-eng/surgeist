@@ -5,7 +5,9 @@ use surgeist_dom::{
     DomResource, DomSnapshot, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
     Namespace, NodeId,
 };
-use surgeist_html::{HtmlBrowsingContextPresence, HtmlChildNavigablePresence};
+use surgeist_html::{
+    elements::frame::HtmlChildNavigablePresence, security::nonce::HtmlBrowsingContextPresence,
+};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 
@@ -36,19 +38,22 @@ fn content(snapshot: &DomSnapshot, node: NodeId) -> HtmlChildNavigablePresence {
         .unwrap()
         .child_navigable_presence()
         .unwrap();
-    assert_eq!(value, surgeist_html::HtmlChildNavigablePresence::Null);
     assert_eq!(
-        value.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        value,
+        surgeist_html::elements::frame::HtmlChildNavigablePresence::Null
     );
     assert_eq!(
         value.content_access(),
-        surgeist_html::HtmlChildNavigableAccessDecision::ReturnNull
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
     );
-    assert!(surgeist_html::frame_potentially_delays_load());
+    assert_eq!(
+        value.content_access(),
+        surgeist_html::elements::frame::HtmlChildNavigableAccessDecision::ReturnNull
+    );
+    assert!(surgeist_html::elements::frame::frame_potentially_delays_load());
     assert_eq!(
         value.load_delay(),
-        surgeist_html::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
+        surgeist_html::elements::frame::HtmlChildNavigableLoadDelayDecision::DoesNotDelay
     );
     value
 }

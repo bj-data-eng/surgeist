@@ -3,6 +3,7 @@ use super::*;
 use surgeist_cssom::{
     CssomAdmissionRequest, CssomOperationOutcome, CssomOwnerEffectStatus, CssomOwnerNotification,
 };
+use surgeist_html::values::DocumentString;
 
 #[derive(Clone)]
 pub(in crate::store) struct Echo {
@@ -701,7 +702,8 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let element = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+        let element =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         let commit = dom.apply(batch, &cancel).unwrap();
         let document = commit.document(&document).unwrap();
         let element = commit.created(&element).unwrap().unwrap();
@@ -840,7 +842,7 @@ mod tests {
                 source::operation::fullscreen::native_fixture(limits(100_000));
             let parser = surgeist_css::CssParserContext::new(
                 if dom.snapshot().document(document).unwrap().metadata().mode()
-                    == crate::HtmlDocumentMode::Quirks
+                    == surgeist_html::construction::HtmlDocumentMode::Quirks
                 {
                     CssParserMode::Quirks
                 } else {
@@ -848,8 +850,10 @@ mod tests {
                 },
             );
             let mut batch = DomBatch::new();
-            let a = batch.create_element_ns(document, crate::Namespace::html(), "div");
-            let b = batch.create_element_ns(document, crate::Namespace::html(), "span");
+            let a =
+                batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
+            let b =
+                batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "span");
             batch.insert_before(&b, subject, None);
             let created = dom.apply(batch, &cancel).unwrap();
             let a = created.created(&a).unwrap().unwrap();

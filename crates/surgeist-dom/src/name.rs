@@ -1,10 +1,11 @@
 //! Canonical names retain exact text and owner-qualified immutable identity.
 use crate::store::{MaterializationId, MaterializationUsage, source::storage::Payload};
-use crate::{DocumentString, DomError, DomOwnerId};
+use crate::{DomError, DomOwnerId};
 use std::{
     hash::{Hash, Hasher},
     sync::Arc,
 };
+use surgeist_html::values::DocumentString;
 mod attributes;
 pub(crate) use attributes::{AttributeStorage, AttributeValues};
 
@@ -208,7 +209,7 @@ impl Hash for DomQualifiedName {
         self.local_name().hash(state);
     }
 }
-impl surgeist_html::HtmlNameInput for DomQualifiedName {
+impl surgeist_html::values::HtmlNameInput for DomQualifiedName {
     fn namespace_uri(&self) -> Option<&DocumentString> {
         self.namespace_uri()
     }
@@ -256,7 +257,7 @@ impl DomAttribute {
         Ok(payload)
     }
 }
-impl surgeist_html::HtmlAttributeInput for DomAttribute {
+impl surgeist_html::values::HtmlAttributeInput for DomAttribute {
     type Name = DomQualifiedName;
     fn name(&self) -> &Self::Name {
         self.name()

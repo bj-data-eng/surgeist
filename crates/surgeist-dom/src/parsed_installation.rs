@@ -7,10 +7,11 @@
 use std::sync::Arc;
 
 use crate::{
-    DocumentId, DocumentString, DomChanges, DomDocumentStamp, DomError, DomNativeInputPlatform,
-    DomOpaqueOrigin, DomSnapshot, DomStamp, NodeId,
+    DocumentId, DomChanges, DomDocumentStamp, DomError, DomNativeInputPlatform, DomOpaqueOrigin,
+    DomSnapshot, DomStamp, NodeId,
 };
-use surgeist_html::HtmlNodeId;
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlParseReport, HtmlSourceId};
 use surgeist_html_semantics::{HtmlBaseEncoding, HtmlBaseUrlRecord};
 
@@ -148,7 +149,7 @@ pub enum DomParsedHtmlInstallError {
     UnresolvedReport(surgeist_html_parser::HtmlParseUnresolvedReference),
     ForeignContext,
     CurrentPolicyUnavailable,
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspIssuerBusy,
     CapturedStateUnavailable,
     EnvironmentMismatch,
@@ -160,7 +161,7 @@ pub enum DomParsedHtmlInstallError {
     },
     FamilyStateUnavailable {
         subject: HtmlNodeId,
-        class: surgeist_html::HtmlElementClass,
+        class: surgeist_html::elements::native::HtmlElementClass,
     },
     BaseStateUnavailable {
         subject: HtmlNodeId,
@@ -185,11 +186,11 @@ pub enum DomParsedHtmlInstallError {
     /// remain available from the qualified immutable report metadata.
     DialogStateUnavailable {
         subject: HtmlNodeId,
-        action: surgeist_html::HtmlDialogAction,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
     },
     SourceLookup {
         subject: HtmlNodeId,
-        error: surgeist_html::ForeignHtmlResult,
+        error: surgeist_html::construction::ForeignHtmlResult,
     },
     ResourceLimit {
         resource: DomParsedHtmlInstallResource,

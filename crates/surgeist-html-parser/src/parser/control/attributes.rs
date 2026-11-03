@@ -1,6 +1,7 @@
 //! Original parser policy and tickets for HTML-owned exclusive attribute edits.
 use super::*;
-use crate::bounded::{
+
+use surgeist_html::bounded::construction::{
     HtmlConstructionAttributeCapacity as Capacity, HtmlConstructionAttributeWork as Work,
 };
 impl ParseControl {
@@ -48,22 +49,22 @@ impl ParseControl {
     }
     pub(crate) fn prepare_controlled_attribute_edit(
         &mut self,
-        values: &Arc<Vec<crate::Attribute>>,
-        shared: &SharedAllocation<Vec<crate::Attribute>>,
-        vector: &VectorCapacity<crate::Attribute>,
+        values: &Arc<Vec<surgeist_html::values::Attribute>>,
+        shared: &SharedAllocation<Vec<surgeist_html::values::Attribute>>,
+        vector: &VectorCapacity<surgeist_html::values::Attribute>,
     ) -> Result<(), HtmlParseStop> {
         self.prepare_attribute_edit(values, shared, vector)
     }
     pub(crate) fn suspend_attribute_weak(
         &mut self,
-        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        shared: &mut SharedAllocation<Vec<surgeist_html::values::Attribute>>,
     ) {
         drop(std::mem::replace(&mut shared.shared, Weak::new()));
     }
     pub(crate) fn restore_attribute_weak(
         &mut self,
-        values: &Arc<Vec<crate::Attribute>>,
-        shared: &mut SharedAllocation<Vec<crate::Attribute>>,
+        values: &Arc<Vec<surgeist_html::values::Attribute>>,
+        shared: &mut SharedAllocation<Vec<surgeist_html::values::Attribute>>,
     ) {
         if shared.shared.as_ptr() != Arc::as_ptr(values) {
             shared.shared = Arc::downgrade(values);
@@ -71,8 +72,8 @@ impl ParseControl {
     }
     pub(crate) fn require_incoming_attribute_vector(
         &mut self,
-        values: &Vec<crate::Attribute>,
-        allocation: &VectorCapacity<crate::Attribute>,
+        values: &Vec<surgeist_html::values::Attribute>,
+        allocation: &VectorCapacity<surgeist_html::values::Attribute>,
     ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
             (HtmlParseWorkCategory::ProviderCall, 1),
@@ -94,7 +95,7 @@ impl ParseControl {
         &mut self,
         before: Capacity,
         minimum: usize,
-        vector: &VectorCapacity<crate::Attribute>,
+        vector: &VectorCapacity<surgeist_html::values::Attribute>,
     ) -> Result<usize, HtmlParseStop> {
         self.checkpoint()?;
         self.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -109,12 +110,15 @@ impl ParseControl {
             ));
         }
         let Some(new) = minimum
-            .checked_mul(size_of::<crate::Attribute>())
+            .checked_mul(size_of::<surgeist_html::values::Attribute>())
             .filter(|v| *v <= isize::MAX as usize)
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let Some(old) = before.capacity.checked_mul(size_of::<crate::Attribute>()) else {
+        let Some(old) = before
+            .capacity
+            .checked_mul(size_of::<surgeist_html::values::Attribute>())
+        else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         let Some(overlap_bytes) = old.checked_add(new) else {
@@ -131,12 +135,16 @@ impl ParseControl {
     pub(crate) fn record_controlled_attribute_capacity(
         &mut self,
         after: Capacity,
-        vector: &mut VectorCapacity<crate::Attribute>,
+        vector: &mut VectorCapacity<surgeist_html::values::Attribute>,
         expected: usize,
     ) -> Result<(), HtmlParseStop> {
         let (Some(old), Some(actual)) = (
-            vector.capacity.checked_mul(size_of::<crate::Attribute>()),
-            after.capacity.checked_mul(size_of::<crate::Attribute>()),
+            vector
+                .capacity
+                .checked_mul(size_of::<surgeist_html::values::Attribute>()),
+            after
+                .capacity
+                .checked_mul(size_of::<surgeist_html::values::Attribute>()),
         ) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };

@@ -3,19 +3,23 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
-use crate::bounded::validate_custom_element_name;
-use crate::{
-    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlCustomElementState,
-    HtmlDoctype, HtmlDocumentMode, HtmlFragmentInsertionMode, HtmlFragmentTokenizerState,
-    HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlParserScriptingMode,
-    HtmlShadowRootProperties, Namespace, OrderedAttributes, QualifiedName,
-};
 use std::{
     collections::HashSet,
     error::Error,
     fmt,
     hash::{Hash, Hasher},
     sync::Arc,
+};
+use surgeist_html::bounded::lexical::validate_custom_element_name;
+use surgeist_html::{
+    construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootProperties},
+    elements::native::HtmlCustomElementState,
+    parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
+        HtmlNonceDocumentEnvironment,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 mod construction;
@@ -619,7 +623,7 @@ pub struct HtmlCapturedElement {
     shadow: Association,
     custom_context: Option<CustomElementContext>,
     nonce: HtmlCapturedNonce,
-    link_history: Option<crate::HtmlLinkHistory>,
+    link_history: Option<surgeist_html::elements::link::HtmlLinkHistory>,
     hyperlink_url: Option<crate::HtmlCapturedHyperlinkUrl>,
 }
 impl HtmlCapturedElement {
@@ -629,7 +633,7 @@ impl HtmlCapturedElement {
     pub fn cryptographic_nonce(&self) -> &HtmlCapturedNonce {
         &self.nonce
     }
-    pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
+    pub fn link_history(&self) -> Option<surgeist_html::elements::link::HtmlLinkHistory> {
         self.link_history
     }
     pub fn custom_element_state(&self) -> HtmlCapturedCustomElementState {
@@ -914,7 +918,7 @@ impl HtmlCaptureBuilder {
     pub fn establish_link_history(
         &mut self,
         subject: &HtmlCaptureBuilderSubject,
-        history: crate::HtmlLinkHistory,
+        history: surgeist_html::elements::link::HtmlLinkHistory,
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(subject)?;
         let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
@@ -1266,7 +1270,7 @@ impl HtmlCaptureBuilder {
         let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
             unreachable!()
         };
-        if !crate::bounded::is_nonce_element(element.name()) {
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
             return Err(HtmlCaptureError::NonceInapplicable);
         }
         if !matches!(element.nonce, HtmlCapturedNonce::Unavailable) {
@@ -2305,14 +2309,18 @@ impl<'a> HtmlCapturedNode<'a> {
     }
     /// The established contents' owning or non-owning relationship kind.
     /// Non-template elements and unavailable contents return None.
-    pub fn template_contents_kind(self) -> Option<crate::HtmlTemplateContentsKind> {
+    pub fn template_contents_kind(
+        self,
+    ) -> Option<surgeist_html::construction::HtmlTemplateContentsKind> {
         let HtmlCapturedNodeKind::Element(element) = self.kind() else {
             return None;
         };
         match element.template {
-            TemplateAssociation::Owned(_) => Some(crate::HtmlTemplateContentsKind::Owned),
+            TemplateAssociation::Owned(_) => {
+                Some(surgeist_html::construction::HtmlTemplateContentsKind::Owned)
+            }
             TemplateAssociation::ShadowReference(_) => {
-                Some(crate::HtmlTemplateContentsKind::ShadowReference)
+                Some(surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference)
             }
             TemplateAssociation::Absent | TemplateAssociation::Unavailable => None,
         }
@@ -2867,11 +2875,11 @@ impl HtmlFragmentContext {
         html(&self.element_values().name, "template")
     }
     pub fn is_mathml_text_integration_point(&self) -> bool {
-        crate::is_mathml_text_integration_point(&self.element_values().name)
+        surgeist_html::parsing::is_mathml_text_integration_point(&self.element_values().name)
     }
     pub fn is_html_integration_point(&self) -> bool {
         let element = self.element_values();
-        crate::is_html_integration_point(&element.name, &element.attributes)
+        surgeist_html::parsing::is_html_integration_point(&element.name, &element.attributes)
     }
     /// Initial tokenizer choice derives from context identity and effective mode.
     pub fn initial_tokenizer_state(
@@ -2879,7 +2887,7 @@ impl HtmlFragmentContext {
         requested: HtmlParserScriptingMode,
     ) -> Result<HtmlFragmentTokenizerState, HtmlCaptureError> {
         let mode = self.resolve_scripting_mode(requested)?;
-        Ok(crate::fragment_tokenizer_state(
+        Ok(surgeist_html::parsing::fragment_tokenizer_state(
             &self.element_values().name,
             mode,
         ))
@@ -2887,7 +2895,7 @@ impl HtmlFragmentContext {
     /// Resets initial insertion mode with the single internal root replaced by context.
     /// Captured ancestor templates/tables are not put on the parser's open stack.
     pub fn initial_insertion_mode(&self) -> HtmlFragmentInsertionMode {
-        crate::fragment_insertion_mode(&self.element_values().name)
+        surgeist_html::parsing::fragment_insertion_mode(&self.element_values().name)
     }
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;
@@ -2990,6 +2998,7 @@ impl HtmlDefinitionLookupCursor<'_> {
 #[cfg(test)]
 mod definition_cursor_tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn capture(
         definitions: Vec<HtmlCustomElementDefinition>,

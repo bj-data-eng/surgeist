@@ -1,5 +1,9 @@
 //! Actual per-slot parser composition: final generic checks precede source retirement.
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode, construction::HtmlNodeKind,
+    values::Attribute,
+};
 impl SessionStorage {
     pub(super) fn replace_attribute_storage(
         &mut self,
@@ -83,7 +87,7 @@ impl SessionStorage {
     fn refuse_attribute_edit(
         &mut self,
         control: &mut ParseControl,
-        group: surgeist_html::bounded::HtmlConstructionAttributeEdit,
+        group: surgeist_html::bounded::construction::HtmlConstructionAttributeEdit,
     ) -> SessionError {
         let invariant = latch_registry_row(control);
         // The invariant above is the reported first stop; a refusal to take the

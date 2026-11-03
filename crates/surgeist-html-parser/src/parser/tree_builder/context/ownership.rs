@@ -4,6 +4,8 @@
 use super::*;
 use crate::parser::control::HtmlParseUsage;
 use crate::request::FragmentRequestParts;
+#[cfg(test)]
+use surgeist_html::parsing::HtmlParserScriptingMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum InitializationState {
@@ -931,7 +933,7 @@ impl SealedFragmentConstruction {
         self.request.allow_declarative_shadow_roots()
     }
     #[cfg(test)]
-    pub(crate) fn fragment(&self) -> Option<&crate::HtmlFragment> {
+    pub(crate) fn fragment(&self) -> Option<&surgeist_html::construction::HtmlFragment> {
         self.parts.arena.as_ref()?.fragment()
     }
     #[cfg(test)]
@@ -978,6 +980,7 @@ impl SealedFragmentConstruction {
 mod tests {
     use super::*;
     use crate::{HtmlParseLimits, HtmlParseResource, HtmlScriptingStatus, HtmlSource};
+    use surgeist_html::parsing::HtmlParserScriptingMode;
 
     fn request(source: &str) -> HtmlFragmentParseRequest {
         super::super::tests::request(source, "div", HtmlScriptingStatus::Disabled)
@@ -1090,12 +1093,13 @@ mod tests {
             assert_eq!(children.len(), 2);
             assert_ne!(children[0], children[1]);
             let template = fragment.node(&children[0]).unwrap();
-            let crate::HtmlNodeKind::Element(element) = template.kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Element(element) = template.kind()
+            else {
                 panic!("actual template")
             };
             assert_eq!(
                 element.name().local_name(),
-                &crate::DocumentString::from("template")
+                &surgeist_html::values::DocumentString::from("template")
             );
             assert_eq!(template.children().count(), 0);
             let contents_id = template.template_contents().unwrap();
@@ -1103,13 +1107,13 @@ mod tests {
             let text_id = contents.children().next().unwrap();
             assert!(matches!(
                 fragment.node(&text_id).unwrap().kind(),
-                crate::HtmlNodeKind::Text(text) if text == &crate::DocumentString::from("A")
+                surgeist_html::construction::HtmlNodeKind::Text(text) if text == &surgeist_html::values::DocumentString::from("A")
             ));
             let paragraph = fragment.node(&children[1]).unwrap();
             let text_id = paragraph.children().next().unwrap();
             assert!(matches!(
                 fragment.node(&text_id).unwrap().kind(),
-                crate::HtmlNodeKind::Text(text) if text == &crate::DocumentString::from("Z")
+                surgeist_html::construction::HtmlNodeKind::Text(text) if text == &surgeist_html::values::DocumentString::from("Z")
             ));
             let effects = sealed.effects().unwrap();
             assert_eq!(effects.len(), 1);
@@ -1118,7 +1122,10 @@ mod tests {
                 panic!("actual inert cache effect")
             };
             assert_eq!(&document.id(), sealed.context().target_document().subject());
-            assert!(matches!(inert.kind(), crate::HtmlNodeKind::Document(_)));
+            assert!(matches!(
+                inert.kind(),
+                surgeist_html::construction::HtmlNodeKind::Document(_)
+            ));
         }
         assert_eq!(sealed.retained_usage(), &before);
         sealed.release().unwrap();
@@ -1167,18 +1174,20 @@ mod tests {
         assert_ne!(children[0], children[1]);
         for (id, expected) in children.iter().zip(["A&B", "Z"]) {
             let node = fragment.node(id).unwrap();
-            let crate::HtmlNodeKind::Element(element) = node.kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Element(element) = node.kind() else {
                 panic!("real p")
             };
             assert_eq!(
                 element.name().local_name(),
-                &crate::DocumentString::from("p")
+                &surgeist_html::values::DocumentString::from("p")
             );
             let text = node.children().next().unwrap();
-            let crate::HtmlNodeKind::Text(text) = fragment.node(&text).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Text(text) =
+                fragment.node(&text).unwrap().kind()
+            else {
                 panic!("real child text")
             };
-            assert_eq!(text, &crate::DocumentString::from(expected));
+            assert_eq!(text, &surgeist_html::values::DocumentString::from(expected));
         }
         drop(children);
         assert!(sealed.evidence().is_ok());
@@ -1434,7 +1443,9 @@ mod tests {
         let names: Vec<_> = bindings
             .iter()
             .map(|binding| {
-                let crate::HtmlNodeKind::Element(element) = binding.node.kind() else {
+                let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                    binding.node.kind()
+                else {
                     panic!("actual E")
                 };
                 element.name().local_name().clone()
@@ -1443,8 +1454,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                crate::DocumentString::from("html"),
-                crate::DocumentString::from("p")
+                surgeist_html::values::DocumentString::from("html"),
+                surgeist_html::values::DocumentString::from("p")
             ]
         );
         let effect_qualification =
@@ -1950,18 +1961,25 @@ mod tests {
             };
             assert_eq!(actual, &host);
             assert_ne!(template.id(), contents.id());
-            assert!(matches!(contents.kind(), crate::HtmlNodeKind::Fragment));
-            let crate::HtmlNodeKind::Element(element) = template.kind() else {
+            assert!(matches!(
+                contents.kind(),
+                surgeist_html::construction::HtmlNodeKind::Fragment
+            ));
+            let surgeist_html::construction::HtmlNodeKind::Element(element) = template.kind()
+            else {
                 panic!("template")
             };
             assert_eq!(
                 element.name().local_name(),
-                &crate::DocumentString::from("template")
+                &surgeist_html::values::DocumentString::from("template")
             );
-            assert_eq!(properties.mode(), crate::HtmlShadowRootMode::Closed);
+            assert_eq!(
+                properties.mode(),
+                surgeist_html::construction::HtmlShadowRootMode::Closed
+            );
             assert_eq!(
                 properties.slot_assignment(),
-                crate::HtmlSlotAssignment::Manual
+                surgeist_html::construction::HtmlSlotAssignment::Manual
             );
             assert!(
                 properties.delegates_focus() && properties.clonable() && properties.serializable()
@@ -1975,8 +1993,8 @@ mod tests {
             let p = native.node(&id).unwrap();
             let text = p.children().next().unwrap();
             assert!(
-                matches!(native.node(&text).unwrap().kind(), crate::HtmlNodeKind::Text(value)
-                if value == &crate::DocumentString::from("A"))
+                matches!(native.node(&text).unwrap().kind(), surgeist_html::construction::HtmlNodeKind::Text(value)
+                if value == &surgeist_html::values::DocumentString::from("A"))
             );
             let Some(HtmlParseEffect::TemplateCache { document, inert }) = effects.get(1).unwrap()
             else {
@@ -1988,7 +2006,9 @@ mod tests {
             );
             assert!(matches!(
                 inert.kind(),
-                crate::HtmlNodeKind::Document(crate::HtmlDocumentMode::NoQuirks)
+                surgeist_html::construction::HtmlNodeKind::Document(
+                    surgeist_html::construction::HtmlDocumentMode::NoQuirks
+                )
             ));
             assert!(effects.get(2).unwrap().is_none());
         }
@@ -2015,7 +2035,7 @@ mod tests {
             .unwrap();
         let doc = builder
             .add_document(
-                crate::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                 HtmlScriptingStatus::Disabled,
                 crate::HtmlCaptureRegistryInput::Registry(registry.clone()),
             )
@@ -2023,8 +2043,12 @@ mod tests {
         let context = builder
             .add_element(
                 &doc,
-                crate::QualifiedName::new(crate::Namespace::html(), None, "div"),
-                crate::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "div",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
                 crate::HtmlCapturedIsValue::Absent,
                 crate::HtmlCaptureRegistryInput::Registry(registry.clone()),
             )
@@ -2064,7 +2088,9 @@ mod tests {
                     panic!("actual registry")
                 };
                 assert!(registry.is_registry(&id));
-                let crate::HtmlNodeKind::Element(element) = binding.node.kind() else {
+                let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                    binding.node.kind()
+                else {
                     panic!("actual E")
                 };
                 names.push(element.name().local_name().clone());
@@ -2079,8 +2105,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                crate::DocumentString::from("html"),
-                crate::DocumentString::from("p")
+                surgeist_html::values::DocumentString::from("html"),
+                surgeist_html::values::DocumentString::from("p")
             ]
         );
         assert_eq!(

@@ -4,8 +4,9 @@ use super::super::{
     Draft, SharedVec, bank, canonical, compact_tests::AllocationGraph, transaction,
 };
 use super::*;
-use crate::{DocumentId, DocumentString, Dom, DomBatch, DomNodeKind, NodeId};
+use crate::{DocumentId, Dom, DomBatch, DomNodeKind, NodeId};
 use std::sync::atomic::{AtomicBool, Ordering};
+use surgeist_html::values::DocumentString;
 
 fn unlimited(_: Usage) -> Result<(), DomError> {
     Ok(())
@@ -192,8 +193,9 @@ fn actual_slot_root_aggregate_preserves_projection_refusal_and_historical_readop
 fn actual_language_scope_distinguishes_absent_nonce_from_applicable_empty_nonce_and_null_focus() {
     let (mut dom, document) = fixture();
     let mut batch = DomBatch::new();
-    let plain = batch.create_element_ns(document, crate::Namespace::none(), "plain");
-    let html = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    let plain =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::none(), "plain");
+    let html = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let plain = done.created(&plain).unwrap().unwrap();
     let html = done.created(&html).unwrap().unwrap();

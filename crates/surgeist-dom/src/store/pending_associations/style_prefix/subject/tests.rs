@@ -64,7 +64,7 @@ fn create_and_render(
     drop(prep.commit(&flag()).unwrap().into_parts());
     hold.exclude_script_bookkeeping(
         q,
-        surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+        surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
         &flag(),
     )
     .unwrap();

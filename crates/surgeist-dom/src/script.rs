@@ -1,6 +1,8 @@
 //! Actual bounded native HTML Script metadata, in the canonical identity phase.
 use crate::{DocumentId, DomNode, NodeId};
-use surgeist_html::{HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult};
+use surgeist_html::elements::script::{
+    HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ScriptState<K> {

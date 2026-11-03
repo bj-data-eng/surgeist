@@ -1,5 +1,7 @@
 use crate::parser::support::{fragment_context, limits};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlNodeKind, elements::native::HtmlCommonScope, parsing::HtmlParserScriptingMode,
+};
 use surgeist_html_parser::*;
 
 #[test]

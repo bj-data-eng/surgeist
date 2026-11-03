@@ -1,6 +1,10 @@
 //! The frozen arena a completed session leaves behind.
 
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlDocument, HtmlFragment},
+};
 
 pub(crate) struct FrozenArena {
     pub(super) storage: Option<FrozenStorage>,
@@ -12,7 +16,7 @@ pub(super) struct FrozenStorage {
     pub(super) view: HtmlConstructionResult,
     pub(super) control: ControlIdentity,
     pub(super) construction: ConstructionOwner,
-    pub(super) lease: Option<bounded::HtmlConstructionLease>,
+    pub(super) lease: Option<surgeist_html::bounded::construction::HtmlConstructionLease>,
     pub(super) payloads: PayloadStorage,
     pub(super) effects: ConstructionEffects,
     /// Present until publication moves the evidence into the published history
@@ -105,38 +109,41 @@ impl FrozenArena {
         };
         let result = match view {
             HtmlConstructionResult::Document(value) => {
-                bounded::HtmlConstructionResult::Document(value)
+                surgeist_html::bounded::construction::HtmlConstructionResult::Document(value)
             }
             HtmlConstructionResult::Fragment(value) => {
-                bounded::HtmlConstructionResult::Fragment(value)
+                surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(value)
             }
         };
-        let recovery = match bounded::HtmlConstructionLease::try_recover(result, held_lease) {
-            Ok(recovery) => recovery,
-            Err(refusal) => {
-                // A refused recovery hands the result and the lease back.
-                let ((result, held_lease), error) = refusal.into_parts();
-                let view = match result {
-                    bounded::HtmlConstructionResult::Document(value) => {
-                        HtmlConstructionResult::Document(value)
-                    }
-                    bounded::HtmlConstructionResult::Fragment(value) => {
-                        HtmlConstructionResult::Fragment(value)
-                    }
-                };
-                self.storage = Some(FrozenStorage {
-                    view,
-                    control: owner,
-                    construction,
-                    lease: Some(held_lease),
-                    payloads,
-                    effects,
-                    evidence,
-                    fragment,
-                });
-                return Err(construction_owner::construction_error(control, error));
-            }
-        };
+        let recovery =
+            match surgeist_html::bounded::construction::HtmlConstructionLease::try_recover(
+                result, held_lease,
+            ) {
+                Ok(recovery) => recovery,
+                Err(refusal) => {
+                    // A refused recovery hands the result and the lease back.
+                    let ((result, held_lease), error) = refusal.into_parts();
+                    let view = match result {
+                        surgeist_html::bounded::construction::HtmlConstructionResult::Document(
+                            value,
+                        ) => HtmlConstructionResult::Document(value),
+                        surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(
+                            value,
+                        ) => HtmlConstructionResult::Fragment(value),
+                    };
+                    self.storage = Some(FrozenStorage {
+                        view,
+                        control: owner,
+                        construction,
+                        lease: Some(held_lease),
+                        payloads,
+                        effects,
+                        evidence,
+                        fragment,
+                    });
+                    return Err(construction_owner::construction_error(control, error));
+                }
+            };
         // Every owner is released even after a refusal; the first one is
         // returned at the end. The recovery put the storage back before it
         // could refuse, so the owner below can still be retired.

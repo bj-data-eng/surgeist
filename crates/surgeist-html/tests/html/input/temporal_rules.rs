@@ -1,7 +1,11 @@
 use crate::html::support::string_sanitization as string_policy;
 use surgeist_html::{
-    DocumentString, HtmlInputEmailMode, HtmlInputFlags, HtmlInputSanitizationCursor,
-    HtmlInputTemporalFormat, HtmlInputType, HtmlInputValueMode,
+    attributes::HtmlInputType,
+    elements::input::{
+        HtmlInputEmailMode, HtmlInputFlags, HtmlInputSanitizationCursor, HtmlInputTemporalFormat,
+        HtmlInputValueMode,
+    },
+    values::DocumentString,
 };
 
 fn sanitized(kind: HtmlInputType, input: &[u16]) -> Vec<u16> {
@@ -71,7 +75,7 @@ fn temporal_states_are_value_mode_and_independently_nonselectable() {
         assert!(!kind.is_selectable());
         assert_eq!(
             string_policy(kind.sanitization()),
-            surgeist_html::HtmlInputSanitization::Temporal(format)
+            surgeist_html::elements::input::HtmlInputSanitization::Temporal(format)
         );
         let flags = HtmlInputFlags::fresh().type_changed(kind);
         assert_eq!(flags.input_type(), kind);

@@ -2,6 +2,7 @@
 use super::*;
 use crate::store::fullscreen::exit::{Frame as ExitFrame, Invocation as ExitInvocation};
 use crate::{DomFullscreenExitId, DomFullscreenExitStatus};
+
 #[cfg(test)]
 mod tests;
 

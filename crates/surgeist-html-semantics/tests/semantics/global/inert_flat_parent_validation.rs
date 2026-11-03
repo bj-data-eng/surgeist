@@ -1,6 +1,8 @@
 use surgeist_html::{
-    HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,

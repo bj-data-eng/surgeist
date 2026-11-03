@@ -5,7 +5,7 @@ use crate::{
     DomNativeHtmlInstallError as Error, DomNativeHtmlInstallLimits,
     DomNativeHtmlInstallResource as Resource, DomNativeHtmlInstallation,
 };
-use surgeist_html::{
+use surgeist_html::construction::{
     HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind, HtmlTemplateContentsKind,
 };
 
@@ -278,7 +278,7 @@ impl Control<'_> {
         }
         Ok(())
     }
-    fn name(&mut self, name: &crate::QualifiedName) -> Result<(), Error> {
+    fn name(&mut self, name: &surgeist_html::values::QualifiedName) -> Result<(), Error> {
         self.charge(crate::names::name_units(name).ok_or(Error::RepresentationExhausted)?)
     }
 }
@@ -874,6 +874,7 @@ mod scratch_observation {
 mod staging_observation {
     use super::*;
     use std::cell::Cell;
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Growth {
         pub required: usize,
@@ -953,7 +954,8 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let parent = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         batch.insert_before(&parent, &document, None);
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         let document = commit.document(&document).unwrap();
@@ -962,24 +964,32 @@ mod tests {
     }
 
     fn source(with_template: bool) -> HtmlFragment {
-        let mut builder = HtmlFragment::builder(surgeist_html::HtmlConstructionLimits::new(
-            16, 16, 16, 256, 16,
-        ))
+        let mut builder = HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 256, 16),
+        )
         .unwrap();
         if with_template {
             let template = builder
                 .append_element(
                     &builder.root(),
-                    crate::QualifiedName::new(crate::Namespace::html(), None, "template"),
-                    crate::OrderedAttributes::default(),
+                    surgeist_html::values::QualifiedName::new(
+                        surgeist_html::values::Namespace::html(),
+                        None,
+                        "template",
+                    ),
+                    surgeist_html::values::OrderedAttributes::default(),
                 )
                 .unwrap();
             let contents = builder.template_contents(&template).unwrap().unwrap();
             let script = builder
                 .append_element(
                     &contents,
-                    crate::QualifiedName::new(crate::Namespace::html(), None, "script"),
-                    crate::OrderedAttributes::default(),
+                    surgeist_html::values::QualifiedName::new(
+                        surgeist_html::values::Namespace::html(),
+                        None,
+                        "script",
+                    ),
+                    surgeist_html::values::OrderedAttributes::default(),
                 )
                 .unwrap();
             builder.append_text(&script, "x").unwrap();
@@ -1005,14 +1015,15 @@ mod tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&parent, &document, None);
         let created = dom.apply(setup, &cancel).unwrap();
         let document = created.document(&document).unwrap();
         let parent = created.created(&parent).unwrap().unwrap();
-        let mut builder = HtmlFragment::builder(surgeist_html::HtmlConstructionLimits::new(
-            2048, 2048, 2048, 4096, 16,
-        ))
+        let mut builder = HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(2048, 2048, 2048, 4096, 16),
+        )
         .unwrap();
         for _ in 0..1000 {
             builder.append_text(&builder.root(), "x").unwrap();

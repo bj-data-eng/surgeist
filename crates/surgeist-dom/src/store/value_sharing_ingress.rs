@@ -114,7 +114,9 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DomNameLimits, Namespace, QualifiedName};
+    use crate::DomNameLimits;
+
+    use surgeist_html::values::{Namespace, QualifiedName};
 
     fn limits() -> DomLimits {
         DomLimits::new(

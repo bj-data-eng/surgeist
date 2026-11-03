@@ -2,7 +2,9 @@
 
 use crate::html::support::initialize_native_element as initialize;
 use surgeist_html::{
-    HtmlElementClass, HtmlTemplateFreshInsertionState, KnownHtmlElement, Namespace, QualifiedName,
+    elements::{native::HtmlElementClass, template::HtmlTemplateFreshInsertionState},
+    values::{Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement,
 };
 
 // HTML877d raw48464–48470: the actual template's insertion target, start marker

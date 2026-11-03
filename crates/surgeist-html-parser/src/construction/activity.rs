@@ -66,9 +66,13 @@ impl SessionStorage {
                 // HTML #fully-active and #nav-bc: an absent actual browsing
                 // context rules out activity. Present does not establish it.
                 Ok(match facts.nonce_environment().browsing_context() {
-                    surgeist_html::HtmlBrowsingContextPresence::Absent => Some(false),
-                    surgeist_html::HtmlBrowsingContextPresence::Present
-                    | surgeist_html::HtmlBrowsingContextPresence::Unavailable => None,
+                    surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent => {
+                        Some(false)
+                    }
+                    surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
+                    | surgeist_html::security::nonce::HtmlBrowsingContextPresence::Unavailable => {
+                        None
+                    }
                 })
             }
         }

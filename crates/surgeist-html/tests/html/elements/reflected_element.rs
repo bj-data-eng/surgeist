@@ -1,8 +1,12 @@
 #![forbid(unsafe_code)]
 
 use surgeist_html::{
-    DocumentString, HtmlReflectedElementSetter, HtmlReflectedElementSetterEffect,
-    KnownHtmlAttribute, Namespace, QualifiedName, reflected_element_attribute_change,
+    elements::native::{
+        HtmlReflectedElementSetter, HtmlReflectedElementSetterEffect,
+        reflected_element_attribute_change,
+    },
+    values::{DocumentString, Namespace, QualifiedName},
+    vocabulary::KnownHtmlAttribute,
 };
 
 // HTML 877d raw 5416–5424: exact local name and null namespace clear the

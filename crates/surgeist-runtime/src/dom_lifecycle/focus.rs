@@ -249,10 +249,10 @@ impl HostedRuntime {
                     if window.id != global || window.retired {
                         return Ok(false);
                     }
-                    if surgeist_html::allow_focus_decision(
+                    if surgeist_html::elements::dialog::allow_focus_decision(
                         Some(false),
                         Some(window.transient_activation()),
-                    ) != surgeist_html::HtmlAllowFocusDecision::Denied
+                    ) != surgeist_html::elements::dialog::HtmlAllowFocusDecision::Denied
                     {
                         return Ok(false);
                     }
@@ -280,10 +280,10 @@ impl HostedRuntime {
                     if state.hosts[h].id != host
                         || window.id != global
                         || !window.retired
-                        || surgeist_html::allow_focus_decision(
+                        || surgeist_html::elements::dialog::allow_focus_decision(
                             Some(false),
                             Some(window.transient_activation()),
-                        ) != surgeist_html::HtmlAllowFocusDecision::Denied
+                        ) != surgeist_html::elements::dialog::HtmlAllowFocusDecision::Denied
                     {
                         return Ok(false);
                     }

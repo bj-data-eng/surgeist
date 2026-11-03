@@ -1,5 +1,6 @@
 //! A completed contextual report remains historical when canonical inputs change.
 use super::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlFragmentParseRequest, HtmlParseHyperlinkState, HtmlParseMetadataStep,
 };
@@ -117,7 +118,7 @@ fn parsed() -> Parsed {
                 capture.subject(document.node()).unwrap(),
                 HtmlSemanticQuery::DocumentEncodingUrlContext,
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(10_000_000, 16, 4096, 0, 10_000_000, 0),
             HtmlSemanticCancellation::new(),
         )

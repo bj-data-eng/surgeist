@@ -8,7 +8,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogAction, HtmlDialogFocusingAction};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogFocusingAction};
 use surgeist_runtime::*;
 #[path = "dom_source_focus/allow_focus.rs"]
 mod allow_focus;
@@ -302,7 +302,7 @@ fn original_hosted_headless_scope_establishes_watcher_then_remembers_none() {
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
         HtmlDialogFocusingAction::RunFocusingSteps {
-            control: surgeist_html::HtmlDialogFocusControl::Subject,
+            control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
         },
     );
     let after = session.snapshot();
@@ -497,7 +497,7 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
             pending_focusing(
                 progress,
                 HtmlDialogFocusingAction::RunFocusingSteps {
-                    control: surgeist_html::HtmlDialogFocusControl::Subject,
+                    control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
                 },
             );
         } else {

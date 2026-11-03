@@ -6,14 +6,27 @@
 
 use std::convert::Infallible;
 
-use surgeist_html::bounded::native_element_initialization_with;
+use surgeist_html::bounded::native::native_element_initialization_with;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlConstructionError, HtmlConstructionLimits,
-    HtmlConstructionResource, HtmlInputSanitization, HtmlInputValueSanitization,
-    HtmlNativeInitialization, HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState,
-    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlValueInterpreter, HtmlYear,
-    KnownHtmlAttribute, KnownHtmlElement, Namespace, OrderedAttributes, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeReport,
+            HtmlNumericAttributeValueOrigin,
+        },
+    },
+    construction::{HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource},
+    elements::{
+        input::{HtmlInputSanitization, HtmlInputValueSanitization},
+        native::HtmlNativeInitialization,
+    },
+    microsyntax::{numeric::HtmlNonNegativeInteger, temporal::HtmlYear},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 /// Construction limits that ordinary builder fixtures do not reach: one
@@ -186,7 +199,7 @@ pub fn is_limit(
 /// The refusal causes tests expect.
 pub mod cause {
     use super::Cause;
-    use surgeist_html::HtmlConstructionError;
+    use surgeist_html::construction::HtmlConstructionError;
 
     pub const FOREIGN_BUILDER: Cause =
         Cause::new("ForeignBuilder", HtmlConstructionError::is_foreign_builder);
@@ -244,12 +257,12 @@ pub mod cause {
 /// Adapters that keep a construction protocol owner in an `Option` slot, as a driver that stores
 /// it in a field does, and put the owner back when its consuming step refuses it.
 pub mod slots {
-    use surgeist_html::HtmlConstructionError;
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::construction::{
         HtmlConstructionInitialization, HtmlConstructionLease, HtmlConstructionOperation,
         HtmlConstructionReadyInitialization, HtmlConstructionReadyOperation,
         HtmlConstructionRecovery, HtmlConstructionRefusal, HtmlConstructionResult,
     };
+    use surgeist_html::construction::HtmlConstructionError;
 
     fn step<T, R>(
         slot: &mut Option<T>,

@@ -1,7 +1,8 @@
 use super::*;
 use crate::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
-use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, Namespace};
+use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName};
+use surgeist_html::values::Namespace;
 
 /// Actual native edit versus the Input Color cloning step whose current value
 /// will be copied by source overlay, without resolving its default again.
@@ -280,7 +281,7 @@ impl Draft {
             let position = self.attribute_position(element.attributes(), None, &name, cancelled)?;
             (
                 position,
-                crate::QualifiedName::new(Namespace::none(), None, name),
+                surgeist_html::values::QualifiedName::new(Namespace::none(), None, name),
             )
         };
         // Existing set-value preserves its exact canonical prefix and order.
@@ -320,7 +321,7 @@ impl Draft {
     pub(super) fn append_attribute(
         &mut self,
         node: Key,
-        attribute: &crate::Attribute,
+        attribute: &surgeist_html::values::Attribute,
         cause: AttributeCause,
         limits: DomLimits,
         cancelled: &AtomicBool,
@@ -400,17 +401,22 @@ impl Draft {
             - element
                 .family_units()
                 .ok_or(DomError::RepresentationExhausted)?;
-        for _ in 0..surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND {
+        for _ in 0..surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND {
             self.source_step(cancelled)?;
         }
-        let nonce_value =
-            surgeist_html::nonce_attribute_change(element.name(), &write.name, Some(value));
+        let nonce_value = surgeist_html::security::nonce::nonce_attribute_change(
+            element.name(),
+            &write.name,
+            Some(value),
+        );
         let nonce_units = match nonce_value {
-            surgeist_html::HtmlNonceAttributeEffect::Ignore => {
+            surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore => {
                 element.nonce().map_or(0, DocumentString::len)
             }
-            surgeist_html::HtmlNonceAttributeEffect::ClearSlot => 0,
-            surgeist_html::HtmlNonceAttributeEffect::CopyValue(value) => value.len(),
+            surgeist_html::security::nonce::HtmlNonceAttributeEffect::ClearSlot => 0,
+            surgeist_html::security::nonce::HtmlNonceAttributeEffect::CopyValue(value) => {
+                value.len()
+            }
         };
         let minimum = base
             .checked_add(name_units(&write.name).ok_or(DomError::RepresentationExhausted)?)
@@ -566,7 +572,7 @@ impl Draft {
     fn retain_dialog_attribute_tail(
         &mut self,
         hook: AttributeSuffix,
-        operation: surgeist_html::HtmlDialogOperation,
+        operation: surgeist_html::elements::dialog::HtmlDialogOperation,
         payload: Option<source::checkpoint::Charge>,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -642,10 +648,11 @@ impl Draft {
         let old_value = retain_string(removed.value(), hook.as_ref(), cancelled)?;
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
-        for _ in 0..surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND {
+        for _ in 0..surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND {
             self.source_step(cancelled)?;
         }
-        let nonce_value = surgeist_html::nonce_attribute_change(element.name(), &changed, None);
+        let nonce_value =
+            surgeist_html::security::nonce::nonce_attribute_change(element.name(), &changed, None);
         let nonce = nonce_after_effect(nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
@@ -738,11 +745,11 @@ impl Draft {
     }
 }
 fn nonce_after_effect(
-    effect: surgeist_html::HtmlNonceAttributeEffect<'_>,
+    effect: surgeist_html::security::nonce::HtmlNonceAttributeEffect<'_>,
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<NonceUpdate, DomError> {
-    use surgeist_html::HtmlNonceAttributeEffect;
+    use surgeist_html::security::nonce::HtmlNonceAttributeEffect;
     match effect {
         HtmlNonceAttributeEffect::Ignore => Ok(NonceUpdate::Unchanged),
         HtmlNonceAttributeEffect::ClearSlot => {
@@ -758,6 +765,7 @@ fn nonce_after_effect(
 mod attribute_copy_observation {
     use super::*;
     use std::cell::Cell;
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Boundary {
         pub required: usize,
@@ -900,6 +908,7 @@ mod attribute_copy_observation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn copied_additional(
         element: &DomElement,
         remove: bool,

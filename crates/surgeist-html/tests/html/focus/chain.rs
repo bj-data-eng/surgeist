@@ -1,7 +1,7 @@
 //! HTML877d raw59761–59808 literal chain expectations, including the selected
 //! nullable-current-area and child-navigable-container interpretations. This is
 //! a small identity/list adapter for pure protocols, not a native focus service.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlCurrentFocusChainAction as CA, HtmlCurrentFocusChainCursor as CC,
     HtmlCurrentFocusChainReply as CR, HtmlCurrentlyFocusedAreaAction as QA,
     HtmlCurrentlyFocusedAreaCursor as QC, HtmlCurrentlyFocusedAreaOutcome as QO,

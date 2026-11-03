@@ -6,7 +6,7 @@ use super::*;
 pub(crate) enum SessionError {
     NonceMetadataUnavailable,
     CspService,
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     Stop(HtmlParseStop),
     ForeignNode,
     RootMove,

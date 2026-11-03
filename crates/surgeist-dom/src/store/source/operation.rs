@@ -29,7 +29,10 @@ use crate::source::*;
 use crate::style::*;
 use scope::EntryScope;
 use surgeist_cssom::{CssomCommit, CssomPublication, CssomSheetTicket, CssomSnapshot};
-use surgeist_html::{HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Reply};
+use surgeist_html::elements::style::{
+    HtmlStyleUpdateAction as Action, HtmlStyleUpdateReply as Reply,
+};
+use surgeist_html::values::DocumentString;
 
 // One public edit stays inline through admission. Named operations retain their
 // own original controllers. Only owner-local engine tests supply command lists.
@@ -671,7 +674,7 @@ impl Operation {
                 crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
                 crate::DomSourcePhase::AutofocusInsertionService
-            } else if matches!(self.draft.method.as_ref(), Some(crate::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::HtmlDesignModeAction::Complete)
+            } else if matches!(self.draft.method.as_ref(), Some(crate::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::elements::native::HtmlDesignModeAction::Complete)
             {
                 crate::DomSourcePhase::DesignModeService
             } else if matches!(
@@ -915,17 +918,17 @@ impl Operation {
             .document_base_url(self.draft.node(frame.key)?.document(), cancel)?;
         let media = self.draft.control_attribute(
             frame.key,
-            surgeist_html::KnownHtmlAttribute::Media,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Media,
             cancel,
         )?;
         let title = self.draft.control_attribute(
             frame.key,
-            surgeist_html::KnownHtmlAttribute::Title,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Title,
             cancel,
         )?;
         let blocking = self.draft.control_attribute(
             frame.key,
-            surgeist_html::KnownHtmlAttribute::Blocking,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Blocking,
             cancel,
         )?;
         let nonce = element.nonce();
@@ -1334,7 +1337,7 @@ impl Operation {
                     };
                     if matches!(
                         pending.action,
-                        surgeist_html::HtmlDialogAction::RememberFocusedElement
+                        surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement
                     ) {
                         crate::source::watcher::DialogOccurrence::Method(occurrence)
                     } else {
@@ -2058,7 +2061,9 @@ impl DomSourceLease<'_> {
                 } else if let Some(crate::store::method::Frame::DesignMode(frame)) =
                     op.draft.method.as_ref()
                 {
-                    if frame.cursor.action() == surgeist_html::HtmlDesignModeAction::Complete {
+                    if frame.cursor.action()
+                        == surgeist_html::elements::native::HtmlDesignModeAction::Complete
+                    {
                         Ok(())
                     } else {
                         let document = frame.document;
@@ -2262,7 +2267,8 @@ impl DomSourceLease<'_> {
                     return observed.map_err(Into::into);
                 }
                 Err(DomError::DialogProcessingUnavailable {
-                    action: surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent,
+                    action:
+                        surgeist_html::elements::dialog::HtmlDialogAction::AssertCloseWatcherPresent,
                 }) if op.is_show_modal_method() => {
                     // AddOpen and every reached hook finish before this internal
                     // boundary. Rollback is allowed only before this publication.
@@ -2291,7 +2297,7 @@ impl DomSourceLease<'_> {
                 }
                 Err(DomError::DialogProcessingUnavailable {
                     action:
-                        surgeist_html::HtmlDialogAction::RequestWatcherClose {
+                        surgeist_html::elements::dialog::HtmlDialogAction::RequestWatcherClose {
                             require_history_action_activation,
                         },
                 }) => {
@@ -2319,8 +2325,8 @@ impl DomSourceLease<'_> {
                         .expect("qualified actual Dialog stop");
                     if matches!(
                         action,
-                        surgeist_html::HtmlDialogAction::QueueToggle { .. }
-                            | surgeist_html::HtmlDialogAction::QueueClose
+                        surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle { .. }
+                            | surgeist_html::elements::dialog::HtmlDialogAction::QueueClose
                     ) {
                         let subject = op
                             .draft
@@ -2467,7 +2473,7 @@ impl DomSourceLease<'_> {
                         let call = op.request_close.as_mut().expect("nested original call");
                         call.nested = false;
                         call.cursor
-                            .reply(surgeist_html::HtmlCloseWatcherRequestReply::Applied)
+                            .reply(surgeist_html::elements::dialog::HtmlCloseWatcherRequestReply::Applied)
                             .map_err(DomError::CloseWatcherProtocol)?;
                         op.draft.source_set_method(
                             Some(crate::store::method::Frame::Dialog(
@@ -3217,7 +3223,7 @@ impl Dom {
     pub fn begin_native_installation(
         &mut self,
         target: crate::DomNativeHtmlInstallTarget,
-        source: &surgeist_html::HtmlFragment,
+        source: &surgeist_html::construction::HtmlFragment,
         budgets: crate::DomSourceNativeHtmlInstallLimits,
         cancel: &AtomicBool,
     ) -> Result<DomSourceLease<'_>, crate::DomNativeHtmlInstallError> {
@@ -3539,6 +3545,7 @@ impl DomStyleSource {
 pub(in crate::store) mod accounting_tests {
     use super::*;
     use std::cell::Cell;
+    use surgeist_html::values::DocumentString;
     thread_local! {
         static CUT_METHOD_CLEAR_WORK: Cell<bool> = const { Cell::new(false) };
     }
@@ -3569,7 +3576,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let target = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let target =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         let done = dom.apply(setup, &cancel).unwrap();
         let document = done.document(&document).unwrap();
         let target = done.created(&target).unwrap().unwrap();
@@ -3677,8 +3685,12 @@ pub(in crate::store) mod accounting_tests {
         let associated = done.document(&associated).unwrap();
         let before = dom.snapshot();
         let mut commands = DomBatch::new();
-        let created =
-            commands.create_xml_document(associated, crate::Namespace::svg(), "Root", None);
+        let created = commands.create_xml_document(
+            associated,
+            surgeist_html::values::Namespace::svg(),
+            "Root",
+            None,
+        );
         let mut lease = dom
             .begin_source_commands(commands, limits(100_000_000), &cancel)
             .unwrap();
@@ -3774,7 +3786,7 @@ pub(in crate::store) mod accounting_tests {
             let mut commands = DomBatch::new();
             commands.create_xml_document(
                 associated,
-                crate::Namespace::html(),
+                surgeist_html::values::Namespace::html(),
                 "style",
                 Some(doctype.into()),
             );
@@ -3789,7 +3801,9 @@ pub(in crate::store) mod accounting_tests {
                 };
                 assert_eq!(
                     request.action(),
-                    DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+                    DomStyleAction::Update(
+                        surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+                    )
                 );
                 let metadata = lease.snapshot();
                 assert_eq!(
@@ -3829,7 +3843,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let container =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         let text = setup.create_text(&document, "actual retained canonical payload".repeat(32));
         setup.insert_before(&text, &container, None);
         setup.insert_before(&container, &document, None);
@@ -3841,7 +3856,7 @@ pub(in crate::store) mod accounting_tests {
     }
     #[test]
     fn source_native_rows_keep_custody_through_abort_parking_cancellation_and_completion() {
-        use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+        use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
             DomLimits::new(
@@ -3859,7 +3874,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&parent, &document, None);
         let created = dom.apply(setup, &cancel).unwrap();
         let document = created.document(&document).unwrap();
@@ -3869,8 +3885,12 @@ pub(in crate::store) mod accounting_tests {
         let style = builder
             .append_element(
                 &builder.root(),
-                crate::QualifiedName::new(crate::Namespace::html(), None, "style"),
-                crate::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "style",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
@@ -3980,7 +4000,7 @@ pub(in crate::store) mod accounting_tests {
         use crate::{
             DomNativeHtmlInstallError as InstallError, DomNativeHtmlInstallResource as Resource,
         };
-        use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+        use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
             DomLimits::new(
@@ -3998,7 +4018,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&parent, &document, None);
         let created = dom.apply(setup, &cancel).unwrap();
         let document = created.document(&document).unwrap();
@@ -4008,8 +4029,12 @@ pub(in crate::store) mod accounting_tests {
         let style = builder
             .append_element(
                 &builder.root(),
-                crate::QualifiedName::new(crate::Namespace::html(), None, "style"),
-                crate::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "style",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
@@ -4136,7 +4161,7 @@ pub(in crate::store) mod accounting_tests {
     }
     #[test]
     fn source_native_partial_closing_bank_survives_cancel_park_and_retry_without_native_recharge() {
-        use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+        use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
             DomLimits::new(
@@ -4154,7 +4179,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&parent, &document, None);
         let created = dom.apply(setup, &cancel).unwrap();
         let document = created.document(&document).unwrap();
@@ -4164,8 +4190,12 @@ pub(in crate::store) mod accounting_tests {
         let style = builder
             .append_element(
                 &builder.root(),
-                crate::QualifiedName::new(crate::Namespace::html(), None, "style"),
-                crate::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "style",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
@@ -4293,7 +4323,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
+        let input =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         let created = dom.apply(setup, &cancel).unwrap();
         let input = created.created(&input).unwrap().unwrap();
         let before = dom.snapshot();
@@ -4397,7 +4428,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
+        let input =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         let created = dom.apply(setup, &cancel).unwrap();
         let input = created.created(&input).unwrap().unwrap();
         let before = dom.snapshot();
@@ -4467,7 +4499,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         let old = setup.create_text(&document, "old child");
         setup.insert_before(&old, &parent, None);
         setup.insert_before(&parent, &document, None);
@@ -4514,8 +4547,16 @@ pub(in crate::store) mod accounting_tests {
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-        let option = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let option = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.set_attribute(&option, "selected", "");
         setup.insert_before(&option, &select, None);
         let created = dom.apply(setup, &cancel).unwrap();
@@ -4599,7 +4640,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
+        let input =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         setup.set_input_value(&input, "stored unchanged input");
         let done = dom.apply(setup, &cancel).unwrap();
         let input = done.created(&input).unwrap().unwrap();
@@ -4615,7 +4657,7 @@ pub(in crate::store) mod accounting_tests {
         let original_buffer = original.current_value().shared_code_units().clone();
         assert!(matches!(
             original.image_history(),
-            surgeist_html::HtmlInputImageHistory::NeverEntered
+            surgeist_html::elements::input::HtmlInputImageHistory::NeverEntered
         ));
         // Independent raw capacity oracle for this selected Input body. Name,
         // attributes and every other feature remain original child aliases.
@@ -4728,7 +4770,11 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let output = setup.create_element_ns(&document, crate::Namespace::html(), "output");
+        let output = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "output",
+        );
         let text = setup.create_text(&document, "actual old output text".repeat(1024));
         setup.insert_before(&text, &output, None);
         let created = dom.apply(setup, &cancel).unwrap();
@@ -4813,7 +4859,8 @@ pub(in crate::store) mod accounting_tests {
         let transient = batch.create_text(document, "published transient");
         let never_published = batch.create_text(document, "retired before any phase");
         batch.destroy(&never_published);
-        let style = batch.create_element_ns(document, crate::Namespace::html(), "style");
+        let style =
+            batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
         let text = batch.create_text(document, "a {}");
         batch.insert_before(&text, &style, None);
         batch.insert_before(&style, document, None);
@@ -4878,8 +4925,13 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let output = setup.create_element_ns(&document, crate::Namespace::html(), "output");
-        let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+        let output = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "output",
+        );
+        let style =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         setup.insert_before(&style, &output, None);
         let old_text = "actual retained Output read".repeat(512);
         let text = setup.create_text(&document, old_text.clone());
@@ -4930,7 +4982,9 @@ pub(in crate::store) mod accounting_tests {
         };
         assert_eq!(
             remove.action(),
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet)
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet
+            )
         );
         let parked_stamp = lease.snapshot().stamp();
         assert_eq!(
@@ -5047,7 +5101,11 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let textarea = setup.create_element_ns(&document, crate::Namespace::html(), "textarea");
+        let textarea = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "textarea",
+        );
         setup.set_textarea_value(&textarea, "before\r\n".repeat(2048));
         let created = dom.apply(setup, &cancel).unwrap();
         let textarea = created.created(&textarea).unwrap().unwrap();
@@ -5193,9 +5251,14 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let container =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         for _ in 0..2 {
-            let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+            let style = setup.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "style",
+            );
             setup.insert_before(&style, &container, None);
         }
         let commit = dom.apply(setup, &cancel).unwrap();
@@ -5402,23 +5465,40 @@ pub(in crate::store) mod accounting_tests {
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let other_document = setup.create_document();
-        let root = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let root =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&root, &document, None);
-        let form = setup.create_element_ns(&document, crate::Namespace::html(), "form");
+        let form =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "form");
         setup.set_attribute(&form, "id", "f".repeat(512));
         setup.insert_before(&form, &root, None);
-        let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
+        let input =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         setup.insert_before(&input, &root, None);
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-        let option = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let option = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         let label = setup.create_text(&document, "chosen");
         setup.insert_before(&label, &option, None);
         setup.insert_before(&option, &select, None);
         setup.insert_before(&select, &root, None);
-        let moving = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-        let retired = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let moving =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let retired =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         for _ in 0..32 {
-            let child = setup.create_element_ns(&document, crate::Namespace::html(), "span");
+            let child = setup.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "span",
+            );
             setup.insert_before(&child, &moving, None);
             let old = setup.create_text(&document, "retired");
             setup.insert_before(&old, &retired, None);
@@ -5537,10 +5617,13 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&parent, &document, None);
-        let first = setup.create_element_ns(&document, crate::Namespace::html(), "style");
-        let second = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+        let first =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
+        let second =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         let created = dom.apply(setup, &cancel).unwrap();
         let parent = created.created(&parent).unwrap().unwrap();
         let first = created.created(&first).unwrap().unwrap();
@@ -5695,16 +5778,27 @@ pub(in crate::store) mod accounting_tests {
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let connected = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-        let peer = setup.create_element_ns(&document, crate::Namespace::html(), "details");
+        let connected =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let peer = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "details",
+        );
         setup.set_attribute(&peer, "name", "g");
         setup.set_attribute(&peer, "open", "");
         setup.insert_before(&peer, &connected, None);
         setup.insert_before(&connected, &document, None);
-        let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-        let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+        let container =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let style =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         setup.insert_before(&style, &container, None);
-        let later = setup.create_element_ns(&document, crate::Namespace::html(), "details");
+        let later = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "details",
+        );
         setup.set_attribute(&later, "name", "g");
         setup.set_attribute(&later, "open", "");
         setup.insert_before(&later, &container, None);
@@ -5726,7 +5820,7 @@ pub(in crate::store) mod accounting_tests {
                 .as_element()
                 .unwrap()
                 .details_state(),
-            Some(surgeist_html::HtmlDetailsState::Open)
+            Some(surgeist_html::elements::details::HtmlDetailsState::Open)
         );
         assert_eq!(
             before
@@ -5735,7 +5829,7 @@ pub(in crate::store) mod accounting_tests {
                 .as_element()
                 .unwrap()
                 .details_state(),
-            Some(surgeist_html::HtmlDetailsState::Open)
+            Some(surgeist_html::elements::details::HtmlDetailsState::Open)
         );
         let mut batch = DomBatch::new();
         batch.insert_before(container, connected, None);
@@ -5796,15 +5890,29 @@ pub(in crate::store) mod accounting_tests {
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
         setup.set_attribute(&select, "multiple", "");
-        let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-        let first = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let container =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let first = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.set_attribute(&first, "selected", "");
         setup.insert_before(&first, &container, None);
-        let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+        let style =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         setup.insert_before(&style, &container, None);
-        let last = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let last = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.set_attribute(&last, "selected", "");
         setup.insert_before(&last, &container, None);
         setup.insert_before(&container, &select, None);
@@ -5882,7 +5990,9 @@ pub(in crate::store) mod accounting_tests {
         };
         assert_eq!(
             remove.action(),
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet)
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet
+            )
         );
         assert_eq!(lease.dom.state.next_task, u64::MAX);
         assert!(
@@ -5936,8 +6046,16 @@ pub(in crate::store) mod accounting_tests {
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-        let option = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let option = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.set_attribute(&option, "value", "actual option value");
         setup.insert_before(&option, &select, None);
         let created = dom.apply(setup, &cancel).unwrap();
@@ -6308,7 +6426,8 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
+        let style =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         let text = setup.create_text(&document, "a { color: red }".repeat(2048));
         setup.insert_before(&text, &style, None);
         let commit = dom.apply(setup, &cancel).unwrap();
@@ -6371,19 +6490,19 @@ pub(in crate::store) mod accounting_tests {
         .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let host = b.create_element_ns(&d, crate::Namespace::html(), "div");
+        let host = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "div");
         b.insert_before(&host, &d, None);
         let root = b.attach_shadow(
             &host,
-            crate::HtmlShadowRootProperties::new(
-                crate::HtmlShadowRootMode::Open,
-                crate::HtmlSlotAssignment::Manual,
+            surgeist_html::construction::HtmlShadowRootProperties::new(
+                surgeist_html::construction::HtmlShadowRootMode::Open,
+                surgeist_html::construction::HtmlSlotAssignment::Manual,
                 false,
                 true,
                 false,
             ),
         );
-        let slot = b.create_element_ns(&d, crate::Namespace::html(), "slot");
+        let slot = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
         let x = b.create_text(&d, "old member");
         let y = b.create_text(&d, "new member");
         b.insert_before(&slot, &root, None);

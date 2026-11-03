@@ -1,6 +1,7 @@
 //! Concrete CSS producer attestations for one exact captured HTML media field.
 use super::*;
-use crate::bounded::{HtmlMediaField, media_field_matches};
+use surgeist_html::bounded::media::{HtmlMediaField, media_field_matches};
+use surgeist_html::values::DocumentString;
 
 #[derive(Clone, Debug)]
 pub struct HtmlMediaProducerId(Arc<()>);

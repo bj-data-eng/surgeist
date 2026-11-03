@@ -28,13 +28,13 @@ pub(in crate::store) struct BaseDocumentRead<'a> {
 }
 #[derive(Clone, Copy)]
 pub(in crate::store) struct LinkRead<'a> {
-    pub flags: surgeist_html::HtmlLinkFlags,
+    pub flags: surgeist_html::elements::link::HtmlLinkFlags,
     pub parser_document: Option<Key>,
     pub sheet: Option<&'a surgeist_cssom::CssomSheetId>,
 }
 #[derive(Clone, Copy)]
 pub(in crate::store) struct ImageRead<'a> {
-    pub native: &'a surgeist_html::HtmlImgFreshState,
+    pub native: &'a surgeist_html::elements::image::HtmlImgFreshState,
     pub dimension_source: Key,
     pub parser_inserted: bool,
     pub high_water: u64,
@@ -181,7 +181,7 @@ impl<'a> ElementRead<'a> {
     pub fn language(self) -> &'a DomElement {
         self.value
     }
-    pub fn common_state(self) -> surgeist_html::HtmlCommonState<Key> {
+    pub fn common_state(self) -> surgeist_html::elements::native::HtmlCommonState<Key> {
         let map = |id| {
             self.aliases
                 .map_or(Key::Existing(id), |ids| source::alias_id(id, ids))

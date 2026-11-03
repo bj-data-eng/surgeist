@@ -1,4 +1,12 @@
-use surgeist_html::*;
+use surgeist_html::{
+    elements::link::{
+        HtmlHyperlinkAttributeEffect, HtmlHyperlinkSetUrlAction, HtmlHyperlinkSetUrlCursor,
+        HtmlHyperlinkSetUrlError, HtmlHyperlinkSetUrlReply, HtmlHyperlinkTreeMutation,
+        hyperlink_attribute_effect, hyperlink_tree_considers_speculative_loads,
+    },
+    values::Namespace,
+    vocabulary::KnownHtmlAttribute,
+};
 
 #[test]
 fn set_url_clears_before_reading_and_only_stores_success() {

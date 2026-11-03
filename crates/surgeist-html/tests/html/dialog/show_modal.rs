@@ -1,5 +1,5 @@
 //! Independent literal traces from HTML877d raw46458–46460,46585–46615.
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction as A, HtmlDialogCursor as C, HtmlDialogEventSource as Source,
     HtmlDialogOperation as O, HtmlDialogOutcome as Outcome, HtmlDialogReply as R,
     HtmlDialogState as State,

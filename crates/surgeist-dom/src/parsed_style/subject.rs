@@ -1,5 +1,6 @@
 //! The exact next distinct original Style, without removing another subject.
 use super::*;
+
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleSubjectError {
     Style(DomParsedHtmlStyleError),
@@ -27,8 +28,10 @@ impl From<DomParsedHtmlAssociationAdmissionError> for DomParsedHtmlStyleSubjectE
         Self::Style(e.into())
     }
 }
-impl From<surgeist_html::HtmlStyleProtocolError> for DomParsedHtmlStyleSubjectError {
-    fn from(e: surgeist_html::HtmlStyleProtocolError) -> Self {
+impl From<surgeist_html::elements::style::HtmlStyleProtocolError>
+    for DomParsedHtmlStyleSubjectError
+{
+    fn from(e: surgeist_html::elements::style::HtmlStyleProtocolError) -> Self {
         Self::Style(e.into())
     }
 }

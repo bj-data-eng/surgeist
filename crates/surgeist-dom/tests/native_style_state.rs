@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     Dom, DomBatch, DomError, DomLimits, DomSourceEdit, DomSourceRequest, Namespace,
 };
-use surgeist_html::HtmlStyleUpdateAction;
+use surgeist_html::elements::style::HtmlStyleUpdateAction;
 
 #[test]
 fn source_command_payload_joins_the_simultaneous_utf16_allowance() {

@@ -1,6 +1,17 @@
 //! Creation of elements for the tree builder, including implied and profiled elements.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlElement;
+use surgeist_html::{
+    bounded::values::{
+        HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
+    },
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
+    values::{Attribute, OrderedAttributes},
+    vocabulary::KnownHtmlElement,
+};
 
 pub(crate) enum RootKind {
     Document(HtmlDocumentMode),
@@ -52,11 +63,17 @@ pub(super) enum OrderedCreation {
 
 /// Admits the shared value owner's next real comparison through the original
 /// parser controller. Refusal returns the same allocation for existing cleanup.
-pub(super) fn creation_command(kind: HtmlNodeKind) -> bounded::HtmlConstructionCommand {
+pub(super) fn creation_command(
+    kind: HtmlNodeKind,
+) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
     match kind {
-        HtmlNodeKind::Document(mode) => bounded::HtmlConstructionCommand::CreateDocument { mode },
-        HtmlNodeKind::Fragment => bounded::HtmlConstructionCommand::CreateFragment,
-        kind => bounded::HtmlConstructionCommand::Create { kind },
+        HtmlNodeKind::Document(mode) => {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateDocument { mode }
+        }
+        HtmlNodeKind::Fragment => {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateFragment
+        }
+        kind => surgeist_html::bounded::construction::HtmlConstructionCommand::Create { kind },
     }
 }
 
@@ -247,7 +264,7 @@ impl ParserArenaSession {
                 }
             }
         }
-        let mut kind = bounded::native_form_association_with(|candidate| {
+        let mut kind = surgeist_html::bounded::form::native_form_association_with(|candidate| {
             // These two metadata families are admitted only below, after the
             // actual profile/capability/origin checks. Avoid inapplicable reads.
             if matches!(
@@ -498,7 +515,7 @@ impl ParserArenaSession {
                         raw,
                         complete: false,
                         state: InputState {
-                            flags: crate::HtmlInputFlags::fresh(),
+                            flags: surgeist_html::elements::input::HtmlInputFlags::fresh(),
                             cursor: 0,
                             selected_files_empty: true,
                             value_rewritten_during_creation: false,

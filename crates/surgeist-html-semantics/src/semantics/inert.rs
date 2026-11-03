@@ -8,6 +8,9 @@
 
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::{
+    attributes::HtmlBooleanAttribute, values::DocumentString, vocabulary::KnownHtmlElement,
+};
 
 /// Identity of the actual immutable flat-relation producer.
 #[derive(Clone, Debug)]

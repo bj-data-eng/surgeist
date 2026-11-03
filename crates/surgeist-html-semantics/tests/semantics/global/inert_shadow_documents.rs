@@ -2,8 +2,10 @@
 //! A subsequent child belongs to the root's actual document. CSS Shadow §4.1
 //! nevertheless places that child under the host in the document flat tree.
 use surgeist_html::{
-    Attribute, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,

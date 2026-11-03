@@ -1,4 +1,5 @@
 use super::*;
+
 use surgeist_test::checkpoint::Identity as _;
 
 #[test]

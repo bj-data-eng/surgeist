@@ -1,7 +1,7 @@
 //! Real native authoring -> canonical Draft installation, no parser or toy sink.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{
+use surgeist_html::construction::{
     HtmlAuthoredProcessingInstruction, HtmlConstructionLimits, HtmlDoctype, HtmlFragment,
     HtmlNodeKind,
 };
@@ -343,7 +343,7 @@ fn template_owned_contents_and_script_fresh_preparation_use_real_native_document
     assert_eq!(state.preparation_document(), Some(d));
     assert_eq!(
         state.script_type(),
-        Some(surgeist_html::HtmlScriptKind::Classic)
+        Some(surgeist_html::elements::script::HtmlScriptKind::Classic)
     );
     let mut batch = DomBatch::new();
     batch.insert_before(inner, parent, None);
@@ -520,7 +520,7 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
     let before = dom.snapshot();
     let usage = dom.usage();
     assert!(
-        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::HtmlElementClass::KnownHtml(surgeist_html::KnownHtmlElement::Audio)) }) if subject==id)
+        matches!(dom.install_native_html_fragment(stamp(&dom,d),parent,None,&source,limits(),&AtomicBool::new(false)),Err(DomNativeHtmlInstallError::Source { subject,error:DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(surgeist_html::vocabulary::KnownHtmlElement::Audio)) }) if subject==id)
     );
     unchanged(&dom, &before, usage, parent);
 }
@@ -779,7 +779,7 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
                     capture.subject(control).unwrap(),
                     HtmlSemanticQuery::FormOwner,
                 )],
-                surgeist_html::HtmlValueInterpreter::new(32768),
+                surgeist_html::values::HtmlValueInterpreter::new(32768),
                 HtmlSemanticLimits::new(1000000, 16, 1024, 512, 1000000, 1024),
                 HtmlSemanticCancellation::new(),
             )
@@ -801,10 +801,10 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
         .canvas_none_state()
         .unwrap();
     assert!(
-        matches!(state.width(),surgeist_html::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="400")
+        matches!(state.width(),surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="400")
     );
     assert!(
-        matches!(state.height(),surgeist_html::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="0")
+        matches!(state.height(),surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="0")
     );
     let marquee = report.node_for(&ids[2]).unwrap();
     let state = s
@@ -865,7 +865,7 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
     );
     assert_eq!(current.slot(slot).unwrap().manual_assignments(), &[button]);
     assert!(
-        matches!(current.node(canvas).unwrap().as_element().unwrap().canvas_none_state().unwrap().width(),surgeist_html::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="20")
+        matches!(current.node(canvas).unwrap().as_element().unwrap().canvas_none_state().unwrap().width(),surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(value) if value.decimal_digits()=="20")
     );
     assert!(
         report

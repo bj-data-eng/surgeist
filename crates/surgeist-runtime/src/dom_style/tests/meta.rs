@@ -3,6 +3,7 @@ use super::*;
 use std::cell::Cell;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
 use surgeist_dom::{DocumentString, DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
+use surgeist_html::values::Namespace;
 
 pub(super) fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -827,7 +828,9 @@ fn detached_empty_and_shadow_only_meta_do_not_select_a_document_set() {
     let host = batch.create_element_ns(document, Namespace::html(), "div");
     let shadow = batch.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Closed),
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
     );
     let hidden = batch.create_element_ns(document, Namespace::html(), "meta");
     batch.set_attribute(&hidden, "http-equiv", "default-style");

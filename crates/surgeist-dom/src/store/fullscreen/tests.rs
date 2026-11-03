@@ -2,8 +2,9 @@
 //! Private structural inputs do not certify popover or platform execution.
 use super::*;
 use crate::dialog::DocumentInteractiveState;
-use crate::{DomSourceEdit, DomSourceLimits, DomTopLayerUaRule, Namespace};
+use crate::{DomSourceEdit, DomSourceLimits, DomTopLayerUaRule};
 use std::cell::Cell;
+use surgeist_html::values::Namespace;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Reads {

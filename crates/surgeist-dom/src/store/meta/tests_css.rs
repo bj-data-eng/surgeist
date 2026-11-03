@@ -1,6 +1,7 @@
 //! Owning CSS admission/custody controls over actual canonical Meta nodes.
 use super::*;
 use std::sync::atomic::Ordering;
+use surgeist_html::values::DocumentString;
 
 fn policy() -> DomLimits {
     super::tests::policy()
@@ -20,8 +21,8 @@ fn fixture(name: Option<&str>, content: &str) -> (Dom, DocumentId, NodeId) {
     let mut dom = Dom::new(policy()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let root = batch.create_element_ns(&document, crate::Namespace::html(), "head");
-    let meta = batch.create_element_ns(&document, crate::Namespace::html(), "meta");
+    let root = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "head");
+    let meta = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "meta");
     batch.set_attribute(&meta, "content", content);
     if let Some(name) = name {
         batch.set_attribute(&meta, "name", name);
@@ -263,11 +264,14 @@ fn incomplete_style_prefix_keeps_last_completed_meta_result_until_real_tail_reco
     let (mut dom, document, original) = fixture(Some("theme-color"), "#0000ff");
     let head = dom.snapshot().node(original).unwrap().parent().unwrap();
     let mut setup = DomBatch::new();
-    let container = setup.create_element_ns(document, crate::Namespace::html(), "div");
-    let style = setup.create_element_ns(document, crate::Namespace::html(), "style");
+    let container =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
+    let style =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
     setup.set_attribute(&style, "type", "text/plain");
     setup.insert_before(&style, &container, None);
-    let new_meta = setup.create_element_ns(document, crate::Namespace::html(), "meta");
+    let new_meta =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "meta");
     setup.set_attribute(&new_meta, "name", "theme-color");
     setup.set_attribute(&new_meta, "content", "#ff0000");
     setup.insert_before(&new_meta, &container, None);
@@ -295,7 +299,9 @@ fn incomplete_style_prefix_keeps_last_completed_meta_result_until_real_tail_reco
     assert_eq!(request.source().element(), style);
     assert_eq!(
         request.action(),
-        crate::DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        crate::DomStyleAction::Update(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+        )
     );
     let partial = lease.snapshot();
     assert!(partial.incomplete_source_operation().is_some());

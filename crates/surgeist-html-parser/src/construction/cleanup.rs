@@ -1,6 +1,7 @@
 //! Shared release and cleanup accounting for retained storage.
 
 use super::*;
+use surgeist_html::construction::HtmlConstructionUsage;
 
 /// Running cleanup admits its actual bounded metadata/provider inspections.
 /// After a latched stop, only ownership disposal over already-admitted entries

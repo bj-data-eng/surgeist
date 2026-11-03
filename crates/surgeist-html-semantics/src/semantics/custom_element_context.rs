@@ -9,9 +9,13 @@
 use super::*;
 use crate::capture::HtmlDefinitionLookupStep;
 use crate::{
-    HtmlAttributeApplicability, HtmlAttributeReport, HtmlCaptureDefinitionId,
-    HtmlCaptureRegistryId, HtmlCapturedCustomElementDefinition, HtmlCapturedCustomElementState,
-    HtmlCustomElementName, HtmlCustomElementState,
+    HtmlCaptureDefinitionId, HtmlCaptureRegistryId, HtmlCapturedCustomElementDefinition,
+    HtmlCapturedCustomElementState,
+};
+use surgeist_html::attributes::{HtmlAttributeApplicability, HtmlAttributeReport};
+use surgeist_html::{
+    elements::native::HtmlCustomElementState,
+    values::{Attribute, HtmlCustomElementName, HtmlValueInterpreter},
 };
 
 /// An influencing unavailable fact, retained independently per obligation.

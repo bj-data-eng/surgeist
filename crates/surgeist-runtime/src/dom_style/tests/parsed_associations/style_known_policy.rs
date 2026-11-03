@@ -8,7 +8,15 @@ use super::style_decision::{installed, observe};
 use super::style_sheet::{bind, create, pending};
 use std::{convert::Infallible, mem::size_of, sync::Arc};
 use surgeist_dom::*;
-use surgeist_html::*;
+use surgeist_html::{
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspError,
+        HtmlCspLayout, HtmlCspNativePolicy, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
+        HtmlCspProcessorProfile, HtmlCspStorage, HtmlMetaCspDisposition, HtmlMetaCspOutcome,
+        HtmlMetaCspProcessor, HtmlMetaCspRemovedDirective, HtmlMetaCspRequest, HtmlMetaCspSource,
+    },
+    values::DocumentString,
+};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParsePendingAssociationStep, HtmlSource};
 
 const ALLOW: &str = "style-src 'unsafe-inline'";

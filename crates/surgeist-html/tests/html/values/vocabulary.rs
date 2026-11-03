@@ -1,6 +1,9 @@
 use surgeist_html::{
-    Attribute, DocumentString, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
-    VOCABULARY_SOURCE, attribute_inventory, element_inventory,
+    values::{Attribute, DocumentString, Namespace, QualifiedName},
+    vocabulary::{
+        KnownHtmlAttribute, KnownHtmlElement, VOCABULARY_SOURCE, attribute_inventory,
+        element_inventory,
+    },
 };
 
 #[test]

@@ -15,7 +15,11 @@
 //!   13.2.6.1 places inside the template's contents, after their last child.
 
 use crate::parser::support::{fragment_context, limits};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNode, HtmlNodeId, HtmlNodeKind},
+    parsing::HtmlParserScriptingMode,
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDiagnosticKind,
     HtmlParseDiagnosticLocationRole, HtmlParseMetadataDocument, HtmlParseMetadataStep,

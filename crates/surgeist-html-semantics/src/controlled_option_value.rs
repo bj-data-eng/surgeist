@@ -3,6 +3,10 @@ use crate::*;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::{error::Error, fmt};
+use surgeist_html::{
+    construction::{HtmlDoctype, HtmlDocumentMode},
+    values::{DocumentString, HtmlAttributesInput, HtmlNameInput, HtmlValueInterpreter},
+};
 
 /// Total producer live allowance after excluding the producer's current graph
 /// from the caller's other live storage. Work is the remaining allowance for

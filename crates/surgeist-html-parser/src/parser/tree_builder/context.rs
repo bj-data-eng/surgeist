@@ -7,7 +7,9 @@ use crate::parser::tokenizer::{
     Tokenizer,
     states::{HtmlTokenizerRawState, HtmlTokenizerState},
 };
-use crate::{HtmlCapturedNodeKind, HtmlFragmentParseRequest, HtmlParserScriptingMode};
+use surgeist_html::parsing::HtmlParserScriptingMode;
+
+use crate::{HtmlCapturedNodeKind, HtmlFragmentParseRequest};
 use head::{HeadStage, HeadStep, HtmlInsertionMode};
 use prologue::BeforeHead;
 
@@ -106,8 +108,8 @@ fn initial_modes(
         return Err(SessionError::ContextUnavailable.into());
     };
     let name = element.name();
-    use crate::bounded::HtmlFragmentNameTest;
-    let (lexical, insertion) = crate::bounded::fragment_initial_modes(
+    use surgeist_html::bounded::parsing::HtmlFragmentNameTest;
+    let (lexical, insertion) = surgeist_html::bounded::parsing::fragment_initial_modes(
         request.effective_scripting_mode(),
         |test| match test {
             HtmlFragmentNameTest::HtmlNamespace => {
@@ -116,27 +118,31 @@ fn initial_modes(
             HtmlFragmentNameTest::Local(choices) => tag_sets::local_in(name, choices, c),
         },
     )?;
-    let template = insertion == crate::HtmlFragmentInsertionMode::InTemplate;
+    let template = insertion == surgeist_html::parsing::HtmlFragmentInsertionMode::InTemplate;
     let lexical = match lexical {
-        crate::HtmlFragmentTokenizerState::Data => HtmlTokenizerState::Data,
-        crate::HtmlFragmentTokenizerState::Rcdata => {
+        surgeist_html::parsing::HtmlFragmentTokenizerState::Data => HtmlTokenizerState::Data,
+        surgeist_html::parsing::HtmlFragmentTokenizerState::Rcdata => {
             HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata)
         }
-        crate::HtmlFragmentTokenizerState::Rawtext => {
+        surgeist_html::parsing::HtmlFragmentTokenizerState::Rawtext => {
             HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rawtext)
         }
-        crate::HtmlFragmentTokenizerState::ScriptData => {
+        surgeist_html::parsing::HtmlFragmentTokenizerState::ScriptData => {
             HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script)
         }
-        crate::HtmlFragmentTokenizerState::Plaintext => HtmlTokenizerState::Plaintext,
+        surgeist_html::parsing::HtmlFragmentTokenizerState::Plaintext => {
+            HtmlTokenizerState::Plaintext
+        }
     };
     Ok((lexical, parser_insertion_mode(insertion), template))
 }
 
 /// Parser-private representation adapter; the HTML rule owner has no dependency
 /// on tree-builder state or its controller.
-pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> HtmlInsertionMode {
-    use crate::HtmlFragmentInsertionMode as Mode;
+pub(super) fn parser_insertion_mode(
+    mode: surgeist_html::parsing::HtmlFragmentInsertionMode,
+) -> HtmlInsertionMode {
+    use surgeist_html::parsing::HtmlFragmentInsertionMode as Mode;
     match mode {
         Mode::InBody => HtmlInsertionMode::InBody,
         Mode::InRow => HtmlInsertionMode::InRow,
@@ -523,7 +529,9 @@ impl FrozenContextFragmentParts {
         Ok(())
     }
     #[cfg(test)]
-    pub(crate) fn fragment(&mut self) -> Result<&crate::HtmlFragment, FragmentExecutionError> {
+    pub(crate) fn fragment(
+        &mut self,
+    ) -> Result<&surgeist_html::construction::HtmlFragment, FragmentExecutionError> {
         self.control.checkpoint()?;
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.arena
@@ -843,6 +851,14 @@ pub(super) mod tests {
     use super::*;
     use crate::construction::native_view::NativeKind;
     use crate::*;
+    use surgeist_html::elements::native::HtmlCustomElementState;
+    use surgeist_html::{
+        construction::{
+            HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+        },
+        parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
+        values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    };
 
     pub(in crate::parser::tree_builder) fn request(
         source: &str,
@@ -1688,12 +1704,16 @@ pub(super) mod tests {
         {
             let fragment = parts.fragment().unwrap();
             let p = fragment.root().children().next().unwrap();
-            let crate::HtmlNodeKind::Element(element) = fragment.node(&p).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                fragment.node(&p).unwrap().kind()
+            else {
                 panic!()
             };
             assert_eq!(element.name().local_name().code_units(), &[112]);
             let text = fragment.node(&p).unwrap().children().next().unwrap();
-            let crate::HtmlNodeKind::Text(value) = fragment.node(&text).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Text(value) =
+                fragment.node(&text).unwrap().kind()
+            else {
                 panic!()
             };
             assert_eq!(value.code_units(), &[65, 38, 66]);
@@ -1749,14 +1769,17 @@ pub(super) mod tests {
                 .next()
                 .unwrap();
             let text = fragment.node(&p).unwrap().children().next().unwrap();
-            let crate::HtmlNodeKind::Text(value) = fragment.node(&text).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Text(value) =
+                fragment.node(&text).unwrap().kind()
+            else {
                 panic!()
             };
             assert_eq!(value.code_units(), &[65]);
             let ordinary: Vec<_> = fragment.root().children().collect();
             assert_eq!(ordinary.len(), 2);
             assert_ne!(ordinary[0], effect.template);
-            let crate::HtmlNodeKind::Element(element) = fragment.node(&ordinary[0]).unwrap().kind()
+            let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                fragment.node(&ordinary[0]).unwrap().kind()
             else {
                 panic!()
             };
@@ -1764,7 +1787,8 @@ pub(super) mod tests {
                 element.name().local_name().code_units(),
                 &"template".encode_utf16().collect::<Vec<_>>()
             );
-            let crate::HtmlNodeKind::Text(value) = fragment.node(&ordinary[1]).unwrap().kind()
+            let surgeist_html::construction::HtmlNodeKind::Text(value) =
+                fragment.node(&ordinary[1]).unwrap().kind()
             else {
                 panic!()
             };
@@ -3392,7 +3416,7 @@ pub(super) mod tests {
             (
                 Namespace::mathml(),
                 "annotation-xml",
-                OrderedAttributes::new([crate::Attribute::new(
+                OrderedAttributes::new([surgeist_html::values::Attribute::new(
                     QualifiedName::new(Namespace::none(), None, "encoding"),
                     "TeXt/HtMl",
                 )])
@@ -3403,7 +3427,7 @@ pub(super) mod tests {
             (
                 Namespace::mathml(),
                 "annotation-xml",
-                OrderedAttributes::new([crate::Attribute::new(
+                OrderedAttributes::new([surgeist_html::values::Attribute::new(
                     QualifiedName::new(Namespace::from_uri("urn:encoding"), None, "encoding"),
                     "text/html",
                 )])
@@ -3414,7 +3438,7 @@ pub(super) mod tests {
             (
                 Namespace::mathml(),
                 "annotation-xml",
-                OrderedAttributes::new([crate::Attribute::new(
+                OrderedAttributes::new([surgeist_html::values::Attribute::new(
                     QualifiedName::new(Namespace::none(), None, "Encoding"),
                     "text/html",
                 )])
@@ -5061,7 +5085,7 @@ pub(super) mod tests {
 mod owned_fragment_details_tests {
     use super::*;
     use crate::construction::native_view::{NativeKind, NativeString, NativeView};
-    use crate::*;
+    use surgeist_html::construction::HtmlShadowRootMode;
 
     #[derive(Debug, PartialEq)]
     struct Detail {
@@ -5405,6 +5429,8 @@ mod owned_fragment_details_effect_tests {
         tests::LexerFixture,
         token::{Attribute, Event, Tag, TokenKind},
     };
+    use surgeist_html::elements::details::HtmlDetailsAttribute;
+
     use crate::*;
 
     fn owner(
@@ -5902,6 +5928,8 @@ mod owned_fragment_details_effect_tests {
 mod owned_fragment_details_completion_tests {
     use super::*;
     use crate::construction::context::QualifiedFragmentHost;
+    use surgeist_html::construction::HtmlNodeKind;
+
     use crate::*;
 
     #[test]
@@ -6112,7 +6140,7 @@ mod shadow_reference_alias_characterization {
                 assert_eq!(effect.source.source(), request.source().identity());
                 assert_eq!(
                     request.source().text(effect.source).unwrap(),
-                    crate::DocumentString::from("<template shadowrootmode=open>")
+                    surgeist_html::values::DocumentString::from("<template shadowrootmode=open>")
                 );
                 (effect.template, effect.contents)
             };
@@ -6142,7 +6170,7 @@ mod shadow_reference_alias_characterization {
             let p = fragment.node(&shadow).unwrap().children().next().unwrap();
             let text = fragment.node(&p).unwrap().children().next().unwrap();
             assert!(matches!(fragment.node(&text).unwrap().kind(),
-                crate::HtmlNodeKind::Text(value) if value.code_units() == [65]));
+                surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units() == [65]));
             drop(alias);
             parts.release().unwrap();
             crate::parser::tree_builder::tests::assert_released(&parts.control);

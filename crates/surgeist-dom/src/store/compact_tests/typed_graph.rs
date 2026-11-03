@@ -3,6 +3,7 @@
 use super::*;
 use crate::element::NativeFamily;
 use crate::store::payload::Payload as Target;
+use surgeist_html::values::DocumentString;
 
 #[derive(Default)]
 struct Raw {
@@ -133,7 +134,7 @@ impl Walker<'_> {
             // adds only its fixed layout descriptor beside the association.
             let layout = association.retained_layout().unwrap();
             raw.bytes(layout.storage().bytes());
-            raw.bytes(size_of::<surgeist_html::HtmlCspArtifactLayout>());
+            raw.bytes(size_of::<surgeist_html::security::csp::HtmlCspArtifactLayout>());
             raw.units(layout.storage().utf16_units());
         }
         if let crate::DomDocumentCreationCause::ParsedOffline { url, .. } =
@@ -205,7 +206,7 @@ impl Walker<'_> {
                 let mut raw = Raw::default();
                 self.text(&mut raw, &value.value.current);
                 self.text(&mut raw, &value.value.control.message);
-                if let surgeist_html::HtmlInputImageHistory::Last {
+                if let surgeist_html::elements::input::HtmlInputImageHistory::Last {
                     source: Some(source),
                     ..
                 } = &value.value.image
@@ -255,7 +256,10 @@ impl Walker<'_> {
             NativeFamily::Canvas(value) => {
                 let mut raw = Raw::default();
                 for dimension in [value.value.width(), value.value.height()] {
-                    if let surgeist_html::HtmlCanvasBitmapDimension::Parsed(digits) = dimension {
+                    if let surgeist_html::elements::media::HtmlCanvasBitmapDimension::Parsed(
+                        digits,
+                    ) = dimension
+                    {
                         let bytes = digits.retained_buffer_bytes();
                         raw.bytes(bytes);
                         raw.units(bytes);

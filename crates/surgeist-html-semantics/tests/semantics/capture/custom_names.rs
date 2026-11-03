@@ -1,9 +1,14 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeConformanceError, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
-    HtmlAttributeRecognition, HtmlAttributeReport, HtmlCustomElementName,
-    HtmlCustomElementNameError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
-    Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport,
+    },
+    values::{
+        Attribute, DocumentString, HtmlCustomElementName, HtmlCustomElementNameError,
+        HtmlValueInterpreter, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -378,7 +383,7 @@ fn wrong_expanded_role_retains_raw_unapplied_without_a_default() {
     let absent = HtmlValueInterpreter::new(0)
         .is_attribute(
             &QualifiedName::new(Namespace::svg(), None, "button"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(
@@ -429,7 +434,7 @@ fn original_raw_admission_precedes_local_invalidity_and_wrong_role() {
     assert_eq!(
         zero.is_attribute(
             &KnownHtmlElement::Button.qualified_name(),
-            None::<&surgeist_html::Attribute>
+            None::<&surgeist_html::values::Attribute>
         )
         .unwrap()
         .author(),

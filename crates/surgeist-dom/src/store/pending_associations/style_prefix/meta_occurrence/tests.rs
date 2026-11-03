@@ -5,7 +5,8 @@ use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
-use surgeist_html::HtmlCspOwner;
+use surgeist_html::security::csp::HtmlCspOwner;
+use surgeist_html::{elements::style::HtmlStyleExecutionProfile, values::DocumentString};
 fn ready() -> (
     Dom,
     DocumentId,

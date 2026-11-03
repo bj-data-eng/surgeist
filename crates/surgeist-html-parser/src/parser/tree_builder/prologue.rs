@@ -23,8 +23,9 @@ use crate::parser::{
     },
     tokenizer::token::{Doctype, Tag, TagKind, Text, Token, TokenKind},
 };
-use crate::{HtmlDocumentMode, HtmlParseResource, HtmlSource, HtmlSourceRange};
+use crate::{HtmlParseResource, HtmlSource, HtmlSourceRange};
 use std::mem::size_of;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlPrologueMode {
@@ -718,6 +719,7 @@ impl BeforeHead {
 mod completion_tests {
     use super::*;
     use crate::construction::{HtmlParseCompletion, HtmlParseReadiness};
+    use surgeist_html::construction::HtmlDocumentMode;
 
     #[test]
     fn fresh_source_document_initial_readiness_is_complete_but_parsing_is_unfinished() {

@@ -1,6 +1,9 @@
 //! Test-only readers of retained input, output, textarea and form state.
 
 use super::*;
+use surgeist_html::{
+    construction::HtmlNodeId, elements::form::HtmlNativeFormAssociationKind, values::DocumentString,
+};
 
 impl ParserArenaSession {
     #[cfg(test)]

@@ -1,5 +1,6 @@
 //! Actual intrinsic children-changed dispatch at each canonical source step.
 use super::*;
+
 impl Draft {
     pub(super) fn children_changed(
         &mut self,

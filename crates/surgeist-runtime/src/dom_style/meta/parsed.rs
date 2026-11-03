@@ -113,7 +113,7 @@ impl From<surgeist_dom::DomParsedHtmlInstallError> for DomStyleParsedInstallErro
 #[derive(Debug)]
 pub struct DomStyleParsedMetaPreference {
     id: surgeist_html_parser::HtmlParseAssociationOccurrenceId,
-    subject: surgeist_html::HtmlNodeId,
+    subject: surgeist_html::construction::HtmlNodeId,
     observation: DomStyleSheetSetObservation,
     root_commit_index: usize,
 }
@@ -123,7 +123,7 @@ impl DomStyleParsedMetaPreference {
         &self.id
     }
     /// Original historical subject; it need not have a surviving live NodeId.
-    pub fn subject(&self) -> &surgeist_html::HtmlNodeId {
+    pub fn subject(&self) -> &surgeist_html::construction::HtmlNodeId {
         &self.subject
     }
     /// Actual ordered name transition with the final real producer basis.

@@ -5,10 +5,11 @@
 //! its rules for parsing non-negative integers (877d §2.3.4.2, §4.9.12 forming
 //! a table, §4.9.10 the th `scope` attribute), never from the implementation.
 
-use surgeist_html::bounded::{HtmlTableSpanRule, th_scope_state, th_scope_work_bound};
+use surgeist_html::bounded::attributes::{HtmlTableSpanRule, th_scope_state, th_scope_work_bound};
 use surgeist_html::{
-    DocumentString, HtmlTableHeaderScope, HtmlTableHeaderScopeState, HtmlValueInterpreter,
-    KnownHtmlAttribute, KnownHtmlElement,
+    attributes::table_header_scope::{HtmlTableHeaderScope, HtmlTableHeaderScopeState},
+    values::{DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn value(rule: HtmlTableSpanRule, raw: &str) -> u16 {
@@ -71,10 +72,14 @@ fn borrowed_spans_agree_with_the_report_readers() {
     let interpreter = HtmlValueInterpreter::new(4096);
     let td = KnownHtmlElement::Td.qualified_name();
     for raw in ["", "0", "7", "1001", "70000", "-0", "x"] {
-        let colspan =
-            surgeist_html::Attribute::new(KnownHtmlAttribute::Colspan.qualified_name(), raw);
-        let rowspan =
-            surgeist_html::Attribute::new(KnownHtmlAttribute::Rowspan.qualified_name(), raw);
+        let colspan = surgeist_html::values::Attribute::new(
+            KnownHtmlAttribute::Colspan.qualified_name(),
+            raw,
+        );
+        let rowspan = surgeist_html::values::Attribute::new(
+            KnownHtmlAttribute::Rowspan.qualified_name(),
+            raw,
+        );
         assert_eq!(
             interpreter
                 .cell_colspan(&td, Some(&colspan))

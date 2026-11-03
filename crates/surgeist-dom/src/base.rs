@@ -1,6 +1,6 @@
 //! Canonical Base history, native qualified observations and Link history.
 use crate::{DocumentId, DomNode, NodeId};
-use surgeist_html::{HtmlLinkFlags, HtmlLinkHistory};
+use surgeist_html::elements::link::{HtmlLinkFlags, HtmlLinkHistory};
 use surgeist_html_semantics::{
     HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlParseBaseFacts,
 };
@@ -67,19 +67,19 @@ impl<K> BaseState<K> {
 /// Opaque identities retain no native policy graph and grant no CSP execution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CspBasis {
-    document: surgeist_html::HtmlCspDocumentId,
-    policy: surgeist_html::HtmlCspPolicyId,
-    revision: surgeist_html::HtmlCspPolicyRevision,
+    document: surgeist_html::security::csp::HtmlCspDocumentId,
+    policy: surgeist_html::security::csp::HtmlCspPolicyId,
+    revision: surgeist_html::security::csp::HtmlCspPolicyRevision,
 }
 impl CspBasis {
-    pub(crate) fn new(value: &surgeist_html::HtmlCspAssociation) -> Self {
+    pub(crate) fn new(value: &surgeist_html::security::csp::HtmlCspAssociation) -> Self {
         Self {
             document: value.document().clone(),
             policy: value.policy().id().clone(),
             revision: value.policy().revision(),
         }
     }
-    pub(crate) fn matches(&self, value: &surgeist_html::HtmlCspAssociation) -> bool {
+    pub(crate) fn matches(&self, value: &surgeist_html::security::csp::HtmlCspAssociation) -> bool {
         self.document == *value.document()
             && self.policy == *value.policy().id()
             && self.revision == value.policy().revision()
@@ -209,7 +209,9 @@ impl<'a> DomNode<'a> {
 impl<'a> crate::DomDocument<'a> {
     /// Constructor-established opener policy in the admitted hosted profile.
     /// This is neither a general parsed policy bank nor a currentness proof.
-    pub fn opener_policy(self) -> Option<&'a surgeist_html::HtmlOpenerPolicy> {
+    pub fn opener_policy(
+        self,
+    ) -> Option<&'a surgeist_html::security::opener_policy::HtmlOpenerPolicy> {
         Some(&self.metadata().hosted_inputs.as_ref()?.0.opener)
     }
     /// Stored constructor URL, about-base and encoding inputs. These are not
@@ -252,7 +254,9 @@ impl<'a> crate::DomDocument<'a> {
     }
     /// Current base selection through the maintained first-Base index (O(1));
     /// this never scans descendants or substitutes URL parsing for an observation.
-    pub fn document_base_url(self) -> Result<&'a crate::DocumentString, crate::DomError> {
+    pub fn document_base_url(
+        self,
+    ) -> Result<&'a surgeist_html::values::DocumentString, crate::DomError> {
         if self.base_document_facts().is_some() {
             return self
                 .document_base_record()
@@ -291,7 +295,8 @@ impl<'a> crate::DomDocument<'a> {
 #[cfg(test)]
 mod csp_basis_tests {
     use super::*;
-    use surgeist_html::*;
+    use surgeist_html::security::csp::{HtmlCspLayout, HtmlCspOwner};
+
     #[test]
     fn equal_revision_numbers_from_independent_issuers_are_not_policy_qualification() {
         let mut admit = |_: HtmlCspLayout| Ok::<_, ()>(());

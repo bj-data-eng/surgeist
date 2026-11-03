@@ -1,8 +1,12 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeConformanceError, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
-    HtmlAttributeRecognition, HtmlAttributeReport, HtmlSpaceToken, HtmlTokenError,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport,
+    },
+    microsyntax::tokens::{HtmlSpaceToken, HtmlTokenError},
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn raw(value: impl Into<DocumentString>) -> Attribute {
@@ -308,7 +312,7 @@ fn wrong_role_or_namespace_preserves_unapplied_raw_without_local_validation() {
     let absent = HtmlValueInterpreter::new(0)
         .id_attribute(
             &QualifiedName::new(Namespace::svg(), None, "div"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
@@ -350,7 +354,7 @@ fn raw_utf16_admission_precedes_wrong_role_and_invalid_value_checks() {
     let interpreter = HtmlValueInterpreter::new(0);
     assert_eq!(
         interpreter
-            .id_attribute(&div, None::<&surgeist_html::Attribute>)
+            .id_attribute(&div, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .author(),
         HtmlAttributeAuthorState::Missing

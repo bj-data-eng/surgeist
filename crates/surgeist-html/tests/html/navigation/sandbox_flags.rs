@@ -11,9 +11,11 @@ use std::{
     },
 };
 use surgeist_html::{
-    Attribute, DocumentString, HtmlSandboxAuthorState, HtmlSandboxDirectiveState,
-    HtmlSandboxFlag as F, HtmlSandboxFlags, HtmlValueInterpreter, KnownHtmlAttribute as A,
-    KnownHtmlElement as E,
+    attributes::sandbox::{
+        HtmlSandboxAuthorState, HtmlSandboxDirectiveState, HtmlSandboxFlag as F, HtmlSandboxFlags,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 const RESTRICTIONS: [F; 16] = [
@@ -66,7 +68,7 @@ fn absent_contribution_is_empty_but_present_empty_and_ascii_space_restrict_all()
     let report = HtmlValueInterpreter::new(128)
         .iframe_sandbox(
             &E::Iframe.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(report.intrinsic(), Some(&HtmlSandboxDirectiveState::Absent));

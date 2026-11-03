@@ -1,6 +1,7 @@
 //! Script preparation over the active session storage.
 
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 impl SessionStorage {
     pub(super) fn prepare_script_owned(
@@ -9,10 +10,12 @@ impl SessionStorage {
         index: usize,
         detached: Option<usize>,
     ) -> Result<DisabledScriptPreparation, SessionError> {
-        use bounded::{HtmlScriptPreparationAction as Action, HtmlScriptPreparationReply as Reply};
+        use surgeist_html::bounded::script::{
+            HtmlScriptPreparationAction as Action, HtmlScriptPreparationReply as Reply,
+        };
         let (slot, mut metadata) = script_metadata(&self.payloads, control, index)?;
-        payload_write::<bounded::HtmlScriptPreparationCursor>(control, 1)?;
-        let mut cursor = bounded::HtmlScriptPreparationCursor::new();
+        payload_write::<surgeist_html::bounded::script::HtmlScriptPreparationCursor>(control, 1)?;
+        let mut cursor = surgeist_html::bounded::script::HtmlScriptPreparationCursor::new();
         let mut saved_document = None;
         loop {
             let reply = match cursor.action() {
@@ -169,7 +172,9 @@ impl SessionStorage {
             };
             // Account the actual new owned state before each transition. The
             // metadata write boundaries and first reached failure remain intact.
-            payload_write::<bounded::HtmlScriptPreparationCursor>(control, 1)?;
+            payload_write::<surgeist_html::bounded::script::HtmlScriptPreparationCursor>(
+                control, 1,
+            )?;
             cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         }
     }

@@ -1,6 +1,6 @@
 //! Shared exact encoding-URL observations, with no fabricated Element context.
 use std::convert::Infallible;
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::*;
 
 fn context() -> (HtmlBaseFactsRevision, HtmlBaseUrlRecord, HtmlBaseEncoding) {

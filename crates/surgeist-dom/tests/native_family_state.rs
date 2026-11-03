@@ -4,7 +4,7 @@ use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomError, DomLimits, DomResource,
     DomSnapshot, Namespace, NodeId,
 };
-use surgeist_html::HtmlCanvasBitmapDimension;
+use surgeist_html::elements::media::HtmlCanvasBitmapDimension;
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {
     Dom::new(

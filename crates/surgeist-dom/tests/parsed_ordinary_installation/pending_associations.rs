@@ -1,5 +1,6 @@
 //! Actual parser histories retained by the canonical owner, without execution.
 use super::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
@@ -28,7 +29,9 @@ fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
                 assert_ne!(row.kind(), Kind::ChangePreferred);
                 popped |= matches!(
                     row.kind(),
-                    Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+                    Kind::StyleUpdate(
+                        surgeist_html::elements::style::HtmlStyleTrigger::ParserPopped
+                    )
                 );
             }
             Step::Complete => break,
@@ -187,7 +190,9 @@ fn parsed_known_null_style_later_edits_use_actual_native_processing() {
     };
     assert_eq!(
         request.action(),
-        DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        DomStyleAction::Update(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+        )
     );
     assert_eq!(request.source().element(), style);
     let blocked = DomStyleInlineCspObservation::evaluated(

@@ -2,7 +2,7 @@
 //! Observes supplied current values; performs no validation or control mutation.
 
 use super::*;
-use crate::HtmlInputType;
+use surgeist_html::{attributes::HtmlInputType, vocabulary::KnownHtmlElement};
 
 impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn input_text_value_missing(

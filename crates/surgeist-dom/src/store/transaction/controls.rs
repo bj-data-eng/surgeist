@@ -834,8 +834,9 @@ impl Draft {
             root: self.live_key(root),
             owner: fields.control_owner().map(|key| self.live_key(key)),
             form_present,
-            radio: input
-                .is_some_and(|input| input.input_type() == surgeist_html::HtmlInputType::Radio),
+            radio: input.is_some_and(|input| {
+                input.input_type() == surgeist_html::attributes::HtmlInputType::Radio
+            }),
             name,
             name_usage,
         }))
@@ -1079,6 +1080,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn fact(
         key: usize,
@@ -1504,14 +1506,23 @@ mod tests {
             let mut dom = Dom::new(limits()).unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
-            let mut parent = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+            let mut parent =
+                batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
             batch.insert_before(&parent, &document, None);
             for _ in 1..depth {
-                let child = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+                let child = batch.create_element_ns(
+                    &document,
+                    surgeist_html::values::Namespace::html(),
+                    "div",
+                );
                 batch.insert_before(&child, &parent, None);
                 parent = child;
             }
-            let radio = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+            let radio = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "input",
+            );
             batch.set_attribute(&radio, "type", "radio");
             batch.set_attribute(&radio, "name", "g");
             batch.insert_before(&radio, &parent, None);
@@ -1534,10 +1545,14 @@ mod tests {
         let mut dom = Dom::new(limits()).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-        let other = batch.create_element_ns(&document, crate::Namespace::html(), "form");
-        let a = batch.create_element_ns(&document, crate::Namespace::html(), "input");
-        let b = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+        let root =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let other =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "form");
+        let a =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
+        let b =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         for key in [&a, &b] {
             batch.set_attribute(key, "type", "radio");
             batch.set_attribute(key, "name", "g");
@@ -1579,7 +1594,7 @@ mod tests {
             )
             .unwrap();
         assert!(
-            matches!(draft.node(b).unwrap().kind(),KindRead::Element(element) if element.input_state().unwrap().input_type()==surgeist_html::HtmlInputType::Checkbox)
+            matches!(draft.node(b).unwrap().kind(),KindRead::Element(element) if element.input_state().unwrap().input_type()==surgeist_html::attributes::HtmlInputType::Checkbox)
         );
         draft
             .set_attribute(b, None, &"name".into(), &"g".into(), limits(), &cancel)
@@ -1603,8 +1618,10 @@ mod tests {
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let other_document = batch.create_document();
-        let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-        let prototype = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+        let root =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let prototype =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         batch.set_attribute(&prototype, "type", "radio");
         batch.set_attribute(&prototype, "name", "g");
         batch.insert_before(&prototype, &root, None);
@@ -1695,10 +1712,17 @@ mod tests {
         let mut dom = Dom::new(configured).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-        let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
-        let a = batch.create_element_ns(&document, crate::Namespace::html(), "input");
-        let b = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+        let root =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let dialog = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
+        let a =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
+        let b =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         for key in [&a, &b] {
             batch.set_attribute(key, "type", "radio");
             batch.set_attribute(key, "name", "g");

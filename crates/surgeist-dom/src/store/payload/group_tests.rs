@@ -1,6 +1,7 @@
 use super::*;
 use crate::store::*;
 use std::sync::atomic::{AtomicBool, Ordering};
+use surgeist_html::values::DocumentString;
 
 fn unlimited(_: Usage) -> Result<(), DomError> {
     Ok(())

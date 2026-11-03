@@ -5,10 +5,11 @@
 //! caller Clone follows the existing fact contract outside query accounting.
 
 use super::*;
-use crate::{
+use surgeist_html::attributes::{
     HtmlAttributeRecognition, HtmlAttributeReport, HtmlAutocapitalize, HtmlAutocapitalizeState,
     HtmlAutocorrect, HtmlInputType, HtmlWritingSuggestions, HtmlWritingSuggestionsState,
 };
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// Own hint with actual content and consulted form-owner evidence.
 #[derive(Clone, Debug, PartialEq)]

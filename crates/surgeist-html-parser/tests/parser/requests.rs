@@ -1,5 +1,9 @@
 use crate::parser::support::{bank, record, revision};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    parsing::HtmlParserScriptingMode,
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseFailureReason, HtmlParseLimits,
     HtmlParseLimitsBuilder, HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource,

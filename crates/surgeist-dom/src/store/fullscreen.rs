@@ -1,6 +1,7 @@
 //! Fullscreen7c38 model transitions through the original canonical owner.
 use super::*;
 use crate::DomFullscreenModelStep as Step;
+
 pub(in crate::store) mod custody;
 pub(in crate::store) mod exit;
 

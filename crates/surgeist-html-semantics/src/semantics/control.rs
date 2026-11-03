@@ -3,9 +3,10 @@
 //! Host adapters establish history and current slots; queries execute no transitions.
 
 use super::*;
-use crate::bounded::{HtmlFormOwnerLookup, form_owner_lookup};
-use crate::{HtmlAttributeReport, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlInputType};
-use surgeist_html::HtmlNativeFormAssociationKind;
+use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
+use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
+use surgeist_html::{elements::form::HtmlNativeFormAssociationKind, vocabulary::KnownHtmlElement};
 
 /// Evidence of the actual association phase at this capture's host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -600,7 +601,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 ) {
                     return Ok(HtmlSemanticValue::Known(false));
                 }
-                if crate::bounded::input_readonly_applies(state)
+                if surgeist_html::bounded::attributes::input_readonly_applies(state)
                     && self.attribute(element, "readonly")?.is_some()
                 {
                     return Ok(HtmlSemanticValue::Known(false));
@@ -1008,8 +1009,8 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     pub(super) fn control_equal(
         &mut self,
-        left: &crate::DocumentString,
-        right: &crate::DocumentString,
+        left: &surgeist_html::values::DocumentString,
+        right: &surgeist_html::values::DocumentString,
     ) -> Result<bool, HtmlSemanticFailure> {
         self.control_equal_units(left.code_units(), right.code_units())
     }
@@ -1033,7 +1034,7 @@ impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn control_find(
         &mut self,
         root: &HtmlCaptureSubjectId,
-        id: Option<&crate::DocumentString>,
+        id: Option<&surgeist_html::values::DocumentString>,
         include_root: bool,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
     ) -> ControlResult<Option<HtmlCaptureSubjectId>> {
@@ -1628,6 +1629,7 @@ impl<'a> HtmlSemanticSession<'a> {
 #[cfg(test)]
 mod exact_comparison_tests {
     use super::*;
+    use surgeist_html::values::{DocumentString, HtmlValueInterpreter};
 
     #[test]
     fn exact_borrowed_and_shared_string_comparison_preserve_literal_action_costs() {
@@ -1637,7 +1639,7 @@ mod exact_comparison_tests {
         );
         builder
             .add_document(
-                crate::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                 crate::HtmlScriptingStatus::Unavailable,
                 crate::HtmlCaptureRegistryInput::Null,
             )

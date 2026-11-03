@@ -5,12 +5,13 @@
 #[cfg(test)]
 use super::scale_metrics::Event;
 use super::{DomError, custody};
+use crate::DomAttribute;
 use crate::name::AttributeStorage;
-use crate::{DocumentString, DomAttribute};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlStringPool, HtmlValuePoolMark, HtmlValuePoolRoot, HtmlValuePoolSeal,
 };
+use surgeist_html::values::DocumentString;
 
 mod banks;
 #[cfg(test)]
@@ -152,10 +153,10 @@ impl SelectedString {
 fn lock(owner: &Mutex<State>) -> MutexGuard<'_, State> {
     owner.lock().expect("exclusive optional value owner")
 }
-fn protocol<T>(result: Result<T, surgeist_html::bounded::HtmlValuePoolError>) -> T {
+fn protocol<T>(result: Result<T, surgeist_html::bounded::values::HtmlValuePoolError>) -> T {
     result.expect("owned optional value protocol")
 }
-fn html_work(work: surgeist_html::bounded::HtmlValuePoolWork) -> Result<usize, DomError> {
+fn html_work(work: surgeist_html::bounded::values::HtmlValuePoolWork) -> Result<usize, DomError> {
     [
         work.record_visits(),
         work.inspected_bytes(),
@@ -168,7 +169,7 @@ fn html_work(work: surgeist_html::bounded::HtmlValuePoolWork) -> Result<usize, D
         sum.checked_add(n).ok_or(DomError::RepresentationExhausted)
     })
 }
-fn html_usage(value: surgeist_html::bounded::HtmlValuePoolUsage) -> custody::Usage {
+fn html_usage(value: surgeist_html::bounded::values::HtmlValuePoolUsage) -> custody::Usage {
     custody::Usage::new(value.bytes(), value.utf16_units())
 }
 #[cfg(test)]
@@ -178,7 +179,7 @@ fn metric(event: Event) {
     }
 }
 #[cfg(test)]
-fn admitted_html(work: surgeist_html::bounded::HtmlValuePoolWork, closing: bool) {
+fn admitted_html(work: surgeist_html::bounded::values::HtmlValuePoolWork, closing: bool) {
     if super::scale_metrics::ENABLED {
         metric(Event::SharingHtmlAdmitted {
             closing,

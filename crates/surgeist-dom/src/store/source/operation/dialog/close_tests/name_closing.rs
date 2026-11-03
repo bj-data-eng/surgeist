@@ -1,5 +1,6 @@
 //! A refused containing-bank replacement retains the acknowledged Close for retry.
 use super::*;
+use surgeist_html::elements::dialog::HtmlDialogAction;
 
 const UNRELATED_ATTRIBUTES: usize = 256;
 const NAME_BYTES: usize = 512 * 1024;
@@ -76,8 +77,14 @@ fn acknowledged_close_retries_same_attribute_tail_after_raising_name_allowance()
         };
         assert!(!event.cancelable());
         let toggle = event.toggle_event().unwrap();
-        assert_eq!(toggle.old_state(), surgeist_html::HtmlDialogState::Open);
-        assert_eq!(toggle.new_state(), surgeist_html::HtmlDialogState::Closed);
+        assert_eq!(
+            toggle.old_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Open
+        );
+        assert_eq!(
+            toggle.new_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Closed
+        );
         event
     };
     let operation = event.operation();

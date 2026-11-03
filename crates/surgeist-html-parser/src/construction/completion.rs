@@ -3,6 +3,7 @@
 //! This registry fact does not grant public report or browser lifecycle support.
 
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlParseReadiness {
@@ -283,6 +284,7 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::construction::HtmlDocumentMode;
 
     #[test]
     fn completion_metadata_consumes_one_actual_retained_slot_and_one_short_reclaims_capacity() {

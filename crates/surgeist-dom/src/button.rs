@@ -1,7 +1,8 @@
 //! Actual native Button payload and its canonical weak-target view.
 use crate::reflected::ReflectedTarget;
-use crate::{DocumentString, DomNode, NodeId};
-use surgeist_html::HtmlNativeFormAssociationKind;
+use crate::{DomNode, NodeId};
+use surgeist_html::elements::form::HtmlNativeFormAssociationKind;
+use surgeist_html::values::DocumentString;
 
 /// Stored native Button parser flag and custom error, independently of markup.
 #[derive(Clone, Debug, Eq, PartialEq)]

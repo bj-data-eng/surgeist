@@ -178,7 +178,7 @@ pub enum HtmlParseInvariant {
 pub enum HtmlParseStop {
     Cancelled,
     CspProcessing,
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     LimitExceeded {
         resource: HtmlParseResource,
         limit: u64,
@@ -595,7 +595,7 @@ impl ParseControl {
     }
     pub(crate) fn csp_protocol_stop(
         &mut self,
-        error: surgeist_html::HtmlCspProtocolError,
+        error: surgeist_html::security::csp::HtmlCspProtocolError,
     ) -> HtmlParseStop {
         self.latch_stop(HtmlParseStop::CspProtocol(error))
     }
@@ -773,7 +773,7 @@ impl ParseControl {
     fn observe_attribute_append(&mut self, slots: usize) {
         // The actual fixed pop/push transfers each slot twice. Observe its
         // performed copy span, not an unrelated prepaid whole-vector total.
-        let bytes = slots.saturating_mul(2 * size_of::<crate::Attribute>());
+        let bytes = slots.saturating_mul(2 * size_of::<surgeist_html::values::Attribute>());
         self.owned_spans.append_calls = self.owned_spans.append_calls.saturating_add(1);
         self.owned_spans.append_slots = self.owned_spans.append_slots.saturating_add(slots);
         self.owned_spans.largest_append_copy_bytes =
@@ -950,7 +950,7 @@ impl ParseControl {
     /// comparison proceeds. A length mismatch is decided after the record visit alone.
     pub(crate) fn ascii_case_insensitive_literal_matches(
         &mut self,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
         literal: &str,
     ) -> Result<bool, HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -960,7 +960,7 @@ impl ParseControl {
         // The lengths are equal, so the pairs are exactly the literal's indices.
         for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
             self.charge_unit_literal_comparison()?;
-            if !surgeist_html::bounded::ascii_case_insensitive_unit(unit, byte) {
+            if !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(unit, byte) {
                 return Ok(false);
             }
         }
@@ -1414,16 +1414,16 @@ impl ParseControl {
     /// latches a terminal failure. Opaque Arc headers stay outside byte counts.
     fn prepare_attribute_edit(
         &mut self,
-        values: &Arc<Vec<crate::Attribute>>,
-        shared: &SharedAllocation<Vec<crate::Attribute>>,
-        vector: &VectorCapacity<crate::Attribute>,
+        values: &Arc<Vec<surgeist_html::values::Attribute>>,
+        shared: &SharedAllocation<Vec<surgeist_html::values::Attribute>>,
+        vector: &VectorCapacity<surgeist_html::values::Attribute>,
     ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
             (HtmlParseWorkCategory::RecordVisit, 3),
             (HtmlParseWorkCategory::ProviderCall, 9),
             (
                 HtmlParseWorkCategory::CopyByte,
-                const { (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64 },
+                const { (2 * size_of::<Weak<Vec<surgeist_html::values::Attribute>>>()) as u64 },
             ),
             (HtmlParseWorkCategory::RecordWrite, 2),
         ])?;
@@ -1436,7 +1436,7 @@ impl ParseControl {
         }
         if shared.finalized
             || shared.shared.as_ptr() != Arc::as_ptr(values)
-            || shared.bytes != size_of::<Vec<crate::Attribute>>() as u64
+            || shared.bytes != size_of::<Vec<surgeist_html::values::Attribute>>() as u64
             || vector.capacity != values.capacity()
         {
             return self.fail(HtmlParseStop::InternalInvariant(
@@ -1965,9 +1965,15 @@ impl ParseControl {
     pub(crate) fn freeze_document_string(
         &mut self,
         buffer: OwnedVec<u16>,
-    ) -> Result<(crate::DocumentString, DocumentStringAllocation), HtmlParseStop> {
+    ) -> Result<
+        (
+            surgeist_html::values::DocumentString,
+            DocumentStringAllocation,
+        ),
+        HtmlParseStop,
+    > {
         let (units, mut allocation) = self.admit_document_string_wrapper(buffer)?;
-        let text = crate::DocumentString::from_utf16(units);
+        let text = surgeist_html::values::DocumentString::from_utf16(units);
         if let Err(stop) = self.bind_document_string(&mut allocation, &text) {
             drop(text);
             self.release_document_string(allocation)?;
@@ -1980,7 +1986,7 @@ impl ParseControl {
     fn bind_document_string(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         self.charge_many(&[
@@ -2007,7 +2013,7 @@ impl ParseControl {
     pub(crate) fn require_document_string(
         &mut self,
         allocation: &DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -2019,7 +2025,7 @@ impl ParseControl {
     pub(crate) fn require_materialized_string_disposal(
         &mut self,
         allocation: &DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.validate_document_string(allocation, value)?;
         if allocation.resource != HtmlParseResource::BufferedUtf16Units
@@ -2056,7 +2062,7 @@ impl ParseControl {
     pub(crate) fn require_document_string_for_disposal(
         &mut self,
         allocation: &DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         if self.stop().is_none() {
             return self.require_document_string(allocation, value);
@@ -2066,7 +2072,7 @@ impl ParseControl {
     fn validate_document_string(
         &mut self,
         allocation: &DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(HtmlParseStop::InternalInvariant(
@@ -2092,7 +2098,7 @@ impl ParseControl {
     pub(crate) fn move_document_string_to_managed(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.require_document_string(allocation, value)?;
         if allocation.resource != HtmlParseResource::BufferedUtf16Units {
@@ -2132,8 +2138,8 @@ impl ParseControl {
     /// retires; the immutable backing remains live under its new sole receipt.
     pub(crate) fn csp_document_string(
         &mut self,
-        source: &crate::DocumentString,
-    ) -> Result<(crate::DocumentString, usize, usize), HtmlParseStop> {
+        source: &surgeist_html::values::DocumentString,
+    ) -> Result<(surgeist_html::values::DocumentString, usize, usize), HtmlParseStop> {
         let mut buffer = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
         for &unit in source.code_units() {
             if let Err(stop) = buffer.try_push(self, unit) {
@@ -3102,6 +3108,7 @@ mod tests {
         assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     }
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     #[test]
     fn optional_source_binding_move_refuses_running_control_and_preserves_stopped_usage() {
@@ -3135,7 +3142,6 @@ mod tests {
         assert_eq!(c.usage(), &current);
         assert_eq!(c.first_stop_usage(), Some(&first));
     }
-    use crate::DocumentString;
 
     #[test]
     fn pending_form_effect_stop_is_canonical_and_cannot_replace_first_failure() {
@@ -3289,7 +3295,7 @@ mod tests {
         for (units, literal, expected, pairs) in cases {
             let mut c = control();
             let before = c.usage().clone();
-            let value = crate::DocumentString::from_utf16(units.to_vec());
+            let value = surgeist_html::values::DocumentString::from_utf16(units.to_vec());
             assert_eq!(
                 c.ascii_case_insensitive_literal_matches(&value, literal)
                     .unwrap(),
@@ -3313,7 +3319,7 @@ mod tests {
 
     #[test]
     fn ascii_case_insensitive_literal_match_returns_the_first_refused_charge() {
-        let value = crate::DocumentString::from("OPEN");
+        let value = surgeist_html::values::DocumentString::from("OPEN");
         // One credit for the visit and three for the first pair; the second pair is refused.
         let caps = limits().into_builder().work_credits(4).finish().unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -6263,7 +6269,9 @@ mod tests {
     #[test]
     fn source_color_error_keeps_its_kind_and_original_source_binding() {
         let mut owner = control();
-        let source = HtmlSource::utf16(crate::DocumentString::from("<input type=color value=red>"));
+        let source = HtmlSource::utf16(surgeist_html::values::DocumentString::from(
+            "<input type=color value=red>",
+        ));
         owner.admit_source(&source).unwrap();
         let unavailable = surgeist_css::color::CssColorUnavailable::CurrentColor;
         let stop = owner.stop_color_processing(css_color_error(b"currentcolor"));

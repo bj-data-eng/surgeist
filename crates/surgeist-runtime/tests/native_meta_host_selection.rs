@@ -9,7 +9,7 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlReferrerPolicy;
+use surgeist_html::attributes::HtmlReferrerPolicy;
 use surgeist_runtime::*;
 
 fn session_limits() -> DomSessionLimits {

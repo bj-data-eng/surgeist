@@ -1,8 +1,18 @@
 //! Literal HTML 877d oracles: #selectedness-setting-algorithm, select reset,
 //! #ask-for-a-reset and #the-selectedcontent-element. The adapter applies real
 //! public flags and records state observed by each prescribed refresh.
-use surgeist_html::bounded::*;
-use surgeist_html::{HtmlOptionFlags, HtmlSelectFlags, KnownHtmlElement as E};
+use surgeist_html::bounded::select::{
+    HtmlOptionDisabledAncestor, HtmlOptionSelectAncestorAction, HtmlOptionSelectAncestors,
+    HtmlSelectAction, HtmlSelectCursor, HtmlSelectFirstSelectedAction,
+    HtmlSelectFirstSelectedCursor, HtmlSelectFirstSelection, HtmlSelectOperation,
+    HtmlSelectOptionRule, HtmlSelectReply, HtmlSelectedcontentAncestorAction,
+    HtmlSelectedcontentAncestors, HtmlSelectedcontentUpdate, option_disabled_ancestor,
+    select_option_rule, selectedcontent_update,
+};
+use surgeist_html::{
+    elements::form::{HtmlOptionFlags, HtmlSelectFlags},
+    vocabulary::KnownHtmlElement as E,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 struct Outcome {

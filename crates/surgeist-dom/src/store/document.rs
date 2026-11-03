@@ -10,7 +10,7 @@ pub(super) struct XmlDocumentFrame {
     associated: Key,
     root: Option<Key>,
     doctype: Option<Key>,
-    namespace: crate::Namespace,
+    namespace: surgeist_html::values::Namespace,
     stage: u8,
 }
 impl XmlDocumentFrame {
@@ -41,7 +41,7 @@ impl Draft {
     pub(super) fn create_xml_document(
         &mut self,
         associated: Key,
-        namespace: &crate::Namespace,
+        namespace: &surgeist_html::values::Namespace,
         qualified_name: &DocumentString,
         doctype: Option<&NodeOperand>,
         limits: DomLimits,
@@ -121,9 +121,9 @@ impl Draft {
         )?;
         let (namespace, payload) = if let Some(uri) = namespace.uri() {
             let (uri, payload) = source::formation::shared_string(self, uri, cancel)?;
-            (crate::Namespace::from_uri(uri), payload)
+            (surgeist_html::values::Namespace::from_uri(uri), payload)
         } else {
-            (crate::Namespace::none(), None)
+            (surgeist_html::values::Namespace::none(), None)
         };
         #[cfg(test)]
         if let Some(uri) = namespace.uri() {
@@ -323,6 +323,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn owner() -> (Dom, DocumentId) {
         let mut dom = Dom::new(
             DomLimits::new(
@@ -404,6 +405,7 @@ mod tests {
 mod xml_observation {
     use super::*;
     use std::cell::RefCell;
+
     #[derive(Default)]
     pub(super) struct State {
         pub bytes: usize,
@@ -513,6 +515,7 @@ mod xml_observation {
 #[cfg(test)]
 mod xml_tests {
     use super::*;
+
     fn run(
         bytes: usize,
         units: usize,
@@ -548,7 +551,7 @@ mod xml_tests {
         let mut batch = DomBatch::new();
         let document = batch.create_xml_document(
             associated,
-            crate::Namespace::from_uri(DocumentString::from_utf16(uri)),
+            surgeist_html::values::Namespace::from_uri(DocumentString::from_utf16(uri)),
             "",
             None,
         );

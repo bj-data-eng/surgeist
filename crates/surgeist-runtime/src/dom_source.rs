@@ -60,15 +60,15 @@ pub enum DomSourceUnavailable {
     /// An exact beforetoggle request requires explicit event dispatch.
     Event,
     /// This actual Dialog service has no implementation yet.
-    Dialog(surgeist_html::HtmlDialogAction),
+    Dialog(surgeist_html::elements::dialog::HtmlDialogAction),
     /// The exact child focusing action still lacks a qualified service.
-    DialogFocusing(surgeist_html::HtmlDialogFocusingAction),
+    DialogFocusing(surgeist_html::elements::dialog::HtmlDialogFocusingAction),
     /// Exact unsupported fact in an original called focus-delegate traversal.
     FocusDelegate(surgeist_dom::DomSourceFocusDelegateStep),
     /// The original designMode invocation needs this exact qualified service.
     DesignMode(surgeist_dom::DomSourceDesignModeStep),
     /// The exact autofocus insertion action still lacks a qualified service.
-    AutofocusInsertion(surgeist_html::HtmlAutofocusInsertionAction),
+    AutofocusInsertion(surgeist_html::focus::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
     /// A reached URL stage has no qualified observation yet.
@@ -573,7 +573,7 @@ impl DomSourceRuntime {
         &mut self,
         dom: &mut DomEventDom<'_>,
         target: DomNativeHtmlInstallTarget,
-        fragment: &surgeist_html::HtmlFragment,
+        fragment: &surgeist_html::construction::HtmlFragment,
         budgets: DomSourceNativeHtmlInstallLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
@@ -832,11 +832,11 @@ impl DomSourceRuntime {
                 DomSourceProgress::Request(DomSourceRequest::Dialog(request)) => {
                     if matches!(
                         request.action(),
-                        surgeist_html::HtmlDialogAction::QueueToggle {
-                            source: surgeist_html::HtmlDialogEventSource::Null
-                                | surgeist_html::HtmlDialogEventSource::OperationSource,
+                        surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle {
+                            source: surgeist_html::elements::dialog::HtmlDialogEventSource::Null
+                                | surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
                             ..
-                        } | surgeist_html::HtmlDialogAction::QueueClose
+                        } | surgeist_html::elements::dialog::HtmlDialogAction::QueueClose
                     ) {
                         self.element_tasks
                             .queue_dialog(lease, &request, cancel)
@@ -845,8 +845,8 @@ impl DomSourceRuntime {
                     }
                     if matches!(
                         request.action(),
-                        surgeist_html::HtmlDialogAction::EstablishCloseWatcher
-                            | surgeist_html::HtmlDialogAction::DestroyCloseWatcher
+                        surgeist_html::elements::dialog::HtmlDialogAction::EstablishCloseWatcher
+                            | surgeist_html::elements::dialog::HtmlDialogAction::DestroyCloseWatcher
                     ) && self
                         .hosted
                         .service_dialog_watcher(lease, &request, cancel)
@@ -856,7 +856,7 @@ impl DomSourceRuntime {
                     }
                     if matches!(
                         request.action(),
-                        surgeist_html::HtmlDialogAction::RememberFocusedElement
+                        surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement
                     ) && self
                         .hosted
                         .service_focus(
@@ -875,7 +875,8 @@ impl DomSourceRuntime {
                     });
                 }
                 DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) => {
-                    if request.action() == surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                    if request.action()
+                        == surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
                         && self
                             .hosted
                             .service_focus(
@@ -909,7 +910,7 @@ impl DomSourceRuntime {
                 }
                 DomSourceProgress::Request(DomSourceRequest::AutofocusInsertion(request)) => {
                     if request.action()
-                        == surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+                        == surgeist_html::focus::HtmlAutofocusInsertionAction::ReadAllowFocus
                         && self
                             .hosted
                             .service_focus(
@@ -1233,7 +1234,7 @@ mod tests {
         assert_ne!(document.operation(), text.operation());
         assert_eq!(
             session.snapshot().node(node).unwrap().data().unwrap(),
-            &surgeist_html::DocumentString::from("exact text")
+            &surgeist_html::values::DocumentString::from("exact text")
         );
         assert_eq!(
             session.snapshot().node(node).unwrap().owner_document(),

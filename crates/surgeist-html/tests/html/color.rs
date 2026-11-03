@@ -2,9 +2,12 @@
 
 use std::collections::HashSet;
 use surgeist_html::{
-    DocumentString, HtmlLegacyColor, HtmlValueAuthorState as Author, HtmlValueFailure as Failure,
-    HtmlValueInterpreter, HtmlValueRecoveryState as Recovery, HtmlValueSyntax,
-    HtmlValueSyntaxError,
+    microsyntax::color::HtmlLegacyColor,
+    values::{
+        DocumentString, HtmlValueAuthorState as Author, HtmlValueFailure as Failure,
+        HtmlValueInterpreter, HtmlValueRecoveryState as Recovery, HtmlValueSyntax,
+        HtmlValueSyntaxError,
+    },
 };
 
 // Independent normative input, not the provider's lookup table. Root-owned

@@ -2,7 +2,16 @@ use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps,
     small_builder_with_short_text as builder,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    elements::link::{
+        HtmlLinkFlags, HtmlLinkHistory, HtmlRelKeyword, HtmlRelLinks, HtmlRelSpelling,
+    },
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlRelAssociation, HtmlRelBlobEntry,

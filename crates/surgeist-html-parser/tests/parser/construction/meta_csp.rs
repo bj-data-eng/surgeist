@@ -1,7 +1,17 @@
 //! Controlled request-derived native artifacts; this fixture is not a CSP engine.
 use crate::parser::support::limits;
 use std::{convert::Infallible, mem::size_of, sync::Arc};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlFocusedAreaDesignation,
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspError, HtmlCspLayout,
+        HtmlCspNativePolicy, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
+        HtmlCspProcessorProfile, HtmlCspStorage, HtmlCspUnavailable, HtmlMetaCspDisposition,
+        HtmlMetaCspOutcome, HtmlMetaCspProcessor, HtmlMetaCspRemovedDirective, HtmlMetaCspRequest,
+        HtmlMetaCspSource,
+    },
+    values::DocumentString,
+};
 use surgeist_html_parser::*;
 
 #[derive(Debug)]

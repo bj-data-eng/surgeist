@@ -3,6 +3,9 @@
 //! No resource classification, acquisition, execution or notification task is made.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{construction::HtmlNodeKind, elements::script::SvgScriptFlags};
 
 const SVG: &str = "http://www.w3.org/2000/svg";
 
@@ -276,6 +279,11 @@ mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::parser::tree_builder::ConstructionCapability;
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlElement, HtmlNodeId, HtmlNodeKind},
+        elements::script::SvgScriptFlags,
+        values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    };
 
     fn tag(
         lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,

@@ -1,5 +1,9 @@
 use super::*;
 use std::convert::Infallible;
+use surgeist_html::{
+    construction::{HtmlDoctype, HtmlDocumentMode},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn builder() -> HtmlCaptureBuilder {
     HtmlCaptureBuilder::new(
@@ -67,7 +71,7 @@ fn real_capture_counts_spare_banks_edges_attributes_and_every_string_occurrence(
         strings[2].clone(),
     );
     let mut attribute_bank = Vec::with_capacity(13);
-    attribute_bank.push(surgeist_html::Attribute::new(
+    attribute_bank.push(surgeist_html::values::Attribute::new(
         QualifiedName::new(Namespace::none(), None, strings[3].clone()),
         strings[4].clone(),
     ));
@@ -141,8 +145,8 @@ fn real_capture_counts_spare_banks_edges_attributes_and_every_string_occurrence(
         + data.records.capacity() * size_of::<Record>()
         + data.registries.capacity() * size_of::<RegistryRecord>()
         + edge_capacity * size_of::<usize>()
-        + size_of::<Vec<surgeist_html::Attribute>>()
-        + attribute_capacity * size_of::<surgeist_html::Attribute>()
+        + size_of::<Vec<surgeist_html::values::Attribute>>()
+        + attribute_capacity * size_of::<surgeist_html::values::Attribute>()
         + data.registries[0].definitions.capacity() * size_of::<HtmlCustomElementDefinition>()
         + string_bytes;
     let usage = observe(&capture);
@@ -204,7 +208,7 @@ fn shared_attribute_payload_is_priced_for_each_retained_element_occurrence() {
     let attribute_name = padded(&[120], 17);
     let value = padded(&[0xd800], 23);
     let mut backing = Vec::with_capacity(29);
-    backing.push(surgeist_html::Attribute::new(
+    backing.push(surgeist_html::values::Attribute::new(
         QualifiedName::new(Namespace::none(), None, attribute_name.clone()),
         value.clone(),
     ));
@@ -233,8 +237,9 @@ fn shared_attribute_payload_is_priced_for_each_retained_element_occurrence() {
         observe(&double).retained_bytes() - observe(&single).retained_bytes(),
         bank_growth
             + payload(&local).0
-            + size_of::<Vec<surgeist_html::Attribute>>()
-            + attributes.shared_attributes().capacity() * size_of::<surgeist_html::Attribute>()
+            + size_of::<Vec<surgeist_html::values::Attribute>>()
+            + attributes.shared_attributes().capacity()
+                * size_of::<surgeist_html::values::Attribute>()
             + payload(&attribute_name).0
             + payload(&value).0
     );
@@ -247,6 +252,7 @@ fn shared_attribute_payload_is_priced_for_each_retained_element_occurrence() {
 #[test]
 fn selected_hyperlink_adds_only_out_of_line_receipt_without_original_fact_bank() {
     use crate::*;
+    use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
     let base = HtmlBaseUrlRecord::observed(
         revision.clone(),
@@ -284,7 +290,7 @@ fn selected_hyperlink_adds_only_out_of_line_receipt_without_original_fact_bank()
     let build = |observed| {
         let mut builder = builder();
         let document = document(&mut builder);
-        let attributes = OrderedAttributes::new(vec![surgeist_html::Attribute::new(
+        let attributes = OrderedAttributes::new(vec![surgeist_html::values::Attribute::new(
             QualifiedName::new(Namespace::none(), None, "href"),
             raw.clone(),
         )])

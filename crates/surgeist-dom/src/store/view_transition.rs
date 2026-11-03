@@ -1,5 +1,6 @@
 use super::*;
 use crate::view_transition::*;
+
 mod membership;
 mod storage;
 pub(crate) use membership::TransitionMembership;
@@ -516,6 +517,7 @@ impl ViewTransitions {
 mod append_observation {
     use super::*;
     use std::cell::Cell;
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Growth {
         pub required: usize,
@@ -1100,6 +1102,7 @@ mod tests {
     include!("view_transition/characterization.rs");
     mod discovery_tests {
         use super::*;
+
         include!("view_transition/discovery_tests.rs");
     }
 }

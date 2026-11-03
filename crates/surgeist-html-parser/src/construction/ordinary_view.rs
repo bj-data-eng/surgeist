@@ -1,6 +1,8 @@
 //! Exact physical traversal shared by form views and output reads.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeKind;
 
 // Shared exact physical traversal used by form views and output reads.
 pub(super) fn ordinary_view_parent(

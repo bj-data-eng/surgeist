@@ -1,5 +1,5 @@
 //! Actual shared reflected slots, with no CommandFor slot on Input.
-use surgeist_html::KnownHtmlAttribute;
+use surgeist_html::vocabulary::KnownHtmlAttribute;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReflectedTargets<K> {
     Button {

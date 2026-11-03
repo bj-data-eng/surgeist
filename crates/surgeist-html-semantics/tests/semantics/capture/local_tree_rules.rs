@@ -1,14 +1,17 @@
-use surgeist_html::bounded::{
+use surgeist_html::bounded::parsing::{
     HtmlFragmentNameTest, HtmlIntegrationPointComparison as Comparison,
     HtmlIntegrationPointRule as Rule, HtmlMathmlTextPointTest, fragment_initial_modes,
     html_integration_point_encoding_attribute, html_integration_point_rule,
     mathml_text_integration_point, stack_reset_insertion_mode,
 };
 use surgeist_html::{
-    Attribute, DocumentString, HtmlDocumentMode, HtmlFragmentInsertionMode as Insertion,
-    HtmlFragmentTokenizerState as Tokenizer, HtmlParserScriptingMode as Scripting, Namespace,
-    OrderedAttributes, QualifiedName, fragment_insertion_mode, fragment_tokenizer_state,
-    is_html_integration_point, is_mathml_text_integration_point,
+    construction::HtmlDocumentMode,
+    parsing::{
+        HtmlFragmentInsertionMode as Insertion, HtmlFragmentTokenizerState as Tokenizer,
+        HtmlParserScriptingMode as Scripting, fragment_insertion_mode, fragment_tokenizer_state,
+        is_html_integration_point, is_mathml_text_integration_point,
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{

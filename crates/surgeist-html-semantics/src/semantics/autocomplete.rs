@@ -3,14 +3,18 @@
 //! resolves only expectation defaults; it performs no autofill or credential effect.
 
 use super::*;
-use crate::bounded::{
-    AutocompleteMaterializationError, AutocompleteMaterializationLimits,
-    AutocompleteMaterializationUsage, autocomplete_materialization_work_bound,
+use surgeist_html::attributes::{
+    HtmlAttributeReport, HtmlFormAutocomplete, HtmlInputType,
+    autocomplete::{
+        HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefaultField,
+        HtmlAutocompleteProcessingState, HtmlAutocompleteReport,
+    },
 };
-use crate::{
-    HtmlAttributeReport, HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefaultField,
-    HtmlAutocompleteProcessingState, HtmlAutocompleteReport, HtmlFormAutocomplete, HtmlInputType,
+use surgeist_html::bounded::attributes::{
+    HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationLimits,
+    HtmlAutocompleteMaterializationUsage, autocomplete_materialization_work_bound,
 };
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// A default field observation, independent of the empty default IDL value.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,7 +120,7 @@ impl HtmlSemanticSession<'_> {
             element.name(),
             raw,
             state,
-            AutocompleteMaterializationLimits::new(
+            HtmlAutocompleteMaterializationLimits::new(
                 self.remaining_allocated_bytes(),
                 self.limits
                     .nested_output_records
@@ -134,31 +138,31 @@ impl HtmlSemanticSession<'_> {
         let intrinsic = materialized
             .map_err(|failure| {
                 let kind = match failure.kind() {
-                    AutocompleteMaterializationError::RawAdmission(error) => {
+                    HtmlAutocompleteMaterializationError::RawAdmission(error) => {
                         HtmlSemanticFailureKind::Attribute(error)
                     }
-                    AutocompleteMaterializationError::BytesLimit { required, .. } => self
+                    HtmlAutocompleteMaterializationError::BytesLimit { required, .. } => self
                         .autocomplete_limit(
                             HtmlSemanticResource::AllocatedBytes,
                             baseline.allocated_bytes,
                             required,
                         ),
-                    AutocompleteMaterializationError::OutputLimit { required, .. } => self
+                    HtmlAutocompleteMaterializationError::OutputLimit { required, .. } => self
                         .autocomplete_limit(
                             HtmlSemanticResource::NestedOutputRecords,
                             baseline.nested_output_records,
                             required,
                         ),
-                    AutocompleteMaterializationError::ScratchLimit { required, .. } => self
+                    HtmlAutocompleteMaterializationError::ScratchLimit { required, .. } => self
                         .autocomplete_limit(
                             HtmlSemanticResource::ScratchRecords,
                             baseline.scratch_records,
                             required,
                         ),
-                    AutocompleteMaterializationError::Allocation { .. } => {
+                    HtmlAutocompleteMaterializationError::Allocation { .. } => {
                         HtmlSemanticFailureKind::AllocationFailed
                     }
-                    AutocompleteMaterializationError::Representation => {
+                    HtmlAutocompleteMaterializationError::Representation => {
                         HtmlSemanticFailureKind::RepresentationExhausted
                     }
                 };
@@ -251,7 +255,7 @@ impl HtmlSemanticSession<'_> {
 
     fn record_autocomplete_usage(
         &mut self,
-        observed: AutocompleteMaterializationUsage,
+        observed: HtmlAutocompleteMaterializationUsage,
     ) -> Result<(), HtmlSemanticFailure> {
         let bytes = self
             .usage

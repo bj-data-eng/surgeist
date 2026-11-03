@@ -14,10 +14,11 @@ use std::sync::atomic::AtomicBool;
 
 use super::{DomUsage, State, bank, canonical, custody, source, transaction};
 use crate::{
-    DocumentId, DocumentString, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit, DomError,
-    DomLimits, DomNodeKind, DomOwnerId, DomSnapshot, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, NodeId,
+    DocumentId, Dom, DomActiveRangeState, DomBatch, DomChange, DomCommit, DomError, DomLimits,
+    DomNodeKind, DomOwnerId, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceProgress,
+    NodeId,
 };
+use surgeist_html::values::DocumentString;
 
 fn add(total: &mut usize, value: usize) {
     *total = total
@@ -41,7 +42,7 @@ fn full_document_units(metadata: &crate::DomDocumentMetadata) -> usize {
     }
     units
 }
-fn qualified_units(name: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> usize {
+fn qualified_units(name: &(impl surgeist_html::values::HtmlNameInput + ?Sized)) -> usize {
     name.local_name().len()
         + name.prefix().map_or(0, DocumentString::len)
         + name.namespace_uri().map_or(0, DocumentString::len)
@@ -778,9 +779,9 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
                 _ => {}
             }
         }
-        let radio = element
-            .input_state()
-            .is_some_and(|input| input.input_type() == surgeist_html::HtmlInputType::Radio);
+        let radio = element.input_state().is_some_and(|input| {
+            input.input_type() == surgeist_html::attributes::HtmlInputType::Radio
+        });
         let fact = (
             document,
             root,
@@ -1055,7 +1056,7 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
             node.parent().and_then(|parent|{
                 let host=state.node(owner,parent).unwrap();
                 let shadow=host.shadow_root().and_then(|root|state.node(owner,root).ok())?;
-                (matches!(&shadow.kind(),DomNodeKind::ShadowRoot(value) if value.slot_assignment()==crate::HtmlSlotAssignment::Named)&&shadow.host()==Some(parent))
+                (matches!(&shadow.kind(),DomNodeKind::ShadowRoot(value) if value.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)&&shadow.host()==Some(parent))
                     .then(||(parent,name(node,&[115,108,111,116])))
             })
         } else {
@@ -1203,7 +1204,7 @@ fn assert_hosted_containers(owner: DomOwnerId, state: &State) {
 /// Option's cached nearest Select and the production membership cursors are not
 /// inputs to this recomputation.
 fn assert_family_discovery(owner: DomOwnerId, state: &State) {
-    use surgeist_html::KnownHtmlElement as Tag;
+    use surgeist_html::vocabulary::KnownHtmlElement as Tag;
     use transaction::family_discovery::FactKindInspection as Kind;
     let tag = |id| match &state.node(owner, id).unwrap().kind() {
         DomNodeKind::Element(element) => Tag::from_name(element.name()),
@@ -2132,7 +2133,10 @@ fn source_equal_text_replacement_publishes_the_actual_range_only_change() {
 
 #[test]
 fn full_oracle_composes_native_relations_template_and_queued_targets() {
-    use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace};
+    use surgeist_html::{
+        construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+        values::Namespace,
+    };
     let limits = DomLimits::new(
         256,
         65_536,
@@ -2254,7 +2258,10 @@ fn full_oracle_composes_native_relations_template_and_queued_targets() {
 
 #[test]
 fn full_oracle_tracks_slot_order_across_separate_roots_adoption_and_reuse() {
-    use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace};
+    use surgeist_html::{
+        construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+        values::Namespace,
+    };
     let mut dom = owner();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -2412,7 +2419,11 @@ fn full_oracle_keeps_queued_details_original_document_after_adoption() {
         .document_element()
         .unwrap();
     let mut batch = DomBatch::new();
-    let details = batch.create_element_ns(original_document, crate::Namespace::html(), "details");
+    let details = batch.create_element_ns(
+        original_document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     batch.insert_before(&details, parent, None);
     let other_document = batch.create_document();
     let commit = apply(&mut dom, batch);

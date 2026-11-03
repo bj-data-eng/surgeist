@@ -8,7 +8,7 @@ use std::sync::{
     Mutex, Weak,
     atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering},
 };
-use surgeist_html::{HtmlDialogAction, HtmlDialogState};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 
 /// One exact event occurrence of an original Source operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,5 +1,6 @@
 //! Original notification authority and its canonical synchronous dispatch gate.
 use super::*;
+
 mod cleanup;
 use crate::parsed_style::DomParsedHtmlStyleNotificationError as Error;
 use crate::{

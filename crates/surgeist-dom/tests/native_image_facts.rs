@@ -3,7 +3,7 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlImageUpdateFlags, HtmlValueInterpreter};
+use surgeist_html::{elements::image::HtmlImageUpdateFlags, values::HtmlValueInterpreter};
 use surgeist_html_semantics::*;
 
 fn cancel() -> AtomicBool {

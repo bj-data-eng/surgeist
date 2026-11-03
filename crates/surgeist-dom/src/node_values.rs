@@ -1,6 +1,6 @@
 use std::sync::atomic::AtomicBool;
 
-use surgeist_html::bounded::{
+use surgeist_html::bounded::lexical::{
     HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
     HtmlPiPseudoAttributeError as CursorError, HtmlPiPseudoAttributeField as Field,
     HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point,
@@ -11,8 +11,9 @@ use crate::store::source::{
     formation::{self, Formation},
     storage::Payload,
 };
-use crate::{DocumentString, DomError, store::SharedVec};
+use crate::{DomError, store::SharedVec};
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 
 /// Canonical PI target, CharacterData and the map derived from that exact data.
 /// Construction applies DOM's XML Name rule, independently of HTML authoring.
@@ -420,6 +421,7 @@ fn parse_attributes(
 pub(crate) mod source_observation {
     use super::*;
     use std::cell::{Cell, RefCell};
+
     struct Context {
         live: Box<dyn Fn() -> (usize, usize)>,
         limit: usize,
@@ -523,6 +525,7 @@ pub(crate) mod source_observation {
 mod source_tests {
     use super::*;
     use crate::{Dom, DomBatch, DomLimits, DomSourceLimits};
+
     #[test]
     fn ordinary_pi_validation_precedes_cancellation_and_replacement_keeps_original_grammar() {
         let cancelled = AtomicBool::new(true);

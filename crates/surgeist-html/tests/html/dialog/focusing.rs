@@ -1,5 +1,5 @@
 //! Literal independent HTML877d Dialog focusing traces, raw46762–46782.
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction, HtmlDialogCursor, HtmlDialogFocusControl as Control,
     HtmlDialogFocusingAction as A, HtmlDialogFocusingCursor as Cursor,
     HtmlDialogFocusingReply as R, HtmlDialogOperation, HtmlDialogReply,
@@ -189,9 +189,9 @@ fn subject_called_focusing_no_change_does_not_skip_dialog_autofocus_tail_or_comp
     parent.reply(HtmlDialogReply::Open(false)).unwrap();
     for action in [
         HtmlDialogAction::QueueToggle {
-            old: surgeist_html::HtmlDialogState::Closed,
-            new: surgeist_html::HtmlDialogState::Open,
-            source: surgeist_html::HtmlDialogEventSource::Null,
+            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+            new: surgeist_html::elements::dialog::HtmlDialogState::Open,
+            source: surgeist_html::elements::dialog::HtmlDialogEventSource::Null,
         },
         HtmlDialogAction::AddOpen,
         HtmlDialogAction::RememberFocusedElement,
@@ -251,6 +251,6 @@ fn subject_called_focusing_no_change_does_not_skip_dialog_autofocus_tail_or_comp
     parent.reply(HtmlDialogReply::Applied).unwrap();
     assert_eq!(
         parent.action(),
-        HtmlDialogAction::Complete(surgeist_html::HtmlDialogOutcome::Completed)
+        HtmlDialogAction::Complete(surgeist_html::elements::dialog::HtmlDialogOutcome::Completed)
     );
 }

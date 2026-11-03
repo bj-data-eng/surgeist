@@ -11,7 +11,9 @@ use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
     wide_builder_without_registries,
 };
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFailure, HtmlSemanticFailureKind,

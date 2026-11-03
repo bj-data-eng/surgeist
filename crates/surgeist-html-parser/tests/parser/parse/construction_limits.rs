@@ -1,5 +1,8 @@
 use crate::parser::support::limits_builder;
-use surgeist_html::{DocumentString, HtmlDocument, HtmlDocumentMode, HtmlNodeKind};
+use surgeist_html::{
+    construction::{HtmlDocument, HtmlDocumentMode, HtmlNodeKind},
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseFailureReason, HtmlParseLimits,
     HtmlParseResource, HtmlParseStop, HtmlSource,

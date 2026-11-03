@@ -3,7 +3,7 @@
 //! activate buttons, validate controls or submit forms.
 
 use super::*;
-use crate::HtmlInputType;
+use surgeist_html::{attributes::HtmlInputType, vocabulary::KnownHtmlElement};
 
 /// First owned submit button in ordinary tree order, even when disabled.
 #[derive(Clone, Debug, Eq, PartialEq)]

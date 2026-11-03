@@ -2,6 +2,11 @@
 //! This does not establish complete meta conformance, encoding, CSS or pragma effects.
 
 use super::*;
+use surgeist_html::{
+    elements::media::HtmlMetaMediaPlacement,
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 /// Exactly one discriminator must be specified, regardless of its value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -182,8 +187,9 @@ impl<'a> HtmlSemanticSession<'a> {
         name: Option<&DocumentString>,
     ) -> Result<bool, HtmlSemanticFailure> {
         self.charge(1)?;
-        let mut cursor =
-            crate::bounded::ThemeColorNameCursor::new(name.map(DocumentString::code_units));
+        let mut cursor = surgeist_html::bounded::media::HtmlThemeColorNameCursor::new(
+            name.map(DocumentString::code_units),
+        );
         while !cursor.is_complete() {
             self.charge(1)?;
             cursor.advance();

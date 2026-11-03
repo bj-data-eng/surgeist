@@ -2,6 +2,7 @@
 //! No parser, semantic fact, cursor or receipt is replaced by this harness.
 use super::*;
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 
 fn policy() -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(16_000_000, 100_000, 10_000_000, 128, 4096, 4096, 1)
@@ -23,7 +24,8 @@ fn fixture() -> (Dom, DocumentId, NodeId) {
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let parent = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let parent =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     let text = batch.create_text(&document, "abcd");
     batch.insert_before(&text, &parent, None);
     batch.insert_before(&parent, &document, None);

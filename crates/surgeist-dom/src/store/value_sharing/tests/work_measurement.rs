@@ -2,6 +2,7 @@
 //! actual HTML hash/comparison phases are qualified inside the HTML owner.
 use super::*;
 use crate::store::scale_metrics::{self, Hooks, Measurement};
+use surgeist_html::values::DocumentString;
 
 #[test]
 #[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1"]

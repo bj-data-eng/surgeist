@@ -35,9 +35,10 @@ use super::{
     },
     input::{AsciiComparison, AsciiMatch, InputCursor, InputRead},
 };
-use crate::{DocumentString, HtmlSource, HtmlSourceRange};
+use crate::{HtmlSource, HtmlSourceRange};
 use states::{HtmlTokenizerIdentifier, HtmlTokenizerState};
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 use token::{
     Attribute, Doctype, DraftText, Event, HtmlParseOriginKind, HtmlTokenizerDiagnostic,
     HtmlTokenizerDiagnosticPhase, Tag, TagKind, Token, TokenEvent, TokenKind, freeze_pair,

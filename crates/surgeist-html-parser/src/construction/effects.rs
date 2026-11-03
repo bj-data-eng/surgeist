@@ -5,6 +5,7 @@
 
 use super::select::SelectMetadata;
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 #[cfg(test)]
 std::thread_local! {
@@ -52,7 +53,7 @@ pub(super) enum IntrinsicTask {
 pub(super) enum EffectFrame {
     Details {
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
         root: usize,
         next: Option<usize>,
     },
@@ -425,7 +426,7 @@ impl SessionStorage {
                 self.start_img_update(
                     c,
                     node,
-                    surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                    surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false),
                 )?;
                 let next = self.next_view_node(c, root, node, None)?;
                 let retained_document = document.try_clone(c)?;
@@ -770,32 +771,33 @@ impl SessionStorage {
                 }
                 let inside_optgroup = recognized == Some(KnownHtmlElement::Optgroup)
                     && self.ancestor_optgroup(c, node, root, detached)?;
-                Some(surgeist_html::bounded::select_option_rule(
+                Some(surgeist_html::bounded::select::select_option_rule(
                     recognized,
                     inside_optgroup,
                 ))
             } else {
                 None
             };
-            let include = match kind {
-                WorkListKind::PostConnection | WorkListKind::FragmentChildren => true,
-                WorkListKind::SelectedTargets => {
-                    if self.html_local(c, node, "selectedcontent")? {
-                        let (_, SelectMetadata::Selectedcontent(state)) =
-                            self.select_metadata(c, node)?
-                        else {
-                            return Err(SessionError::SelectMetadataUnavailable);
-                        };
-                        !state.disabled
-                    } else {
-                        false
+            let include =
+                match kind {
+                    WorkListKind::PostConnection | WorkListKind::FragmentChildren => true,
+                    WorkListKind::SelectedTargets => {
+                        if self.html_local(c, node, "selectedcontent")? {
+                            let (_, SelectMetadata::Selectedcontent(state)) =
+                                self.select_metadata(c, node)?
+                            else {
+                                return Err(SessionError::SelectMetadataUnavailable);
+                            };
+                            !state.disabled
+                        } else {
+                            false
+                        }
                     }
-                }
-                WorkListKind::Options { .. } => {
-                    option_rule
-                        == Some(surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune)
-                }
-            };
+                    WorkListKind::Options { .. } => option_rule
+                        == Some(
+                            surgeist_html::bounded::select::HtmlSelectOptionRule::IncludeAndPrune,
+                        ),
+                };
             if include {
                 let Some(RetainedPayload::WorkList(Some(list))) =
                     self.payloads.values.get_mut(slot)
@@ -811,8 +813,8 @@ impl SessionStorage {
                 || matches!(
                     option_rule,
                     Some(
-                        surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune
-                            | surgeist_html::bounded::HtmlSelectOptionRule::Prune
+                        surgeist_html::bounded::select::HtmlSelectOptionRule::IncludeAndPrune
+                            | surgeist_html::bounded::select::HtmlSelectOptionRule::Prune
                     )
                 );
             next = if excluded {
@@ -956,7 +958,11 @@ impl SessionStorage {
             self.radio_insertion(c, node)?;
         }
         if !removal && self.html_local(c, node, "details")? {
-            self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)?;
+            self.start_details(
+                c,
+                node,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven,
+            )?;
         } else {
             self.intrinsic_select_tree_hook(c, node, detached, removal)?;
         }

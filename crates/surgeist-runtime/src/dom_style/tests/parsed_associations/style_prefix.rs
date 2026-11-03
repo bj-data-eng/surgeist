@@ -4,7 +4,7 @@ use super::super::*;
 use super::consumption::{envelope, environment, installation, parsing, report};
 use std::sync::Arc;
 use surgeist_dom::*;
-use surgeist_html::{HtmlCspAssociation, HtmlCspOwner};
+use surgeist_html::security::csp::{HtmlCspAssociation, HtmlCspOwner};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseReport, HtmlSource};
 
 fn install(value: Arc<HtmlParseReport>) -> (DomSession, DomParsedHtmlInstallation) {
@@ -162,7 +162,7 @@ fn exact_original_text_nonce_and_explicit_policy_reach_only_the_inline_request()
         assert_eq!(inline.nonce(), Some(&expected_nonce));
         assert_eq!(
             inline.action(),
-            surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
         );
         assert!(inline.state().created_by_document_parser());
         assert!(!inline.state().on_parser_stack());
@@ -598,7 +598,7 @@ fn captured_policy_authority_is_not_replaced_by_the_current_closed_document() {
             ),
             context,
             parsing(),
-            surgeist_html::HtmlParserScriptingMode::Inert,
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
             true,
         )
         .unwrap()

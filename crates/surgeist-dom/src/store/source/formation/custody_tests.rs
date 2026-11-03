@@ -351,7 +351,11 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     let native = |name: &str| {
         draft
             .native_element_components(
-                &crate::QualifiedName::new(crate::Namespace::html(), None, name),
+                &surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    name,
+                ),
                 crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::headless()),
                 None,
                 &cancel,
@@ -381,8 +385,8 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     let next = context
         .native(extra, storage::Payload::default(), || {
             let mut next = old.value.clone();
-            next.flags = surgeist_html::HtmlInputFlags::from_retained(
-                surgeist_html::HtmlInputType::Text,
+            next.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
+                surgeist_html::attributes::HtmlInputType::Text,
                 true,
                 false,
                 false,

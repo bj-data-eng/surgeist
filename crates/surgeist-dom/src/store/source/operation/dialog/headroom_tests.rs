@@ -2,6 +2,7 @@
 //! unit inputs, not evidence of a Runtime listener or native Window service.
 use super::tests::{attest, fixture, limits, request};
 use super::*;
+use surgeist_html::values::DocumentString;
 
 #[test]
 fn close_observation_retains_four_revisions_under_lower_phase_policy_and_cancel_releases_credit() {
@@ -220,8 +221,9 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
                 &cancel,
             )
             .unwrap();
-        let mut caller =
-            surgeist_html::HtmlDialogCursor::new(surgeist_html::HtmlDialogOperation::RequestClose);
+        let mut caller = surgeist_html::elements::dialog::HtmlDialogCursor::new(
+            surgeist_html::elements::dialog::HtmlDialogOperation::RequestClose,
+        );
         for reply in [
             HtmlDialogReply::Open(true),
             HtmlDialogReply::Connected(true),

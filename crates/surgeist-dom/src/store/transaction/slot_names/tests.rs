@@ -21,8 +21,8 @@ fn fixture() -> (Dom, Key, [Key; 2]) {
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element(&document, "root");
-    let a = batch.create_element_ns(&document, crate::Namespace::html(), "slot");
-    let b = batch.create_element_ns(&document, crate::Namespace::html(), "slot");
+    let a = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "slot");
+    let b = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "slot");
     batch.insert_before(&a, &root, None);
     batch.insert_before(&b, &root, None);
     let commit = dom.apply(batch, &cancel).unwrap();

@@ -1,7 +1,14 @@
 use crate::semantics::support::{
     dimension_capture_limits, dimension_semantic_limits as limits, tenth_capture_limits,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,

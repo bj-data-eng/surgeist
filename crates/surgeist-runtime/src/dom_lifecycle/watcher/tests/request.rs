@@ -4,6 +4,10 @@ use crate::{
     DomEventCallback, DomEventListenerOptions, DomEventType, DomSourceEventServiceLimits,
     DomSourceEventServiceProgress, DomSourceRuntime,
 };
+use surgeist_html::{
+    elements::dialog::{HtmlCloseWatcherRequestAction, HtmlDialogAction},
+    values::DocumentString,
+};
 struct Context {
     source: DomSourceRuntime,
     owner: Rc<RefCell<HostedState>>,

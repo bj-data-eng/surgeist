@@ -2,6 +2,7 @@
 use super::*;
 use crate::{DomParsedHtmlContributionCompletion, DomParsedHtmlTerminalError};
 use std::cell::Cell;
+use surgeist_html::security::csp::HtmlCspNativePolicy;
 fn rejected(
     dom: &Dom,
     id: DomParsedHtmlAssociationId,

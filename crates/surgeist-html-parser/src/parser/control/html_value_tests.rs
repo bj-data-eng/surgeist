@@ -1,14 +1,15 @@
 //! HTML local-rule cursors driven by the actual parser admission owner.
 
-use crate::bounded::{
+use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
+use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
+use surgeist_html::bounded::lexical::{
     HtmlCustomNameScanAction as CustomNameScanAction, validate_custom_element_name_with,
 };
-use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
-use crate::{
-    DocumentString, HtmlInputRuleWork, HtmlInputType, HtmlInputTypeCursor,
-    HtmlInputValueComparisonCursor,
+use surgeist_html::{
+    attributes::HtmlInputType,
+    elements::input::{HtmlInputRuleWork, HtmlInputTypeCursor, HtmlInputValueComparisonCursor},
+    values::DocumentString,
 };
-use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 
 fn control(work: u64, cancellation: HtmlParseCancellation) -> ParseControl {
     let limits = HtmlParseLimits::builder()

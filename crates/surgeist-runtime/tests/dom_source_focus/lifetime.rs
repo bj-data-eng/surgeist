@@ -1,5 +1,6 @@
 //! Public lifetime/composition evidence for the sealed complete-Host restriction.
 use super::*;
+use surgeist_html::values::Namespace;
 
 fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
     let html = snapshot.node(document.node()).unwrap().children()[0];
@@ -246,7 +247,7 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
     let next = pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
         HtmlDialogFocusingAction::RunFocusingSteps {
-            control: surgeist_html::HtmlDialogFocusControl::Subject,
+            control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
         },
     );
     assert_eq!(next.operation(), event.operation());
@@ -339,7 +340,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     pending_focusing(
         resume(&mut session, event.operation(), Some(&scope)).unwrap(),
         HtmlDialogFocusingAction::RunFocusingSteps {
-            control: surgeist_html::HtmlDialogFocusControl::Subject,
+            control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
         },
     );
     let accepted = session.snapshot();
@@ -354,7 +355,7 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
         HtmlDialogFocusingAction::RunFocusingSteps {
-            control: surgeist_html::HtmlDialogFocusControl::Subject,
+            control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
         },
     );
     assert_eq!(session.snapshot().stamp(), accepted.stamp());
@@ -419,7 +420,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     pending_focusing(
         resume(&mut session, event.operation(), None).unwrap(),
         HtmlDialogFocusingAction::RunFocusingSteps {
-            control: surgeist_html::HtmlDialogFocusControl::Subject,
+            control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
         },
     );
     let after = session.snapshot();

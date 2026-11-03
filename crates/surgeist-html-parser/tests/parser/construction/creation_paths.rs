@@ -1,6 +1,10 @@
 use crate::parser::support::limits;
 
-use surgeist_html::{DocumentString, HtmlCustomElementState, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::{
+    construction::{HtmlNodeId, HtmlNodeKind},
+    elements::native::HtmlCustomElementState,
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseConstructionOperation, HtmlParseDestination,
     HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource,

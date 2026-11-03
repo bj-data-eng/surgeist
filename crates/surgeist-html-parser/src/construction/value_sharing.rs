@@ -3,11 +3,18 @@ use super::*;
 use crate::parser::control::{HtmlParseInvariant, SharedReleaseError};
 #[cfg(test)]
 use crate::request::ValueSharingMode;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolUsage,
     HtmlValuePoolWork,
+};
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlBuilderNode, HtmlNodeKind},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 /// The stop for a pool that refused a protocol step or ran out of
@@ -1370,7 +1377,7 @@ impl Finalizing {
             };
             self.construction.apply(
                 c,
-                bounded::HtmlConstructionCommand::ReplaceAttributes {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::ReplaceAttributes {
                     element: handle,
                     attributes: bank.clone().into(),
                 },
@@ -1475,7 +1482,7 @@ impl Finalizing {
         let handle = stored.handle();
         let mut temporary = Usage::default();
         let content = if matches!(location, StringLocation::Text(_)) {
-            bounded::HtmlConstructionContent::Text(value.clone())
+            surgeist_html::bounded::construction::HtmlConstructionContent::Text(value.clone())
         } else {
             let HtmlNodeKind::Element(element) = stored.kind() else {
                 return Err(latch_registry_row(c));
@@ -1512,19 +1519,21 @@ impl Finalizing {
                     .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             temporary.retain(c)?;
-            bounded::HtmlConstructionContent::ElementName(QualifiedName::new(
-                if matches!(location, StringLocation::Namespace(_)) {
-                    Namespace::from_uri(value.clone())
-                } else {
-                    name.namespace().clone()
-                },
-                name.prefix().cloned(),
-                if matches!(location, StringLocation::ElementName(_)) {
-                    value.clone()
-                } else {
-                    name.local_name().clone()
-                },
-            ))
+            surgeist_html::bounded::construction::HtmlConstructionContent::ElementName(
+                QualifiedName::new(
+                    if matches!(location, StringLocation::Namespace(_)) {
+                        Namespace::from_uri(value.clone())
+                    } else {
+                        name.namespace().clone()
+                    },
+                    name.prefix().cloned(),
+                    if matches!(location, StringLocation::ElementName(_)) {
+                        value.clone()
+                    } else {
+                        name.local_name().clone()
+                    },
+                ),
+            )
         };
         // The content moves into the command, which owns it on every outcome;
         // the guard keeps only its temporary credit.
@@ -1533,7 +1542,7 @@ impl Finalizing {
         self.construction
             .apply(
                 c,
-                bounded::HtmlConstructionCommand::ReplaceContent {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::ReplaceContent {
                     node: handle,
                     content,
                 },
@@ -1682,26 +1691,29 @@ impl FrozenArena {
             released?;
             return Err(latch_registry_row(c));
         };
-        let recovery = match bounded::HtmlConstructionLease::try_recover(view, held_lease) {
-            Ok(value) => value,
-            Err(refusal) => {
-                let released = release_vector(c, joins, joins_allocation);
-                // A refused recovery hands the result and the lease back.
-                let ((view, held_lease), error) = refusal.into_parts();
-                self.storage = Some(FrozenStorage {
-                    view,
-                    control,
-                    construction,
-                    lease: Some(held_lease),
-                    payloads,
-                    effects,
-                    evidence,
-                    fragment,
-                });
-                released?;
-                return Err(construction_owner::construction_error(c, error));
-            }
-        };
+        let recovery =
+            match surgeist_html::bounded::construction::HtmlConstructionLease::try_recover(
+                view, held_lease,
+            ) {
+                Ok(value) => value,
+                Err(refusal) => {
+                    let released = release_vector(c, joins, joins_allocation);
+                    // A refused recovery hands the result and the lease back.
+                    let ((view, held_lease), error) = refusal.into_parts();
+                    self.storage = Some(FrozenStorage {
+                        view,
+                        control,
+                        construction,
+                        lease: Some(held_lease),
+                        payloads,
+                        effects,
+                        evidence,
+                        fragment,
+                    });
+                    released?;
+                    return Err(construction_owner::construction_error(c, error));
+                }
+            };
         self.sharing_started = true;
         let state = self.finalizing.insert(Finalizing {
             owner: control,
@@ -1721,7 +1733,13 @@ impl FrozenArena {
     fn publish_terminal(
         state: &mut Finalizing,
         c: &mut ParseControl,
-    ) -> Result<(HtmlConstructionResult, bounded::HtmlConstructionLease), SessionError> {
+    ) -> Result<
+        (
+            HtmlConstructionResult,
+            surgeist_html::bounded::construction::HtmlConstructionLease,
+        ),
+        SessionError,
+    > {
         let (empty, empty_allocation) = c.new_vector()?;
         let joins = mem::replace(&mut state.joins, empty);
         let joins_allocation = mem::replace(&mut state.joins_allocation, empty_allocation);
@@ -1787,6 +1805,14 @@ impl FrozenArena {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        bounded::{
+            construction::HtmlConstructionResult,
+            values::{HtmlAttributePool, HtmlStringPool, HtmlValuePoolSeal},
+        },
+        construction::HtmlNodeKind,
+        values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    };
 
     fn assert_cold_string_inspection(repetitions: usize, expected_units: usize) {
         let input = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));

@@ -1,7 +1,10 @@
 //! Literal HTML877d Image Button source/history/guard expectations.
 use surgeist_html::{
-    DocumentString, HtmlInputImageHistory as History, HtmlInputImageUpdateGuard as Guard,
-    HtmlInputImagesDisabled,
+    elements::input::{
+        HtmlInputImageHistory as History, HtmlInputImageUpdateGuard as Guard,
+        HtmlInputImagesDisabled,
+    },
+    values::DocumentString,
 };
 
 #[test]

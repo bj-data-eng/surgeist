@@ -1,6 +1,11 @@
 //! Test-only inspection and fault-injection helpers for the construction owner.
 
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlFragmentOwner, HtmlNodeKind},
+    values::{DocumentString, QualifiedName},
+};
 
 /// Lets a test make one step of a cleanup walk refuse after it did its work, as
 /// a reported refusal would. Call it before [`keep_first`] for that step.
@@ -57,8 +62,8 @@ pub(super) fn test_owning_depth(result: &HtmlConstructionResult, position: usize
 }
 
 /// A real CSP protocol error: an association presented to a different owner.
-pub(crate) fn csp_protocol_error() -> surgeist_html::HtmlCspProtocolError {
-    use surgeist_html::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority};
+pub(crate) fn csp_protocol_error() -> surgeist_html::security::csp::HtmlCspProtocolError {
+    use surgeist_html::security::csp::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority};
     let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
     let mut owner = HtmlCspOwner::new_with(admit).unwrap();
     let mut other = HtmlCspOwner::new_with(admit).unwrap();
@@ -67,7 +72,7 @@ pub(crate) fn csp_protocol_error() -> surgeist_html::HtmlCspProtocolError {
         .unwrap()
         .profile_with(1, admit)
         .unwrap();
-    let content = surgeist_html::DocumentString::from("default-src 'none'");
+    let content = surgeist_html::values::DocumentString::from("default-src 'none'");
     match other.request_meta_insertion_with(&association, &profile, content, admit) {
         Err(rejected) => match rejected.error {
             HtmlCspError::Protocol(error) => error,

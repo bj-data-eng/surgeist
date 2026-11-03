@@ -4,11 +4,12 @@
 //! construction establishes empty File resources and initial Image coordinates;
 //! images-disabled is explicit operation evidence, independent of scripting.
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 // A parser-phase specialization: source values are actual managed raw slots.
 // HTML owns the observation/history rules; this owner still qualifies, admits,
 // compares, copies and retires their backing strings.
-pub(super) type ImageState = surgeist_html::HtmlInputImageHistory<usize>;
+pub(super) type ImageState = surgeist_html::elements::input::HtmlInputImageHistory<usize>;
 impl SessionStorage {
     fn image_source(
         &self,
@@ -94,7 +95,9 @@ impl SessionStorage {
         node: usize,
         source: Option<usize>,
     ) -> Result<(), SessionError> {
-        use surgeist_html::{HtmlInputImageUpdateGuard as Guard, HtmlInputImagesDisabled};
+        use surgeist_html::elements::input::{
+            HtmlInputImageUpdateGuard as Guard, HtmlInputImagesDisabled,
+        };
         // Preserve the source prefix: no source/empty source returns before
         // the actual creation-qualified environment lookup and URL/resource work.
         let guard = match source {
@@ -203,7 +206,8 @@ pub(super) fn append_native_input_value(
     let mut content = None;
     if matches!(
         state.flags.input_type().value_mode(),
-        crate::HtmlInputValueMode::Default | crate::HtmlInputValueMode::DefaultOn
+        surgeist_html::elements::input::HtmlInputValueMode::Default
+            | surgeist_html::elements::input::HtmlInputValueMode::DefaultOn
     ) {
         for attribute in element.attributes().as_slice() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -217,7 +221,7 @@ pub(super) fn append_native_input_value(
     }
     let files = state
         .selected_files_empty
-        .then_some(crate::HtmlInputFileSelection::Empty);
+        .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty);
     let units = state
         .flags
         .input_type()
@@ -232,6 +236,7 @@ pub(super) fn append_native_input_value(
 mod tests {
     use super::super::tests::{input_owner, limits, radio_next_attribute, storage_zero};
     use super::*;
+    use surgeist_html::construction::HtmlNodeKind;
     fn fixture<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
@@ -334,7 +339,7 @@ mod tests {
                 .unwrap()
                 .flags
                 .input_type(),
-            crate::HtmlInputType::Image
+            surgeist_html::attributes::HtmlInputType::Image
         );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -355,7 +360,7 @@ mod tests {
             .radio_input(&mut c, node.index)
             .unwrap()
             .unwrap();
-        state.flags = crate::HtmlInputFlags::from_retained(
+        state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
             state.flags.input_type(),
             true,
             false,
@@ -407,7 +412,7 @@ mod tests {
                 .radio_input(&mut c, node.index)
                 .unwrap()
                 .unwrap();
-            state.flags = crate::HtmlInputFlags::from_retained(
+            state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
                 state.flags.input_type(),
                 true,
                 true,
@@ -569,8 +574,12 @@ mod tests {
     fn actual_captured_clone_uses_new_environment_not_original_disabled_or_target_only_policy() {
         use crate::{
             HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-            HtmlDocumentMode, HtmlFragmentContext, HtmlFragmentParseRequest, HtmlHostFactsRevision,
-            HtmlImageSupport, HtmlScriptingStatus, Namespace, OrderedAttributes, QualifiedName,
+            HtmlFragmentContext, HtmlFragmentParseRequest, HtmlHostFactsRevision, HtmlImageSupport,
+            HtmlScriptingStatus,
+        };
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
         };
         for support in [
             HtmlImageSupport::Unavailable,

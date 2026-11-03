@@ -4,6 +4,7 @@ use crate::{
     Dom, DomBatch, DomLimits, DomResource, DomSourceEdit, DomSourceLimits, DomSourceProgress,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use surgeist_html::values::DocumentString;
 
 const MODES: [Layers; 3] = [Layers::CallerOnly, Layers::BanksOnly, Layers::Combined];
 const RAW: &[u16] = &[107, 0xd800, 0, 0xdc00];

@@ -1370,7 +1370,7 @@ impl NativeDomEvent {
     /// are preserved; this constructor performs no coalescing or live-state read.
     pub(crate) fn details_toggle(
         target: NodeId,
-        payload: surgeist_html::HtmlDetailsToggleEvent,
+        payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(
             target,
@@ -1392,8 +1392,8 @@ impl NativeDomEvent {
     /// Actual null-source Dialog toggle task payload, including equal states.
     pub(crate) fn dialog_toggle(
         target: NodeId,
-        old: surgeist_html::HtmlDialogState,
-        new: surgeist_html::HtmlDialogState,
+        old: surgeist_html::elements::dialog::HtmlDialogState,
+        new: surgeist_html::elements::dialog::HtmlDialogState,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(
             target,
@@ -1408,8 +1408,8 @@ impl NativeDomEvent {
     /// cancelability selected by its reached firing clause. Show supplies true.
     pub(crate) fn dialog_before_toggle(
         target: NodeId,
-        old: surgeist_html::HtmlDialogState,
-        new: surgeist_html::HtmlDialogState,
+        old: surgeist_html::elements::dialog::HtmlDialogState,
+        new: surgeist_html::elements::dialog::HtmlDialogState,
         cancelable: bool,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(

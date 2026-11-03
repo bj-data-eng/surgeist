@@ -3,6 +3,7 @@
 //! reset and establishing an output's actual default override are external.
 
 use super::*;
+use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
 /// Actual output slot: established null differs from missing evidence and empty.
 #[derive(Clone, Debug, Eq, PartialEq)]

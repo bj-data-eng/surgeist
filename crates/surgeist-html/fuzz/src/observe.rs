@@ -2,7 +2,16 @@
 use crate::{Lane, ParseKind, UnicodeCase, UnicodeSource, UnicodeTarget, error};
 use std::collections::HashSet;
 use surgeist_fuzz::*;
-use surgeist_html::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlProcessingInstruction;
+use surgeist_html::{
+    construction::{
+        ForeignHtmlResult, HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeId, HtmlNodeKind,
+        HtmlShadowRootProperties,
+    },
+    parsing::HtmlParserScriptingMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseAssociationRelation,
     HtmlParseCancellation, HtmlParseCause, HtmlParseConstructionOperation, HtmlParseDestination,

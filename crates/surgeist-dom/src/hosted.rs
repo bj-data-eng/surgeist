@@ -204,7 +204,7 @@ pub enum DomHostedError {
     IncompleteOperation,
     UnsupportedProfile,
     PendingDocumentObligations,
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspIssuerBusy,
     ClockRegression,
     InvalidClockSample,
@@ -1192,7 +1192,7 @@ impl DomHostedExecutionRequest {
     pub fn base_document_facts(&self) -> &surgeist_html_semantics::HtmlBaseDocumentFacts {
         &self.inputs.0.facts
     }
-    pub fn opener_policy(&self) -> &surgeist_html::HtmlOpenerPolicy {
+    pub fn opener_policy(&self) -> &surgeist_html::security::opener_policy::HtmlOpenerPolicy {
         &self.inputs.0.opener
     }
     pub fn origin(&self) -> &crate::DomOpaqueOrigin {
