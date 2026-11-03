@@ -4,19 +4,37 @@ use super::*;
 use crate::tokens::ascii_whitespace;
 
 keyword_type!(HtmlStandardCommand, Command, [
-    TogglePopover => "toggle-popover", ShowPopover => "show-popover",
-    HidePopover => "hide-popover", Close => "close",
-    RequestClose => "request-close", ShowModal => "show-modal"
+    /// The `toggle-popover` command: shows or hides the targeted popover element.
+    TogglePopover => "toggle-popover",
+    /// The `show-popover` command: shows the targeted popover element.
+    ShowPopover => "show-popover",
+    /// The `hide-popover` command: hides the targeted popover element.
+    HidePopover => "hide-popover",
+    /// The `close` command: closes the targeted `dialog` element.
+    Close => "close",
+    /// The `request-close` command: requests that the targeted `dialog` element close.
+    RequestClose => "request-close",
+    /// The `show-modal` command: shows the targeted `dialog` element as a modal.
+    ShowModal => "show-modal",
 ]);
 keyword_type!(HtmlPopoverTargetAction, Popovertargetaction, [
-    Toggle => "toggle", Show => "show", Hide => "hide"
+    /// The `toggle` keyword, also selected by a missing or invalid value: show the target popover
+    /// if hidden and hide it if shown.
+    Toggle => "toggle",
+    /// The `show` keyword: show the target popover.
+    Show => "show",
+    /// The `hide` keyword: hide the target popover.
+    Hide => "hide",
 ]);
 
 /// A custom command fails the selected local native author checks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlCustomCommandError {
+    /// The value does not begin with two ASCII hyphens, so it is not a custom command keyword.
     MissingPrefix,
+    /// The value ends in an ASCII whitespace code unit. Only the final unit can violate the
+    /// boundary rule, because the required `--` prefix begins the value.
     BoundaryWhitespace,
 }
 
@@ -50,6 +68,7 @@ impl HtmlCustomCommandKeyword {
         }
         Ok(Self { value })
     }
+    /// Returns the exact keyword, including its `--` prefix, in UTF-16 code units as supplied.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
@@ -58,7 +77,9 @@ impl HtmlCustomCommandKeyword {
 /// Native local author spelling. Unknown processing has no author emitter.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCommandKeyword {
+    /// One of the standard command keywords, emitted in its canonical spelling.
     Standard(HtmlStandardCommand),
+    /// A checked custom command keyword, emitted exactly as retained.
     Custom(HtmlCustomCommandKeyword),
 }
 impl HtmlCommandKeyword {
@@ -77,8 +98,13 @@ impl HtmlCommandKeyword {
 /// Intrinsic command content state, independent of target validity/activation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCommandState {
+    /// The value matched a standard command keyword.
     Standard(HtmlStandardCommand),
+    /// The value is a custom command keyword, which only dispatches the command event on the
+    /// target. It starts with two ASCII hyphens.
     Custom,
+    /// The Unknown state, which a missing or invalid value selects. No command is valid for a
+    /// target in this state.
     Unknown,
 }
 
@@ -91,9 +117,12 @@ pub struct HtmlCommandReadback {
     custom: Option<DocumentString>,
 }
 impl HtmlCommandReadback {
+    /// Returns the command state. It is `Custom` exactly when `custom_value` is `Some`.
     pub fn state(&self) -> HtmlCommandState {
         self.state
     }
+    /// Returns the complete prefix-qualified custom value in exact UTF-16 code units, or `None` in
+    /// every other state.
     pub fn custom_value(&self) -> Option<&DocumentString> {
         self.custom.as_ref()
     }

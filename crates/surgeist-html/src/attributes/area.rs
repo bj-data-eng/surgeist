@@ -16,12 +16,20 @@ use std::fmt;
 /// Conforming native shape keywords; recovery aliases are not native variants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAreaShape {
+    /// The `circle` keyword: a circle given by its centre and radius. The alias `circ` is
+    /// recognised but nonconforming.
     Circle,
+    /// The `default` keyword: the whole image, which takes no `coords`.
     WholeImage,
+    /// The `poly` keyword: a polygon given by its vertices. The alias `polygon` is recognised but
+    /// nonconforming.
     Polygon,
+    /// The `rect` keyword: a rectangle given by two opposite corners, and also what a missing or
+    /// invalid value selects. The alias `rectangle` is recognised but nonconforming.
     Rectangle,
 }
 impl HtmlAreaShape {
+    /// Returns the conforming keyword for the shape: `circle`, `default`, `poly` or `rect`.
     pub fn canonical_keyword(self) -> &'static str {
         match self {
             Self::Circle => "circle",
@@ -30,6 +38,7 @@ impl HtmlAreaShape {
             Self::Rectangle => "rect",
         }
     }
+    /// Builds the no-namespace `shape` attribute with the canonical keyword.
     pub fn into_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Shape.qualified_name(),
@@ -102,12 +111,16 @@ pub struct HtmlAreaIntegerPoint {
     y: HtmlInteger,
 }
 impl HtmlAreaIntegerPoint {
+    /// Pairs two exact integers. Any integer is admitted, because a point's validity depends on the
+    /// shape that uses it.
     pub fn new(x: HtmlInteger, y: HtmlInteger) -> Self {
         Self { x, y }
     }
+    /// Returns the exact horizontal coordinate.
     pub fn x(&self) -> &HtmlInteger {
         &self.x
     }
+    /// Returns the exact vertical coordinate.
     pub fn y(&self) -> &HtmlInteger {
         &self.y
     }
@@ -119,22 +132,30 @@ pub struct HtmlAreaCircle {
     radius: HtmlNonNegativeInteger,
 }
 impl HtmlAreaCircle {
+    /// Pairs a centre with a radius. The radius type already excludes negative values, and zero is
+    /// allowed.
     pub fn new(center: HtmlAreaIntegerPoint, radius: HtmlNonNegativeInteger) -> Self {
         Self { center, radius }
     }
+    /// Returns the exact centre.
     pub fn center(&self) -> &HtmlAreaIntegerPoint {
         &self.center
     }
+    /// Returns the exact radius, which is never negative.
     pub fn radius(&self) -> &HtmlNonNegativeInteger {
         &self.radius
     }
 }
+/// An authored rectangle whose left edge lies strictly left of its right edge and whose top edge
+/// lies strictly above its bottom edge, in exact integers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlAreaRectangle {
     top_left: HtmlAreaIntegerPoint,
     bottom_right: HtmlAreaIntegerPoint,
 }
 impl HtmlAreaRectangle {
+    /// Pairs two corners. Fails with `NonincreasingX` unless the first x is less than the second
+    /// and with `NonincreasingY` unless the first y is less than the second; x is checked first.
     pub fn new(
         top_left: HtmlAreaIntegerPoint,
         bottom_right: HtmlAreaIntegerPoint,
@@ -150,9 +171,11 @@ impl HtmlAreaRectangle {
             bottom_right,
         })
     }
+    /// Returns the corner with the smaller x and y.
     pub fn top_left(&self) -> &HtmlAreaIntegerPoint {
         &self.top_left
     }
+    /// Returns the corner with the larger x and y.
     pub fn bottom_right(&self) -> &HtmlAreaIntegerPoint {
         &self.bottom_right
     }
@@ -163,21 +186,27 @@ pub struct HtmlAreaPolygon {
     vertices: Vec<HtmlAreaIntegerPoint>,
 }
 impl HtmlAreaPolygon {
+    /// Takes the vertices in order. Fails with `TooFewVertices` unless there are at least three.
     pub fn new(vertices: Vec<HtmlAreaIntegerPoint>) -> Result<Self, HtmlAreaNativeError> {
         if vertices.len() < 3 {
             return Err(HtmlAreaNativeError::TooFewVertices);
         }
         Ok(Self { vertices })
     }
+    /// Returns the vertices in their authored order; there are at least three.
     pub fn vertices(&self) -> &[HtmlAreaIntegerPoint] {
         &self.vertices
     }
 }
+/// Why native area geometry cannot be constructed. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAreaNativeError {
+    /// A rectangle's first x is not strictly less than its second x.
     NonincreasingX,
+    /// A rectangle's first y is not strictly less than its second y.
     NonincreasingY,
+    /// A polygon has fewer than three vertices.
     TooFewVertices,
 }
 impl fmt::Display for HtmlAreaNativeError {
@@ -193,12 +222,17 @@ impl Error for HtmlAreaNativeError {}
 /// Intrinsically conforming native geometry. WholeImage omits coords.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAuthoredArea {
+    /// A circle area, authored as `shape=circle` with three coordinates.
     Circle(HtmlAreaCircle),
+    /// A rectangle area, authored as `shape=rect` with four coordinates.
     Rectangle(HtmlAreaRectangle),
+    /// A polygon area, authored as `shape=poly` with an even number of at least six coordinates.
     Polygon(HtmlAreaPolygon),
+    /// The whole image, authored as `shape=default` with no `coords`.
     WholeImage,
 }
 impl HtmlAuthoredArea {
+    /// Returns the shape keyword state that this geometry is authored with.
     pub fn shape(&self) -> HtmlAreaShape {
         match self {
             Self::Circle(_) => HtmlAreaShape::Circle,
@@ -251,13 +285,26 @@ impl HtmlAuthoredArea {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAreaCoordinatesAuthorError {
+    /// The shape is circle, rect or poly and `coords` is absent.
     MissingRequired,
+    /// The shape is `default`, which takes no coordinates, and `coords` is present.
     ForbiddenPresence,
+    /// `coords` is not a valid list of comma-separated integers.
     InvalidListSyntax,
+    /// `coords` has the wrong item count: three for a circle, four for a rectangle, an even number
+    /// of at least six for a polygon.
     Cardinality,
-    NonintegerItem { index: usize },
+    /// The item at the zero-based `index` is a valid number but not an integer.
+    NonintegerItem {
+        /// Zero-based index of the first item that is not an integer.
+        index: usize,
+    },
+    /// A circle's radius is less than zero. The check uses the exact decimal value, without
+    /// rounding.
     NegativeRadius,
+    /// A rectangle's first x is not strictly less than its second x.
     NonincreasingX,
+    /// A rectangle's first y is not strictly less than its second y.
     NonincreasingY,
 }
 impl fmt::Display for HtmlAreaCoordinatesAuthorError {
@@ -279,17 +326,30 @@ impl fmt::Display for HtmlAreaCoordinatesAuthorError {
     }
 }
 impl Error for HtmlAreaCoordinatesAuthorError {}
+/// Shape-specific author judgment of `coords`. It is independent of the common list grammar
+/// evidence in the report.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAreaCoordinatesAuthorState {
+    /// The rule does not apply to these names, or no `coords` list was examined.
     Unapplied,
+    /// `coords` satisfies the requirements of its shape.
     Conforming,
+    /// `coords` violates a requirement of its shape; the payload is the first violation found.
     Nonconforming(HtmlAreaCoordinatesAuthorError),
     /// The grammar was valid but checked exact-key representation exhausted.
     RepresentationUnavailable,
 }
+/// Why a recognised shape processes to an empty area, which covers no part of the image.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAreaEmptyReason {
-    TooFewCoordinates { required: usize, actual: usize },
+    /// The coordinate list is shorter than the shape needs.
+    TooFewCoordinates {
+        /// Number of coordinates the shape needs: three, four or six.
+        required: usize,
+        /// Number of coordinates the recovered list supplies.
+        actual: usize,
+    },
+    /// A circle's radius is zero or negative, so the circle is empty.
     NonpositiveRadius,
 }
 /// A checked finite processing coordinate in displayed-image CSS pixels.
@@ -299,22 +359,27 @@ pub struct HtmlAreaProcessedPoint {
     y: HtmlFloatingPointNumber,
 }
 impl HtmlAreaProcessedPoint {
+    /// Returns the finite horizontal coordinate in displayed-image CSS pixels.
     pub fn x(&self) -> HtmlFloatingPointNumber {
         self.x
     }
+    /// Returns the finite vertical coordinate in displayed-image CSS pixels.
     pub fn y(&self) -> HtmlFloatingPointNumber {
         self.y
     }
 }
+/// A processed circle with a positive radius, in displayed-image CSS pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HtmlAreaProcessedCircle {
     center: HtmlAreaProcessedPoint,
     radius: HtmlFloatingPointNumber,
 }
 impl HtmlAreaProcessedCircle {
+    /// Returns the centre.
     pub fn center(&self) -> HtmlAreaProcessedPoint {
         self.center
     }
+    /// Returns the radius, which is greater than zero.
     pub fn radius(&self) -> HtmlFloatingPointNumber {
         self.radius
     }
@@ -326,9 +391,11 @@ pub struct HtmlAreaProcessedRectangle {
     bottom_right: HtmlAreaProcessedPoint,
 }
 impl HtmlAreaProcessedRectangle {
+    /// Returns the corner with the smaller x and y after any swap of out-of-order values.
     pub fn top_left(&self) -> HtmlAreaProcessedPoint {
         self.top_left
     }
+    /// Returns the corner with the larger x and y after any swap of out-of-order values.
     pub fn bottom_right(&self) -> HtmlAreaProcessedPoint {
         self.bottom_right
     }
@@ -340,9 +407,12 @@ pub struct HtmlAreaProcessedPolygon<'a> {
     coordinates: &'a [HtmlFloatingPointNumber],
 }
 impl<'a> HtmlAreaProcessedPolygon<'a> {
+    /// Returns the borrowed coordinates as an alternating x, y sequence of even length, dropping a
+    /// trailing unpaired value.
     pub fn coordinates(&self) -> &'a [HtmlFloatingPointNumber] {
         self.coordinates
     }
+    /// Returns the vertices in coordinate order, one per x, y pair.
     pub fn vertices(&self) -> impl ExactSizeIterator<Item = HtmlAreaProcessedPoint> + 'a {
         self.coordinates
             .as_chunks::<2>()
@@ -354,14 +424,21 @@ impl<'a> HtmlAreaProcessedPolygon<'a> {
             })
     }
 }
+/// The area an image map processes `shape` and `coords` to. It borrows the report's coordinates and
+/// performs no hit test.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlAreaProcessedShape<'a> {
+    /// The rule does not apply to the supplied names; the payload says why.
     Unapplied(HtmlAttributeApplicability),
+    /// The shape has too few coordinates or a nonpositive radius, so it covers nothing.
     Empty(HtmlAreaEmptyReason),
     /// Symbolic complete image rectangle; dimensions are not guessed.
     WholeImage,
+    /// A circle with a positive radius.
     Circle(HtmlAreaProcessedCircle),
+    /// A rectangle. Equal edges are allowed here, unlike in authored rectangles.
     Rectangle(HtmlAreaProcessedRectangle),
+    /// A polygon over the paired coordinates.
     Polygon(HtmlAreaProcessedPolygon<'a>),
 }
 /// Exact supplied shape/coords records and independently qualified phases.
@@ -377,6 +454,8 @@ pub struct HtmlAreaCoordinatesReport {
     author: HtmlAreaCoordinatesAuthorState,
 }
 impl HtmlAreaCoordinatesReport {
+    /// Returns the `shape` attribute report. Its intrinsic state is `Rectangle` for a missing or
+    /// invalid value.
     pub fn shape(&self) -> &HtmlAttributeReport<HtmlAreaShape> {
         &self.shape
     }
@@ -386,6 +465,8 @@ impl HtmlAreaCoordinatesReport {
     pub fn coords(&self) -> &HtmlAttributeReport<()> {
         &self.coords
     }
+    /// Returns the common floating-point list report for `coords`, or `None` when the rule does not
+    /// apply to the supplied names.
     pub fn common(&self) -> Option<&HtmlValueReport<HtmlFloatingPointList, HtmlFloatingPointList>> {
         self.common.as_ref()
     }
@@ -395,9 +476,14 @@ impl HtmlAreaCoordinatesReport {
     pub fn author(&self) -> HtmlAreaCoordinatesAuthorState {
         self.author
     }
+    /// Returns the URL of the image map processing model clause that defines how the coordinates
+    /// become an area.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("image-map-processing-model")
     }
+    /// Returns the area that the shape and coordinates process to. Processing reads the recovered
+    /// floating-point list, so a `coords` value that recovery cannot read yields `Empty` with too
+    /// few coordinates.
     pub fn processed_shape(&self) -> HtmlAreaProcessedShape<'_> {
         use HtmlAreaProcessedShape as Output;
         let Some(shape) = self.shape.intrinsic().copied() else {

@@ -13,20 +13,30 @@ use crate::{
 /// This does not establish additional element or tree-context conformance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeAuthorState {
+    /// The attribute is absent, which imposes no numeric requirement.
     Missing,
+    /// The attribute is present and its whole value satisfies the grammar and every
+    /// attribute-specific constraint.
     Conforming,
+    /// The attribute is present but breaks a numeric requirement; the payload names which.
     Nonconforming(HtmlNumericAttributeConformanceError),
+    /// The rule does not apply because the element or attribute name is not the one the rule
+    /// selects.
     Unapplied,
 }
 
+/// Why a present numeric attribute value is nonconforming. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlNumericAttributeConformanceError {
+    /// The whole value is not a valid number of the expected kind; the payload is the common
+    /// grammar failure.
     CommonValue(HtmlValueFailure),
     /// Textarea rows/cols, select size and positive span rules require authored positivity.
     ZeroMustBePositive,
     /// A whole valid integer exceeds this attribute's source-defined maximum.
     MaximumExceeded {
+        /// The attribute's source-defined maximum.
         maximum: u16,
     },
 }
@@ -55,8 +65,12 @@ impl std::error::Error for HtmlNumericAttributeConformanceError {
 /// Why the selected attribute clause produced its intrinsic content value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeValueOrigin {
+    /// The value came from the standard's rules for parsing the attribute, possibly from a leading
+    /// prefix of the text.
     Recovered,
+    /// The attribute was absent, so the clause's missing-value default applies.
     MissingDefault,
+    /// Parsing failed, so the clause's default for an unparsable value applies.
     ParseFailureDefault,
     /// Successful recovery produced zero, which rows/cols and positive span rules default.
     ZeroDefault,
@@ -68,7 +82,10 @@ pub enum HtmlNumericAttributeValueOrigin {
 /// This is not the signed-long, element-dependent tabIndex IDL getter result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlTabindexValue {
+    /// The attribute is present and parses to this exact integer.
     Integer(HtmlInteger),
+    /// The standard's null value: the attribute is absent or does not parse, which is distinct from
+    /// an unapplied rule.
     Null,
 }
 
@@ -89,27 +106,36 @@ pub struct HtmlNumericAttributeReport<A, T> {
 }
 
 impl<A, T> HtmlNumericAttributeReport<A, T> {
+    /// The exact element name that was supplied, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.attribute.element()
     }
+    /// The exact supplied attribute (name, prefix and value), or `None` when it was absent.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.attribute.raw_attribute()
     }
+    /// The exact raw value in UTF-16 code units, distinguishing an absent attribute from an empty
+    /// one.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.attribute.raw()
     }
+    /// Whether the attribute was absent, present and empty, or present and nonempty.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
+    /// Whether the attribute's rule applies to the supplied element.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }
+    /// The standard attribute this report is about.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.attribute.attribute()
     }
+    /// The rows of the pinned specification's attribute index that this rule reproduces.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.attribute.inventory_rows()
     }
+    /// The URL of the attribute's definition in the pinned HTML Standard snapshot.
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
@@ -128,6 +154,7 @@ impl<A, T> HtmlNumericAttributeReport<A, T> {
             _ => self.source_clause(),
         }
     }
+    /// The length of the raw value in UTF-16 code units, as admitted against the per-value cap.
     pub fn input_code_units(&self) -> usize {
         self.attribute.input_code_units()
     }
@@ -135,12 +162,17 @@ impl<A, T> HtmlNumericAttributeReport<A, T> {
     pub fn common(&self) -> Option<&HtmlValueReport<A, A>> {
         self.common.as_ref()
     }
+    /// The author verdict, which adds the attribute's own constraint to the common grammar evidence
+    /// and never rewrites it.
     pub fn author(&self) -> HtmlNumericAttributeAuthorState {
         self.author
     }
+    /// The attribute's intrinsic content value after the selected default or clamp, or `None` when
+    /// the rule does not apply.
     pub fn intrinsic(&self) -> Option<&T> {
         self.attribute.intrinsic()
     }
+    /// How the intrinsic value was produced, or `None` when the rule does not apply.
     pub fn origin(&self) -> Option<HtmlNumericAttributeValueOrigin> {
         self.origin
     }
@@ -1147,10 +1179,16 @@ impl HtmlFormEnctype {
 /// ReflectDefault is zero), rendered geometry, or current selection state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectDisplaySize<'a> {
+    /// The display size is known: `value` is the integer and `origin` says whether it was
+    /// recovered from the attribute or is the default for a missing or unparsable value. A
+    /// `select` size is never clamped.
     Value {
+        /// The display-size integer.
         value: &'a HtmlNonNegativeInteger,
+        /// How the integer was produced.
         origin: HtmlNumericAttributeValueOrigin,
     },
+    /// The `size` rule does not apply; the payload is the applicability that was observed.
     Unapplied(HtmlAttributeApplicability),
     /// A missing/failed size needs actual multiple presence. A supplied wrong
     /// attribute role cannot establish that presence or count as absence.
@@ -1173,30 +1211,40 @@ pub struct HtmlSelectSizeReport {
     fallback: Option<(HtmlNonNegativeInteger, HtmlNumericAttributeValueOrigin)>,
 }
 impl HtmlSelectSizeReport {
+    /// The exact element name that was supplied, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.attribute.element()
     }
+    /// The exact supplied `size` attribute (name, prefix and value), or `None` when it was absent.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.attribute.raw_attribute()
     }
+    /// The exact raw `size` value in UTF-16 code units, distinguishing an absent attribute from an
+    /// empty one.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.attribute.raw()
     }
+    /// Whether `size` was absent, present and empty, or present and nonempty.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
+    /// Whether the `size` rule applies to the supplied element.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }
+    /// The standard attribute this report is about, `size`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.attribute.attribute()
     }
+    /// The rows of the pinned specification's attribute index that this rule reproduces.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.attribute.inventory_rows()
     }
+    /// The URL of the `size` attribute's definition in the pinned HTML Standard snapshot.
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
+    /// The URL of the pinned standard's definition of the select display size.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("concept-select-size")
     }
@@ -1210,6 +1258,8 @@ impl HtmlSelectSizeReport {
     ) -> Option<&HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>> {
         self.common.as_ref()
     }
+    /// The author verdict for `size`. The `multiple` attribute is judged separately by
+    /// [`HtmlSelectSizeReport::multiple`].
     pub fn author(&self) -> HtmlNumericAttributeAuthorState {
         self.author
     }

@@ -71,10 +71,29 @@ impl HtmlCommaToken {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlTokenError {
+    /// The candidate for a space-separated token has no UTF-16 code units, and a
+    /// space-separated token is nonempty (HTML877d #space-separated-tokens).
     EmptySpaceToken,
-    SpaceTokenWhitespace { code_unit_offset: usize },
-    CommaTokenBoundaryWhitespace { code_unit_offset: usize },
-    CommaTokenComma { code_unit_offset: usize },
+    /// A space-separated token candidate contains an ASCII whitespace code unit
+    /// (U+0009, U+000A, U+000C, U+000D or U+0020), which would have split it.
+    SpaceTokenWhitespace {
+        /// Zero-based UTF-16 code-unit offset of the first ASCII whitespace unit.
+        code_unit_offset: usize,
+    },
+    /// A comma-separated token candidate begins or ends with ASCII whitespace,
+    /// but a comma-separated token neither begins nor ends with it (HTML877d
+    /// #comma-separated-tokens). Leading whitespace is checked first.
+    CommaTokenBoundaryWhitespace {
+        /// Zero-based UTF-16 code-unit offset of the offending boundary unit:
+        /// 0 for leading whitespace, otherwise the offset of the final unit.
+        code_unit_offset: usize,
+    },
+    /// A comma-separated token candidate contains a comma (U+002C), which would
+    /// have separated it into two tokens.
+    CommaTokenComma {
+        /// Zero-based UTF-16 code-unit offset of the first comma.
+        code_unit_offset: usize,
+    },
 }
 
 impl fmt::Display for HtmlTokenError {
@@ -159,7 +178,11 @@ impl HtmlCommaSeparatedTokens {
 /// HTML does not establish one universal token comparison rule.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlTokenComparison {
+    /// Tokens match only when their UTF-16 code-unit sequences are identical.
     CaseSensitive,
+    /// Tokens match when they are identical after mapping only the ASCII
+    /// uppercase letters U+0041 to U+005A to lowercase; every other code unit,
+    /// including non-ASCII letters, must match exactly.
     AsciiCaseInsensitive,
 }
 
@@ -375,6 +398,10 @@ fn unique_tokens(
     })
 }
 
+/// Tests whether a UTF-16 code unit is ASCII whitespace as the Infra Standard
+/// defines it: tab (U+0009), line feed (U+000A), form feed (U+000C), carriage
+/// return (U+000D) or space (U+0020). Vertical tab (U+000B) and non-ASCII
+/// whitespace such as U+00A0 are not ASCII whitespace.
 pub fn ascii_whitespace(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
 }
@@ -406,7 +433,12 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
 }
 
 /// One bounded shared Infra action; admission belongs to the consuming caller.
-#[derive(Clone)]
+///
+/// The cursor performs one fixed step per call and never allocates, so a driver
+/// that charges `BEGIN_WORK` once and `STEP_WORK` per step
+/// accounts for all of its work. The `Token` spans index into the supplied
+/// slice, split on ASCII whitespace with each token nonempty (HTML877d #space-separated-tokens).
+#[derive(Clone, Debug)]
 pub struct SpaceTokenCursor<'a> {
     units: &'a [u16],
     position: usize,
@@ -414,19 +446,37 @@ pub struct SpaceTokenCursor<'a> {
     ready: Option<(usize, usize)>,
     done: bool,
 }
+/// The outcome of one `SpaceTokenCursor` step.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpaceTokenStep {
+    /// The step inspected one code unit and emitted no token; step again.
     Continue,
-    Token { start: usize, end: usize },
+    /// A complete token occupies the half-open range `start..end` of the
+    /// source slice, in UTF-16 code-unit offsets. `start < end` always holds.
+    Token {
+        /// Offset of the token's first code unit.
+        start: usize,
+        /// Offset one past the token's last code unit.
+        end: usize,
+    },
+    /// The source is exhausted and every token has been emitted. Every later
+    /// step also returns `Done`.
     Done,
 }
 impl<'a> SpaceTokenCursor<'a> {
+    /// Work units a driver charges once before the first step.
     pub const BEGIN_WORK: usize = 1;
     // Header selection/read/classification/progress or fixed token emission.
+    /// Work units a driver charges for each call to `step`: header
+    /// selection, source read, classification and progress, or a fixed token
+    /// emission.
     pub const STEP_WORK: usize = 4;
     /// Header-only classification, before any source-unit operation.
     pub fn inspects_unit(&self) -> bool {
         self.ready.is_none() && !self.done && self.position < self.units.len()
     }
+    /// Creates a cursor at the start of `units`, the exact UTF-16 code units of
+    /// the value to split. Construction does no work and never fails.
     pub fn new(units: &'a [u16]) -> Self {
         Self {
             units,
@@ -436,6 +486,10 @@ impl<'a> SpaceTokenCursor<'a> {
             done: false,
         }
     }
+    /// Advances by one bounded step. Each step inspects at most one source unit.
+    /// A token ended by whitespace is held back until the next step returns it;
+    /// a token ended by the end of the source is returned by the step that
+    /// reaches the end. After `Done`, further calls keep returning `Done`.
     pub fn step(&mut self) -> SpaceTokenStep {
         if let Some((start, end)) = self.ready.take() {
             return SpaceTokenStep::Token { start, end };

@@ -132,6 +132,7 @@ pub fn is_html_integration_point(
 }
 
 /// One grouped comparison requested by MathML text integration-point classification.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMathmlTextPointTest<'a> {
     /// Compare the supplied name's namespace against this exact URI.
     Namespace(&'static str),

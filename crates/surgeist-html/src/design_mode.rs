@@ -10,8 +10,11 @@
 /// ASCII-insensitive designMode input interpretation, without trimming.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDesignModeInput {
+    /// The value is `on` in any ASCII case; the designMode setter enables design mode.
     On,
+    /// The value is `off` in any ASCII case; the designMode setter disables design mode.
     Off,
+    /// Any other value, including non-ASCII units: the setter does nothing.
     Invalid,
 }
 impl HtmlDesignModeInput {
@@ -37,8 +40,11 @@ impl HtmlDesignModeInput {
 /// current actual state at the reached stage, rather than an initial snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDesignModeAction {
+    /// Read whether the invoking Document's design mode is currently enabled.
     ReadEnabled,
+    /// Write the Document's design-mode flag.
     SetEnabled {
+        /// The value to store: `true` for design mode on, `false` for off.
         enabled: bool,
     },
     /// Capture the current active association under its actual owner. Missing
@@ -56,22 +62,33 @@ pub enum HtmlDesignModeAction {
     /// actual operands until Complete; no Dialog predicate or unavailable fact
     /// can stand in for this call. Reentry must not restore an earlier flag.
     RunFocusingSteps,
+    /// The setter has finished; no further action or reply is expected.
     Complete,
 }
+/// The adapter's answer to a pending [`HtmlDesignModeAction`].
+///
+/// A reply is accepted only for the action that asks for it; any other pairing is
+/// [`HtmlDesignModeError::is_wrong_reply`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDesignModeReply {
+    /// Answer to `ReadEnabled`: whether design mode is currently enabled.
     Enabled(bool),
     /// Authoritatively known null: no reset and no Range creation; still proceed
     /// to the Document's document-element/focusing tail.
     NoActiveRange,
     /// Actual nonnull association captured; retain that exact Range identity.
     ActiveRange,
+    /// Answer to `ReadDocumentElement`: whether the Document currently has a document element.
     DocumentElementPresent(bool),
     /// The genuine focusing child reached its own Complete action.
     FocusingStepsCompleted,
     /// The exact pending flag write or both-boundary reset actually completed.
     Applied,
 }
+/// A designMode cursor reply that cannot be applied.
+///
+/// The cause is private; query it with [`is_wrong_reply`](Self::is_wrong_reply) and
+/// [`is_terminal`](Self::is_terminal). A refused reply leaves the cursor unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlDesignModeError {
     kind: HtmlDesignModeErrorKind,
@@ -131,6 +148,10 @@ pub struct HtmlDesignModeCursor {
     pending: HtmlDesignModeAction,
 }
 impl HtmlDesignModeCursor {
+    /// Starts the setter for an interpreted value.
+    ///
+    /// `On` begins by reading the current flag, `Off` begins by writing `false`, and an invalid
+    /// value is already complete.
     pub const fn new(input: HtmlDesignModeInput) -> Self {
         Self {
             pending: match input {
@@ -140,6 +161,7 @@ impl HtmlDesignModeCursor {
             },
         }
     }
+    /// The action the adapter must perform next, or `Complete` when the setter is finished.
     pub const fn action(&self) -> HtmlDesignModeAction {
         self.pending
     }

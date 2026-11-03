@@ -12,16 +12,17 @@ use crate::{
 use std::{error::Error, fmt};
 
 macro_rules! sandbox_flags {
-    ($($variant:ident => $anchor:literal),+ $(,)?) => {
-        /// The sixteen source-defined restrictions in a sandboxing flag set.
+    ($($(#[$meta:meta])* $variant:ident => $anchor:literal),+ $(,)?) => {
+        /// The sixteen source-defined restrictions in a sandboxing flag set (HTML877d #sandboxing).
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-        pub enum HtmlSandboxFlag { $($variant),+ }
+        pub enum HtmlSandboxFlag { $($(#[$meta])* $variant),+ }
 
         const ALL_FLAGS: &[HtmlSandboxFlag] = &[$(HtmlSandboxFlag::$variant),+];
 
         impl HtmlSandboxFlag {
             const fn bit(self) -> u16 { 1 << (self as u8) }
 
+            /// The URL of this flag's definition in the pinned HTML Standard snapshot.
             pub fn source_clause(self) -> &'static str {
                 match self { $(Self::$variant => source!($anchor)),+ }
             }
@@ -30,21 +31,46 @@ macro_rules! sandbox_flags {
 }
 
 sandbox_flags! {
+    /// Prevents content from navigating browsing contexts other than the sandboxed one and those
+    /// nested inside it. Auxiliary and top-level contexts are also covered by the next three flags.
     Navigation => "sandboxed-navigation-browsing-context-flag",
+    /// Prevents content from creating auxiliary browsing contexts, for example through `target` or
+    /// `window.open()`.
     AuxiliaryNavigation => "sandboxed-auxiliary-navigation-browsing-context-flag",
+    /// Prevents content from navigating or closing its top-level browsing context. It is consulted
+    /// only when the active window lacks transient activation.
     TopNavigationWithoutUserActivation => "sandboxed-top-level-navigation-without-user-activation-browsing-context-flag",
+    /// Prevents content from navigating or closing its top-level browsing context. It is consulted
+    /// only when the active window has transient activation.
     TopNavigationWithUserActivation => "sandboxed-top-level-navigation-with-user-activation-browsing-context-flag",
+    /// Forces content into an opaque origin, which also blocks `document.cookie` and
+    /// `localStorage`.
     Origin => "sandboxed-origin-browsing-context-flag",
+    /// Blocks form submission.
     Forms => "sandboxed-forms-browsing-context-flag",
+    /// Disables the Pointer Lock API.
     PointerLock => "sandboxed-pointer-lock-browsing-context-flag",
+    /// Blocks script execution.
     Scripts => "sandboxed-scripts-browsing-context-flag",
+    /// Blocks features that trigger automatically, such as autoplaying video or autofocusing a form
+    /// control.
     AutomaticFeatures => "sandboxed-automatic-features-browsing-context-flag",
+    /// Prevents content from using the `document.domain` setter. No sandbox keyword relaxes it.
     DocumentDomain => "sandboxed-document.domain-browsing-context-flag",
+    /// Makes every auxiliary browsing context that the content creates inherit the content's active
+    /// sandboxing flag set.
     PropagatesToAuxiliary => "sandbox-propagates-to-auxiliary-browsing-contexts-flag",
+    /// Prevents modal dialogs from `alert()`, `confirm()`, `print()`, `prompt()` and the
+    /// `beforeunload` event.
     Modals => "sandboxed-modals-flag",
+    /// Disables locking the screen orientation.
     OrientationLock => "sandboxed-orientation-lock-browsing-context-flag",
+    /// Disables the Presentation API.
     Presentation => "sandboxed-presentation-browsing-context-flag",
+    /// Prevents content from initiating downloads, through hyperlinks or through navigation handled
+    /// as a download.
     Downloads => "sandboxed-downloads-browsing-context-flag",
+    /// Prevents navigations to non-fetch schemes from being handed to external software.
     CustomProtocolsNavigation => "sandboxed-custom-protocols-navigation-browsing-context-flag",
 }
 
@@ -105,18 +131,22 @@ impl HtmlSandboxFlags {
         admit()?;
         Ok(project_flags(keywords))
     }
+    /// Whether `flag` is in the set.
     pub fn contains(&self, flag: HtmlSandboxFlag) -> bool {
         self.bits & flag.bit() != 0
     }
+    /// The flags in the set, in `HtmlSandboxFlag` declaration order.
     pub fn iter(&self) -> impl Iterator<Item = HtmlSandboxFlag> + '_ {
         ALL_FLAGS
             .iter()
             .copied()
             .filter(|flag| self.contains(*flag))
     }
+    /// The number of flags in the set, from 0 to 16.
     pub fn len(&self) -> usize {
         self.bits.count_ones() as usize
     }
+    /// Whether the set holds no restriction.
     pub fn is_empty(&self) -> bool {
         self.bits == 0
     }
@@ -130,10 +160,13 @@ struct KeywordDefinition {
 }
 
 macro_rules! sandbox_keywords {
-    ($($variant:ident => $spelling:literal [$first:ident $(, $flag:ident)*]),+ $(,)?) => {
-        /// The thirteen allowed keywords of the selected HTML sandbox edition.
+    ($($(#[$meta:meta])* $variant:ident => $spelling:literal [$first:ident $(, $flag:ident)*]),+ $(,)?) => {
+        /// The thirteen allowed keywords of the selected HTML sandbox edition (HTML877d
+        /// #the-iframe-element).
+        ///
+        /// Each keyword relaxes the restriction flags listed in its variant documentation.
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-        pub enum HtmlSandboxKeyword { $($variant),+ }
+        pub enum HtmlSandboxKeyword { $($(#[$meta])* $variant),+ }
 
         // One source declaration owns recognition, author spelling and all
         // directive relationships, including keywords that relax several flags.
@@ -149,9 +182,11 @@ macro_rules! sandbox_keywords {
         impl HtmlSandboxKeyword {
             const fn bit(self) -> u16 { 1 << (self as u8) }
 
+            /// The keyword's exact lowercase spelling.
             pub fn keyword(self) -> &'static str {
                 KEYWORDS[self as usize].spelling
             }
+            /// The URL of this keyword's definition in the pinned HTML Standard snapshot.
             pub fn source_clause(self) -> &'static str {
                 KEYWORDS[self as usize].source
             }
@@ -171,18 +206,32 @@ macro_rules! sandbox_keywords {
 }
 
 sandbox_keywords! {
+    /// Relaxes `Downloads`.
     AllowDownloads => "allow-downloads" [Downloads],
+    /// Relaxes `Forms`.
     AllowForms => "allow-forms" [Forms],
+    /// Relaxes `Modals`.
     AllowModals => "allow-modals" [Modals],
+    /// Relaxes `OrientationLock`.
     AllowOrientationLock => "allow-orientation-lock" [OrientationLock],
+    /// Relaxes `PointerLock`.
     AllowPointerLock => "allow-pointer-lock" [PointerLock],
+    /// Relaxes `AuxiliaryNavigation` and `CustomProtocolsNavigation`.
     AllowPopups => "allow-popups" [AuxiliaryNavigation, CustomProtocolsNavigation],
+    /// Relaxes `PropagatesToAuxiliary`, so popups do not inherit the sandbox.
     AllowPopupsToEscapeSandbox => "allow-popups-to-escape-sandbox" [PropagatesToAuxiliary],
+    /// Relaxes `Presentation`.
     AllowPresentation => "allow-presentation" [Presentation],
+    /// Relaxes `Origin`, keeping the content's real origin.
     AllowSameOrigin => "allow-same-origin" [Origin],
+    /// Relaxes `Scripts` and `AutomaticFeatures`.
     AllowScripts => "allow-scripts" [Scripts, AutomaticFeatures],
+    /// Relaxes `TopNavigationWithoutUserActivation`, `TopNavigationWithUserActivation` and
+    /// `CustomProtocolsNavigation`.
     AllowTopNavigation => "allow-top-navigation" [TopNavigationWithoutUserActivation, TopNavigationWithUserActivation, CustomProtocolsNavigation],
+    /// Relaxes `TopNavigationWithUserActivation`.
     AllowTopNavigationByUserActivation => "allow-top-navigation-by-user-activation" [TopNavigationWithUserActivation],
+    /// Relaxes `CustomProtocolsNavigation`.
     AllowTopNavigationToCustomProtocols => "allow-top-navigation-to-custom-protocols" [CustomProtocolsNavigation],
 }
 
@@ -221,8 +270,16 @@ fn keyword_with<E>(
 /// An author-only redundancy; recognized processing remains unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSandboxRedundancy {
+    /// Both `allow-top-navigation` and `allow-top-navigation-by-user-activation` are listed. The
+    /// standard forbids the pair because the first already implies the second (HTML877d
+    /// #the-iframe-element).
     TopNavigationAndByUserActivation,
+    /// Both `allow-top-navigation-to-custom-protocols` and `allow-top-navigation` are listed. The
+    /// standard forbids the pair because the second already relaxes the custom-protocols
+    /// restriction.
     CustomProtocolsAndTopNavigation,
+    /// Both `allow-top-navigation-to-custom-protocols` and `allow-popups` are listed. The standard
+    /// forbids the pair because the second already relaxes the custom-protocols restriction.
     CustomProtocolsAndPopups,
 }
 
@@ -298,12 +355,17 @@ impl HtmlSandboxValue {
             keywords: bits,
         })
     }
+    /// The keywords in their authored order. Uniqueness is judged ASCII case-insensitively, and
+    /// each token is the canonical lowercase keyword spelling.
     pub fn tokens(&self) -> &HtmlUnorderedTokenSet {
         &self.tokens
     }
+    /// The restrictions this value imposes: every flag except those that the listed keywords relax.
     pub fn flags(&self) -> HtmlSandboxFlags {
         project_flags(self.keywords)
     }
+    /// Emits a no-namespace `sandbox` attribute whose value is the keyword tokens in authored
+    /// order, separated by single spaces. An empty keyword list emits a present empty value.
     pub fn into_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Sandbox.qualified_name(),
@@ -312,10 +374,15 @@ impl HtmlSandboxValue {
     }
 }
 
+/// Why a keyword list cannot form a conforming sandbox value. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSandboxValueError {
+    /// Two keywords were identical when compared ASCII case-insensitively; the payload names the
+    /// repeat.
     Duplicate(HtmlDuplicateTokenError),
+    /// The list contains a combination that the standard forbids as redundant; the payload names
+    /// the first such combination.
     Redundant(HtmlSandboxRedundancy),
 }
 
@@ -349,9 +416,12 @@ pub struct HtmlSandboxUnknownToken {
 }
 
 impl HtmlSandboxUnknownToken {
+    /// The zero-based position of this token among all whitespace-separated tokens of the
+    /// attribute, recognized keywords included.
     pub fn token_index(&self) -> usize {
         self.token_index
     }
+    /// The token's exact spelling in UTF-16 code units, without case folding.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
@@ -370,6 +440,8 @@ impl HtmlSandboxAuthorDiagnostics {
     pub fn duplicate(&self) -> Option<&HtmlDuplicateTokenError> {
         self.duplicate.as_ref()
     }
+    /// The tokens that match no sandbox keyword, in source order. Their presence makes the value
+    /// nonconforming but does not change the parsed flags.
     pub fn unknown_tokens(&self) -> &[HtmlSandboxUnknownToken] {
         &self.unknown
     }
@@ -379,11 +451,19 @@ impl HtmlSandboxAuthorDiagnostics {
     }
 }
 
+/// The author-conformance verdict for the `sandbox` attribute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSandboxAuthorState {
+    /// The attribute is absent, which is conforming and imposes no directive.
     Missing,
+    /// The attribute is present and every token is a recognized keyword, with no repeats and no
+    /// forbidden combination.
     Conforming,
+    /// The attribute is present but breaks one or more author rules; the payload lists every
+    /// violation independently.
     Nonconforming(HtmlSandboxAuthorDiagnostics),
+    /// The rule does not apply because the element is not an HTML `iframe` or the supplied
+    /// attribute is not `sandbox`.
     Unapplied,
 }
 
@@ -392,6 +472,8 @@ pub enum HtmlSandboxAuthorState {
 pub enum HtmlSandboxDirectiveState {
     /// No attribute directive; distinct from a parsed empty directive.
     Absent,
+    /// A directive is present; the payload is its flag set. A present empty value yields every
+    /// flag.
     Present(HtmlSandboxFlags),
 }
 
@@ -408,50 +490,67 @@ pub struct HtmlSandboxReport {
 }
 
 impl HtmlSandboxReport {
+    /// The exact element name that was supplied, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.attribute.element()
     }
+    /// The exact supplied attribute (name, prefix and value), or `None` when it was absent.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.attribute.raw_attribute()
     }
+    /// The exact raw value in UTF-16 code units, distinguishing an absent attribute from an empty
+    /// one.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.attribute.raw()
     }
+    /// Whether the attribute was absent, present and empty, or present and nonempty.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
+    /// Whether the attribute's rule applies to the supplied element.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }
+    /// The standard attribute this report is about, `sandbox`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.attribute.attribute()
     }
+    /// The rows of the pinned specification's attribute index that this rule reproduces.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.attribute.inventory_rows()
     }
+    /// The URL of the attribute's definition in the pinned HTML Standard snapshot.
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
+    /// The URL of the pinned standard's algorithm for parsing a sandboxing directive.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("parse-a-sandboxing-directive")
     }
+    /// The URL of the pinned standard's definition of the iframe sandboxing flag set.
     pub fn flag_set_source_clause(&self) -> &'static str {
         source!("iframe-sandboxing-flag-set")
     }
+    /// The length of the raw value in UTF-16 code units, as admitted against the per-value cap.
     pub fn input_code_units(&self) -> usize {
         self.attribute.input_code_units()
     }
+    /// The shared space-separated token report for the raw value, or `None` when the rule does not
+    /// apply.
     pub fn common(
         &self,
     ) -> Option<&HtmlValueReport<HtmlSpaceSeparatedTokens, HtmlSpaceSeparatedTokens>> {
         self.common.as_ref()
     }
+    /// The recovered tokens, split on ASCII whitespace with every spelling preserved, or `None`
+    /// when the rule does not apply or the attribute is absent.
     pub fn tokens(&self) -> Option<&HtmlSpaceSeparatedTokens> {
         match self.common.as_ref()?.recovery() {
             HtmlValueRecoveryState::Value(tokens) => Some(tokens),
             _ => None,
         }
     }
+    /// The author verdict. It is independent of the parsed flag projection.
     pub fn author(&self) -> &HtmlSandboxAuthorState {
         &self.author
     }

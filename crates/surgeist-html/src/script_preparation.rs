@@ -9,21 +9,32 @@ use crate::HtmlScriptKind;
 /// The source-defined terminal branch reached by the bounded preparation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptPreparationResult {
+    /// Step 1: the script's already started flag was true, so preparation returned at once.
     AlreadyStarted,
+    /// Step 6: no `src` attribute and no child text, so there is nothing to run.
     Empty,
+    /// Step 7: the script element is not connected.
     Disconnected,
+    /// Step 13: the type string matches no script kind, so no script is executed and its type
+    /// stays null.
     UnrecognizedType,
+    /// Step 17: the saved parser document is non-null and differs from the preparation-time
+    /// document, so preparation returns before the scripting check.
     ParserDocumentMismatch,
+    /// Step 18: scripting is disabled for the script, so preparation returns. The kind is the one
+    /// stored at steps 9 to 12; this producer supports no outcome beyond this return.
     Disabled(HtmlScriptKind),
 }
 
 /// One pending action, fulfilled by the actual qualified script owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptPreparationAction {
+    /// Read the script's already started flag; reply `AlreadyStarted`.
     ReadAlreadyStarted,
     /// Retain the actual old parser document separately, then persist null in
     /// the script slot. Reply only after that write has been admitted/applied.
     SaveAndClearParserDocument,
+    /// Read whether the script has an `async` attribute; reply `AsyncPresent`.
     ReadAsyncPresence,
     /// Apply HtmlScriptFlags::parser_document_cleared_without_async.
     SetForceAsync,
@@ -32,9 +43,11 @@ pub enum HtmlScriptPreparationAction {
     ReadChildTextEmpty,
     /// Presence includes an empty src value; no URL or loading work is implied.
     ReadSrcPresence,
+    /// Read whether the script element is connected; reply `Connected`.
     ReadConnected,
     /// Use HtmlScriptTypeCursor::preparation on the actual type/language values.
     ClassifyType,
+    /// Store the classified kind as the script's type; reply `Applied` once written.
     StoreType(HtmlScriptKind),
     /// Restore the saved nonnull parser document and apply
     /// HtmlScriptFlags::parser_document_restored in the same source step14.
@@ -44,10 +57,13 @@ pub enum HtmlScriptPreparationAction {
     /// Read the current actual node document and persist it as preparation-time
     /// document. Do not infer identity from arena position or document class.
     StorePreparationDocument,
+    /// Compare the saved parser document with the preparation-time document by exact identity;
+    /// reply `DocumentsEqual`.
     CompareDocuments,
     /// The adapter must establish actual disabled scripting for this subject.
     /// Neither XML class, absent host facts nor script flags prove this fact.
     RequireDisabledScripting,
+    /// Preparation is finished with this terminal branch; no further reply is accepted.
     Complete(HtmlScriptPreparationResult),
 }
 
@@ -55,20 +71,32 @@ pub enum HtmlScriptPreparationAction {
 /// Missing evidence is explicit and never becomes false or an early return.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptPreparationReply {
+    /// Answer to `ReadAlreadyStarted`: the flag's value.
     AlreadyStarted(bool),
+    /// Answer to `SaveAndClearParserDocument`: whether the saved parser document was non-null; the
+    /// clear is already written.
     ParserDocumentSaved(bool),
+    /// Answer to `ReadAsyncPresence`: whether the `async` attribute exists.
     AsyncPresent(bool),
+    /// Answer to `ReadChildTextEmpty`: whether the child text content is the empty string.
     ChildTextEmpty(bool),
+    /// Answer to `ReadSrcPresence`: whether the `src` attribute exists, even if empty.
     SrcPresent(bool),
+    /// Answer to `ReadConnected`: whether the element is connected.
     Connected(bool),
     /// None is a completed unrecognized classification, not incomplete work.
     Classified(Option<HtmlScriptKind>),
+    /// Answer to `CompareDocuments`: whether the two documents are the same document.
     DocumentsEqual(bool),
+    /// The pending write or restore was performed; carries no data.
     Applied,
+    /// Answer to `RequireDisabledScripting`: scripting is disabled for the subject.
     Disabled,
     /// This actual environment requires an execution capability not provided
     /// by this bounded producer; it is not a successful preparation result.
     Enabled,
+    /// The adapter cannot establish the pending observation. A read that needs evidence refuses it
+    /// with `EvidenceUnavailable`; a write cannot be answered this way.
     Unavailable,
 }
 
@@ -76,8 +104,12 @@ pub enum HtmlScriptPreparationReply {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlScriptPreparationError {
+    /// The reply does not belong to the pending action, including any reply after completion.
     ReplyMismatch,
+    /// The reply was `Unavailable` for a pending observation, which preparation cannot guess.
     EvidenceUnavailable,
+    /// The subject has scripting enabled, which needs execution this bounded producer does not
+    /// provide.
     ScriptingEnabled,
 }
 impl std::fmt::Display for HtmlScriptPreparationError {
@@ -129,12 +161,14 @@ impl Default for HtmlScriptPreparationCursor {
     }
 }
 impl HtmlScriptPreparationCursor {
+    /// Starts preparation at its first action, reading the already started flag.
     pub fn new() -> Self {
         Self {
             phase: Phase::Started,
             saved_parser_document: false,
         }
     }
+    /// The action the adapter must perform next; after `Complete` it stays `Complete`.
     pub fn action(&self) -> HtmlScriptPreparationAction {
         match self.phase {
             Phase::Started => HtmlScriptPreparationAction::ReadAlreadyStarted,
@@ -154,6 +188,13 @@ impl HtmlScriptPreparationCursor {
             Phase::Complete(result) => HtmlScriptPreparationAction::Complete(result),
         }
     }
+    /// Applies the adapter's answer to the pending action and advances to the next one.
+    ///
+    /// The reply must be the one the pending action asks for. Any other reply fails with
+    /// [`HtmlScriptPreparationError::ReplyMismatch`]; `Unavailable` for a pending observation
+    /// fails with `EvidenceUnavailable`; an enabled-scripting answer fails with
+    /// `ScriptingEnabled`. On every error the cursor is unchanged and the same action stays
+    /// pending.
     pub fn reply(
         &mut self,
         reply: HtmlScriptPreparationReply,

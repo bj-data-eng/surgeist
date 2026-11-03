@@ -9,35 +9,62 @@ use std::convert::Infallible;
 /// All four pinned parser modes. Fragment admission accepts requested Inert/Fragment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlParserScriptingMode {
+    /// Scripts run when inserted, respecting `async` and `defer` (#scripting-mode-normal).
     Normal,
+    /// Scripts are disabled, so `noscript` represents fallback content (#scripting-mode-disabled).
     Disabled,
+    /// Scripts are enabled but marked already started so they never execute; the fragment
+    /// parsing algorithm's default (#scripting-mode-inert).
     Inert,
+    /// Scripts execute as soon as the fragment parsing algorithm inserts them
+    /// (#scripting-mode-fragment).
     Fragment,
 }
+/// The tokenizer state a fragment parse starts in, chosen from its context element.
+///
+/// See [`fragment_tokenizer_state`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentTokenizerState {
+    /// The data state: the context is an HTML element that is not text-like, a `noscript` while
+    /// the scripting mode is Disabled, or any context outside the HTML namespace.
     Data,
+    /// The RCDATA state, for `title` and `textarea` contexts.
     Rcdata,
+    /// The RAWTEXT state, for `style`, `xmp`, `iframe`, `noembed` and `noframes` contexts, and
+    /// for `noscript` unless the scripting mode is Disabled.
     Rawtext,
+    /// The script data state, for a `script` context.
     ScriptData,
+    /// The PLAINTEXT state, for a `plaintext` context.
     Plaintext,
 }
 /// Initial §13.4 insertion-mode selection; no complete parser state is claimed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentInsertionMode {
+    /// The "in body" mode: the fallback for any context without a more specific mode, and the
+    /// result for every non-HTML-namespace context.
     InBody,
+    /// The "in row" mode, for a `tr` context.
     InRow,
+    /// The "in table body" mode, for `tbody`, `thead` and `tfoot` contexts.
     InTableBody,
+    /// The "in caption" mode, for a `caption` context.
     InCaption,
+    /// The "in column group" mode, for a `colgroup` context.
     InColumnGroup,
+    /// The "in table" mode, for a `table` context.
     InTable,
+    /// The "in template" mode, for a `template` context in fragment initialization.
     InTemplate,
+    /// The "in frameset" mode, for a `frameset` context.
     InFrameset,
+    /// The "before head" mode, for an `html` context in fragment initialization.
     BeforeHead,
 }
 
 /// The finite comparisons needed by fragment initialization. The consumer
 /// admits and executes a comparison before the policy can inspect its result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentNameTest<'a> {
     /// Compare the supplied name's namespace with the HTML namespace.
     HtmlNamespace,

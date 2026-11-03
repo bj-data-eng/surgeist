@@ -54,7 +54,12 @@ pub enum HtmlAttributeValidationError {
     /// The supplied owner slot is empty.
     Consumed,
     /// Prefixes and values are excluded from this exact expanded-name identity.
-    Duplicate { first: usize, duplicate: usize },
+    Duplicate {
+        /// The index of the earlier attribute that owns the expanded name.
+        first: usize,
+        /// The index of the later attribute that repeats it.
+        duplicate: usize,
+    },
 }
 
 impl fmt::Display for HtmlAttributeValidationError {

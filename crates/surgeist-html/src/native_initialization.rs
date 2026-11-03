@@ -19,14 +19,29 @@ use core::convert::Infallible;
 /// claim every such element has another stored slot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlElementClass {
+    /// An element with no namespace or any namespace other than HTML, SVG or MathML: only the
+    /// common element tuple applies, and it has no nonce slot.
     GenericElement,
+    /// An HTML-namespace element, including obsolete names and the unknown/custom fallback, that
+    /// needs only the common HTML state.
     CommonHtml,
+    /// An SVG-namespace element other than `script`, with the common element tuple and a nonce
+    /// slot.
     CommonSvg,
+    /// A MathML-namespace element, with the common element tuple and a nonce slot.
     CommonMathml,
+    /// An HTML element that also needs form-association state of the carried kind.
     FormAssociated(HtmlNativeFormAssociationKind),
+    /// A built-in HTML element named in the pinned vocabulary that is neither form-associated nor
+    /// one of the roughly eighty elements whose interface needs only the common state, which are
+    /// `CommonHtml`. It is the remainder that needs element-specific state. The consumer owns
+    /// any such slot, for example `template` or `slot` freshness.
     KnownHtml(KnownHtmlElement),
+    /// The obsolete HTML `marquee`, which also needs [`HtmlMarqueeState`](crate::HtmlMarqueeState).
     HtmlMarquee,
+    /// The obsolete HTML `frame`, which shares Frame/Iframe attribute processing.
     HtmlFrame,
+    /// An SVG-namespace `script`, which needs SVG script flags beyond the common element tuple.
     SvgScript,
 }
 impl HtmlElementClass {
@@ -54,9 +69,13 @@ impl HtmlElementClass {
 /// Pair reads one actual UTF-16 unit and its exact canonical ASCII operand.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlElementNameRead {
+    /// Before the namespace length is read and, when a URI is present, before it is observed.
     NamespaceHeader,
+    /// Before one UTF-16 unit of the namespace URI is compared with its expected ASCII unit.
     NamespacePair,
+    /// Before the local name's length is read.
     LocalNameHeader,
+    /// Before one UTF-16 unit of the local name is compared with its expected ASCII unit.
     LocalNamePair,
 }
 
@@ -72,9 +91,12 @@ pub struct HtmlNativeInitialization {
     requirement: HtmlElementClass,
 }
 impl HtmlNativeInitialization {
+    /// The family classification that native creation must initialize.
     pub const fn requirement(&self) -> HtmlElementClass {
         self.requirement
     }
+    /// The initial common values for this requirement's scope. The element reference type is
+    /// `Infallible` because a fresh element has no previously focused element to reference.
     pub const fn common(&self) -> HtmlCommonState<Infallible> {
         HtmlCommonState::new(self.requirement.common_scope())
     }
@@ -114,6 +136,7 @@ impl HtmlNativeInitialization {
 /// Fresh HTML slot manual intent, with node identity/storage owned by DOM.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNativeFreshSlot {
+    /// The slot's manually assigned nodes start as the empty ordered set.
     EmptyManualAssignments,
 }
 
@@ -121,7 +144,10 @@ pub enum HtmlNativeFreshSlot {
 /// have only the element tuple; nonce applicability is independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCommonScope {
+    /// Only the common element tuple (reaction queue, click-in-progress flag) applies.
     Element,
+    /// The common element tuple and the HTML-only common state (previously focused element,
+    /// attached internals, popover state) apply.
     Html,
 }
 
@@ -148,6 +174,7 @@ impl<R> HtmlCommonState<R> {
             },
         }
     }
+    /// Which common fields apply to this value.
     pub const fn scope(&self) -> HtmlCommonScope {
         if self.html.is_some() {
             HtmlCommonScope::Html
@@ -155,9 +182,11 @@ impl<R> HtmlCommonState<R> {
             HtmlCommonScope::Element
         }
     }
+    /// The common element tuple, which applies to every scope.
     pub const fn element(&self) -> HtmlClosedElementState {
         HtmlClosedElementState { closed: () }
     }
+    /// The HTML-only common state, or `None` when the scope is [`HtmlCommonScope::Element`].
     pub const fn html(&self) -> Option<&HtmlCommonHtmlState<R>> {
         self.html.as_ref()
     }
@@ -177,33 +206,37 @@ impl<R> HtmlCommonState<R> {
 }
 
 /// HTML877d #custom-element-reactions gives all elements an initially empty
-/// per-element reaction queue; #activation gives each element an initially
-/// unset click-in-progress flag. This is not an agent queue or activation API.
+/// per-element reaction queue. Each element also starts with an unset click-in-progress flag,
+/// which the retained captures do not define. This is not an agent queue or activation API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlClosedElementState {
     closed: (),
 }
 impl HtmlClosedElementState {
+    /// Always `true`: the element's custom element reaction queue starts empty.
     pub const fn reaction_queue_is_empty(&self) -> bool {
         true
     }
+    /// Always `false`: the click-in-progress flag starts unset.
     pub const fn click_in_progress(&self) -> bool {
         false
     }
 }
 
-/// HTML-only current common state from #previously-focused-element,
-/// #attached-internals and #the-popover-attribute. Previous focus retains its
-/// actual nullable reference; internals and popover fields remain closed.
+/// HTML-only current common state from #previously-focused-element, #attached-internals and the
+/// popover attribute, whose defining section the retained captures do not include. Previous focus
+/// retains its actual nullable reference; internals and popover fields remain closed.
 /// Popover runtime visibility is distinct from HtmlPopoverState's attribute rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCommonHtmlState<R> {
     previously_focused_element: Option<R>,
 }
 impl<R> HtmlCommonHtmlState<R> {
+    /// The remembered previously focused element, or `None` when null.
     pub const fn previously_focused_element(&self) -> Option<&R> {
         self.previously_focused_element.as_ref()
     }
+    /// Whether a previously focused element is remembered.
     pub const fn has_previously_focused_element(&self) -> bool {
         self.previously_focused_element.is_some()
     }
@@ -211,27 +244,35 @@ impl<R> HtmlCommonHtmlState<R> {
     pub fn remember_focused_element(&mut self, element: Option<R>) {
         self.previously_focused_element = element;
     }
+    /// Sets the previously focused element to null.
     pub fn clear_previously_focused_element(&mut self) {
         self.previously_focused_element = None;
     }
+    /// Always `false`: no attached internals exist in this closed state.
     pub const fn has_attached_internals(&self) -> bool {
         false
     }
+    /// Always `true`: the popover visibility state starts hidden.
     pub const fn popover_is_hidden(&self) -> bool {
         true
     }
+    /// Always `false`: no popover trigger is recorded.
     pub const fn has_popover_trigger(&self) -> bool {
         false
     }
+    /// Always `false`: the popover is not in the middle of hiding.
     pub const fn popover_is_hiding(&self) -> bool {
         false
     }
+    /// Always `false`: no popover toggle task is pending.
     pub const fn has_popover_toggle_task_tracker(&self) -> bool {
         false
     }
+    /// Always `false`: no popover close watcher exists.
     pub const fn has_popover_close_watcher(&self) -> bool {
         false
     }
+    /// Always `false`: the popover has not been opened in any mode.
     pub const fn has_popover_opened_in_mode(&self) -> bool {
         false
     }
@@ -241,6 +282,7 @@ impl<R> HtmlCommonHtmlState<R> {
 /// elements. The owner admits and creates the separate mutable DocumentString.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNativeFreshNonce {
+    /// The nonce slot starts as the empty string.
     Empty,
 }
 

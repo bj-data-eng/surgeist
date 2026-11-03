@@ -9,15 +9,21 @@ use crate::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedNa
 /// Consumers request only the components selected by the rule, after any
 /// applicable read admission; implementations must not eagerly read others.
 pub trait HtmlNameInput {
+    /// The namespace URI, or `None` for no namespace (including an originally empty URI).
     fn namespace_uri(&self) -> Option<&DocumentString>;
+    /// The namespace prefix, or `None`. A prefix never changes the expanded name's identity.
     fn prefix(&self) -> Option<&DocumentString>;
+    /// The local name, with its exact UTF-16 code units.
     fn local_name(&self) -> &DocumentString;
 }
 
 /// One exact attribute, without interpreting its value or name.
 pub trait HtmlAttributeInput {
+    /// The attribute's name type.
     type Name: HtmlNameInput + ?Sized;
+    /// The attribute's qualified name components.
     fn name(&self) -> &Self::Name;
+    /// The attribute's exact value, unnormalized.
     fn value(&self) -> &DocumentString;
 }
 
@@ -28,9 +34,13 @@ pub trait HtmlAttributeInput {
 /// original construction or capture qualification, including expanded-name
 /// uniqueness. It does not deduplicate, sort or copy the collection.
 pub trait HtmlAttributesInput {
+    /// The element type of the collection.
     type Attribute: HtmlAttributeInput;
+    /// The number of attributes, which bounds the valid indices for `get`.
     fn len(&self) -> usize;
+    /// The attribute at a zero-based index in producer order; `None` for an index at or past `len`.
     fn get(&self, index: usize) -> Option<&Self::Attribute>;
+    /// Whether the collection has no attributes (`len() == 0`).
     fn is_empty(&self) -> bool {
         self.len() == 0
     }

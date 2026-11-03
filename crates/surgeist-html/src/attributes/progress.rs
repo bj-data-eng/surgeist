@@ -14,8 +14,14 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlProgressNumberAuthorError {
+    /// The attribute's text is not a valid floating-point number; the payload is the first syntax
+    /// failure.
     Syntax(HtmlValueSyntaxError),
+    /// The `value` attribute is a valid number below zero. The standard requires it to be zero or
+    /// greater (HTML877d #the-progress-element).
     NegativeValue,
+    /// The `max` attribute is a valid number that is zero or below. The standard requires it to be
+    /// greater than zero.
     NonpositiveMaximum,
 }
 
@@ -41,12 +47,18 @@ impl Error for HtmlProgressNumberAuthorError {
 /// here does not certify the separate value-versus-maximum requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlProgressNumberAuthorState {
+    /// The attribute is absent, which is conforming for both `value` and `max`.
     Missing,
+    /// The attribute is present, a valid floating-point number, and satisfies its sign requirement.
     Conforming,
+    /// The attribute is present but violates the grammar or its sign requirement; the payload names
+    /// which.
     Nonconforming(HtmlProgressNumberAuthorError),
     /// Exact mathematical keys exceeded checked native representation bounds.
     /// This is neither invalid grammar nor binary64 overflow.
     RepresentationUnavailable,
+    /// The rule does not apply because the element is not an HTML `progress` or the supplied
+    /// attribute is not one the rule covers.
     Unapplied,
 }
 
@@ -54,8 +66,11 @@ pub enum HtmlProgressNumberAuthorState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlProgressUpperBoundUnavailable {
+    /// The `value` text is not a valid number, so the comparison cannot be made.
     ValueSyntax,
+    /// The `max` text is not a valid number, so the comparison cannot be made.
     MaximumSyntax,
+    /// An exact key exceeds the checked representation bounds, so the comparison cannot be made.
     Representation,
 }
 
@@ -66,8 +81,12 @@ pub enum HtmlProgressUpperBoundUnavailable {
 pub enum HtmlProgressUpperBoundState {
     /// An applicable value attribute is absent, so no comparison is required.
     NotRequired,
+    /// The value does not exceed the maximum, or 1.0 when `max` is absent.
     Conforming,
+    /// The value is greater than the maximum, or greater than 1.0 when `max` is absent, which the
+    /// standard forbids.
     ValueAboveMaximum,
+    /// The comparison could not be made; the payload gives the reason.
     Unavailable(HtmlProgressUpperBoundUnavailable),
     /// At least one required expanded-name role is not applicable.
     Unapplied,
@@ -93,6 +112,8 @@ impl HtmlProgressNumberReport {
     ) -> Option<&HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>> {
         self.common.as_ref()
     }
+    /// The grammar and sign verdict for this slot, independent of the value-versus-maximum
+    /// comparison.
     pub fn author(&self) -> HtmlProgressNumberAuthorState {
         self.author
     }
@@ -112,12 +133,16 @@ pub struct HtmlProgressAttributeReport {
     upper_bound: HtmlProgressUpperBoundState,
 }
 impl HtmlProgressAttributeReport {
+    /// The report for the `value` attribute.
     pub fn value(&self) -> &HtmlProgressNumberReport {
         &self.value
     }
+    /// The report for the `max` attribute.
     pub fn maximum(&self) -> &HtmlProgressNumberReport {
         &self.maximum
     }
+    /// The value-versus-maximum verdict. It is independent of the sign verdicts of the two slots,
+    /// so a nonpositive `max` can coexist with a comparison result.
     pub fn upper_bound(&self) -> HtmlProgressUpperBoundState {
         self.upper_bound
     }
@@ -270,8 +295,11 @@ fn upper_bound(value: &ExactNumber, maximum: &ExactNumber) -> HtmlProgressUpperB
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlProgressNativeError {
+    /// The `value` attribute is negative.
     NegativeValue,
+    /// The `max` attribute is zero or negative.
     NonpositiveMaximum,
+    /// The value is greater than the maximum, or greater than 1.0 when no maximum is given.
     ValueAboveMaximum,
     /// Canonical emitted numbers could not be represented as exact author keys.
     RepresentationUnavailable,
@@ -333,9 +361,11 @@ impl HtmlProgressAttributes {
         }
         Ok(Self { value, maximum })
     }
+    /// The authored value, or `None` when the attribute is absent.
     pub fn value(&self) -> Option<HtmlFloatingPointNumber> {
         self.value
     }
+    /// The authored maximum, or `None` when the attribute is absent.
     pub fn maximum(&self) -> Option<HtmlFloatingPointNumber> {
         self.maximum
     }

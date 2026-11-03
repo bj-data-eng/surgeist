@@ -100,10 +100,21 @@ impl std::error::Error for HtmlTimeElementInterpretationError {
 /// The next operation's role; no borrowed temporal plan crosses this boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTimeElementInterpretationActionKind {
+    /// Recognizing which of the time element's alternatives the raw value matches, or, for a
+    /// duration, scanning its next component. Each attempt is charged `16 * length + 256`, where
+    /// `length` is the raw length for the value match and the unread remainder for a duration
+    /// component. It allocates nothing.
     Recognition,
+    /// Building exact numeric digits from borrowed digits or by arithmetic. It is the only kind
+    /// that allocates, and the caller supplies the limits for it.
     Materialization,
+    /// Combining already admitted numeric values into a temporal value. It allocates nothing; a
+    /// zero-credit assembly completes a numeric operation whose work was already admitted.
     Assembly,
+    /// A boundary with no work credit between the end of value processing and report assembly, at
+    /// which the caller can poll before continuing.
     Poll,
+    /// Assembling the published report from the authored value and the processed value.
     ReportAssembly,
 }
 /// Work to admit before execution and whether the operation can allocate.
@@ -118,9 +129,12 @@ impl HtmlTimeElementInterpretationLayout {
     pub fn work(self) -> usize {
         self.work
     }
+    /// The role of the next operation.
     pub fn kind(self) -> HtmlTimeElementInterpretationActionKind {
         self.kind
     }
+    /// Whether the operation can allocate, which only a `Materialization` can. Admit its allocation
+    /// limits before executing it.
     pub fn can_allocate(self) -> bool {
         self.kind == HtmlTimeElementInterpretationActionKind::Materialization
     }
@@ -137,6 +151,8 @@ impl HtmlTimeElementInterpretationStep {
     pub fn capacity_bytes(self) -> usize {
         self.capacity
     }
+    /// The result of the action: `Ok` when it completed, or the failure it ended with. The failure
+    /// also stays with the interpretation, which refuses further actions.
     pub fn outcome(self) -> Result<(), HtmlTimeElementInterpretationError> {
         self.outcome
     }
@@ -235,6 +251,7 @@ type Report = HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>;
 /// alternative tried (duration), exactly as
 /// [`HtmlValueInterpreter::time_element_value`] reports: §4.5.14 (elements
 /// capture lines 6855-6877) defines no failure order across alternatives.
+#[derive(Debug)]
 pub struct HtmlTimeElementInterpretation<'raw> {
     raw: &'raw DocumentString,
     interpreter: HtmlValueInterpreter,
@@ -998,14 +1015,19 @@ fn materialized<T>(
     }
 }
 /// Dropping the guard refuses admission without changing its retained owner.
+#[derive(Debug)]
 pub struct HtmlTimeElementInterpretationAction<'step, 'raw> {
     owner: &'step mut HtmlTimeElementInterpretation<'raw>,
     layout: HtmlTimeElementInterpretationLayout,
 }
 impl HtmlTimeElementInterpretationAction<'_, '_> {
+    /// The work to admit and the kind of the action, known before it runs.
     pub fn layout(&self) -> HtmlTimeElementInterpretationLayout {
         self.layout
     }
+    /// Executes the action, which the caller has admitted. `max_integer_digits` and
+    /// `max_allocation_bytes` bound any numeric allocation the action makes. The step reports the
+    /// capacity actually observed, even on failure, the outcome, and whether to poll afterward.
     pub fn advance(
         self,
         max_integer_digits: usize,

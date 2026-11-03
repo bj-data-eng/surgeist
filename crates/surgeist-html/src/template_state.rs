@@ -24,8 +24,12 @@ pub enum HtmlTemplateFreshInsertionState {
 /// the source's document creation, fragment hosting, clone and adoption steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTemplateContentsOwnerDocument {
+    /// The template's own document already is the contents owner, because it was created by the
+    /// template contents owner algorithm.
     CurrentDocument,
+    /// Reuse the document's associated inert document, which the consumer already caches.
     AssociatedInertDocument,
+    /// Create the associated inert document, then cache it on the template's document.
     CreateAssociatedInertDocument,
 }
 

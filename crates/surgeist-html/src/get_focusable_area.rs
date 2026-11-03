@@ -10,15 +10,28 @@ use crate::HtmlCurrentlyFocusedAreaOutcome;
 
 /// The exact source result's role. Actual objects remain adapter-owned: a shape,
 /// scroll region, viewport, Document, anchor and delegated area are distinct.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlGetFocusableAreaOutcome {
+    /// No focusable area: the target matched no case, or it is a delegating shadow
+    /// host whose focus delegate returned null.
     Null,
+    /// The shape that corresponds to the first `img` in tree order that uses the area
+    /// element's image map.
     MapShape,
+    /// The element's first scrollable region in a pre-order, depth-first traversal of
+    /// the flat tree.
     ScrollRegion,
+    /// The viewport of the Document whose document element is the target.
     Viewport,
+    /// The active document of the target, which is a navigable.
     NavigableActiveDocument,
+    /// The active document of the content navigable of the target, a navigable
+    /// container.
     ContentActiveDocument,
+    /// The DOM anchor of the currently focused area, returned for a delegating shadow
+    /// host that is a shadow-including inclusive ancestor of it.
     CurrentAnchor,
+    /// The nonnull area returned by the focus delegate of a delegating shadow host.
     Delegate,
 }
 
@@ -33,18 +46,27 @@ pub enum HtmlGetFocusableAreaAction {
     /// that uses the target's map. This is not a scan of just retained shapes
     /// or a choice of the first already-known focusable img.
     SelectFirstImageMapShape,
+    /// Read whether the target is an element with one or more scrollable regions that
+    /// are focusable areas.
     ReadElementWithFocusableScrollRegions,
     /// Select the first scrollable region by flat-tree preorder depth-first
     /// traversal. Ordinary tree order or an arbitrary region is insufficient.
     SelectFirstScrollableRegion,
+    /// Read whether the target is the document element of its Document.
     ReadDocumentElement,
+    /// Capture the viewport of the target's Document.
     CaptureViewport,
+    /// Read whether the target is a navigable.
     ReadNavigable,
+    /// Capture the active document of the target navigable.
     CaptureNavigableActiveDocument,
+    /// Read whether the target is a navigable container.
     ReadNavigableContainer,
     /// Retain the actual content navigable if nonnull.
     ReadContentNavigable,
+    /// Capture the active document of the content navigable.
     CaptureContentActiveDocument,
+    /// Read whether the target is a shadow host whose shadow root delegates focus.
     ReadDelegatingShadowHost,
     /// Complete the existing currently-focused-area algorithm for the actual
     /// top-level traversable, retaining its exact Null, CandidateDocument or
@@ -59,27 +81,44 @@ pub enum HtmlGetFocusableAreaAction {
     /// Complete the existing focus-delegate algorithm for the original target
     /// with the unchanged original trigger, retaining its nullable result.
     RunFocusDelegate,
+    /// The algorithm is finished with this result. No reply is accepted afterward.
     Complete(HtmlGetFocusableAreaOutcome),
 }
 
+/// Observations and acknowledgments for the get-the-focusable-area cursor. Each
+/// reply answers exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlGetFocusableAreaReply {
+    /// Whether the target is an area element with one or more shapes that are
+    /// focusable areas.
     AreaWithFocusableShapes(bool),
+    /// Whether the target is an element with one or more scrollable regions that are
+    /// focusable areas.
     ElementWithFocusableScrollRegions(bool),
+    /// Whether the target is the document element of its Document.
     DocumentElement(bool),
+    /// Whether the target is a navigable.
     Navigable(bool),
+    /// Whether the target is a navigable container.
     NavigableContainer(bool),
+    /// Whether the navigable container's content navigable is nonnull.
     ContentNavigablePresent(bool),
+    /// Whether the target is a shadow host whose shadow root delegates focus.
     DelegatingShadowHost(bool),
     /// Exact result role of the completed current-area child. CandidateDocument
     /// is not null and does not acquire a DOM anchor; a genuine viewport area
     /// remains CandidateFocusedArea even when its actual anchor is a Document.
     CurrentlyFocusedArea(HtmlCurrentlyFocusedAreaOutcome),
+    /// Whether the target is a shadow-including inclusive ancestor of the retained
+    /// anchor, including equality.
     ShadowIncludingInclusiveAncestor(bool),
+    /// Whether the focus delegate returned a nonnull area.
     FocusDelegatePresent(bool),
     /// Selection/capture actually fulfilled by the original adapter.
     Applied,
 }
+/// Why a get-focusable-area cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlGetFocusableAreaError {
     kind: HtmlGetFocusableAreaErrorKind,
@@ -139,11 +178,15 @@ pub struct HtmlGetFocusableAreaCursor {
     pending: HtmlGetFocusableAreaAction,
 }
 impl HtmlGetFocusableAreaCursor {
+    /// Starts get the focusable area of HTML877d #focus-processing-model, which tests the
+    /// target's cases in source order.
     pub const fn new() -> Self {
         Self {
             pending: HtmlGetFocusableAreaAction::ReadAreaWithFocusableShapes,
         }
     }
+    /// Returns the read, selection or called algorithm that must be fulfilled before
+    /// the next reply.
     pub const fn action(&self) -> HtmlGetFocusableAreaAction {
         self.pending
     }

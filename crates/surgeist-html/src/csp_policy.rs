@@ -130,9 +130,15 @@ impl std::fmt::Display for HtmlCspProtocolError {
 impl std::error::Error for HtmlCspProtocolError {}
 
 /// Original-controller interruption remains distinct from protocol misuse.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCspError<E> {
+    /// The request violated the CSP protocol: an input was foreign, stale or mismatched, the
+    /// content was empty, the native artifact had the wrong type, the policy storage was invalid,
+    /// or checked accounting could not be represented. The wrapped error names the cause.
     Protocol(HtmlCspProtocolError),
+    /// The caller's own admission callback refused the next admission, or the
+    /// caller's controller stopped the call. `E` is that callback's error, returned
+    /// unchanged and never wrapped in a protocol cause.
     Interrupted(E),
 }
 impl<E> fmt::Display for HtmlCspError<E> {
@@ -165,7 +171,11 @@ impl<E> From<HtmlCspProtocolError> for HtmlCspError<E> {
 /// Actual owned inputs returned without allocation on refusal.
 #[derive(Debug)]
 pub struct HtmlCspRejected<T, E> {
+    /// The caller's owned input, handed back unconsumed. Refusal performs no
+    /// allocation, so the caller can retry or dispose of it.
     pub retained: T,
+    /// Why the operation refused: a protocol violation or the caller's own
+    /// interruption.
     pub error: HtmlCspError<E>,
 }
 
@@ -181,12 +191,20 @@ impl<T: fmt::Debug, E: Error + 'static> Error for HtmlCspRejected<T, E> {
 }
 
 /// Required external capability; absence never certifies empty policy.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlCspUnavailable {
+    /// The call required an external processor and none was supplied. Absence is not
+    /// evidence that the policy is empty.
     Processor,
+    /// The call required a processor profile and none was available. Absence is not
+    /// evidence that the policy is empty.
     Profile,
+    /// The capability to process a document's initial empty policy was unavailable,
+    /// so that policy cannot be certified as processed.
     InitialEmptyProcessing,
+    /// The backend's native owner of policy artifacts was unavailable, for example a
+    /// closed service, so no native policy could be produced.
     NativeOwner,
 }
 
@@ -196,6 +214,9 @@ pub enum HtmlCspUnavailable {
 /// blocking, callbacks, policy processing or enforcement, even during unwind.
 /// The provider prepays partial construction before creating native custody.
 pub trait HtmlCspPolicyArtifact: Any + fmt::Debug + Send + Sync {
+    /// Returns this artifact's native storage and disposal bounds. The value must be
+    /// fixed for the artifact's lifetime, must not allocate or panic, and is read once
+    /// and then cached by the policy state that retains the artifact.
     fn retained_layout(&self) -> HtmlCspArtifactLayout;
 }
 trait ErasedArtifact: fmt::Debug + Send + Sync {
@@ -210,7 +231,10 @@ impl<A: HtmlCspPolicyArtifact> ErasedArtifact for A {
 /// A qualified borrow into the actual retained native allocation.
 #[derive(Debug)]
 pub enum HtmlCspNativePolicy<'a, A: HtmlCspPolicyArtifact> {
+    /// The document has its initial empty policy and no native artifact exists.
     InitialEmpty,
+    /// The retained native artifact, borrowed from the policy state's allocation.
+    /// Its type was checked against the requested artifact type.
     External(&'a A),
 }
 
@@ -228,18 +252,28 @@ struct PolicyRecord {
 #[derive(Clone, Debug)]
 pub struct HtmlCspPolicyState(Arc<PolicyRecord>);
 impl HtmlCspPolicyState {
+    /// Returns the identity of this immutable policy state. Equal identities denote
+    /// the same state issued by the same owner or processor authority.
     pub fn id(&self) -> &HtmlCspPolicyId {
         &self.0.id
     }
+    /// Returns the issuer-scoped revision of this policy state. Revisions are opaque
+    /// and only comparable for equality.
     pub fn revision(&self) -> HtmlCspPolicyRevision {
         self.0.revision
     }
+    /// Returns the profile of the processor that produced this state, or `None` for
+    /// an initial empty policy that no processor has touched.
     pub fn profile(&self) -> Option<&HtmlCspProcessorProfile> {
         self.0.profile.as_ref()
     }
+    /// Returns the qualification of the meta insertion that produced this state, or
+    /// `None` for an initial empty policy.
     pub fn processing_origin(&self) -> Option<&HtmlMetaCspQualification> {
         self.0.origin.as_ref()
     }
+    /// Returns the cached native storage and disposal bounds that this state
+    /// retains, including its wrapper and the artifact's own layout.
     pub fn retained_layout(&self) -> HtmlCspArtifactLayout {
         self.0.layout
     }
@@ -291,8 +325,17 @@ impl Eq for HtmlCspPolicyState {}
 /// callbacks. Its complete destruction work is prepaid before formation, so
 /// the original consumer may safely destroy it after terminal interruption.
 pub trait HtmlMetaCspProcessor {
+    /// The processor's own typed error, carried by the `Refused` and `Failed`
+    /// outcomes.
     type Error;
+    /// Returns the profile this processor declares. A request's qualification must
+    /// carry an equal profile (same issuer and semantic version) to be processed.
     fn profile(&self) -> &HtmlCspProcessorProfile;
+    /// Processes one qualified meta insertion request against its retained prior
+    /// policy. `admit` receives every native allocation, read and work step before it
+    /// happens, and `release` returns custody after actual disposal. The result
+    /// states whether processing completed, was unavailable, was refused or failed
+    /// with the processor's error, or was cancelled.
     fn prepare<E>(
         &mut self,
         request: &HtmlMetaCspRequest,
@@ -301,12 +344,24 @@ pub trait HtmlMetaCspProcessor {
     ) -> Result<HtmlMetaCspOutcome<Self::Error>, HtmlCspError<E>>;
 }
 
+/// How an external processor ended one meta request. Only `Completed` yields a
+/// policy; the other outcomes leave the prior policy in force.
 #[derive(Debug)]
 pub enum HtmlMetaCspOutcome<E> {
+    /// Processing finished. The prepared value carries the qualification and the
+    /// resulting policy, and owns the completed native custody.
     Completed(HtmlMetaCspPrepared),
+    /// A required capability was missing, so nothing was processed. This is distinct
+    /// from an empty policy.
     Unavailable(HtmlCspUnavailable),
+    /// The processor declined the request with its own typed error. Remaining
+    /// admitted custody transfers with the original owned error.
     Refused(E),
+    /// The processor stopped without a result because the controller cancelled it.
+    /// Admitted native temporaries were disposed and released first.
     Cancelled,
+    /// Processing failed with the processor's own typed error. Remaining admitted
+    /// custody transfers with the original owned error.
     Failed(E),
 }
 

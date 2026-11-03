@@ -11,6 +11,7 @@
 /// nullable traversable. Missing observations supply no reply.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCurrentFocusChainAction {
+    /// Read whether the original top-level traversable is nonnull.
     ReadTraversable,
     /// Complete the currently-focused-area child for the original traversable,
     /// retaining its actual nullable area-or-Document result. Do not substitute
@@ -21,15 +22,27 @@ pub enum HtmlCurrentFocusChainAction {
     /// Complete focus-chain for the actual nonnull area or Document returned by the child,
     /// retaining the entire ordered result before supplying FocusChainReady.
     RunFocusChain,
+    /// The current focus chain is established: either an empty list or the complete
+    /// ordered focus chain. No reply is accepted afterward.
     Complete,
 }
+/// Observations and acknowledgments for the current focus chain cursor. Each
+/// reply answers exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCurrentFocusChainReply {
+    /// Whether the top-level traversable is nonnull. Null yields an empty chain.
     TraversablePresent(bool),
+    /// Whether the traversable's currently focused area is nonnull. A known-null area
+    /// yields an empty chain.
     CurrentlyFocusedAreaPresent(bool),
+    /// The complete focus chain of the currently focused area was produced and its
+    /// ordered result retained.
     FocusChainReady,
+    /// The pending effect, establishing the empty output list, was fulfilled.
     Applied,
 }
+/// Why a current focus chain cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCurrentFocusChainError {
     kind: HtmlCurrentFocusChainErrorKind,
@@ -87,11 +100,15 @@ pub struct HtmlCurrentFocusChainCursor {
     pending: HtmlCurrentFocusChainAction,
 }
 impl HtmlCurrentFocusChainCursor {
+    /// Starts the current focus chain of a top-level traversable, which HTML877d #data-model
+    /// defines as the focus chain of its currently focused area, or an empty list for a null
+    /// traversable. The first action reads the traversable.
     pub const fn new() -> Self {
         Self {
             pending: HtmlCurrentFocusChainAction::ReadTraversable,
         }
     }
+    /// Returns the call or effect that must finish before the next reply.
     pub const fn action(&self) -> HtmlCurrentFocusChainAction {
         self.pending
     }
@@ -132,16 +149,21 @@ impl Default for HtmlCurrentFocusChainCursor {
 /// or output. In particular a refused append must not advance the cursor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusChainAction {
+    /// Establish `output` as an empty list.
     InitializeEmptyChain,
     /// Retain the original qualified area-or-Document subject as currentObject.
     CaptureSubject,
+    /// Append `currentObject` to `output`.
     AppendCurrentObject,
+    /// Read whether `currentObject` is an area element's shape.
     ReadAreaShape,
     /// Append the shape's corresponding area Element, not its image DOM anchor.
     AppendCorrespondingAreaElement,
     /// Reached only for an actual area. Read whether its actual DOM anchor is
     /// an Element unequal to currentObject; never project a non-area Document.
     ReadAnchorIsDifferentElement,
+    /// Append `currentObject`'s DOM anchor, an element other than `currentObject`
+    /// itself, to `output`.
     AppendAnchorElement,
     /// Classify actual area membership before any optional anchor query.
     ReadFocusableArea,
@@ -163,18 +185,30 @@ pub enum HtmlFocusChainAction {
     /// basis. Parent-present but missing/unrepresentable/inconsistent container
     /// is unavailable, not successful shortened completion. No activity filter.
     CaptureChildNavigableContainerElement,
+    /// The focus chain is complete. No reply is accepted afterward.
     Complete,
 }
+/// Observations and acknowledgments for the focus chain cursor. Each reply
+/// answers exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusChainReply {
+    /// Whether `currentObject` is an area element's shape.
     AreaShape(bool),
+    /// Whether `currentObject`'s DOM anchor is an element other than `currentObject`.
     AnchorIsDifferentElement(bool),
+    /// Whether `currentObject` is a focusable area.
     FocusableArea(bool),
+    /// Whether the non-area `currentObject` is a Document.
     Document(bool),
+    /// Whether the current Document's node navigable is nonnull.
     NodeNavigablePresent(bool),
+    /// Whether the child navigable's parent is nonnull.
     NavigableParentPresent(bool),
+    /// The pending capture or append effect was fulfilled.
     Applied,
 }
+/// Why a focus chain cursor refused a reply, queried through `is_*` predicates.
+/// The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFocusChainError {
     kind: HtmlFocusChainErrorKind,
@@ -247,11 +281,15 @@ pub struct HtmlFocusChainCursor {
     pending: HtmlFocusChainAction,
 }
 impl HtmlFocusChainCursor {
+    /// Starts the focus chain of a subject (HTML877d #data-model) with the empty output list. The
+    /// subject is a focusable area or the actual non-area Document returned by current-area
+    /// resolution.
     pub const fn new() -> Self {
         Self {
             pending: HtmlFocusChainAction::InitializeEmptyChain,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlFocusChainAction {
         self.pending
     }

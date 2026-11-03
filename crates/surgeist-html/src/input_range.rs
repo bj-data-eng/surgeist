@@ -45,7 +45,10 @@ impl From<HtmlFloatingPointNumber> for HtmlInputRangeNumber {
 /// Capability/admission/cancellation failure is not a reply to this operation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlInputRangeValue {
+    /// The value is not a valid floating-point number. Range replaces it with its default value
+    /// (HTML877d #concept-input-value-default-range).
     InvalidGrammar,
+    /// The value is a valid floating-point number that converts to a finite binary64 value.
     Finite(HtmlInputRangeNumber),
     /// Grammar succeeded (HTML877d3216–3242) but standard conversion returned
     /// its overflow error (3325–3329; Range37061–37065 delegates to it).
@@ -56,12 +59,23 @@ pub enum HtmlInputRangeValue {
     ConversionFailed,
 }
 
+/// The reason the Range sanitization replaces the value, which selects the serialization the caller
+/// installs. See HTML877d #value-sanitization-algorithm.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputRangeReplacement {
+    /// The value was invalid and the maximum is less than the minimum, so the default is the
+    /// minimum.
     InvalidDefaultMinimum,
+    /// The value was invalid and the maximum is not less than the minimum, so the default is the
+    /// minimum plus half the difference between the minimum and maximum.
     InvalidDefaultMidpoint,
+    /// The value is below the minimum (suffering from an underflow), so it becomes the minimum.
     Underflow,
+    /// The value is above the maximum (suffering from an overflow) and the maximum is not less than
+    /// the minimum, so it becomes the maximum.
     Overflow,
+    /// The value has a step mismatch, so it becomes the nearest admissible number; a tie takes the
+    /// one nearer positive infinity.
     StepCorrection,
 }
 
@@ -70,13 +84,20 @@ pub enum HtmlInputRangeReplacement {
 /// from platform floating arithmetic or supplied by a generic result provider.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlInputRangeSanitizationAction {
+    /// Ask the caller for the midpoint of `minimum` and `maximum`, the default value when the
+    /// maximum is not less than the minimum.
     Midpoint {
+        /// The lower bound of the range.
         minimum: HtmlInputRangeNumber,
+        /// The upper bound of the range.
         maximum: HtmlInputRangeNumber,
     },
     /// Serialize through BestFiniteNumberCursor and install the actual string.
     Replace {
+        /// The number to serialize as the best floating-point representation and install as the
+        /// value.
         value: HtmlInputRangeNumber,
+        /// Why the value is replaced.
         branch: HtmlInputRangeReplacement,
     },
     /// Observe exact whole `any`, or Recovery grammar + finite ingress.
@@ -87,25 +108,42 @@ pub enum HtmlInputRangeSanitizationAction {
     ReadValueContent,
     /// RangeLatticeCursor selects actual admissible finite candidates, ties up.
     Lattice {
+        /// The current value that the selected number must replace or equal.
         current: HtmlInputRangeNumber,
+        /// The inclusive lower bound of the admissible candidates.
         minimum: HtmlInputRangeNumber,
+        /// The inclusive upper bound of the admissible candidates, or `None` when the maximum is
+        /// less than the minimum and so imposes no bound.
         maximum: Option<HtmlInputRangeNumber>,
+        /// The step base from which admissible candidates are counted.
         base: HtmlInputRangeNumber,
+        /// The allowed step between admissible candidates.
         step: HtmlInputRangeNumber,
     },
+    /// The sanitization is done. No further reply is accepted.
     Complete,
 }
 
+/// The caller's reply to the cursor's pending action. Each variant answers one action, and any
+/// other pairing is rejected with `HtmlInputRangeSanitizationReplyError`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlInputRangeSanitizationReply {
+    /// The midpoint for `Midpoint`. It must lie within the minimum and maximum, inclusive.
     Midpoint(HtmlInputRangeNumber),
+    /// The replacement requested by `Replace` was installed.
     Applied,
+    /// The step observation requested by `ReadStep`.
     Step(HtmlInputNumericStep),
+    /// The `value` content observation requested by `ReadValueContent`, used as the step base when
+    /// the minimum supplied none.
     ValueContent(HtmlInputNumericContent),
     /// None is a completed proof of no admissible candidate, not unavailable.
     Lattice(Option<HtmlInputRangeNumber>),
 }
 
+/// The refusal of a reply that does not fulfill the cursor's pending action, including a reply
+/// after the cursor is complete or a candidate outside the admissible bounds. The cursor is left
+/// unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputRangeSanitizationReplyError;
 impl std::fmt::Display for HtmlInputRangeSanitizationReplyError {
@@ -152,6 +190,9 @@ pub struct HtmlInputRangeSanitizationCursor {
     phase: Phase,
 }
 impl HtmlInputRangeSanitizationCursor {
+    /// Starts the sanitization from the completed `value` observation and the `min` and `max`
+    /// content observations. It selects the numeric bounds for the Range state immediately; the
+    /// step and value-content facts follow through `action` and `reply`.
     pub fn new(
         value: HtmlInputRangeValue,
         min: HtmlInputNumericContent,
@@ -255,6 +296,8 @@ impl HtmlInputRangeSanitizationCursor {
     pub fn replaced(&self) -> bool {
         self.replaced
     }
+    /// The action the caller must fulfill next, then answer with `reply`. It is `Complete` once
+    /// sanitization is done.
     pub fn action(&self) -> HtmlInputRangeSanitizationAction {
         use HtmlInputRangeSanitizationAction as A;
         match self.phase {

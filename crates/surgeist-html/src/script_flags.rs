@@ -43,18 +43,27 @@ impl HtmlScriptFlags {
         }
     }
 
+    /// The force async flag: whether the script is treated as async regardless of the `async`
+    /// attribute (#script-force-async).
     pub const fn force_async(self) -> bool {
         self.force_async
     }
+    /// The already started flag: whether the script has been prepared and must not run again
+    /// (#already-started).
     pub const fn already_started(self) -> bool {
         self.already_started
     }
+    /// The from an external file flag: whether the script's source is an external resource.
     pub const fn external_file(self) -> bool {
         self.external_file
     }
+    /// The ready to be parser-executed flag: whether a parser-inserted script is ready for the
+    /// parser to run it.
     pub const fn ready_to_be_parser_executed(self) -> bool {
         self.ready_to_be_parser_executed
     }
+    /// The delaying the load event flag: whether the script currently delays its document's load
+    /// event.
     pub const fn delaying_load(self) -> bool {
         self.delaying_load
     }

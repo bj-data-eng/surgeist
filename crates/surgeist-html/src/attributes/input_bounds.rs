@@ -17,7 +17,11 @@ use std::{cmp::Ordering, error::Error, fmt};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlInputNumericConstraintsError {
+    /// A supplied raw value was refused by raw-value admission, before any
+    /// name, state or grammar processing.
     Admission(HtmlValueAdmissionError),
+    /// The sum of the supplied raw UTF-16 lengths cannot be represented by
+    /// `usize`.
     InputCodeUnitsOverflow,
 }
 impl From<HtmlValueAdmissionError> for HtmlInputNumericConstraintsError {
@@ -49,33 +53,47 @@ impl Error for HtmlInputNumericConstraintsError {
 /// Whole authored value, independent of prefix recovery and effective defaults.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericAuthorState {
+    /// The attribute is absent, so nothing is authored.
     Missing,
     /// Meets this role's author conditions. Its numeric representation can still
     /// be unavailable; the common report retains that independent outcome.
     Conforming,
+    /// The whole value breaks the role's author grammar. The payload is the
+    /// syntax or representation cause.
     Nonconforming(HtmlValueFailure),
     /// A grammatical step rounded to zero, or to a negative number.
     StepMustBePositive,
     /// The actual state grammar is outside this numeric/temporal operation.
     NotChecked,
+    /// The rule does not apply to these names or this context.
     Unapplied,
 }
 
 /// Actual typed common evidence selected by input state, or by step's grammar.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlInputNumericCommonReport {
+    /// The floating-point number report, for Number and Range and for every `step` value except
+    /// the keyword `any`, which is recognized before any common report is made.
     FloatingPoint(HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>),
+    /// The date report, for the Date state.
     Date(HtmlValueReport<HtmlDate, HtmlDate>),
+    /// The month report, for the Month state.
     Month(HtmlValueReport<HtmlMonth, HtmlMonth>),
+    /// The week report, for the Week state.
     Week(HtmlValueReport<HtmlWeek, HtmlWeek>),
+    /// The time report, for the Time state. Authoring and recovery differ in
+    /// type: authoring checks a time, recovery yields a parsed time.
     Time(HtmlValueReport<HtmlTime, HtmlParsedTime>),
+    /// The local date and time report, for the Local Date and Time state.
     LocalDateTime(HtmlValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>),
 }
 
 /// A successful content conversion, distinct from the typed grammar evidence.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlInputNumericAttributeValue {
+    /// A finite binary64 number converted from the content.
     FloatingPoint(HtmlFloatingPointNumber),
+    /// An exact temporal coordinate converted from the content.
     Temporal(HtmlInputTemporalCoordinate),
 }
 
@@ -119,39 +137,55 @@ pub struct HtmlInputNumericAttributeReport {
     any_keyword: bool,
 }
 impl HtmlInputNumericAttributeReport {
+    /// The exact element name, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.attribute.element()
     }
+    /// The exact supplied attribute name, prefix and value, if present.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.attribute.raw_attribute()
     }
+    /// The exact supplied raw value. `None` is an absent attribute; an empty
+    /// value is `Some`.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.attribute.raw()
     }
+    /// Whether the attribute is absent, empty or nonempty, independent of
+    /// validity.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
+    /// Whether the rule applies to these expanded names: only HTML `input`
+    /// elements carry these attributes.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }
+    /// The role this report observes: `min`, `max`, `step` or `value`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.attribute.attribute()
     }
+    /// The original index row identifiers that this defining rule covers.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.attribute.inventory_rows()
     }
+    /// The normative clause in the pinned edition that defines this attribute.
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
+    /// The actual input state that the caller supplied. It is never inferred
+    /// from a `type` attribute.
     pub fn input_state(&self) -> HtmlInputType {
         match self.attribute.supplied_context {
             SuppliedContext::Input(state) => state,
             _ => unreachable!("input numeric reports always carry their supplied state"),
         }
     }
+    /// The clause that defines the supplied input state.
     pub fn input_state_source_clause(&self) -> &'static str {
         input_state_source(self.input_state())
     }
+    /// The UTF-16 code units in the raw value that was admitted, or zero when
+    /// the attribute is absent.
     pub fn input_code_units(&self) -> usize {
         self.attribute.input_code_units()
     }
@@ -159,9 +193,14 @@ impl HtmlInputNumericAttributeReport {
     pub fn common(&self) -> Option<&HtmlInputNumericCommonReport> {
         self.common.as_ref()
     }
+    /// Whether the whole authored value meets the role's grammar, independent
+    /// of prefix recovery and defaults.
     pub fn author(&self) -> HtmlInputNumericAuthorState {
         self.author
     }
+    /// Whether the supplied input state permits this attribute. A state that is
+    /// neither Number, Range nor a temporal state forbids `min`, `max` and
+    /// `step`; `value` is always permitted.
     pub fn context_author(&self) -> HtmlAttributeContextAuthorState {
         self.attribute.context_author()
     }
@@ -169,6 +208,8 @@ impl HtmlInputNumericAttributeReport {
     pub fn any_keyword(&self) -> bool {
         self.any_keyword
     }
+    /// The content converted to a number or coordinate, or `None` when the
+    /// attribute is absent, unapplied, `any`, or did not convert.
     pub fn converted(&self) -> Option<&HtmlInputNumericAttributeValue> {
         self.converted.as_ref()
     }
@@ -189,22 +230,41 @@ impl HtmlInputNumericAttributeReport {
 /// Why a minimum/maximum is present or absent. Missing and failed parsing remain distinct.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericBoundOrigin {
+    /// The content converted, so the bound is that value.
     Recovered,
+    /// The attribute is absent, so the state's fallback applies: none for
+    /// Number and the temporal states, 0 or 100 for Range.
     MissingFallback,
+    /// The attribute is present but did not convert, so the state's fallback
+    /// applies as for an absent one.
     ParseFailureFallback,
 }
+/// Why the allowed value step is what it is, following HTML877d #the-step-attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericStepOrigin {
+    /// The value is the keyword `any`, so there is no allowed value step.
     Any,
+    /// The value parsed to a number greater than zero, scaled by the step
+    /// scale factor.
     Recovered,
+    /// The attribute is absent, so the default step scaled by the step scale
+    /// factor applies.
     MissingDefault,
+    /// Parsing the value failed, so the scaled default step applies.
     ParseFailureDefault,
+    /// The value parsed to zero or a negative number, so the scaled default
+    /// step applies.
     NonPositiveDefault,
 }
+/// Where the step base comes from, following HTML877d #the-step-attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericStepBaseOrigin {
+    /// The `min` content converted, and it is the step base.
     MinimumContent,
+    /// `min` did not convert and the `value` content did, so it is the base.
     ValueContent,
+    /// Neither converted and the state defines no explicit default step base,
+    /// so the base is zero.
     Zero,
     /// Week's explicitly defined base, after absent/failed min and value.
     StateDefault,
@@ -214,8 +274,14 @@ pub enum HtmlInputNumericStepBaseOrigin {
 /// comparable pair, not that all supplied attributes are author-conforming.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericLimitAuthorState {
+    /// Either effective limit is absent, so there is no pair to compare. Range
+    /// always has both through its fallbacks.
     NotRequired,
+    /// The pair is comparable and the minimum does not exceed the maximum, or
+    /// the domain is periodic and a reversed range is allowed.
     Conforming,
+    /// The domain is not periodic and the minimum exceeds the maximum, which
+    /// the source forbids (HTML877d #the-min-and-max-attributes).
     MinimumExceedsMaximum,
 }
 
@@ -234,15 +300,19 @@ pub struct HtmlInputNumericConstraints {
     limit_author: HtmlInputNumericLimitAuthorState,
 }
 impl HtmlInputNumericConstraints {
+    /// The effective minimum, or `None` when Number has none.
     pub fn minimum(&self) -> Option<HtmlFloatingPointNumber> {
         self.minimum
     }
+    /// The effective maximum, or `None` when Number has none.
     pub fn maximum(&self) -> Option<HtmlFloatingPointNumber> {
         self.maximum
     }
+    /// Why the minimum is what it is.
     pub fn minimum_origin(&self) -> HtmlInputNumericBoundOrigin {
         self.minimum_origin
     }
+    /// Why the maximum is what it is.
     pub fn maximum_origin(&self) -> HtmlInputNumericBoundOrigin {
         self.maximum_origin
     }
@@ -250,15 +320,19 @@ impl HtmlInputNumericConstraints {
     pub fn allowed_step(&self) -> Option<HtmlFloatingPointNumber> {
         self.allowed_step
     }
+    /// Why the allowed step is what it is.
     pub fn step_origin(&self) -> HtmlInputNumericStepOrigin {
         self.step_origin
     }
+    /// The step base of HTML877d #the-step-attribute.
     pub fn step_base(&self) -> HtmlFloatingPointNumber {
         self.step_base
     }
+    /// Where the step base comes from.
     pub fn step_base_origin(&self) -> HtmlInputNumericStepBaseOrigin {
         self.step_base_origin
     }
+    /// Whether the minimum does not exceed the maximum.
     pub fn limit_author(&self) -> HtmlInputNumericLimitAuthorState {
         self.limit_author
     }
@@ -280,21 +354,27 @@ pub struct HtmlInputTemporalConstraints {
     reversed_range: bool,
 }
 impl HtmlInputTemporalConstraints {
+    /// The temporal input state that all coordinates belong to.
     pub fn state(&self) -> HtmlInputType {
         self.step_base.state()
     }
+    /// The unit of the state's coordinates.
     pub fn unit(&self) -> HtmlInputTemporalCoordinateUnit {
         self.step_base.unit()
     }
+    /// The minimum, or `None` when the attribute is absent or did not convert.
     pub fn minimum(&self) -> Option<&HtmlInputTemporalCoordinate> {
         self.minimum.as_ref()
     }
+    /// The maximum, or `None` when the attribute is absent or did not convert.
     pub fn maximum(&self) -> Option<&HtmlInputTemporalCoordinate> {
         self.maximum.as_ref()
     }
+    /// Why the minimum is present or absent.
     pub fn minimum_origin(&self) -> HtmlInputNumericBoundOrigin {
         self.minimum_origin
     }
+    /// Why the maximum is present or absent.
     pub fn maximum_origin(&self) -> HtmlInputNumericBoundOrigin {
         self.maximum_origin
     }
@@ -302,21 +382,30 @@ impl HtmlInputTemporalConstraints {
     pub fn allowed_step(&self) -> Option<&HtmlNonNegativeDecimal> {
         self.allowed_step.as_ref()
     }
+    /// Why the allowed step is what it is.
     pub fn step_origin(&self) -> HtmlInputNumericStepOrigin {
         self.step_origin
     }
+    /// The step base of HTML877d #the-step-attribute, in the state's coordinates.
     pub fn step_base(&self) -> &HtmlInputTemporalCoordinate {
         &self.step_base
     }
+    /// Where the step base comes from.
     pub fn step_base_origin(&self) -> HtmlInputNumericStepBaseOrigin {
         self.step_base_origin
     }
+    /// Whether the minimum does not exceed the maximum. A reversed range on a
+    /// periodic domain conforms.
     pub fn limit_author(&self) -> HtmlInputNumericLimitAuthorState {
         self.limit_author
     }
+    /// Whether the state's domain is periodic, so that ranges may span its
+    /// boundary (HTML877d #the-min-and-max-attributes).
     pub fn has_periodic_domain(&self) -> bool {
         self.step_base.has_periodic_domain()
     }
+    /// Whether the domain is periodic and the maximum is less than the minimum,
+    /// which the source calls a reversed range (HTML877d #the-min-and-max-attributes).
     pub fn has_reversed_range(&self) -> bool {
         self.reversed_range
     }
@@ -325,12 +414,20 @@ impl HtmlInputTemporalConstraints {
 /// Capability, source applicability and expanded-name failures are distinct.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlInputNumericConstraintsOutcome {
+    /// Quantities for the Number and Range states, in finite binary64.
     Computed(HtmlInputNumericConstraints),
+    /// Exact quantities for the Date, Month, Week, Time and Local Date and Time
+    /// states.
     ComputedTemporal(HtmlInputTemporalConstraints),
+    /// The supplied state is neither Number, Range nor a temporal state, so no
+    /// quantities exist. The payload is that state.
     InapplicableInputState(HtmlInputType),
     /// First failure in minimum, maximum, step, value order.
     Unapplied {
+        /// The first role (`min`, `max`, `step` or `value`) whose rule was
+        /// unapplied.
         attribute: KnownHtmlAttribute,
+        /// Why that rule was unapplied.
         reason: HtmlAttributeApplicability,
     },
 }
@@ -347,12 +444,15 @@ pub struct HtmlInputNumericConstraintsReport {
     input_code_units: usize,
 }
 impl HtmlInputNumericConstraintsReport {
+    /// The observation of the `min` attribute.
     pub fn minimum(&self) -> &HtmlInputNumericAttributeReport {
         &self.minimum
     }
+    /// The observation of the `max` attribute.
     pub fn maximum(&self) -> &HtmlInputNumericAttributeReport {
         &self.maximum
     }
+    /// The observation of the `step` attribute.
     pub fn step(&self) -> &HtmlInputNumericAttributeReport {
         &self.step
     }
@@ -360,15 +460,21 @@ impl HtmlInputNumericConstraintsReport {
     pub fn value(&self) -> &HtmlInputNumericAttributeReport {
         &self.value
     }
+    /// The computed quantities, or the reason that none exist.
     pub fn outcome(&self) -> &HtmlInputNumericConstraintsOutcome {
         &self.outcome
     }
+    /// The checked sum of the admitted raw value lengths in UTF-16 code units:
+    /// `min`, `max`, `step` and `value`.
     pub fn input_code_units(&self) -> usize {
         self.input_code_units
     }
+    /// The clause that defines the `min` and `max` attributes (HTML877d
+    /// #the-min-and-max-attributes).
     pub fn limits_source_clause(&self) -> &'static str {
         source!("the-min-and-max-attributes")
     }
+    /// The clause that defines the `step` attribute (HTML877d #the-step-attribute).
     pub fn step_source_clause(&self) -> &'static str {
         source!("the-step-attribute")
     }
@@ -572,15 +678,26 @@ fn number(value: f64) -> HtmlFloatingPointNumber {
 /// construction share this fixed selection owner; no raw value is copied.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlInputNumericContent {
+    /// The attribute is absent.
     Absent,
+    /// The attribute is present but did not convert to a number.
     Failed,
+    /// The attribute converted to this finite number.
     Value(HtmlFloatingPointNumber),
 }
+/// Already-converted `step` content, as `HtmlInputNumericContent` is for the
+/// other roles.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HtmlInputNumericStep {
+    /// The attribute is absent.
     Absent,
+    /// The attribute is present but did not convert to a number and is not
+    /// `any`.
     Failed,
+    /// The attribute is the keyword `any`.
     Any,
+    /// The attribute converted to this finite number, which may be zero or
+    /// negative.
     Value(HtmlFloatingPointNumber),
 }
 impl HtmlInputNumericStep {
@@ -828,9 +945,11 @@ pub struct HtmlInputStep {
     number: Option<HtmlFloatingPointNumber>,
 }
 impl HtmlInputStep {
+    /// The keyword `any`, which asks for no stepping constraint.
     pub fn any() -> Self {
         Self { number: None }
     }
+    /// A finite, strictly positive step. Zero and negative numbers are refused.
     pub fn positive(
         number: HtmlFloatingPointNumber,
     ) -> Result<Self, HtmlNonPositiveInputStepError> {
@@ -842,15 +961,18 @@ impl HtmlInputStep {
             Err(HtmlNonPositiveInputStepError)
         }
     }
+    /// The positive number, or `None` for `any`.
     pub fn number(&self) -> Option<HtmlFloatingPointNumber> {
         self.number
     }
+    /// The canonical spelling: `any`, or the number in plain decimal notation.
     pub fn as_document_string(&self) -> DocumentString {
         self.number.map_or_else(
             || DocumentString::from(HtmlInputNumericStep::ANY_KEYWORD),
             |number| number.to_plain_decimal_string(),
         )
     }
+    /// Builds the no-namespace `step` attribute from the canonical spelling.
     pub fn into_step_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Step.qualified_name(),
@@ -858,6 +980,7 @@ impl HtmlInputStep {
         )
     }
 }
+/// The refusal to build an `HtmlInputStep` from zero or a negative number.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlNonPositiveInputStepError;
 impl fmt::Display for HtmlNonPositiveInputStepError {
@@ -867,12 +990,16 @@ impl fmt::Display for HtmlNonPositiveInputStepError {
 }
 impl Error for HtmlNonPositiveInputStepError {}
 impl HtmlFloatingPointNumber {
+    /// Builds the no-namespace `min` attribute with the number in plain decimal
+    /// notation. Applicability to an input state is not checked.
     pub fn into_input_min_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Min.qualified_name(),
             self.to_plain_decimal_string(),
         )
     }
+    /// Builds the no-namespace `max` attribute with the number in plain decimal
+    /// notation. Applicability to an input state is not checked.
     pub fn into_input_max_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Max.qualified_name(),

@@ -14,7 +14,11 @@ pub enum HtmlSelectOperation {
     /// Run only the selectedness setting algorithm and return its boolean.
     Normalize,
     /// Normalize, then refresh selectedcontent if either change flag is true.
-    ResetSelectedness { has_changed: bool },
+    ResetSelectedness {
+        /// Whether the caller already knows an option changed, which forces the refresh even when
+        /// the normalization changes nothing.
+        has_changed: bool,
+    },
     /// Clear user validity, reset every option, normalize, then refresh.
     ResetControl,
     /// Normalize and refresh, even when normalization changes nothing.
@@ -38,27 +42,40 @@ pub enum HtmlSelectAction {
     /// Apply [`crate::HtmlOptionFlags::reset`] using this option's actual
     /// selected-attribute presence, clearing dirtiness before normalization.
     ResetOption {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
+    /// Read the selectedness of one option. The adapter answers with
+    /// `HtmlSelectReply::Selectedness`; an unavailable read is not an answer.
     ReadSelectedness {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
     /// Apply [`crate::HtmlOptionFlags::set_selectedness_for_select`], preserving
     /// dirtiness; never run the selected setter or change an authored attribute.
     WriteSelectedness {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
+        /// The selectedness to write: true selects the option, false deselects it.
         selected: bool,
     },
+    /// Read whether one option is disabled (HTML877d #concept-option-disabled). The adapter answers
+    /// with `HtmlSelectReply::Disabled`.
     ReadDisabled {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
     /// Observe HTML's recovered display-size concept, not size IDL or authored
     /// positive-number conformance. Recovered zero is a known non-one value.
     ReadDisplaySize,
+    /// Run HTML's selectedcontent update for the select (HTML877d #the-selectedcontent-element).
+    /// The update itself returns immediately while `multiple` is present.
     UpdateSelectedcontent,
     /// The boolean returned by the ordinary normalization pass, not a summary
     /// of all reset/prepass/selectedcontent writes in the surrounding operation.
     Complete {
+        /// Whether the selectedness setting algorithm changed an option (HTML877d
+        /// #selectedness-setting-algorithm), as one boolean for the normalization pass alone.
         normalization_changed: bool,
     },
 }
@@ -69,9 +86,13 @@ pub enum HtmlSelectAction {
 /// incomplete options, flags or size must stop without replying/completing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectReply {
+    /// The selectedness of the option named by `ReadSelectedness`: true when it is selected.
     Selectedness(bool),
+    /// Whether the option named by `ReadDisabled` is disabled.
     Disabled(bool),
+    /// Whether the select's display size is 1, answering `ReadDisplaySize`.
     DisplaySizeIsOne(bool),
+    /// The adapter performed the pending write or refresh.
     Applied,
 }
 
@@ -132,17 +153,23 @@ pub enum HtmlSelectSetterAction {
     /// Write false through HtmlOptionFlags::set_selectedness_for_select,
     /// preserving the actual option's dirtiness.
     Deselect {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
     /// Compare this option's actual index or value against the supplied value.
     ReadMatch {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
     /// Apply HtmlOptionFlags::select_for_select_setter to the remembered match.
     SelectAndDirty {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
+    /// Run HTML's selectedcontent update for the select, which happens even when no option matched
+    /// or there are no options.
     UpdateSelectedcontent,
+    /// The setter is done; no further reply is accepted.
     Complete,
 }
 
@@ -150,7 +177,10 @@ pub enum HtmlSelectSetterAction {
 /// An unavailable comparison is not Matches(false); stop without replying.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectSetterReply {
+    /// The adapter performed the pending write.
     Applied,
+    /// The completed comparison of one option's index or value with the supplied value. An
+    /// unavailable comparison is not `Matches(false)`.
     Matches(bool),
 }
 
@@ -188,6 +218,9 @@ pub struct HtmlSelectSetterCursor {
 }
 
 impl HtmlSelectSetterCursor {
+    /// Starts the setter over a complete option list of `option_count` options. An empty list goes
+    /// straight to the selectedcontent update. The count must describe the whole list; an
+    /// unavailable list is not an empty one.
     pub const fn new(option_count: usize) -> Self {
         Self {
             option_count,
@@ -199,6 +232,7 @@ impl HtmlSelectSetterCursor {
         }
     }
 
+    /// The action the adapter must perform next, or `Complete` when the setter is done.
     pub fn action(&self) -> HtmlSelectSetterAction {
         match self.phase {
             SetterPhase::Deselect(ordinal) | SetterPhase::DeselectMatched { ordinal, .. } => {
@@ -302,6 +336,10 @@ pub struct HtmlSelectCursor {
     phase: Phase,
 }
 impl HtmlSelectCursor {
+    /// Starts `operation` for a select that has (`multiple`) or lacks the `multiple` attribute and
+    /// whose complete option list has `option_count` options. It refuses an operation that
+    /// contradicts `multiple`: `MultipleAdded` without it and `MultipleRemoved` with it
+    /// (`HtmlSelectCursorError::is_multiple_context`).
     pub fn new(
         operation: HtmlSelectOperation,
         multiple: bool,
@@ -331,6 +369,8 @@ impl HtmlSelectCursor {
         }
         Ok(cursor)
     }
+    /// The action the adapter must perform next, or `Complete` carrying the normalization result
+    /// once the operation is done.
     pub fn action(&self) -> HtmlSelectAction {
         match self.phase {
             Phase::ResetSelect => HtmlSelectAction::ResetSelectFlags,
@@ -482,10 +522,18 @@ impl HtmlSelectCursor {
 /// Intrinsic option-list classification; adapters perform actual traversal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectOptionRule {
+    /// The node is an option: add it to the list of options and do not descend into it.
     IncludeAndPrune,
+    /// The node contributes no options and its descendants are skipped: a `select`, `hr`,
+    /// `datalist`, or an `optgroup` nested inside another `optgroup`.
     Prune,
+    /// The node contributes no option itself, but its descendants are visited in tree order.
     Descend,
 }
+/// Classifies one descendant of a select for the list of options (HTML877d
+/// #concept-select-option-list). `kind` is the node's known element kind, or `None` for any other
+/// node, and `inside_optgroup` tells whether an `optgroup` ancestor lies between the node and the
+/// select. The adapter performs the traversal.
 pub fn select_option_rule(
     kind: Option<KnownHtmlElement>,
     inside_optgroup: bool,
@@ -503,10 +551,19 @@ pub fn select_option_rule(
 /// Action for one established option ancestor, after own disabled presence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOptionDisabledAncestor {
+    /// The ancestor is neither an option's disabling ancestor nor a stop; examine the next
+    /// ancestor.
     Continue,
+    /// The ancestor stops the search with no disabling `optgroup`: an `option`, `select`,
+    /// `datalist` or `hr`. The option is not disabled by an ancestor.
     Enabled,
+    /// The ancestor is an `optgroup`. The adapter reads its `disabled` attribute, which disables
+    /// the option when present (HTML877d #concept-option-disabled).
     ReadOptgroupDisabled,
 }
+/// Classifies one ancestor of an option, nearest first, for the option's disabledness (HTML877d
+/// #concept-option-disabled). `None` stands for an established other kind of element. Only the
+/// option's own `disabled` attribute is outside this rule.
 pub fn option_disabled_ancestor(kind: Option<KnownHtmlElement>) -> HtmlOptionDisabledAncestor {
     match kind {
         Some(
@@ -524,8 +581,12 @@ pub fn option_disabled_ancestor(kind: Option<KnownHtmlElement>) -> HtmlOptionDis
 /// descent or selectedcontent disabledness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOptionSelectAncestorAction {
+    /// The ancestor does not decide the search; examine the next one.
     Continue,
+    /// The ancestor is the option's nearest ancestor select.
     NearestSelect,
+    /// The option has no ancestor select: a `datalist`, `hr` or `option` ancestor intervenes, or a
+    /// second `optgroup` is reached.
     NoSelect,
 }
 /// HTML #get-the-nearest-ancestor-select given actual nearest-first ancestors.
@@ -538,6 +599,9 @@ pub struct HtmlOptionSelectAncestors {
     terminal: Option<HtmlOptionSelectAncestorAction>,
 }
 impl HtmlOptionSelectAncestors {
+    /// Examines the next ancestor, nearest first, and returns the decision. Once a decision other
+    /// than `Continue` is made, every later call returns it again. `None` stands for an established
+    /// other kind of element.
     pub fn observe(&mut self, kind: Option<KnownHtmlElement>) -> HtmlOptionSelectAncestorAction {
         if let Some(result) = self.terminal {
             return result;
@@ -573,8 +637,13 @@ impl HtmlOptionSelectAncestors {
 /// One selectedcontent ancestor decision in nearest-to-farthest order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectedcontentAncestorAction {
+    /// The ancestor does not decide the search; examine the next one.
     Continue,
+    /// The ancestor is the nearest ancestor select; the adapter keeps its identity and continues.
     RememberNearestSelect,
+    /// The search stops and the selectedcontent element is disabled: an `option` or another
+    /// `selectedcontent` is an ancestor, or a second `select` is reached
+    /// (HTML877d #selectedcontent-disabled).
     StopDisabled,
 }
 /// Fixed intrinsic state; the adapter retains the actual nearest select ID.
@@ -584,6 +653,8 @@ pub struct HtmlSelectedcontentAncestors {
     disabled: bool,
 }
 impl HtmlSelectedcontentAncestors {
+    /// Examines the next ancestor, nearest first, and returns the decision. After a `StopDisabled`,
+    /// every call returns `StopDisabled`. `None` stands for an established other kind of element.
     pub fn observe(&mut self, kind: Option<KnownHtmlElement>) -> HtmlSelectedcontentAncestorAction {
         if self.disabled {
             return HtmlSelectedcontentAncestorAction::StopDisabled;
@@ -604,9 +675,11 @@ impl HtmlSelectedcontentAncestors {
             _ => HtmlSelectedcontentAncestorAction::Continue,
         }
     }
+    /// Whether the search stopped with the selectedcontent element disabled.
     pub fn disabled(&self) -> bool {
         self.disabled
     }
+    /// Whether a nearest ancestor select has been observed.
     pub fn has_nearest_select(&self) -> bool {
         self.nearest_select
     }
@@ -615,9 +688,14 @@ impl HtmlSelectedcontentAncestors {
 /// Per-target selectedcontent effect after a complete first-selected scan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectedcontentUpdate {
+    /// The target is untouched: the select has `multiple` or the selectedcontent element is
+    /// disabled.
     Skip,
+    /// Empty the target, because the select has no selected option.
     Clear,
+    /// Replace the target's content with clones of the children of one option.
     CloneOptionChildren {
+        /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
     /// Selection/order is incomplete; no clear or clone is authorized.
@@ -626,8 +704,15 @@ pub enum HtmlSelectedcontentUpdate {
 /// A first-selected scan distinguishes proven absence from missing evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectFirstSelection {
+    /// The scan completed and no option is selected.
     NoSelection,
-    Selected { ordinal: usize },
+    /// The first option in tree order whose selectedness is true.
+    Selected {
+        /// Zero-based position of the first selected option in the complete option list.
+        ordinal: usize,
+    },
+    /// The selection evidence is incomplete, so no clear or clone is authorized. It is distinct
+    /// from `NoSelection`.
     Unavailable,
 }
 /// An enabled single-select target requires established selection evidence.
@@ -652,7 +737,13 @@ pub fn selectedcontent_update(
 /// The next read or established result of the first-selected operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectFirstSelectedAction {
-    ReadSelectedness { ordinal: usize },
+    /// Read the selectedness of one option and answer through
+    /// `HtmlSelectFirstSelectedCursor::reply`.
+    ReadSelectedness {
+        /// Zero-based position of the option to read in the complete option list.
+        ordinal: usize,
+    },
+    /// The scan is done with the given result.
     Complete(HtmlSelectFirstSelection),
 }
 /// A first-selected scan over a complete adapter-owned option-list extent.
@@ -664,6 +755,8 @@ pub struct HtmlSelectFirstSelectedCursor {
     result: Option<HtmlSelectFirstSelection>,
 }
 impl HtmlSelectFirstSelectedCursor {
+    /// Starts a scan over a complete option list of `option_count` options. An empty list completes
+    /// at once with `NoSelection`.
     pub fn new(option_count: usize) -> Self {
         Self {
             count: option_count,
@@ -671,6 +764,7 @@ impl HtmlSelectFirstSelectedCursor {
             result: (option_count == 0).then_some(HtmlSelectFirstSelection::NoSelection),
         }
     }
+    /// The read the adapter must perform next, or the established result.
     pub fn action(&self) -> HtmlSelectFirstSelectedAction {
         self.result.map_or(
             HtmlSelectFirstSelectedAction::ReadSelectedness {
@@ -679,6 +773,9 @@ impl HtmlSelectFirstSelectedCursor {
             HtmlSelectFirstSelectedAction::Complete,
         )
     }
+    /// Answers the pending read: `Some(true)` for a selected option, `Some(false)` for an
+    /// unselected one, and `None` when selectedness is unavailable, which completes the scan as
+    /// `Unavailable`. It fails with `HtmlSelectCursorError::is_reply` after the scan is complete.
     pub fn reply(&mut self, selected: Option<bool>) -> Result<(), HtmlSelectCursorError> {
         if self.result.is_some() {
             return Err(HtmlSelectCursorErrorKind::Reply.error());

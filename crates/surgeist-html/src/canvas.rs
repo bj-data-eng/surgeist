@@ -78,6 +78,8 @@ impl HtmlCanvasNoneState {
         }
     }
 
+    /// The bitmap width in CSS pixels: the default 300 unless an attribute supplied a different
+    /// parsed value. Never the IDL `width` reflection.
     pub fn width(&self) -> HtmlCanvasBitmapDimension<'_> {
         self.width.as_ref().map_or(
             HtmlCanvasBitmapDimension::Default(CANVAS_DEFAULT_WIDTH),
@@ -85,6 +87,8 @@ impl HtmlCanvasNoneState {
         )
     }
 
+    /// The bitmap height in CSS pixels: the default 150 unless an attribute supplied a different
+    /// parsed value. Never the IDL `height` reflection.
     pub fn height(&self) -> HtmlCanvasBitmapDimension<'_> {
         self.height.as_ref().map_or(
             HtmlCanvasBitmapDimension::Default(CANVAS_DEFAULT_HEIGHT),
@@ -92,18 +96,22 @@ impl HtmlCanvasNoneState {
         )
     }
 
+    /// Always `true`: this type exists only while the context mode is `none`.
     pub const fn context_is_none(&self) -> bool {
         true
     }
 
+    /// Always `false`: no rendering context is bound while the context mode is `none`.
     pub const fn has_bound_context(&self) -> bool {
         false
     }
 
+    /// Always `true`: the origin-clean flag starts true and nothing here can clear it.
     pub const fn origin_clean(&self) -> bool {
         true
     }
 
+    /// Always `true`: the bitmap of a `none`-mode canvas is transparent black and never drawn on.
     pub const fn bitmap_is_transparent_black(&self) -> bool {
         true
     }

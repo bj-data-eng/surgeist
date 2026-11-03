@@ -9,6 +9,13 @@ pub struct HtmlCspStorage {
     entries: usize,
 }
 impl HtmlCspStorage {
+    /// Validates and builds a storage measure. A UTF-16 unit occupies two bytes, so
+    /// `utf16_units * 2` must not exceed `bytes`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the invalid-storage cause when the units cannot fit in `bytes`, which
+    /// includes a unit count whose byte size overflows `usize`.
     pub fn try_new(
         bytes: usize,
         utf16_units: usize,
@@ -23,12 +30,17 @@ impl HtmlCspStorage {
             entries,
         })
     }
+    /// Returns the total known retained bytes, including the bytes that hold UTF-16
+    /// units.
     pub fn bytes(self) -> usize {
         self.bytes
     }
+    /// Returns the number of retained UTF-16 code units. Their two-byte size is
+    /// already part of [`bytes`](Self::bytes).
     pub fn utf16_units(self) -> usize {
         self.utf16_units
     }
+    /// Returns the number of separately counted retained entries (occurrences).
     pub fn entries(self) -> usize {
         self.entries
     }
@@ -77,6 +89,12 @@ pub struct HtmlCspDisposalWork {
     atomic_bytes: usize,
 }
 impl HtmlCspDisposalWork {
+    /// Builds a disposal bound from fixed work credits and the cleanup frame size.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when `work_credits` does not fit in
+    /// `usize`, so that consuming controllers can charge it as one checked extent.
     pub fn try_new(work_credits: u64, atomic_bytes: usize) -> Result<Self, HtmlCspProtocolError> {
         // Keep the two independently meaningful quantities representable in
         // the common checked action extent used by consuming controllers.
@@ -87,9 +105,12 @@ impl HtmlCspDisposalWork {
             atomic_bytes,
         })
     }
+    /// Returns the fixed credits that bound destroying a possibly last strong
+    /// occurrence, including transitive native release.
     pub fn work_credits(self) -> u64 {
         self.work_credits
     }
+    /// Returns the bytes that bound the cleanup frame or stack of that destruction.
     pub fn atomic_bytes(self) -> usize {
         self.atomic_bytes
     }
@@ -116,6 +137,12 @@ pub struct HtmlCspArtifactLayout {
     disposal: HtmlCspDisposalWork,
 }
 impl HtmlCspArtifactLayout {
+    /// Combines retained storage with its independent disposal obligations.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when `storage.bytes()` plus the
+    /// disposal's atomic bytes overflows `usize`.
     pub fn try_new(
         storage: HtmlCspStorage,
         disposal: HtmlCspDisposalWork,
@@ -126,9 +153,11 @@ impl HtmlCspArtifactLayout {
             .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         Ok(Self { storage, disposal })
     }
+    /// Returns the known retained storage.
     pub fn storage(self) -> HtmlCspStorage {
         self.storage
     }
+    /// Returns the bound on destroying this artifact's last occurrence.
     pub fn disposal(self) -> HtmlCspDisposalWork {
         self.disposal
     }
@@ -188,21 +217,31 @@ impl HtmlCspLayout {
             atomic_bytes: atomic_bytes.max(closing_work.atomic_bytes),
         })
     }
+    /// Returns the credits for the admitted action's own bounded work.
     pub fn work_credits(self) -> u64 {
         self.work_credits
     }
+    /// Returns the complete custody that the operation's result retains.
     pub fn retained(self) -> HtmlCspArtifactLayout {
         self.retained
     }
+    /// Returns the incoming owned custody that moves into the result under its
+    /// existing receipt. Closing work is never charged again for it.
     pub fn transferred(self) -> HtmlCspArtifactLayout {
         self.transferred
     }
+    /// Returns the peak storage of the operation, including the overlap of incoming
+    /// and outgoing custody under conservative graph pricing.
     pub fn peak(self) -> HtmlCspStorage {
         self.peak
     }
+    /// Returns the prepaid work for destroying only the occurrences that the operation
+    /// newly creates.
     pub fn closing_work(self) -> HtmlCspDisposalWork {
         self.closing_work
     }
+    /// Returns the bytes bounding the action's frame, never less than the closing
+    /// work's own atomic bytes.
     pub fn atomic_bytes(self) -> usize {
         self.atomic_bytes
     }

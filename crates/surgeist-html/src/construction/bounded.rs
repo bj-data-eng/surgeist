@@ -15,10 +15,21 @@ pub use text_append::*;
 /// One hidden allocation's role in a construction owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAllocationRole {
+    /// The shared identity allocation. Builder node handles and allocation ids refer to it
+    /// weakly, while published node ids and the arena hold it strongly, so it distinguishes one
+    /// construction owner from another.
     Identity,
+    /// The vector of retained node records.
     Records,
+    /// One record's child-order vector. `HtmlConstructionAllocationSnapshot::child_position` gives
+    /// that record's ordinal.
     Children,
+    /// The temporary decision vector that an attribute edit builds for one target element before
+    /// it commits.
     AttributePlan,
+    /// The shared arena allocation that publication creates. The report taken before it is
+    /// created shows no initialized payload bytes. The snapshot after publication, and the
+    /// lease's, reports the size of the arena itself.
     ArenaWrapper,
 }
 
@@ -66,9 +77,12 @@ pub struct HtmlConstructionAllocationSnapshot {
     wrapper_payload_bytes: usize,
 }
 impl HtmlConstructionAllocationSnapshot {
+    /// The allocation's identity. Two snapshots of the same owner, role and generation compare
+    /// equal.
     pub fn id(&self) -> &HtmlConstructionAllocationId {
         &self.id
     }
+    /// The allocation's role, without the record ordinal that `child_position` carries.
     pub fn role(&self) -> HtmlConstructionAllocationRole {
         match self.id.role {
             AllocationRole::Identity => HtmlConstructionAllocationRole::Identity,
@@ -86,21 +100,31 @@ impl HtmlConstructionAllocationSnapshot {
             _ => None,
         }
     }
+    /// The number of initialized elements in the allocation's vector. The identity allocation, a
+    /// single value, reports 1.
     pub fn initialized_len(&self) -> usize {
         self.initialized_len
     }
+    /// The element capacity that the allocation reserved. It is at least `initialized_len` and may
+    /// exceed it.
     pub fn capacity(&self) -> usize {
         self.capacity
     }
+    /// The size in bytes of one element of the allocation.
     pub fn element_size(&self) -> usize {
         self.element_size
     }
+    /// The alignment in bytes of one element of the allocation.
     pub fn element_alignment(&self) -> usize {
         self.element_alignment
     }
+    /// The allocation's payload in bytes: capacity times element size. It excludes `Arc` headers
+    /// and allocator metadata.
     pub fn payload_bytes(&self) -> usize {
         self.payload_bytes
     }
+    /// The bytes of the inline wrapper that holds the payload, such as a `Vec` header. It is 0 for
+    /// a shared single-value allocation.
     pub fn wrapper_payload_bytes(&self) -> usize {
         self.wrapper_payload_bytes
     }
@@ -149,22 +173,28 @@ impl HtmlConstructionAllocationSnapshot {
 /// Shared immutable output with the same identity and records as its storage.
 #[derive(Clone, Debug)]
 pub enum HtmlConstructionResult {
+    /// A published Document result.
     Document(HtmlDocument),
+    /// A published fragment result.
     Fragment(HtmlFragment),
 }
 impl HtmlConstructionResult {
+    /// The Document when this result is one; `None` for a fragment result.
     pub fn document(&self) -> Option<&HtmlDocument> {
         match self {
             Self::Document(v) => Some(v),
             _ => None,
         }
     }
+    /// The fragment when this result is one; `None` for a Document result.
     pub fn fragment(&self) -> Option<&HtmlFragment> {
         match self {
             Self::Fragment(v) => Some(v),
             _ => None,
         }
     }
+    /// Resolves a result id into this result's node view. Returns `ForeignHtmlResult` when the id
+    /// belongs to another construction result or is out of range.
     pub fn node(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
         self.arena().lookup(id)
     }
@@ -175,12 +205,18 @@ impl HtmlConstructionResult {
             index: position,
         })
     }
+    /// The number of retained records, including roots, template contents and shadow contents
+    /// fragments.
     pub fn len(&self) -> usize {
         self.arena().records.len()
     }
+    /// Whether the result retains no records. It is the exact counterpart of `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.arena().records.is_empty()
     }
+    /// Resolves a builder handle issued by this result's construction owner to its retained
+    /// ordinal. Returns the foreign-builder error for another owner's handle and the unknown-node
+    /// error for an ordinal past the retained records.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena().identity) {
             return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
@@ -190,6 +226,8 @@ impl HtmlConstructionResult {
         }
         Ok(handle.index)
     }
+    /// Resolves a result id into a retained-record view. Returns `ForeignHtmlResult` for an id of
+    /// another construction result or one past the retained records.
     pub fn node_by_result_id(
         &self,
         id: &HtmlNodeId,
@@ -204,6 +242,7 @@ impl HtmlConstructionResult {
             index: id.index,
         })
     }
+    /// The usage that construction admitted for this result.
     pub fn usage(&self) -> HtmlConstructionUsage {
         self.arena().usage
     }
@@ -228,9 +267,11 @@ pub struct HtmlConstructionNode<'a> {
     index: usize,
 }
 impl<'a> HtmlConstructionNode<'a> {
+    /// The retained record ordinal that this view reads, in creation order.
     pub fn position(self) -> usize {
         self.index
     }
+    /// Converts to the ordinary node view over the same record.
     pub fn as_node(self) -> HtmlNode<'a> {
         HtmlNode {
             arena: self.arena,
@@ -273,18 +314,23 @@ impl<'a> HtmlConstructionNode<'a> {
         }
         Ok(())
     }
+    /// Issues a builder handle for this record from the owner's identity. The handle is weak and
+    /// does not keep the owner alive.
     pub fn handle(self) -> HtmlBuilderNode {
         HtmlBuilderNode {
             identity: Arc::downgrade(&self.arena.identity),
             index: self.index,
         }
     }
+    /// The record's node kind.
     pub fn kind(self) -> &'a HtmlNodeKind {
         &self.arena.records[self.index].kind
     }
+    /// The number of ordinary children, excluding template contents and shadow contents.
     pub fn child_count(self) -> usize {
         self.arena.records[self.index].children.len()
     }
+    /// The child at `ordinal` in document order; `None` at or past `child_count`.
     pub fn child_at(self, ordinal: usize) -> Option<Self> {
         self.arena.records[self.index]
             .children
@@ -295,12 +341,16 @@ impl<'a> HtmlConstructionNode<'a> {
                 index,
             })
     }
+    /// The ordinary parent. Records without one, such as roots and association fragments, return
+    /// `None`.
     pub fn parent(self) -> Option<Self> {
         self.arena.records[self.index].parent.map(|index| Self {
             arena: self.arena,
             index,
         })
     }
+    /// The ordinary children in document order. The iterator knows its length and runs from both
+    /// ends.
     pub fn children(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + 'a {
         self.arena.records[self.index]
             .children
@@ -310,6 +360,8 @@ impl<'a> HtmlConstructionNode<'a> {
                 index,
             })
     }
+    /// The contents fragment of a `template` element, whether owned or a shadow-contents
+    /// reference. `None` for any other record.
     pub fn template_contents(self) -> Option<Self> {
         self.arena.records[self.index]
             .template_contents
@@ -318,11 +370,14 @@ impl<'a> HtmlConstructionNode<'a> {
                 index: value.position(),
             })
     }
+    /// Whether the template's contents fragment is owned or a shadow reference; `None` for a
+    /// record without template contents.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
         self.arena.records[self.index]
             .template_contents
             .map(TemplateContents::kind)
     }
+    /// The declarative shadow root attached to this host element, if any.
     pub fn shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
         HtmlNode {
             arena: self.arena,
@@ -330,12 +385,15 @@ impl<'a> HtmlConstructionNode<'a> {
         }
         .declarative_shadow_root()
     }
+    /// The template or shadow host that owns this fragment root. `None` for ordinary records.
     pub fn fragment_owner(self) -> Option<&'a HtmlFragmentOwner> {
         self.arena.records[self.index].owner.as_ref()
     }
+    /// Whether this fragment was explicitly constructed as shadow contents.
     pub fn is_shadow_contents(self) -> bool {
         self.shadow_properties().is_some()
     }
+    /// The shadow properties of a shadow contents fragment; `None` otherwise.
     pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
         self.arena.records[self.index].shadow_properties
     }
@@ -347,27 +405,35 @@ pub struct HtmlConstructionStorage {
     arena: Arena,
 }
 impl HtmlConstructionStorage {
+    /// Starts allocation-free initialization of a construction owner. Drive the returned value
+    /// with `next_action`; no identity exists until its first action runs.
     pub fn begin() -> HtmlConstructionInitialization {
         HtmlConstructionInitialization {
             identity: None,
             phase: InitializationPhase::Pending,
         }
     }
+    /// The admitted usage; it is zero for a new owner.
     pub fn usage(&self) -> HtmlConstructionUsage {
         self.arena.usage
     }
+    /// The number of records created so far.
     pub fn len(&self) -> usize {
         self.arena.records.len()
     }
+    /// Whether no record has been created.
     pub fn is_empty(&self) -> bool {
         self.arena.records.is_empty()
     }
+    /// The record at `position`, or `None` past the last created record.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
         (position < self.arena.records.len()).then_some(HtmlConstructionNode {
             arena: &self.arena,
             index: position,
         })
     }
+    /// Resolves a builder handle to its record view. Returns the foreign-builder error for another
+    /// owner's handle and the unknown-node error for an ordinal past the created records.
     pub fn node(
         &self,
         handle: &HtmlBuilderNode,
@@ -378,6 +444,8 @@ impl HtmlConstructionStorage {
             index,
         })
     }
+    /// Resolves a result id to its record view. Returns `ForeignHtmlResult` when the id's identity
+    /// is not this owner's or it is past the created records.
     pub fn node_by_result_id(
         &self,
         id: &HtmlNodeId,
@@ -391,6 +459,7 @@ impl HtmlConstructionStorage {
             index: id.index,
         })
     }
+    /// Resolves a builder handle to its record ordinal. Errors as `node` does.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena.identity) {
             return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
@@ -400,9 +469,13 @@ impl HtmlConstructionStorage {
         }
         Ok(handle.index)
     }
+    /// Resolves a builder handle to the result id that the published result will use for the same
+    /// record. Errors as `node` does.
     pub fn result_id(&self, handle: &HtmlBuilderNode) -> Result<HtmlNodeId, HtmlConstructionError> {
         Ok(self.arena.id(self.position(handle)?))
     }
+    /// Starts an operation for `command` and takes the owner. Operand qualification happens in the
+    /// operation's own actions; a rejection hands the owner and command back intact.
     #[expect(clippy::result_large_err)] // Refusal returns the complete unallocated owner and operand.
     pub fn prepare(
         self,
@@ -410,6 +483,8 @@ impl HtmlConstructionStorage {
     ) -> Result<HtmlConstructionOperation, HtmlConstructionRejection> {
         Ok(HtmlConstructionOperation::new(self, command))
     }
+    /// Starts the publication of the tree rooted at `root`; equivalent to preparing
+    /// `HtmlConstructionCommand::Publish`.
     #[expect(clippy::result_large_err)] // Refusal retains actual storage without allocating a box.
     pub fn prepare_finish(
         self,
@@ -417,6 +492,8 @@ impl HtmlConstructionStorage {
     ) -> Result<HtmlConstructionOperation, HtmlConstructionRejection> {
         self.prepare(HtmlConstructionCommand::Publish { root })
     }
+    /// Starts deterministic cleanup of the owner's allocations. Cleanup never resumes
+    /// construction.
     pub fn retire(self) -> HtmlConstructionRetirement {
         HtmlConstructionRetirement::new(self)
     }
@@ -470,18 +547,28 @@ pub struct HtmlConstructionInitialization {
     identity: Option<Arc<Identity>>,
     phase: InitializationPhase,
 }
+/// One pending initialization action. It borrows the initialization exclusively; `perform`
+/// consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionInitializationAction<'a> {
     owner: &'a mut HtmlConstructionInitialization,
 }
+/// The observation after an initialization action. It borrows the initialization exclusively until
+/// it is accepted.
+#[derive(Debug)]
 pub struct HtmlConstructionInitializationObservation<'a> {
     owner: &'a mut HtmlConstructionInitialization,
     snapshot: HtmlConstructionAllocationSnapshot,
 }
+/// An initialization that completed identity allocation. `commit` turns it into storage; `abort`
+/// retires the identity.
 #[derive(Debug)]
 pub struct HtmlConstructionReadyInitialization {
     identity: Arc<Identity>,
 }
 impl HtmlConstructionInitialization {
+    /// The next action to run, `Ok(None)` once initialization is ready, or the not-ready error
+    /// while an observation awaits `accept`.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionInitializationAction<'_>>, HtmlConstructionError> {
@@ -495,6 +582,9 @@ impl HtmlConstructionInitialization {
             }
         }
     }
+    /// Takes a ready initialization out of `owner`. Returns the consumed error for an empty owner
+    /// and the not-ready error when initialization has not completed; on error the owner is left
+    /// in place.
     pub fn try_ready(
         owner: &mut Option<Self>,
     ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
@@ -512,6 +602,8 @@ impl HtmlConstructionInitialization {
                 .expect("observed real identity"),
         })
     }
+    /// Abandons initialization. Returns the retirement evidence for the identity allocation if one
+    /// had been made.
     pub fn abort(self) -> Option<HtmlConstructionRetired> {
         self.identity.map(|identity| {
             let snapshot = HtmlConstructionAllocationSnapshot::shared::<Identity>(
@@ -525,6 +617,7 @@ impl HtmlConstructionInitialization {
     }
 }
 impl<'a> HtmlConstructionInitializationAction<'a> {
+    /// Describes the pending action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionActionDescription<'_> {
         HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes: size_of::<Identity>(),
@@ -532,6 +625,8 @@ impl<'a> HtmlConstructionInitializationAction<'a> {
             provider_calls: 2,
         }
     }
+    /// Allocates the shared identity. The observation reports that allocation and must be accepted
+    /// before the next action.
     pub fn perform(self) -> HtmlConstructionInitializationObservation<'a> {
         let identity = Arc::new(Identity);
         let snapshot = HtmlConstructionAllocationSnapshot::shared::<Identity>(
@@ -548,14 +643,17 @@ impl<'a> HtmlConstructionInitializationAction<'a> {
     }
 }
 impl HtmlConstructionInitializationObservation<'_> {
+    /// The allocation that the performed action created.
     pub fn allocation(&self) -> &HtmlConstructionAllocationSnapshot {
         &self.snapshot
     }
+    /// Accepts the observation, which makes the initialization ready.
     pub fn accept(self) {
         self.owner.phase = InitializationPhase::Ready;
     }
 }
 impl HtmlConstructionReadyInitialization {
+    /// Completes initialization and returns empty construction storage with zero usage.
     pub fn commit(self) -> HtmlConstructionStorage {
         HtmlConstructionStorage {
             arena: Arena {
@@ -568,6 +666,8 @@ impl HtmlConstructionReadyInitialization {
             },
         }
     }
+    /// Abandons a ready initialization and returns the retirement evidence for its identity
+    /// allocation.
     pub fn abort(self) -> Option<HtmlConstructionRetired> {
         HtmlConstructionInitialization {
             identity: Some(self.identity),
@@ -583,6 +683,7 @@ pub struct HtmlConstructionRetired {
     snapshot: HtmlConstructionAllocationSnapshot,
 }
 impl HtmlConstructionRetired {
+    /// The allocation snapshot that was retired.
     pub fn allocation(&self) -> &HtmlConstructionAllocationSnapshot {
         &self.snapshot
     }
@@ -594,20 +695,28 @@ pub struct HtmlConstructionLease {
     arena: Weak<Arena>,
     snapshot: HtmlConstructionAllocationSnapshot,
 }
+/// Recovered mutable storage together with the retirement evidence for the published allocation.
+/// `HtmlConstructionLease::try_recover` produces it.
 #[derive(Debug)]
 pub struct HtmlConstructionRecovery {
     storage: HtmlConstructionStorage,
     retired: HtmlConstructionRetired,
 }
 impl HtmlConstructionRecovery {
+    /// Splits into the recovered mutable storage and the retirement evidence.
     pub fn into_parts(self) -> (HtmlConstructionStorage, HtmlConstructionRetired) {
         (self.storage, self.retired)
     }
 }
 impl HtmlConstructionLease {
+    /// The snapshot of the published arena allocation, recorded when the lease was issued.
     pub fn allocation(&self) -> &HtmlConstructionAllocationSnapshot {
         &self.snapshot
     }
+    /// Takes published storage back into mutable ownership. The result must be the sole strong
+    /// owner of its arena. Returns the consumed error if `result` or `lease` is empty, the
+    /// foreign-allocation error if the lease belongs to another result, and the shared-allocation
+    /// error while any clone of the result lives. On error neither argument is taken.
     pub fn try_recover(
         result: &mut Option<HtmlConstructionResult>,
         lease: &mut Option<Self>,

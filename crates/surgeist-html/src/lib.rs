@@ -85,6 +85,7 @@
 //! ```
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
+#![warn(missing_docs)]
 
 mod attributes;
 mod autofocus;

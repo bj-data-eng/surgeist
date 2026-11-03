@@ -14,7 +14,11 @@ use crate::HtmlLegacyColor;
 /// does not request or inspect the content attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputColorValueSource {
+    /// The current value (HTML877d #concept-fe-value): the dirty value flag is set, so the content
+    /// attribute is not consulted.
     CurrentValue,
+    /// The `value` content attribute in the null namespace (HTML877d #attr-input-value): the dirty
+    /// value flag is false, so the control still follows its default.
     ValueAttribute,
 }
 

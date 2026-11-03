@@ -922,7 +922,7 @@ fn autocomplete_syntax_and_srcset_diagnostics_state_their_rule() {
     use HtmlSrcsetParseError as Parse;
     assert_eq!(
         message(&Parse::SkippedCommas),
-        "srcset has more than one comma between image candidates"
+        "srcset has a comma where an image candidate was expected"
     );
     assert_eq!(
         message(&Parse::MultipleTrailingCommas),

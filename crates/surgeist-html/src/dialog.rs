@@ -15,11 +15,17 @@ pub use request::*;
 
 /// Ordered partial observations for HTML's allow-focus steps. Unknown feature
 /// permission cannot be replaced by a known activation state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlAllowFocusDecision {
+    /// The document's feature permission is not yet known, so neither it nor the
+    /// activation state decides the result. Nothing is concluded from unknown input.
     NeedsFeaturePermission,
+    /// The feature permission is known to be negative and the Window's transient
+    /// activation is not yet known.
     NeedsTransientActivation,
+    /// Focusing is permitted, either by feature permission or by transient activation.
     Allowed,
+    /// The feature permission and transient activation are both known to be negative.
     Denied,
 }
 /// First test the document's actual feature permission; only a negative result
@@ -42,47 +48,61 @@ pub const fn allow_focus_decision(
 
 /// Exact creation values, not a getter for an advanced live Dialog.
 /// Common HTML previous-focus initialization remains its existing owner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogFreshState {
     _private: (),
 }
 impl HtmlDialogFreshState {
+    /// Returns the creation values of a new Dialog. Each accessor reports the
+    /// initial value that HTML877d #the-dialog-element gives its field.
     pub const fn fresh() -> Self {
         Self { _private: () }
     }
+    /// Returns the initial `returnValue`, the empty string.
     pub const fn return_value(&self) -> &'static str {
         ""
     }
+    /// Returns the initial value of the dialog's is modal flag, always `false`.
     pub const fn is_modal(&self) -> bool {
         false
     }
+    /// Returns whether a new dialog has a toggle task tracker, always `false`.
     pub const fn has_toggle_task_tracker(&self) -> bool {
         false
     }
+    /// Returns whether a new dialog has a close watcher, always `false`.
     pub const fn has_close_watcher(&self) -> bool {
         false
     }
+    /// Returns whether a new dialog has a request close return value, always `false`
+    /// because the value is initially null.
     pub const fn has_request_close_return_value(&self) -> bool {
         false
     }
+    /// Returns whether a new dialog has a request close source element, always
+    /// `false` because the element is initially null.
     pub const fn has_request_close_source(&self) -> bool {
         false
     }
+    /// Returns the initial value of the enable close watcher for request close flag,
+    /// always `false`.
     pub const fn force_close_watcher_enabled(&self) -> bool {
         false
     }
 }
 
 /// One exact recognized open-attribute change, including equal presence.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogOpenChange {
     old_present: bool,
     new_present: bool,
 }
 impl HtmlDialogOpenChange {
+    /// Returns whether the `open` attribute was present before the change.
     pub const fn old_present(self) -> bool {
         self.old_present
     }
+    /// Returns whether the `open` attribute is present after the change.
     pub const fn new_present(self) -> bool {
         self.new_present
     }
@@ -96,18 +116,26 @@ impl HtmlDialogOpenChange {
 
 /// The selected source algorithm. Actual close text/source remain with the
 /// adapter for their original lifetime; supplied empty text is still present.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogOperation {
+    /// The `show()` method steps of HTML877d #the-dialog-element.
     Show,
     /// Standard showModal method with null source.
     ShowModal,
     /// Standard requestClose method; the adapter retains its actual nullable result.
     RequestClose,
+    /// The close algorithm for a dialog to be closed with a null or string result.
     Close {
+        /// Whether a non-null result was supplied. An empty string is still supplied and
+        /// sets `returnValue`.
         result_present: bool,
     },
+    /// The dialog HTML element insertion steps.
     Inserted,
+    /// The dialog HTML element removing steps.
     Removed,
+    /// The attribute change steps for the `open` attribute, with the exact presence
+    /// change.
     OpenChanged(HtmlDialogOpenChange),
 }
 
@@ -128,12 +156,15 @@ pub fn dialog_attribute_operation(
 }
 
 /// Exact ToggleEvent state spelling, independent of current attributes at delivery.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogState {
+    /// The ToggleEvent state `"closed"`.
     Closed,
+    /// The ToggleEvent state `"open"`.
     Open,
 }
 impl HtmlDialogState {
+    /// Returns the exact ToggleEvent state string, `"closed"` or `"open"`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Closed => "closed",
@@ -142,16 +173,22 @@ impl HtmlDialogState {
     }
 }
 /// A source operand role; this contains no actual Element identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogEventSource {
+    /// The source is null, as for the toggle events of the `show()` and `showModal()` methods.
+    /// `requestClose()` does not use this value; it writes its own null source through
+    /// `WriteNullRequestCloseSource`.
     Null,
     /// Use the original nullable close source retained by the adapter.
     OperationSource,
 }
 /// Normal source return versus a show()/showModal() InvalidState error.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogOutcome {
+    /// The operation returned normally.
     Completed,
+    /// The operation throws an `"InvalidStateError"` DOMException, which only
+    /// `show()` and `showModal()` can reach.
     InvalidState,
 }
 
@@ -159,16 +196,23 @@ pub enum HtmlDialogOutcome {
 /// Effects run through the existing ordinary mutation/service owner before ack.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogAction {
+    /// Read whether the dialog has an `open` attribute.
     ReadOpen,
+    /// Read the dialog's is modal flag.
     ReadModal,
+    /// Read whether the dialog's node document is fully active.
     ReadFullyActive,
+    /// Read whether the dialog is connected.
     ReadConnected,
     /// Read actual popover showing state, not its authored popover attribute.
     ReadPopoverShowing,
+    /// Read whether the dialog's close watcher is nonnull.
     ReadWatcherPresent,
     /// Capture the asserted nonnull watcher. Absence violates the source
     /// invariant; it cannot be acknowledged or treated as an early return.
     CaptureCloseWatcher,
+    /// Set the dialog's enable close watcher for request close flag to the supplied
+    /// value.
     SetForceCloseWatcherEnabled(bool),
     /// Write the actual nullable method argument, including null or empty text.
     WriteRequestCloseReturnValue,
@@ -176,6 +220,8 @@ pub enum HtmlDialogAction {
     WriteNullRequestCloseSource,
     /// Run the captured watcher request through its actual owner to completion.
     RequestWatcherClose {
+        /// The `requireHistoryActionActivation` argument of the close-watcher request to
+        /// close. The `requestClose()` steps pass `false`.
         require_history_action_activation: bool,
     },
     /// Read the receiver's then-current node Document's actual top layer.
@@ -185,17 +231,27 @@ pub enum HtmlDialogAction {
     /// Use the then-current node Document's focused-area DOM anchor and actual
     /// shadow-including inclusive descendant relation to this subject.
     ReadFocusedAnchorInside,
+    /// Fire a `beforetoggle` ToggleEvent at the dialog and reply whether it was
+    /// canceled. A noncancelable event is acknowledged with `Applied` instead.
     FireBeforeToggle {
+        /// The `oldState` attribute of the event.
         old: HtmlDialogState,
+        /// The `newState` attribute of the event.
         new: HtmlDialogState,
+        /// The `cancelable` attribute of the event: `true` for `show()` and
+        /// `showModal()`, `false` for closing.
         cancelable: bool,
+        /// The source attribute of the event: null, or the operation's original source.
         source: HtmlDialogEventSource,
     },
     /// Run the source Dialog toggle task operation on the DOM-manipulation task
     /// source, using the actual original nullable source. Not event delivery.
     QueueToggle {
+        /// The `oldState` that the queued `toggle` task reports.
         old: HtmlDialogState,
+        /// The `newState` that the queued `toggle` task reports.
         new: HtmlDialogState,
+        /// The source attribute of the queued `toggle` task.
         source: HtmlDialogEventSource,
     },
     /// Ordinary empty open addition, including its complete nested attribute hook.
@@ -220,34 +276,49 @@ pub enum HtmlDialogAction {
     FindTopmostPopoverAncestor,
     /// Use the captured show Document and endpoint, even after nested reentry.
     HidePopoversUntil {
+        /// Whether the hide step focuses the previously focused element. The dialog
+        /// algorithms pass `false`.
         focus_previous_element: bool,
+        /// Whether the hide step fires events. The dialog algorithms pass `true`.
         fire_events: bool,
     },
     /// Fulfill the pinned Dialog focusing algorithm, including actual allow-focus,
     /// autofocus/delegate, focus, navigable/origin and autofocus-state requirements.
     /// An absent service cannot acknowledge this action as complete.
     RunDialogFocusingSteps,
+    /// Add the dialog to its node document's open dialogs list.
     AddOpenDialog,
+    /// Remove the dialog from its node document's open dialogs list.
     RemoveOpenDialog,
     /// Establish the actual watcher with source cancelAction firing cancel with
     /// canPreventClose, closeAction using stored request result/source, and
     /// getEnabledState from dialog_close_watcher_enabled. Requires actual null
     /// watcher/open/fully-active setup preconditions, never a fabricated handle.
     EstablishCloseWatcher,
+    /// Destroy the dialog's close watcher.
     DestroyCloseWatcher,
+    /// Set the dialog's close watcher to null.
     ClearCloseWatcher,
+    /// Request that the dialog be removed from the top layer, as `close` does for a
+    /// modal dialog.
     RequestTopLayerRemoval,
+    /// Remove the dialog from the top layer immediately, as the removing steps do.
     RemoveTopLayerImmediately,
+    /// Set the dialog's is modal flag to `false`.
     ClearModal,
     /// Write the original supplied result, including supplied empty text.
     WriteReturnValue,
+    /// Set the dialog's request close return value to null.
     ClearRequestCloseReturnValue,
+    /// Set the dialog's request close source element to null.
     ClearRequestCloseSource,
+    /// Set the dialog's previously focused element to null.
     ClearPreviouslyFocusedElement,
     /// Focus the previously retained actual Element without scrolling viewport.
     RestorePreviousFocusWithoutScrolling,
     /// Queue the close event on the user-interaction task source.
     QueueClose,
+    /// The transition is finished with this outcome. No reply is accepted afterward.
     Complete(HtmlDialogOutcome),
 }
 
@@ -256,20 +327,34 @@ pub enum HtmlDialogAction {
 /// its noncancelable close counterpart consumes Applied after actual dispatch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogReply {
+    /// Whether the dialog has an `open` attribute.
     Open(bool),
+    /// Whether the dialog's is modal flag is true.
     Modal(bool),
+    /// Whether the dialog's node document is fully active.
     FullyActive(bool),
+    /// Whether the dialog is connected.
     Connected(bool),
+    /// Whether the dialog is in the popover showing state.
     PopoverShowing(bool),
+    /// Whether the dialog's close watcher is nonnull.
     WatcherPresent(bool),
+    /// Whether the node document's top layer contains the dialog.
     TopLayerContains(bool),
+    /// Whether the dialog's previously focused element is nonnull.
     PreviousFocusPresent(bool),
+    /// Whether the focused area's DOM anchor is a shadow-including inclusive
+    /// descendant of the dialog.
     FocusedAnchorInside(bool),
+    /// Whether the fired `beforetoggle` event was canceled.
     EventCanceled(bool),
     /// Normal return of the called watcher request, distinct from event dispatch.
     WatcherRequestResult(bool),
+    /// The pending effect was fulfilled.
     Applied,
 }
+/// Why a Dialog cursor refused a reply, queried through `is_*` predicates. The
+/// cursor keeps its pending action unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlDialogCursorError {
     kind: HtmlDialogCursorErrorKind,
@@ -341,6 +426,9 @@ pub struct HtmlDialogCursor {
     was_modal: bool,
 }
 impl HtmlDialogCursor {
+    /// Starts the transition for `operation`. The pending action is the operation's
+    /// first read or effect, which the adapter fulfills and acknowledges with
+    /// [`reply`](Self::reply).
     pub const fn new(operation: HtmlDialogOperation) -> Self {
         use HtmlDialogAction as A;
         let pending = match operation {
@@ -366,6 +454,8 @@ impl HtmlDialogCursor {
             was_modal: false,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
+    /// After `Complete`, it returns the final outcome.
     pub const fn action(&self) -> HtmlDialogAction {
         self.pending
     }
@@ -678,6 +768,9 @@ pub const fn computed_dialog_closed_by(state: HtmlClosedByState, modal: bool) ->
         HtmlClosedByState::Keyword(value) => value,
     }
 }
+/// Returns the dialog close watcher's get enabled state: `force` (the enable
+/// close watcher for request close flag) or a computed closed-by state other than
+/// `None`. See [`computed_dialog_closed_by`].
 pub fn dialog_close_watcher_enabled(force: bool, state: HtmlClosedByState, modal: bool) -> bool {
     force || computed_dialog_closed_by(state, modal) != HtmlClosedBy::None
 }
@@ -687,31 +780,40 @@ pub fn dialog_close_watcher_enabled(force: bool, state: HtmlClosedByState, modal
 /// actual current tracker even when a callback replaced it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogToggleEffect {
+    /// Remove the tracked toggle task from its task queue.
     RemoveTrackedTask,
+    /// Set the dialog toggle task tracker to null.
     ClearTracker,
     /// Capture the latest queue request's source, never the replaced task's source.
     QueueEventFromLatestSource {
+        /// The `oldState` of the queued event.
         old: HtmlDialogState,
+        /// The `newState` of the queued event.
         new: HtmlDialogState,
     },
     /// Use the just-queued real task and the retained first old state.
     StoreTracker {
+        /// The old state that the tracker retains.
         old: HtmlDialogState,
     },
     /// Use the queued source/payload, not current attributes or a live source lookup.
     FireQueuedEvent {
+        /// The `oldState` of the fired event.
         old: HtmlDialogState,
+        /// The `newState` of the fired event.
         new: HtmlDialogState,
     },
 }
 /// Language-only first-old/latest-new decision; it retains no task/source identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogToggleDecision {
     old: HtmlDialogState,
     new: HtmlDialogState,
     replacing: bool,
 }
 impl HtmlDialogToggleDecision {
+    /// Computes the states a queued toggle task reports. A tracked task's old state
+    /// replaces `old`, so equal or reversed states still queue an event.
     pub const fn new(
         old: HtmlDialogState,
         new: HtmlDialogState,
@@ -726,9 +828,11 @@ impl HtmlDialogToggleDecision {
             replacing: tracked_old.is_some(),
         }
     }
+    /// Returns the `oldState` that the next event reports.
     pub const fn old_state(self) -> HtmlDialogState {
         self.old
     }
+    /// Returns the `newState` that the next event reports.
     pub const fn new_state(self) -> HtmlDialogState {
         self.new
     }
@@ -761,30 +865,38 @@ impl HtmlDialogToggleDecision {
 }
 
 /// Pure manager policy. Runtime owns the ordered groups and watcher records.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlCloseWatcherManager {
     allowed_groups: usize,
     next_interaction_allows_new_group: bool,
 }
 /// Placement selected from the actual manager and current group count.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlCloseWatcherPlacement {
+    /// The new watcher forms a new group in the Window's close watcher manager.
     NewGroup,
+    /// The new watcher joins the last existing group.
     LastGroup,
 }
 impl HtmlCloseWatcherManager {
+    /// Returns the Window defaults of HTML877d #close-watcher-infrastructure: one
+    /// allowed group and a next user interaction that allows a new group.
     pub const fn fresh() -> Self {
         Self {
             allowed_groups: 1,
             next_interaction_allows_new_group: true,
         }
     }
+    /// Returns the allowed number of groups, at least 1.
     pub const fn allowed_groups(self) -> usize {
         self.allowed_groups
     }
+    /// Returns whether the next user interaction allows a new group.
     pub const fn next_interaction_allows_new_group(self) -> bool {
         self.next_interaction_allows_new_group
     }
+    /// Chooses the placement of a new watcher among `groups` existing groups: a new
+    /// group when `groups` is below the allowed number, otherwise the last group.
     pub const fn establishment(self, groups: usize) -> HtmlCloseWatcherPlacement {
         if groups < self.allowed_groups {
             HtmlCloseWatcherPlacement::NewGroup
@@ -794,16 +906,19 @@ impl HtmlCloseWatcherManager {
     }
 }
 /// Original fresh watcher cancellation state; no invocation route is implied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlCloseWatcherState {
     running_cancel_action: bool,
 }
 impl HtmlCloseWatcherState {
+    /// Returns a watcher state whose is running cancel action flag is `false`.
     pub const fn fresh() -> Self {
         Self {
             running_cancel_action: false,
         }
     }
+    /// Returns whether the watcher's cancel action is running. A nested request to close then
+    /// completes with `true` without running either its cancel or its close action.
     pub const fn running_cancel_action(self) -> bool {
         self.running_cancel_action
     }

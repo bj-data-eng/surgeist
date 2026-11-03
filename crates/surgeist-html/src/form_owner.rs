@@ -8,16 +8,35 @@
 /// change or ID-bearing insertion/removal/moving event has actually occurred.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerResetTrigger {
-    Insertion { parser_inserted: bool },
-    RemovingOrMoving { has_owner: bool },
-    FormAttributeChanged { listed: bool },
-    IdEvent { listed: bool },
+    /// The element was inserted.
+    Insertion {
+        /// Whether the parser inserted the element, in which case the reset is skipped.
+        parser_inserted: bool,
+    },
+    /// The element was removed or moved.
+    RemovingOrMoving {
+        /// Whether the element has a form owner now. Without one nothing needs resetting.
+        has_owner: bool,
+    },
+    /// The `form` attribute of the element was set, changed or removed.
+    FormAttributeChanged {
+        /// Whether the element is listed. Only a listed element reacts to its `form` attribute.
+        listed: bool,
+    },
+    /// The ID of an element in the tree changed, or an element with an ID was inserted, removed or
+    /// moved.
+    IdEvent {
+        /// Whether the element is listed. Only a listed element with a `form` attribute reacts.
+        listed: bool,
+    },
 }
 
 /// The remaining local condition, without performing its qualified observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerResetDecision {
+    /// The cause does not reset the form owner, and no further observation is needed.
     Skip,
+    /// The cause resets the form owner (HTML877d #reset-the-form-owner) with no further condition.
     Reset,
     /// Compare the actual nonnull owner's ordinary tree with the subject's.
     ResetIfOwnerInDifferentTree,
@@ -55,7 +74,10 @@ pub const fn form_owner_reset_trigger(
 /// The source lookup after the previous owner has been cleared.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerLookup {
+    /// Look up the first element in the subject's tree, in tree order, whose ID equals the `form`
+    /// attribute's value, and associate the subject only if that element is a form.
     FirstId,
+    /// Associate the subject with its nearest ancestor form, if it has one.
     NearestAncestor,
 }
 
@@ -79,21 +101,30 @@ pub const fn form_owner_lookup(
 /// The next admitted operation of an actual form-owner reset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerResetAction {
+    /// Unset the element's parser inserted flag. It is the first step of every reset.
     ClearParserInserted,
+    /// Read whether the listed element has a `form` content attribute, including an empty value.
     ReadFormAttributePresence,
+    /// Read whether the current form owner is the nearest ancestor form after the tree change,
+    /// which lets the reset return early without clearing the owner.
     ReadCurrentOwnerIsNearestAncestor,
+    /// Set the form owner to null.
     ClearOwner,
     /// Apply intrinsic effects against the actual intermediate owner state.
     /// Radio adapters use the shared FormOwner trigger and their real group.
     /// This is not event dispatch or a custom-element execution capability.
     ApplyOwnerChangeEffects,
+    /// Read whether the element is connected, which decides between the first-ID and ancestor
+    /// lookups.
     ReadConnectedness,
     /// Find the first exact-ID element in the subject's ordinary tree. A first
     /// non-form blocks any later form; no match has no ancestor fallback.
     FindFirstIdMatch,
+    /// Find the nearest ancestor form of the element.
     FindNearestAncestor,
     /// Install the actual qualified candidate retained by the preceding lookup.
     AssociateFoundOwner,
+    /// The reset is done; no further reply is accepted.
     Complete,
 }
 
@@ -105,10 +136,17 @@ pub enum HtmlFormOwnerResetAction {
 /// association; the cursor stores no identity or candidate cache.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFormOwnerResetReply {
+    /// The pending clear, effect or association action was performed.
     Applied,
+    /// Whether the element has a `form` content attribute, answering `ReadFormAttributePresence`.
     FormAttributePresent(bool),
+    /// Whether the current owner is the nearest ancestor form, answering
+    /// `ReadCurrentOwnerIsNearestAncestor`.
     CurrentOwnerIsNearestAncestor(bool),
+    /// Whether the element is connected, answering `ReadConnectedness`.
     Connected(bool),
+    /// Whether the lookup found a form to associate with, answering `FindFirstIdMatch` or
+    /// `FindNearestAncestor`. A negative result is complete and leaves the owner null.
     FormFound(bool),
 }
 
@@ -190,6 +228,8 @@ pub struct HtmlFormOwnerResetCursor {
     phase: Phase,
 }
 impl HtmlFormOwnerResetCursor {
+    /// Starts a reset for an element that is `listed` or not and that currently has an owner or not
+    /// (`has_current_owner`). The first action is `ClearParserInserted`.
     pub const fn new(listed: bool, has_current_owner: bool) -> Self {
         Self {
             listed,
@@ -199,6 +239,7 @@ impl HtmlFormOwnerResetCursor {
         }
     }
 
+    /// The operation the adapter must perform next, or `Complete` once the reset is done.
     pub fn action(&self) -> HtmlFormOwnerResetAction {
         use HtmlFormOwnerResetAction as A;
         match self.phase {

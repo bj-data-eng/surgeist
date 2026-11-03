@@ -11,6 +11,8 @@ use std::{cmp::Ordering, error::Error, fmt};
 /// The request state supported by fresh images before their resource continuation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImgFreshRequestState {
+    /// The user agent has obtained no image data, or not enough to know the image dimensions
+    /// (HTML877d #img-req-state). It is the only state a fresh image request can have.
     Unavailable,
 }
 
@@ -21,18 +23,27 @@ pub struct HtmlImgUnavailableRequest {
     url: DocumentString,
 }
 impl HtmlImgUnavailableRequest {
+    /// The request state, always `Unavailable` for this phase.
     pub const fn state(&self) -> HtmlImgFreshRequestState {
         HtmlImgFreshRequestState::Unavailable
     }
+    /// The request's current URL, which is the empty string for a fresh request (HTML877d
+    /// #img-req-url).
     pub fn current_url(&self) -> &DocumentString {
         &self.url
     }
+    /// The request's current pixel density, always 1 for a fresh request (HTML877d
+    /// #current-pixel-density).
     pub const fn current_pixel_density(&self) -> u32 {
         1
     }
+    /// Whether the request's preferred density-corrected dimensions are null, which is always true
+    /// for a fresh request.
     pub const fn preferred_dimensions_are_null(&self) -> bool {
         true
     }
+    /// Whether the request is available (partially or completely), which is always false for an
+    /// `Unavailable` request (HTML877d #img-available).
     pub const fn image_data_is_available(&self) -> bool {
         false
     }
@@ -52,26 +63,37 @@ pub struct HtmlImgFreshState {
     current: HtmlImgUnavailableRequest,
 }
 impl HtmlImgFreshState {
+    /// Creates the fresh tuple: an `Unavailable` current request with the empty current URL, and
+    /// the null and self values the other accessors report.
     pub fn fresh() -> Self {
         Self {
             current: HtmlImgUnavailableRequest { url: "".into() },
         }
     }
+    /// The current request (HTML877d #current-request), which is `Unavailable` with the empty URL.
     pub fn current_request(&self) -> &HtmlImgUnavailableRequest {
         &self.current
     }
+    /// Whether the pending request (HTML877d #pending-request) is null, which is always true when
+    /// fresh.
     pub const fn pending_request_is_null(&self) -> bool {
         true
     }
+    /// Whether the last selected source (HTML877d #last-selected-source) is null, always true when
+    /// fresh.
     pub const fn last_selected_source_is_null(&self) -> bool {
         true
     }
+    /// Whether the last auto sizes width is null, which is always true when fresh.
     pub const fn last_auto_sizes_width_is_null(&self) -> bool {
         true
     }
+    /// Whether the lazy load resumption steps are null, which is always true when fresh.
     pub const fn lazy_load_resumption_is_null(&self) -> bool {
         true
     }
+    /// Whether the dimension attribute source (HTML877d #concept-img-dimension-attribute-source) is
+    /// the image itself, which is always true when fresh.
     pub const fn dimension_attribute_source_is_self(&self) -> bool {
         true
     }
@@ -84,15 +106,20 @@ pub struct HtmlImageUpdateFlags {
     maybe_omit_events: bool,
 }
 impl HtmlImageUpdateFlags {
+    /// Records one invocation's flags: whether it restarts animation and whether it may omit the
+    /// `load` and `error` events. The values are kept exactly; superseded invocations are not
+    /// merged.
     pub const fn new(restart_animation: bool, maybe_omit_events: bool) -> Self {
         Self {
             restart_animation,
             maybe_omit_events,
         }
     }
+    /// Whether this invocation restarts animation, which an equal-value `src` set requests.
     pub const fn restart_animation(self) -> bool {
         self.restart_animation
     }
+    /// Whether this invocation may omit its events.
     pub const fn maybe_omit_events(self) -> bool {
         self.maybe_omit_events
     }
@@ -101,16 +128,22 @@ impl HtmlImageUpdateFlags {
 /// Actual node-Document activity, independent of image support or scripting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageDocumentActivity {
+    /// The node document is fully active.
     FullyActive,
+    /// The node document is not fully active, so the update waits.
     NotFullyActive,
+    /// The activity is not established. No decision follows from it.
     Unavailable,
 }
+/// The first decision of the update the image data algorithm (HTML877d #updating-the-image-data),
+/// taken from the node document's activity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageUpdateStartDecision {
     /// Suspend before image support, abort/reset, source selection or fetching.
     WaitForFullyActive,
     /// Only now inspect actual image support; this performs no later step.
     CheckImageSupport,
+    /// Activity is not established, so no start decision can be made.
     NeedsFullyActiveFact,
 }
 /// The FIRST step of HTML #updating-the-image-data. In particular an inactive
@@ -157,20 +190,30 @@ pub const fn image_update_is_superseded(
     }
 }
 
+/// Whether an Img attribute was set or removed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageAttributeChange {
     /// Actual exact UTF-16 equality, admitted and compared by the caller.
     Set {
+        /// Whether the new value is exactly equal to the old, by UTF-16 code units, as the caller
+        /// compared.
         same_value: bool,
     },
+    /// The attribute was removed.
     Removed,
 }
+/// What an Img attribute change requires, following HTML877d #reacting-to-dom-mutations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageAttributeEffect {
+    /// The change requires nothing.
     None,
+    /// Run the update the image data algorithm with these flags.
     Update(HtmlImageUpdateFlags),
+    /// Compare the old and new `crossorigin` states; see `image_crossorigin_changed`.
     CompareCrossOrigin,
+    /// Compare the old and new `referrerpolicy` states; see `image_referrerpolicy_changed`.
     CompareReferrerPolicy,
+    /// Compare the old and new `loading` states; see `image_loading_became_eager`.
     CompareLoading,
 }
 /// Actual Img attribute-change dispatch (#reacting-to-dom-mutations). Only an
@@ -230,19 +273,30 @@ pub fn image_source_attribute_affects_following(
         )
 }
 
+/// How an Img or Source element changed position in the tree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageTreeChange {
+    /// The element was inserted.
     Inserted,
+    /// The element was removed.
     Removed,
+    /// The element was moved.
     Moved,
 }
+/// The Img elements whose image data an Img or Source tree change updates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageMutationTargets {
+    /// No element is updated.
     None,
+    /// The changed Img itself.
     ThisImage,
+    /// The Img children of the Source's new parent Picture.
     ParentPictureImages,
+    /// The Img children of the Source's old parent Picture.
     OldParentPictureImages,
 }
+/// The effects of an Img or Source tree change, as produced by `image_tree_effect`. The caller
+/// services each in the documented order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlImageTreeEffect {
     targets: HtmlImageMutationTargets,
@@ -250,9 +304,11 @@ pub struct HtmlImageTreeEffect {
     check_media_parent_selection: bool,
 }
 impl HtmlImageTreeEffect {
+    /// The Img elements whose image data to update.
     pub const fn targets(self) -> HtmlImageMutationTargets {
         self.targets
     }
+    /// Whether to clear the Img's last auto sizes width, which happens when an Img is removed.
     pub const fn clear_auto_sizes_width(self) -> bool {
         self.clear_auto_sizes_width
     }
@@ -263,6 +319,8 @@ impl HtmlImageTreeEffect {
         self.check_media_parent_selection
     }
 }
+/// The refusal of a tree change for an element that is neither an Img nor a Source. It carries no
+/// data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlImageTreeInapplicable;
 impl fmt::Display for HtmlImageTreeInapplicable {
