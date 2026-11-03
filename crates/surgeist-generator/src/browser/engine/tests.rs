@@ -307,8 +307,8 @@ fn expected_accounting_mismatch_is_rejected_before_publication() {
             .corpus
             .clone()
             .with_expected_counts(BrowserReportSummary::new(2, 0, 0, 0, 0).expect("counts"));
-        let request =
-            GenerationRequest::new(corpus, harness.browser_path.clone(), None, None).expect("request");
+        let request = GenerationRequest::new(corpus, harness.browser_path.clone(), None, None)
+            .expect("request");
         let error = harness
             .run(
                 request,
