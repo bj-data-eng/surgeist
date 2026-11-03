@@ -1,0 +1,31 @@
+schema_version = 1
+name = "grid_fit_content_points_argument"
+source = "html/grid/grid_fit_content_points_argument.html"
+source_sha256 = "9a8e404470f5f0b8afed2c858d2840f4df46a1492f41cb022ce921fcc23c9e01"
+
+[expected]
+generated = 4
+unsupported = 0
+expected_fail = 0
+quarantined = 0
+failed_to_generate = 0
+
+[[cases]]
+id = "grid_fit_content_points_argument__border_box_ltr"
+variant = "border_box_ltr"
+output = "xml/grid/grid_fit_content_points_argument__border_box_ltr.xml"
+
+[[cases]]
+id = "grid_fit_content_points_argument__content_box_ltr"
+variant = "content_box_ltr"
+output = "xml/grid/grid_fit_content_points_argument__content_box_ltr.xml"
+
+[[cases]]
+id = "grid_fit_content_points_argument__border_box_rtl"
+variant = "border_box_rtl"
+output = "xml/grid/grid_fit_content_points_argument__border_box_rtl.xml"
+
+[[cases]]
+id = "grid_fit_content_points_argument__content_box_rtl"
+variant = "content_box_rtl"
+output = "xml/grid/grid_fit_content_points_argument__content_box_rtl.xml"

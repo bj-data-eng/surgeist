@@ -7,14 +7,15 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use surgeist_generator::browser::{
-    self, AcquisitionMode, BrowserCorpus, BrowserLaunch, BrowserLocation, BrowserSettings,
-    CaseSpec, FixtureSpec, FixtureStatus, GenerationRequest, ReportScope, SourceImportSpec,
+    self, AcquisitionMode, BrowserCorpus, BrowserLocation, CaseSpec, FixtureSpec, FixtureStatus,
+    GenerationRequest, ReportScope, SourceImportSpec,
 };
 use surgeist_generator::{
     CorpusLocation, PinnedSource, RelativePath, Sha256Digest, SourceRevision,
 };
 
 use crate::adapter::{LayoutAdapter, fixture_cases};
+use crate::browser_profile::BrowserManifest;
 
 const ROOT_ENV: &str = "SURGEIST_LAYOUT_BROWSER_PARITY_ROOT";
 const FILTER_ENV: &str = "SURGEIST_LAYOUT_GENERATE_FILTER";
@@ -257,33 +258,6 @@ struct Manifest {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BrowserManifest {
-    source: String,
-    version: String,
-    version_output: String,
-    cache_root: String,
-    provenance_format: String,
-    launch: Launch,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Launch {
-    batch_size: usize,
-    navigation_timeout_ms: u64,
-    dom_poll_interval_ms: u64,
-    retry_count: usize,
-    job_order: String,
-    retry_error_class: String,
-    profile_scope: String,
-    page_scope: String,
-    disable_default_args: bool,
-    disable_cache: bool,
-    arguments: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Reports {
     full: FullReport,
     scoped: Vec<ScopedReport>,
@@ -395,20 +369,7 @@ impl Manifest {
                 "manifest source roots disagree with the layout corpus declaration".to_string(),
             );
         }
-        let launch = &self.browser.launch;
-        if launch.retry_count != 1
-            || launch.job_order != "sorted-sequential"
-            || launch.retry_error_class != "open-load-reset-timeout"
-            || launch.profile_scope != "per-batch-and-retry"
-            || launch.page_scope != "per-job"
-            || !launch.disable_default_args
-            || !launch.disable_cache
-        {
-            return Err(
-                "manifest browser lifecycle does not match the retained layout fixture protocol"
-                    .to_string(),
-            );
-        }
+        self.browser.validate()?;
         let mut ids = BTreeSet::new();
         let mut sources = BTreeSet::new();
         for case in &self.cases {
@@ -430,26 +391,6 @@ impl Manifest {
             }
         }
         Ok(())
-    }
-
-    fn browser(&self) -> Result<BrowserSettings> {
-        let launch = &self.browser.launch;
-        let launch = BrowserLaunch::new(
-            launch.batch_size,
-            launch.navigation_timeout_ms,
-            launch.dom_poll_interval_ms,
-            launch.arguments.clone(),
-        )
-        .map_err(message)?;
-        BrowserSettings::new(
-            self.browser.source.clone(),
-            self.browser.version.clone(),
-            self.browser.version_output.clone(),
-            relative(&self.browser.cache_root)?,
-            self.browser.provenance_format.clone(),
-            launch,
-        )
-        .map_err(message)
     }
 
     fn source_import(&self) -> Result<SourceImportSpec> {
@@ -575,7 +516,7 @@ impl Manifest {
             "surgeist-layout-generate".to_string(),
             relative("xml")?,
             reports,
-            self.browser()?,
+            self.browser.settings()?,
             fixtures,
             vec![
                 relative("scripts/gentest/test_helper.js")?,

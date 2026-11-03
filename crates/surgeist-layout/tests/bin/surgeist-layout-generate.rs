@@ -1,5 +1,7 @@
 #[path = "surgeist-layout-generate/adapter.rs"]
 mod adapter;
+#[path = "surgeist-layout-generate/browser_profile.rs"]
+mod browser_profile;
 #[path = "surgeist-layout-generate/cli.rs"]
 mod cli;
 #[path = "surgeist-layout-generate/envelope.rs"]
