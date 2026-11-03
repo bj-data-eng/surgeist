@@ -142,12 +142,7 @@ impl HtmlConstructionOperation {
             HtmlConstructionErrorKind::RepresentationExhausted.error(),
             None,
         ))?;
-        let arena = &mut self
-            .owner
-            .as_mut()
-            .expect("pending storage")
-            .mutable()
-            .arena;
+        let arena = &mut self.owner.mutable().map_err(|error| (error, None))?.arena;
         let record = arena
             .records
             .get_mut(parent)

@@ -170,7 +170,6 @@ pub(crate) enum HtmlConstructionErrorKind {
     InvalidContentsReference,
     ParentChildConflict,
     InvalidOutputRoot,
-    OperationConsumed,
     OperationNotReady,
     ForeignAllocation,
     CapacityMismatch,
@@ -298,10 +297,6 @@ impl HtmlConstructionError {
     pub fn is_invalid_output_root(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::InvalidOutputRoot)
     }
-    /// Whether the cause is: construction operation has already been consumed.
-    pub fn is_operation_consumed(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::OperationConsumed)
-    }
     /// Whether the cause is: construction operation still has pending actions.
     pub fn is_operation_not_ready(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::OperationNotReady)
@@ -423,9 +418,6 @@ impl fmt::Display for HtmlConstructionError {
             }
             Kind::InvalidOutputRoot => {
                 f.write_str("published output root is not a detached document or fragment")
-            }
-            Kind::OperationConsumed => {
-                f.write_str("construction operation has already been consumed")
             }
             Kind::OperationNotReady => {
                 f.write_str("construction operation still has pending actions")
@@ -956,6 +948,18 @@ struct Arena {
     temporary_generation: u64,
 }
 impl Arena {
+    /// An arena with no records and the given identity. A move out of an arena that sits behind a
+    /// `&mut` leaves this behind; it allocates nothing and is dropped by the same step.
+    fn vacated(identity: &Arc<Identity>) -> Self {
+        Self {
+            identity: Arc::clone(identity),
+            records: Vec::new(),
+            usage: HtmlConstructionUsage::default(),
+            records_generation: 0,
+            wrapper_generation: 0,
+            temporary_generation: 0,
+        }
+    }
     /// How many records have exactly this depth.
     fn population(&self, depth: usize) -> usize {
         self.records
@@ -1905,11 +1909,6 @@ mod cause_tests {
                 HtmlConstructionErrorKind::InvalidOutputRoot.error(),
                 "published output root is not a detached document or fragment",
                 HtmlConstructionError::is_invalid_output_root,
-            ),
-            (
-                HtmlConstructionErrorKind::OperationConsumed.error(),
-                "construction operation has already been consumed",
-                HtmlConstructionError::is_operation_consumed,
             ),
             (
                 HtmlConstructionErrorKind::OperationNotReady.error(),

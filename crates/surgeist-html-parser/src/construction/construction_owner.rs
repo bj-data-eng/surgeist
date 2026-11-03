@@ -57,7 +57,6 @@ enum OwnerFault {
     InvalidContentsReference,
     ParentChildConflict,
     InvalidOutputRoot,
-    OperationConsumed,
     OperationNotReady,
     ForeignAllocation,
     CapacityMismatch,
@@ -74,7 +73,7 @@ enum OwnerFault {
 type CausePredicate = fn(&HtmlConstructionError) -> bool;
 
 /// The owner's cause predicates, each with the fault it names.
-const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
+const OWNER_CAUSES: [(CausePredicate, OwnerFault); 28] = [
     (
         HtmlConstructionError::is_foreign_builder,
         OwnerFault::ForeignBuilder,
@@ -148,10 +147,6 @@ const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
     (
         HtmlConstructionError::is_invalid_output_root,
         OwnerFault::InvalidOutputRoot,
-    ),
-    (
-        HtmlConstructionError::is_operation_consumed,
-        OwnerFault::OperationConsumed,
     ),
     (
         HtmlConstructionError::is_operation_not_ready,
@@ -254,7 +249,6 @@ fn disposition(fault: OwnerFault) -> Disposition {
         | OwnerFault::InvalidShadowAssociation
         | OwnerFault::InvalidContentsReference
         | OwnerFault::InvalidOutputRoot
-        | OwnerFault::OperationConsumed
         | OwnerFault::OperationNotReady
         | OwnerFault::Unlisted => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,
