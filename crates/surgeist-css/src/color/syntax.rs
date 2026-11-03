@@ -701,7 +701,9 @@ impl CssHexColor {
     pub fn try_new(digits: impl Into<String>) -> Option<Self> {
         let digits = digits.into();
         (matches!(digits.len(), 3 | 4 | 6 | 8)
-            && digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            && digits
+                .chars()
+                .all(surgeist_css_parser::lexical::is_hex_digit))
         .then_some(Self { digits })
     }
 

@@ -81,8 +81,9 @@ fn is_ident_code_point(character: char) -> bool {
     surgeist_css_parser::lexical::is_ident_code_point(character)
 }
 
-fn is_css_whitespace(character: char) -> bool {
-    matches!(character, ' ' | '\t' | '\n')
+/// Grid 1 §7.3: the cell tokens of a row are separated by Syntax 3 whitespace.
+fn is_whitespace(character: char) -> bool {
+    surgeist_css_parser::lexical::is_whitespace(character)
 }
 
 /// A nonempty run of CSS ident code points from a decoded template string.
@@ -261,9 +262,9 @@ pub(crate) fn parse_decoded_row(
     let mut characters = source.chars().peekable();
     let mut cells = Vec::new();
     while let Some(&next) = characters.peek() {
-        if is_css_whitespace(next) {
+        if is_whitespace(next) {
             while characters
-                .next_if(|character| is_css_whitespace(*character))
+                .next_if(|character| is_whitespace(*character))
                 .is_some()
             {}
         } else if next == '.' {

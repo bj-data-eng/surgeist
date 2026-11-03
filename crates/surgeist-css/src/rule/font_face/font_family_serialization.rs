@@ -101,19 +101,11 @@ fn can_serialize_family_unquoted(name: &str) -> bool {
     }
     name.split(' ').all(|word| {
         let mut chars = word.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        if !(first == '-' || surgeist_css_parser::lexical::is_ident_start(first)) {
-            return false;
-        }
-        if first == '-' && word.len() == 1 {
-            return false;
-        }
-        if first == '-' && chars.clone().next().is_some_and(|c| c.is_ascii_digit()) {
-            return false;
-        }
-        chars.all(surgeist_css_parser::lexical::is_ident_code_point)
+        let (first, second, third) = (chars.next(), chars.next(), chars.next());
+        surgeist_css_parser::lexical::would_start_ident(first, second, third)
+            && word
+                .chars()
+                .all(surgeist_css_parser::lexical::is_ident_code_point)
     })
 }
 

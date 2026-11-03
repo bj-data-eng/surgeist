@@ -458,12 +458,14 @@ fn ends_with_hex_escape(text: &str) -> bool {
         .bytes()
         .rev()
         .take(6)
-        .take_while(u8::is_ascii_hexdigit)
+        .take_while(|&byte| surgeist_css_parser::lexical::is_hex_digit(char::from(byte)))
         .count();
     digits > 0
-        && text.as_bytes()[..text.len() - digits]
+        && text
+            .as_bytes()
             .iter()
             .rev()
+            .skip(digits)
             .take_while(|byte| **byte == b'\\')
             .count()
             % 2

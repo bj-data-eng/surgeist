@@ -1,10 +1,15 @@
 //! One fixed hex-digit update and the shared short/long RGBA projection.
 
 pub(super) fn write_digit(bytes: &mut [u8; 4], length: usize, position: usize, unit: char) -> bool {
-    if !unit.is_ascii_hexdigit() || position >= length || !matches!(length, 3 | 4 | 6 | 8) {
+    if !surgeist_css_parser::lexical::is_hex_digit(unit)
+        || position >= length
+        || !matches!(length, 3 | 4 | 6 | 8)
+    {
         return false;
     }
-    let digit = unit.to_digit(16).expect("ASCII hex") as u8;
+    let Some(digit) = unit.to_digit(16).and_then(|digit| u8::try_from(digit).ok()) else {
+        return false;
+    };
     if length <= 4 {
         bytes[position] = digit;
     } else {
