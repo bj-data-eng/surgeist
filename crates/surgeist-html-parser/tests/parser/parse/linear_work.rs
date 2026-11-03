@@ -863,6 +863,9 @@ struct Rescan {
     entries: u64,
 }
 
+/// A named measure of a `Rescan`.
+type RescanMeasure = (&'static str, fn(&Rescan) -> u64);
+
 fn rescan_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Rescan {
     Rescan {
         visited: usage.work(HtmlParseWorkCategory::RecordVisit),
@@ -886,7 +889,7 @@ fn parse_rescan(raw: String) -> Rescan {
 fn assert_rescans_at_most_two_point_two_times(
     sizes: [usize; 4],
     measured: &[Rescan],
-    measures: &[(&str, fn(&Rescan) -> u64)],
+    measures: &[RescanMeasure],
 ) {
     for (name, pick) in measures {
         let values: Vec<u64> = measured.iter().map(pick).collect();
