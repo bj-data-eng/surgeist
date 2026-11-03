@@ -2999,6 +2999,8 @@ impl HtmlDefinitionLookupCursor<'_> {
 }
 
 #[cfg(test)]
+mod depth_tests;
+#[cfg(test)]
 mod definition_cursor_tests {
     use super::*;
     use surgeist_html::values::DocumentString;
