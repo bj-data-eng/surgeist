@@ -18,12 +18,6 @@ by Alex Crichton:
 * License: [MIT](licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](licenses/cfg-if/LICENSE-APACHE)
 * Homepage: [cfg-if](https://github.com/rust-lang/cfg-if)
 
-This product depends on `cssparser` 0.37.0 as a direct runtime dependency
-and `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
-
-* License: [MPL-2.0](licenses/rust-cssparser/LICENSE)
-* Homepage: [rust-cssparser](https://github.com/servo/rust-cssparser)
-
 This product includes CSSTree test fixtures from commit
 `88e3d965c0b1628642a30a841745b410d6835052`, distributed by Roman Dvornov. The
 imported fixtures and generated neutral expectations are under
