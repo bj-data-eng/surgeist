@@ -715,3 +715,6 @@ mod native_maximum_bound;
 
 #[path = "../tracks_intrinsic/native_content_size_operation.rs"]
 mod native_content_size_operation;
+
+#[path = "../tracks_intrinsic/native_preferred_percent_floor.rs"]
+mod native_preferred_percent_floor;
