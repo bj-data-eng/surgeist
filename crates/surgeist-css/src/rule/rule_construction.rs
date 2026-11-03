@@ -275,6 +275,8 @@ impl std::error::Error for CssRuleConstructionError {
 pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
     let mut phase = 0; // initial, imports, namespaces, body: parser prelude phases
     let mut bindings = Vec::new();
+    // The prefixes in `bindings`, `None` for the default namespace.
+    let mut bound = std::collections::HashSet::new();
     let mut prelude_error = None;
     for (index, rule) in rules.iter().enumerate() {
         let fail = |kind| CssRuleConstructionError::new(kind, vec![index], ordinary_position(rule));
@@ -297,10 +299,10 @@ pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
                     }
                     continue;
                 }
-                if bindings
-                    .iter()
-                    .any(|(prefix, _)| prefix == &rule.prefix().cloned())
-                {
+                #[cfg(test)]
+                crate::parser::namespace_probed(1);
+                let prefix = rule.prefix().map(|prefix| prefix.as_str());
+                if bound.contains(&prefix) {
                     if prelude_error.is_none() {
                         prelude_error =
                             Some(fail(CssRuleConstructionErrorKind::DuplicateNamespace));
@@ -310,6 +312,10 @@ pub(crate) fn sheet(rules: &[CssRule]) -> Result<(), CssRuleConstructionError> {
                 bindings
                     .try_reserve(1)
                     .map_err(|_| fail(CssRuleConstructionErrorKind::CapacityOverflow))?;
+                bound
+                    .try_reserve(1)
+                    .map_err(|_| fail(CssRuleConstructionErrorKind::CapacityOverflow))?;
+                bound.insert(prefix);
                 bindings.push((rule.prefix().cloned(), rule.name().clone()));
                 phase = 2;
             }
