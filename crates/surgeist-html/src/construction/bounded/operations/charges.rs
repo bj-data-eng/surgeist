@@ -107,7 +107,7 @@ struct RecordSnapshot {
     kind: HtmlNodeKind,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<usize>,
-    children: Vec<usize>,
+    children: VecDeque<usize>,
     children_generation: u64,
     /// The depth cache: this record's depth, the histogram count at its index
     /// and the walk level count at its index.
@@ -295,7 +295,7 @@ fn field_size(field: &str) -> usize {
         "kind.element.attributes" => size_of::<OrderedAttributes>(),
         "document_focused_area_designation" => size_of::<Option<HtmlFocusedAreaDesignation>>(),
         "parent" => size_of::<Option<usize>>(),
-        "children" => size_of::<Vec<usize>>(),
+        "children" => size_of::<VecDeque<usize>>(),
         "children_generation" => size_of::<u64>(),
         "template_contents" => size_of::<Option<TemplateContents>>(),
         "shadow" => size_of::<Option<ShadowAssociation>>(),

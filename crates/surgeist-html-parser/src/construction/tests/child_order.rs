@@ -143,19 +143,26 @@ fn inserting_text_before_a_sibling_charges_the_same_work_at_every_fanout() {
 }
 
 #[test]
-fn changes_at_the_front_of_an_order_charge_for_the_entries_they_shift() {
-    // Among `n` and `2n` children, a change at the front of the order walks
-    // back over all n entries behind its target, one action each, and its
-    // commit shifts n or n - 1 of them, so going from n to 2n adds n of each:
-    // - the walk: an action costs 3 record visits for the controller's
-    //   `action` call and 1 for the described `Inspect`, so 4 visits per
-    //   entry (insert before the first child walks to the reference
-    //   sibling; remove and move walk to the node itself, first in its
-    //   order);
-    // - the shift: one record write and one copied word per entry, the same
-    //   n extra whichever of n or n - 1 entries move.
+fn changes_in_an_order_charge_for_the_entries_between_them_and_the_nearer_end() {
+    // Among `n` and `2n` children an order walks from both ends in turn, one
+    // action for each entry, and its commit moves the entries between the
+    // place and the nearer end, as a deque does. An action costs 3 record
+    // visits for the controller's `action` call and 1 for the described
+    // `Inspect`, so 4 visits per entry walked, and a shift costs one record
+    // write and one copied word per entry moved:
+    // - cases 0 to 2 change the front: the walk examines the last entry and
+    //   then the first, which is the target (insert before the first child
+    //   walks to the reference sibling; remove and move walk to the node
+    //   itself), and no entry moves, so going from n to 2n adds nothing;
+    // - case 3 removes the child at n / 2, which has n / 2 entries before it
+    //   and n / 2 - 1 behind it. The walk examines the entries from the back
+    //   first, the target being its (n / 2)th, which is action n - 1, and the
+    //   nearer, back end moves n / 2 - 1 entries, so going from n = 20 to
+    //   n = 40 adds 20 actions, 80 visits, and 10 writes and words.
     let word = mem::size_of::<usize>() as u64;
-    for case in 0..3 {
+    // (visits, writes, words) added going from 20 to 40 children, per case.
+    let expected: [(u64, u64, u64); 4] = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (80, 10, 10)];
+    for (case, (visits, writes, words)) in expected.into_iter().enumerate() {
         let measure = |fanout: usize| {
             let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
@@ -177,9 +184,10 @@ fn changes_at_the_front_of_an_order_charge_for_the_entries_they_shift() {
                     .insert(&mut c, &root, &fresh, Some(&children[0]), None)
                     .unwrap(),
                 1 => session.remove(&mut c, &children[0], None).unwrap(),
-                _ => session
+                2 => session
                     .insert(&mut c, &root, &children[0], None, None)
                     .unwrap(),
+                _ => session.remove(&mut c, &children[fanout / 2], None).unwrap(),
             }
             let after = ORDER_MEASURED.map(|category| c.usage().work(category));
             session.release(&mut c).unwrap();
@@ -196,13 +204,17 @@ fn changes_at_the_front_of_an_order_charge_for_the_entries_they_shift() {
         };
         assert_eq!(
             grown(HtmlParseWorkCategory::RecordVisit),
-            4 * 20,
+            visits,
             "case {case}"
         );
-        assert_eq!(grown(HtmlParseWorkCategory::RecordWrite), 20, "case {case}");
+        assert_eq!(
+            grown(HtmlParseWorkCategory::RecordWrite),
+            writes,
+            "case {case}"
+        );
         assert_eq!(
             grown(HtmlParseWorkCategory::CopyByte),
-            20 * word,
+            words * word,
             "case {case}"
         );
     }

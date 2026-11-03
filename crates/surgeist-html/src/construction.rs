@@ -6,6 +6,7 @@ pub(crate) mod bounded;
 use crate::Namespace;
 use crate::{DocumentString, OrderedAttributes, QualifiedName};
 use std::{
+    collections::VecDeque,
     error::Error,
     fmt,
     hash::{Hash, Hasher},
@@ -893,7 +894,9 @@ struct Record {
     kind: HtmlNodeKind,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<usize>,
-    children: Vec<usize>,
+    /// The ordinary children in order. A deque, so that taking or placing an entry near either
+    /// end shifts no more entries than lie between it and the nearer end.
+    children: VecDeque<usize>,
     children_generation: u64,
     /// Depth of this record within its own tree, counting association edges;
     /// the root of every tree, attached or detached, is at zero. Every
@@ -927,7 +930,7 @@ impl Record {
             kind,
             document_focused_area_designation,
             parent,
-            children: Vec::new(),
+            children: VecDeque::new(),
             children_generation: 0,
             depth,
             population: 0,

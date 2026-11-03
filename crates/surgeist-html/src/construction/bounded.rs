@@ -135,8 +135,40 @@ impl HtmlConstructionAllocationSnapshot {
         generation: u64,
         values: &Vec<T>,
     ) -> Result<Self, HtmlConstructionError> {
-        let payload_bytes = values
-            .capacity()
+        Self::buffer::<T>(
+            identity,
+            role,
+            generation,
+            values.len(),
+            values.capacity(),
+            size_of::<Vec<T>>(),
+        )
+    }
+    /// The allocation of a child-order deque, whose slots are the same words a vector holds.
+    fn deque<T>(
+        identity: &Arc<Identity>,
+        role: AllocationRole,
+        generation: u64,
+        values: &VecDeque<T>,
+    ) -> Result<Self, HtmlConstructionError> {
+        Self::buffer::<T>(
+            identity,
+            role,
+            generation,
+            values.len(),
+            values.capacity(),
+            size_of::<VecDeque<T>>(),
+        )
+    }
+    fn buffer<T>(
+        identity: &Arc<Identity>,
+        role: AllocationRole,
+        generation: u64,
+        initialized_len: usize,
+        capacity: usize,
+        wrapper_payload_bytes: usize,
+    ) -> Result<Self, HtmlConstructionError> {
+        let payload_bytes = capacity
             .checked_mul(size_of::<T>())
             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         Ok(Self {
@@ -145,12 +177,12 @@ impl HtmlConstructionAllocationSnapshot {
                 role,
                 generation,
             },
-            initialized_len: values.len(),
-            capacity: values.capacity(),
+            initialized_len,
+            capacity,
             element_size: size_of::<T>(),
             element_alignment: align_of::<T>(),
             payload_bytes,
-            wrapper_payload_bytes: size_of::<Vec<T>>(),
+            wrapper_payload_bytes,
         })
     }
     fn shared<T>(identity: &Arc<Identity>, role: AllocationRole, generation: u64) -> Self {
@@ -526,7 +558,7 @@ impl HtmlConstructionStorage {
         index: usize,
     ) -> Result<HtmlConstructionAllocationSnapshot, HtmlConstructionError> {
         let record = &self.arena.records[index];
-        HtmlConstructionAllocationSnapshot::vector(
+        HtmlConstructionAllocationSnapshot::deque(
             &self.arena.identity,
             AllocationRole::Children(index),
             record.children_generation,

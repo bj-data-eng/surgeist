@@ -348,13 +348,18 @@ enum Phase {
     Command,
     NewAttribute(usize),
     OldAttribute(usize),
-    /// Backward walk over `parent`'s child order, `remaining` entries of which
-    /// are unexamined, for the moving node's place in its old parent (`old`)
-    /// or for the reference sibling in the new parent.
+    /// Walk over `parent`'s child order from both ends, for the moving node's
+    /// place in its old parent (`old`) or for the reference sibling in the new
+    /// parent. The entries from `front` up to `back` are unexamined; the walk
+    /// examines the last of them when `from_back` and the first otherwise,
+    /// alternating, so a place costs about twice its distance from the nearer
+    /// end.
     Order {
         parent: usize,
-        remaining: usize,
+        front: usize,
+        back: usize,
         old: bool,
+        from_back: bool,
     },
     Cycle {
         cursor: Option<usize>,
@@ -441,7 +446,7 @@ struct Plan {
     references: usize,
     ids: [Option<HtmlNodeId>; 3],
     created: Option<HtmlBuilderNode>,
-    new_children: [Vec<usize>; 2],
+    new_children: [VecDeque<usize>; 2],
     new_children_generations: [u64; 2],
     /// Insert and detach edit the parents' actual child orders in place, in
     /// the atomic commit, after the new parent's capacity admits the push; no
@@ -1312,11 +1317,7 @@ impl HtmlConstructionOperation {
                 .ok_or(HtmlConstructionErrorKind::UnknownNode)?
                 .children
                 .len();
-            return Ok(Phase::Order {
-                parent,
-                remaining,
-                old: true,
-            });
+            return Ok(Phase::order(parent, remaining, true));
         }
         match self.command() {
             // A detached node with no reference sibling goes last; finding its
@@ -1334,11 +1335,7 @@ impl HtmlConstructionOperation {
                     .ok_or(HtmlConstructionErrorKind::UnknownNode)?
                     .children
                     .len();
-                Ok(Phase::Order {
-                    parent: plan.positions[1],
-                    remaining,
-                    old: false,
-                })
+                Ok(Phase::order(plan.positions[1], remaining, false))
             }
             Command::AttachShadow { .. } => Ok(Phase::Cycle {
                 cursor: Some(plan.positions[0]),
@@ -1572,7 +1569,7 @@ impl HtmlConstructionOperation {
                     .get(parent)
                     .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
                 self.snapshot = Some(
-                    HtmlConstructionAllocationSnapshot::vector(
+                    HtmlConstructionAllocationSnapshot::deque(
                         &arena.identity,
                         AllocationRole::Children(parent),
                         record.children_generation,
@@ -1659,7 +1656,7 @@ impl HtmlConstructionOperation {
                     HtmlConstructionErrorKind::RepresentationExhausted.error(),
                     None,
                 ))?;
-                let snapshot = HtmlConstructionAllocationSnapshot::vector(
+                let snapshot = HtmlConstructionAllocationSnapshot::deque(
                     &arena.identity,
                     AllocationRole::Children(self.plan.positions[0] + offset),
                     generation,
@@ -1778,9 +1775,11 @@ impl HtmlConstructionOperation {
             Phase::Settle { level } => self.settle_step(level),
             Phase::Order {
                 parent,
-                remaining,
+                front,
+                back,
                 old,
-            } => self.locate_order(parent, remaining, old),
+                from_back,
+            } => self.locate_order(parent, front, back, old, from_back),
             Phase::References => {
                 let arena = self.arena();
                 let p = self.plan.positions;
@@ -2652,7 +2651,7 @@ mod publish_membership_tests {
     #[test]
     fn publication_refuses_a_child_listed_twice() {
         let (mut storage, root) = tree();
-        storage.arena.records[0].children = vec![1, 1, 2];
+        storage.arena.records[0].children = VecDeque::from([1, 1, 2]);
         assert_eq!(
             publish(storage, root).1,
             Err(HtmlConstructionErrorKind::ParentChildConflict.into())
@@ -2662,7 +2661,7 @@ mod publish_membership_tests {
     #[test]
     fn publication_refuses_a_child_missing_from_its_parents_list_despite_a_stale_count() {
         let (mut storage, root) = tree();
-        storage.arena.records[0].children = vec![1];
+        storage.arena.records[0].children = VecDeque::from([1]);
         storage.arena.records[2].publish_found = 1;
         assert_eq!(
             publish(storage, root).1,
@@ -2674,8 +2673,8 @@ mod publish_membership_tests {
     fn publication_refuses_a_child_listed_only_by_another_parent() {
         // `b` names the root as its parent but only `a` lists it.
         let (mut storage, root) = tree();
-        storage.arena.records[0].children = vec![1];
-        storage.arena.records[1].children = vec![2];
+        storage.arena.records[0].children = VecDeque::from([1]);
+        storage.arena.records[1].children = VecDeque::from([2]);
         assert_eq!(
             publish(storage, root).1,
             Err(HtmlConstructionErrorKind::ParentChildConflict.into())
@@ -2810,7 +2809,11 @@ mod order_commit_guard_tests {
     fn pending_commit(
         build: Build,
         spoil: impl FnOnce(&mut HtmlConstructionOperation),
-    ) -> (HtmlConstructionOperation, Vec<usize>, HtmlConstructionUsage) {
+    ) -> (
+        HtmlConstructionOperation,
+        VecDeque<usize>,
+        HtmlConstructionUsage,
+    ) {
         let (storage, root, children, node) = parts();
         let usage = storage.usage();
         let mut operation = storage
@@ -2835,7 +2838,7 @@ mod order_commit_guard_tests {
         let children = &mut operation.arena_mut().unwrap().records[0].children;
         children.shrink_to_fit();
         while children.len() < children.capacity() {
-            children.push(0);
+            children.push_back(0);
         }
     }
 
