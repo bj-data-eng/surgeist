@@ -73,7 +73,7 @@ fn previous_token_in<P>(
 ) -> Option<(usize, CssTokenSummary)> {
     let (list, index) = boundary_at(document, offset);
     let nodes = document.list(list);
-    for (back, &node) in nodes[..index].iter().enumerate().rev() {
+    for (back, &node) in nodes.iter().take(index).enumerate().rev() {
         let token = document.token(node);
         if matches!(token, Token::Whitespace | Token::Comment) {
             continue;
@@ -81,8 +81,9 @@ fn previous_token_in<P>(
         if matches!(token, Token::Comma) {
             // A whitespace token after the comma, past any comments, is a
             // member of the list of its own, which holds no token.
-            let following = nodes[back + 1..]
+            let following = nodes
                 .iter()
+                .skip(back + 1)
                 .map(|&node| document.token(node))
                 .find(|token| !matches!(token, Token::Comment));
             if matches!(following, Some(Token::Whitespace)) {
@@ -129,7 +130,7 @@ fn previous_token_in<P>(
 fn previous_at_keyword_in<P>(document: &Document<'_, P>, offset: usize) -> Option<(usize, String)> {
     let (mut list, mut index) = boundary_at(document, offset);
     loop {
-        for &node in document.list(list)[..index].iter().rev() {
+        for &node in document.list(list).iter().take(index).rev() {
             if let Token::AtKeyword(name) = document.token(node) {
                 return Some((document.range(node)?.start.value(), name.to_owned()));
             }
@@ -178,7 +179,7 @@ fn boundary_at<P>(document: &Document<'_, P>, offset: usize) -> (ListId, usize) 
         });
         let inside = before
             .checked_sub(1)
-            .map(|index| nodes[index])
+            .and_then(|index| nodes.get(index).copied())
             .and_then(|group| {
                 let children = document.children(group)?;
                 let opening_end =

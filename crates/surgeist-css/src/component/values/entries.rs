@@ -87,7 +87,10 @@ fn comma_lists(
     let mut diagnostics = Vec::new();
     let mut output = CssCanonicalBuilder::counting(limits.max_css_bytes);
     for range in ranges {
-        let nodes = &document.list(range.list)[range.start..range.end];
+        let nodes = document
+            .list(range.list)
+            .get(range.start..range.end)
+            .unwrap_or_default();
         match promote(document, nodes, usize::MAX) {
             Ok(values) => {
                 if let Err(error) = output.push_components(values.items()) {
@@ -119,8 +122,8 @@ fn comma_lists(
 }
 
 fn source_range(document: &Document<'_>, range: &SyntaxRange) -> Range<usize> {
-    let start = document.boundary(range.list, range.start).offset.unwrap();
-    let end = document.boundary(range.list, range.end).offset.unwrap();
+    let start = document.boundary(range.list, range.start).source_offset();
+    let end = document.boundary(range.list, range.end).source_offset();
     start..end
 }
 
@@ -133,12 +136,12 @@ fn count_error(document: &Document<'_>, fault: GenericSyntaxFault) -> CssCompone
     let origin = if let Some(&node) = document.list(fault.at.list).get(fault.at.index) {
         document.origin(node)
     } else {
-        let at = fault.at.offset.expect("source entry has real EOF");
-        let snapshot = document.snapshot().expect("source entry has its snapshot");
-        CssValueOrigin::Parsed(
-            CssParsedOrigin::from_range(snapshot, at..at)
-                .expect("actual EOF is an original-source boundary"),
-        )
+        let at = fault.at.source_offset();
+        document
+            .snapshot()
+            .map_or(CssValueOrigin::Programmatic, |snapshot| {
+                CssValueOrigin::Parsed(CssParsedOrigin::covering(snapshot, at..at))
+            })
     };
     CssComponentValueError::new(kind, origin)
 }

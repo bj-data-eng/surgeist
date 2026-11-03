@@ -27,16 +27,13 @@ pub(super) type DeclarationUnit<'i> = Declaration<'i, Attached<'i>>;
 
 /// The position of the byte `offset` of the source.
 pub(super) fn location_at(snapshot: &CssSourceSnapshot, offset: usize) -> CssSourcePosition {
-    snapshot
-        .position_at(offset)
-        .expect("a driver boundary of the source is a character boundary")
+    snapshot.position_or_walk(offset)
 }
 
-/// The byte offset of a boundary of a document of source text.
+/// The byte offset of a boundary of a document of source text; the start of
+/// the input for a boundary that names none.
 pub(super) fn offset_of(site: Site<'_>) -> usize {
-    site.offset()
-        .expect("a boundary of a source document has its offset")
-        .value()
+    site.offset().map_or(0, |offset| offset.value())
 }
 
 /// A grammar's own error, at the boundary `at`.
@@ -197,15 +194,12 @@ pub(super) fn dropped_unit<'s, 'i>(
     match rule_end {
         Some(RuleEnd::Block) => {
             // The block is the last node the driver consumed.
-            let block = nodes[after.index() - 1];
-            block_contents = Some(
-                document
-                    .range(block)
-                    .expect("a source block has its interval")
-                    .start
-                    .value()
-                    + 1,
-            );
+            block_contents = after
+                .index()
+                .checked_sub(1)
+                .and_then(|last| nodes.get(last))
+                .and_then(|&block| document.range(block))
+                .map(|interval| interval.start.value() + 1);
         }
         Some(RuleEnd::Semicolon) if kind != UnitKind::AtRule => {
             // A declaration, or a rule a semicolon stopped, leaves its
@@ -254,7 +248,7 @@ pub(super) fn dropped_unit<'s, 'i>(
         native_error(snapshot, failed.error())
     };
     let prelude_end = match (kind, rule_end) {
-        (UnitKind::AtRule, Some(RuleEnd::Semicolon)) => end - 1,
+        (UnitKind::AtRule, Some(RuleEnd::Semicolon)) => end.saturating_sub(1),
         (UnitKind::AtRule, Some(RuleEnd::Block)) => block_contents.map_or(end, |at| at - 1),
         _ => end,
     };
@@ -272,14 +266,16 @@ pub(super) fn dropped_unit<'s, 'i>(
 impl<'s> DroppedUnit<'s> {
     /// The text of the unit, to the end of the unit.
     pub(super) fn text(&self) -> &'s str {
-        &self.source[self.start..self.end]
+        self.source.get(self.start..self.end).unwrap_or_default()
     }
 
     /// The text of the unit up to the end of its prelude, which is where an
     /// at-rule whose prelude was rejected ends: before the `;` or `{` that
     /// ended it.
     pub(super) fn text_to_prelude_end(&self) -> &'s str {
-        &self.source[self.start..self.prelude_end]
+        self.source
+            .get(self.start..self.prelude_end)
+            .unwrap_or_default()
     }
 
     /// The text of the unit up to the opening token of its block, for a unit
@@ -287,6 +283,6 @@ impl<'s> DroppedUnit<'s> {
     /// without one.
     pub(super) fn text_to_block(&self) -> (&'s str, usize) {
         let end = self.block_contents.unwrap_or(self.end);
-        (&self.source[self.start..end], end)
+        (self.source.get(self.start..end).unwrap_or_default(), end)
     }
 }

@@ -102,6 +102,15 @@ pub(crate) struct SyntaxBoundary {
     pub(crate) offset: Option<usize>,
 }
 
+impl SyntaxBoundary {
+    /// The byte offset of the boundary in the source text of its document: the
+    /// start of the input for a boundary of checked components, which carry no
+    /// text.
+    pub(crate) fn source_offset(&self) -> usize {
+        self.offset.unwrap_or(0)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SyntaxInputLimits {
     pub(crate) max_depth: u32,
@@ -195,6 +204,20 @@ fn too_long(length: usize) -> CssComponentValueError {
     )
 }
 
+/// The text of the window `range` of `original`. A window the text does not
+/// hold, or one that begins or ends inside a character, is no window of it.
+fn window_text<'a>(
+    original: &'a CssSourceSnapshot,
+    range: &Range<usize>,
+) -> Result<&'a str, CssComponentValueError> {
+    original.as_str().get(range.clone()).ok_or_else(|| {
+        CssComponentValueError::new(
+            CssComponentValueErrorKind::InvalidToken,
+            CssValueOrigin::Programmatic,
+        )
+    })
+}
+
 /// Parses `text`, which is `original`'s text from `window` on, and attaches
 /// the host that knows `original`.
 fn build_source<'a>(
@@ -234,10 +257,7 @@ pub(crate) fn source_window_document(
     original: &CssSourceSnapshot,
     range: Range<usize>,
 ) -> Result<Document<'_>, CssComponentValueError> {
-    let text = original
-        .as_str()
-        .get(range.clone())
-        .expect("bounded source range");
+    let text = window_text(original, &range)?;
     build_source(text, range.start, original, SyntaxInputLimits::default(), 0)
 }
 
@@ -248,10 +268,7 @@ pub(crate) fn unicode_range_document(
     original: &CssSourceSnapshot,
     range: Range<usize>,
 ) -> Result<Document<'_>, CssComponentValueError> {
-    let text = original
-        .as_str()
-        .get(range.clone())
-        .expect("bounded source range");
+    let text = window_text(original, &range)?;
     let limits = SyntaxInputLimits::default();
     if text.len() > limits.max_known_spelling_bytes {
         return Err(too_long(text.len()));
@@ -296,10 +313,7 @@ pub(crate) fn source_scope_document(
     original: &CssSourceSnapshot,
     range: Range<usize>,
 ) -> Result<Document<'_>, CssComponentValueError> {
-    let text = original
-        .as_str()
-        .get(range.clone())
-        .expect("bounded source range");
+    let text = window_text(original, &range)?;
     let options = Options::default().origin(Offset::new(range.start));
     let mut document = Document::parse(
         text,
@@ -329,12 +343,14 @@ pub(crate) fn source_prefix_unlimited(
 ) -> Result<Document<'_>, CssComponentValueError> {
     let text = original.as_str();
     let head = text.get(..end).unwrap_or_default();
-    let slack: usize = text[head.len()..]
+    let slack: usize = text
+        .get(head.len()..)
+        .unwrap_or_default()
         .chars()
         .take(LEXER_LOOKAHEAD)
         .map(char::len_utf8)
         .sum();
-    let window = &text[..head.len() + slack];
+    let window = text.get(..head.len() + slack).unwrap_or_default();
     let mut document = Document::parse(
         window,
         &Options::default(),
@@ -433,9 +449,19 @@ pub(crate) fn recovery_structure_document(
     Ok(built(document))
 }
 
-/// The token of a checked component's leaf or opening lexeme.
-fn checked_token(component: &CssComponentValue) -> Token<'_> {
-    match component.view() {
+/// The failure of a tree or component that lacks a part its builder
+/// guarantees: a lexeme, a number, a list or a frame. Input cannot reach it.
+pub(crate) fn malformed_structure() -> CssComponentValueError {
+    CssComponentValueError::new(
+        CssComponentValueErrorKind::InvalidToken,
+        CssValueOrigin::Programmatic,
+    )
+}
+
+/// The token of a checked component's leaf or opening lexeme; none for a
+/// numeric component whose representation is no number.
+fn checked_token(component: &CssComponentValue) -> Option<Token<'_>> {
+    Some(match component.view() {
         CssComponentValueRef::Function(value) => Token::Function(value.name()),
         CssComponentValueRef::Block(value) => match value.kind() {
             CssBlockKind::Parenthesis => Token::OpenParen,
@@ -457,13 +483,13 @@ fn checked_token(component: &CssComponentValue) -> Token<'_> {
             CssValueTokenRef::Url(value) => Token::Url(value),
             CssValueTokenRef::Delim(value) => Token::Delim(value),
             CssValueTokenRef::Number(number) => {
-                Token::Number(checked_number(number.representation()))
+                Token::Number(Number::parse(number.representation())?)
             }
             CssValueTokenRef::Percentage(number) => {
-                Token::Percentage(checked_number(number.representation()))
+                Token::Percentage(Number::parse(number.representation())?)
             }
             CssValueTokenRef::Dimension { number, unit } => Token::Dimension {
-                number: checked_number(number.representation()),
+                number: Number::parse(number.representation())?,
                 unit,
             },
             CssValueTokenRef::Whitespace(_) => Token::Whitespace,
@@ -473,11 +499,7 @@ fn checked_token(component: &CssComponentValue) -> Token<'_> {
             CssValueTokenRef::Cdo => Token::Cdo,
             CssValueTokenRef::Cdc => Token::Cdc,
         },
-    }
-}
-
-fn checked_number(representation: &str) -> Number<'_> {
-    Number::parse(representation).expect("a checked numeric token spells a number")
+    })
 }
 
 /// The interval of a checked component's lexeme in the source it was parsed
@@ -532,9 +554,10 @@ fn build_checked<'a>(
         let Some(work) = pending.pop() else { break };
         match work {
             Work::Value(value, list) => {
-                let (_, origin) = value
+                let (text, origin) = value
                     .structural_lexeme(false)
-                    .expect("a component owns its leaf or opening lexeme");
+                    .ok_or_else(malformed_structure)?;
+                let token = checked_token(value).ok_or_else(malformed_structure)?;
                 let fail = |error: surgeist_css_parser::document::BuildError| {
                     CssComponentValueError::new(failure_kind(&error), origin.clone())
                 };
@@ -547,11 +570,8 @@ fn build_checked<'a>(
                 };
                 let spelled = range.is_some();
                 if let Some(children) = children {
-                    let (node, child) = builder
-                        .open(list, checked_token(value), range, attached)
-                        .map_err(fail)?;
+                    let (node, child) = builder.open(list, token, range, attached).map_err(fail)?;
                     if !spelled {
-                        let (text, _) = value.structural_lexeme(false).expect("opening lexeme");
                         builder.charge_spelling(text.len()).map_err(fail)?;
                     }
                     reserve(&mut pending)?;
@@ -562,11 +582,8 @@ fn build_checked<'a>(
                         pending.push(Work::Value(value, child));
                     }
                 } else {
-                    builder
-                        .leaf(list, checked_token(value), range, attached)
-                        .map_err(fail)?;
+                    builder.leaf(list, token, range, attached).map_err(fail)?;
                     if !spelled {
-                        let (text, _) = value.structural_lexeme(false).expect("leaf lexeme");
                         builder.charge_spelling(text.len()).map_err(fail)?;
                     }
                 }
@@ -574,7 +591,7 @@ fn build_checked<'a>(
             Work::Close(node, value) => {
                 let (text, origin) = value
                     .structural_lexeme(true)
-                    .expect("a group owns its closing lexeme");
+                    .ok_or_else(malformed_structure)?;
                 let fail = |error: surgeist_css_parser::document::BuildError| {
                     CssComponentValueError::new(failure_kind(&error), origin.clone())
                 };
@@ -641,7 +658,7 @@ pub(crate) fn supplied_document<'a>(
                 builder
                     .leaf(
                         root,
-                        checked_token(component),
+                        checked_token(component).unwrap(),
                         lexeme_range(origin),
                         Some(Attached::Component(component)),
                     )
@@ -743,10 +760,9 @@ impl DocumentExt for Document<'_> {
 
     fn origin(&self, node: NodeId) -> CssValueOrigin {
         if let Some(Attached::Component(component)) = self.payload(node) {
-            let (_, origin) = component
+            return component
                 .structural_lexeme(false)
-                .expect("a component owns its leaf or opening lexeme");
-            return origin.clone();
+                .map_or(CssValueOrigin::Programmatic, |(_, origin)| origin.clone());
         }
         let (Some(snapshot), Some(range), Some(spelling)) =
             (self.snapshot(), self.range(node), self.spelling(node))
@@ -775,7 +791,7 @@ impl DocumentExt for Document<'_> {
             let closing = match component.view() {
                 CssComponentValueRef::Function(function) => function.closing_origin(),
                 CssComponentValueRef::Block(block) => block.closing_origin(),
-                _ => unreachable!("a group owns its closing origin"),
+                _ => return CssValueOrigin::Programmatic,
             };
             return closing.clone();
         }
@@ -790,8 +806,9 @@ impl DocumentExt for Document<'_> {
                 return match (self.origin(node), self.snapshot()) {
                     (CssValueOrigin::Parsed(opening), Some(snapshot)) => {
                         CssParsedOrigin::from_range(snapshot, at..at)
-                            .map(|at| CssValueOrigin::ImplicitClosure { opening, at })
-                            .expect("actual child EOF")
+                            .map_or(CssValueOrigin::Programmatic, |at| {
+                                CssValueOrigin::ImplicitClosure { opening, at }
+                            })
                     }
                     _ => CssValueOrigin::Programmatic,
                 };
@@ -836,12 +853,12 @@ impl DocumentExt for Document<'_> {
     }
 
     fn cursor_range(&self, range: &SyntaxRange) -> SyntaxCursor<'_> {
-        assert!(range.start <= range.end && range.end <= self.list(range.list).len());
+        let end = range.end.min(self.list(range.list).len());
         SyntaxCursor {
             document: self,
             list: range.list,
-            next: range.start,
-            end: range.end,
+            next: range.start.min(end),
+            end,
         }
     }
 }
@@ -1187,7 +1204,11 @@ pub(crate) fn consume_declaration(
         |node| cursor.document.kind(*node) == TokenKind::Delim('!'),
         |node| matches!(cursor.document.kind(*node), TokenKind::Ident(name) if name.eq_ignore_ascii_case("important")),
     ) {
-        let bang_index = cursor.document.list(cursor.list)[value_start..cursor.position()]
+        let bang_index = cursor
+            .document
+            .list(cursor.list)
+            .get(value_start..cursor.position())
+            .unwrap_or_default()
             .iter()
             .position(|node| *node == value[bang])
             .expect("value node belongs to candidate")
@@ -1205,7 +1226,9 @@ pub(crate) fn consume_declaration(
     while value_end > value_start
         && cursor
             .document
-            .is_trivia(cursor.document.list(cursor.list)[value_end - 1])
+            .list(cursor.list)
+            .get(value_end - 1)
+            .is_some_and(|&node| cursor.document.is_trivia(node))
     {
         value_end -= 1;
     }

@@ -287,8 +287,8 @@ pub(super) fn from_window<'i, T>(
                     Some(end)
                 } else {
                     let mut path = parent.to_vec();
-                    path.push(head + relative[0]);
-                    path.extend_from_slice(&relative[1..]);
+                    path.push(head + relative.first().copied().unwrap_or(0));
+                    path.extend_from_slice(relative.get(1..).unwrap_or_default());
                     if site.is_closing() {
                         serialized
                             .component_end_for_path(&path)

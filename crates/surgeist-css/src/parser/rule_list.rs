@@ -726,7 +726,7 @@ fn report_returned_nothing<'i, G: RuleListGrammar<'i>>(
         if let Some(diagnostic) = structural_rule_diagnostic(
             grammar.recovery(),
             error,
-            &source[from..to],
+            source.get(from..to).unwrap_or_default(),
             terminated,
             from,
             to,
@@ -827,7 +827,7 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
                     // prelude being read (Syntax 3 §5.5.3).
                     let custom = crate::syntax_consumption::custom_property_rule_prelude(
                         document,
-                        &nodes[start.index()..end.index()],
+                        nodes.get(start.index()..end.index()).unwrap_or_default(),
                     );
                     if !returned_nothing && !custom {
                         replay_prelude(
@@ -880,7 +880,7 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
                     };
                     Facts {
                         error,
-                        text: &source[unit_start..unit_end],
+                        text: source.get(unit_start..unit_end).unwrap_or_default(),
                         unit_start,
                         unit_end,
                         at_block: false,

@@ -263,10 +263,11 @@ fn syntax_leaf(
         let text = &*spelling.text;
         let closed = text.len() >= 4 && text.ends_with("*/");
         let content = if closed {
-            &text[2..text.len() - 2]
+            text.get(2..text.len() - 2)
         } else {
-            &text[2..]
-        };
+            text.get(2..)
+        }
+        .unwrap_or_default();
         ComponentData::Comment {
             content: content.into(),
             spelling,

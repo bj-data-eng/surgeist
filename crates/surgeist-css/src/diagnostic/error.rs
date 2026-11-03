@@ -343,13 +343,10 @@ impl CssTokenSummary {
     }
     fn from_component(component: &crate::component::CssComponentValue) -> Self {
         let kind = Self::kind_from_component(component);
-        let (authored, _) = component
+        let authored = component
             .structural_lexeme(false)
-            .expect("a component owns its leaf or opening lexeme");
-        Self {
-            kind,
-            authored: authored.to_owned(),
-        }
+            .map_or_else(String::new, |(authored, _)| authored.to_owned());
+        Self { kind, authored }
     }
 
     /// The summary of a token of the parser crate's token tree, in its
@@ -436,22 +433,26 @@ fn normal_number(number: surgeist_css_parser::token::Number<'_>) -> String {
     let (digits, exponent) = six_digits(value.abs());
     let scientific = !(-6..=20).contains(&exponent);
     if scientific {
-        text.push_str(&digits[..1]);
-        if digits.len() > 1 {
+        let (first, rest) = digits.split_at_checked(1).unwrap_or((&digits, ""));
+        text.push_str(first);
+        if !rest.is_empty() {
             text.push('.');
-            text.push_str(&digits[1..]);
+            text.push_str(rest);
         }
         text.push('e');
         text.push_str(&exponent.to_string());
     } else if exponent >= 0 {
         let whole = usize::try_from(exponent).unwrap_or(0) + 1;
-        if digits.len() <= whole {
-            text.push_str(&digits);
-            text.push_str(&"0".repeat(whole - digits.len()));
-        } else {
-            text.push_str(&digits[..whole]);
-            text.push('.');
-            text.push_str(&digits[whole..]);
+        match digits.split_at_checked(whole) {
+            Some((integer, fraction)) if !fraction.is_empty() => {
+                text.push_str(integer);
+                text.push('.');
+                text.push_str(fraction);
+            }
+            _ => {
+                text.push_str(&digits);
+                text.push_str(&"0".repeat(whole.saturating_sub(digits.len())));
+            }
         }
     } else {
         text.push_str("0.");
@@ -476,7 +477,7 @@ fn six_digits(value: f32) -> (String, i32) {
     let mut exponent: i32 = exponent.parse().unwrap_or(0);
     let mut digits: Vec<u8> = mantissa.bytes().filter(u8::is_ascii_digit).collect();
     if digits.len() > 6 {
-        let round_up = digits[6] >= b'5';
+        let round_up = digits.get(6).is_some_and(|&digit| digit >= b'5');
         digits.truncate(6);
         if round_up {
             let mut index = 6;
@@ -488,11 +489,13 @@ fn six_digits(value: f32) -> (String, i32) {
                     break;
                 }
                 index -= 1;
-                if digits[index] == b'9' {
-                    digits[index] = b'0';
-                } else {
-                    digits[index] += 1;
-                    break;
+                match digits.get_mut(index) {
+                    Some(digit) if *digit == b'9' => *digit = b'0',
+                    Some(digit) => {
+                        *digit += 1;
+                        break;
+                    }
+                    None => {}
                 }
             }
         }
@@ -2045,7 +2048,9 @@ pub(crate) fn from_rule_parse_error(
     error: NativeError,
 ) -> CssError {
     let mut error = (*error.error).resolve_source(tokens);
-    let unit = &failed_unit[whitespace_prefix(failed_unit)..];
+    let unit = failed_unit
+        .get(whitespace_prefix(failed_unit)..)
+        .unwrap_or(failed_unit);
     // The adopted conditional grammar owns its prelude and terminal component
     // failures. Only a valid prelude's basic missing-body failure is contextualized.
     // The decoded at-keyword is the unit's name, so escaped at-keywords keep the

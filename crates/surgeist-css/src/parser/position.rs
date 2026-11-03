@@ -58,7 +58,7 @@ pub(super) fn parse_background_position_prefix<'i>(
     let (atoms, states) =
         collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
     build_background_position(&atoms).ok_or_else(|| {
-        invalid_generic_position_atom(input, states[invalid_background_atom_index(&atoms)])
+        invalid_generic_position_atom(input, &states, invalid_background_atom_index(&atoms))
     })
 }
 
@@ -95,7 +95,7 @@ pub(crate) fn parse_transform_origin<'i>(
         && let Some(position) = build_physical_position(&atoms)
     {
         return CssTransformOrigin::try_new(position, None)
-            .ok_or_else(|| invalid_generic_position_atom(input, states[0]));
+            .ok_or_else(|| invalid_generic_position_atom(input, &states, 0));
     }
 
     // The selected transform-origin grammar requires two planar atoms before Z.
@@ -103,10 +103,12 @@ pub(crate) fn parse_transform_origin<'i>(
     if atoms.len() == 3 {
         let z_index = atoms.len() - 1;
         if let Some(position) = build_physical_position(&atoms[..z_index]) {
-            input.restore(states[z_index]);
+            if let Some(&state) = states.get(z_index) {
+                input.restore(state);
+            }
             let z = parse_length(input, numeric)?;
             return CssTransformOrigin::try_new(position, Some(z))
-                .ok_or_else(|| invalid_generic_position_atom(input, states[0]));
+                .ok_or_else(|| invalid_generic_position_atom(input, &states, 0));
         }
     }
 
@@ -115,7 +117,7 @@ pub(crate) fn parse_transform_origin<'i>(
     } else {
         invalid_atom_index(&atoms)
     };
-    Err(invalid_generic_position_atom(input, states[invalid_index]))
+    Err(invalid_generic_position_atom(input, &states, invalid_index))
 }
 
 // Shapes and directly imported Motion consumers select the full Values 5 grammar.
@@ -125,7 +127,7 @@ pub(super) fn parse_full_position<'i>(
 ) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Full)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, &states, invalid_atom_index(&atoms)))
 }
 
 /// Parses the entire position region, leaving caller-owned boundary keywords unconsumed.
@@ -137,7 +139,7 @@ pub(super) fn parse_full_position_bounded<'i>(
     let (atoms, states) =
         parse_position_atoms_bounded(input, numeric, PositionGrammar::Full, boundaries)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, &states, invalid_atom_index(&atoms)))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -173,7 +175,7 @@ pub(super) fn parse_position_prefix<'i>(
 ) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = collect_position_atoms(input, numeric, PositionGrammar::Full, &[], true)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, &states, invalid_atom_index(&atoms)))
 }
 
 /// Motion uses the full greedy position owner, leaving an independently typed
@@ -208,7 +210,7 @@ pub(super) fn parse_full_position_before_angle<'i>(
         return Err(unexpected_at(input.site()));
     }
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, &states, invalid_atom_index(&atoms)))
 }
 
 fn parse_position_atoms<'i>(
@@ -247,7 +249,7 @@ fn collect_position_atoms<'i>(
         states.push(input.mark());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);
         if atoms.len() > 4 {
-            return Err(invalid_generic_position_atom(input, states[4]));
+            return Err(invalid_generic_position_atom(input, &states, 4));
         }
     }
     if atoms.is_empty() {
@@ -262,7 +264,7 @@ fn parse_background_position<'i>(
 ) -> std::result::Result<CssBackgroundPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
     build_background_position(&atoms).ok_or_else(|| {
-        invalid_generic_position_atom(input, states[invalid_background_atom_index(&atoms)])
+        invalid_generic_position_atom(input, &states, invalid_background_atom_index(&atoms))
     })
 }
 
@@ -307,7 +309,7 @@ fn parse_generic_position_atom<'i>(
             "center" => Ok(GenericPositionAtom::Center),
             _ => {
                 input.restore(state);
-                Err(invalid_generic_position_atom(input, state))
+                Err(invalid_generic_position_atom(input, &[state], 0))
             },
         };
     }
@@ -318,9 +320,12 @@ fn parse_generic_position_atom<'i>(
 
 fn invalid_generic_position_atom<'i>(
     input: &mut Stream<'i>,
-    state: Mark<'i>,
+    states: &[Mark<'i>],
+    index: usize,
 ) -> SyntaxError<'i, Error> {
-    input.restore(state);
+    if let Some(&state) = states.get(index) {
+        input.restore(state);
+    }
     let location = input.site();
     match input.consume_after_whitespace() {
         Ok(token) => location.unexpected::<Error>(token),

@@ -37,19 +37,15 @@ pub(crate) fn classify_rule_syntax_with_limits(
         {
             Err(document
                 .boundary(rule.range.list, rule.range.start)
-                .offset
-                .expect("source qualified start"))
+                .source_offset())
         }
         Ok(rule) => Ok(rule),
-        Err(fault) => Err(fault.at.offset.expect("source syntax fault")),
+        Err(fault) => Err(fault.at.source_offset()),
     };
     let rule = match selected {
         Ok(rule) => rule,
         Err(offset) => {
-            let position = snapshot
-                .position_at(offset)
-                .expect("actual syntax boundary");
-            let error = invalid_syntax(position);
+            let error = invalid_syntax(snapshot.position_or_walk(offset));
             return recovery::finish_report(
                 source,
                 CssParseReport::new(
@@ -76,19 +72,14 @@ pub(crate) fn classify_rule_syntax_with_limits(
         }
         GenericRule::Qualified(rule) => (rule.range, None, false),
     };
-    let start = document
-        .boundary(range.list, range.start)
-        .offset
-        .expect("source boundary");
-    let end = if range.end > range.start {
-        document
-            .range(document.list(range.list)[range.end - 1])
-            .expect("source node")
-            .end
-            .value()
-    } else {
-        start
-    };
+    let start = document.boundary(range.list, range.start).source_offset();
+    let end = range
+        .end
+        .checked_sub(1)
+        .filter(|&last| last >= range.start)
+        .and_then(|last| document.list(range.list).get(last))
+        .and_then(|&node| document.range(node))
+        .map_or(start, |interval| interval.end.value());
     let state =
         RecoveryState::at_depth_with_snapshot(0, SharedNamespaces::default(), snapshot.clone());
     state.retain_component_closures(state.component_openings_in(0..source.len()));
@@ -118,9 +109,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
         }
     }
     if at_eof {
-        let span = CssParsedOrigin::from_range(&snapshot, start..end)
-            .expect("at-rule unit")
-            .span();
+        let span = CssParsedOrigin::covering(&snapshot, start..end).span();
         diagnostics.push(
             CssRecoveryDiagnostic::new(
                 crate::diagnostic::error::unterminated_at_rule(span.end()),
@@ -133,7 +122,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
     let (_, diagnostics) =
         recovery::finish_report(source, CssParseReport::new((), diagnostics)).into_parts();
     let candidate = CssRuleSyntax {
-        origin: CssParsedOrigin::from_range(&snapshot, start..end).expect("generic source range"),
+        origin: CssParsedOrigin::covering(&snapshot, start..end),
         name,
         limits,
         metrics: document.metrics(),

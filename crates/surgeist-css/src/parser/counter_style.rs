@@ -226,8 +226,7 @@ fn parse_occurrence(
         Boundary::Validated,
         |input, components, numeric, range| {
             let value = parse_value_data(input, descriptor, &components, numeric)?;
-            let value_origin = crate::source::CssParsedOrigin::from_range(source_snapshot, range)
-                .expect("parser value boundaries belong to the original source");
+            let value_origin = crate::source::CssParsedOrigin::covering(source_snapshot, range);
             let value = crate::rule::counter_style::CssCounterStyleDescriptorValue::from_parsed(
                 descriptor,
                 value,

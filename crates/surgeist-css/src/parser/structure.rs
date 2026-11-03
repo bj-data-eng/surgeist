@@ -417,7 +417,9 @@ pub(super) fn scan_nested(
     let mut returns: Vec<(ListId, usize)> = Vec::new();
     if site.is_closing() {
         // The scan begins at the closing token of the block that holds it.
-        let group = document.list(list)[index];
+        let Some(&group) = document.list(list).get(index) else {
+            return Ok(end_of_source);
+        };
         if let Some(end) = unmatched_closer(document, group, boundary) {
             return Ok(end);
         }

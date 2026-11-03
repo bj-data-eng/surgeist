@@ -69,23 +69,33 @@ impl DeclarationText {
         let document = start.document();
         let list = start.list();
         let nodes = document.list(list);
-        let name = document
-            .range(nodes[start.index()])
-            .expect("a source declaration name has its interval");
+        // The name is the declaration's first node; a declaration of a source
+        // document always has one, and the empty interval at its start stands
+        // in for a boundary that does not.
+        let name = nodes
+            .get(start.index())
+            .and_then(|&node| document.range(node))
+            .map_or_else(
+                || {
+                    let at = offset_of(start);
+                    at..at
+                },
+                |interval| interval.start.value()..interval.end.value(),
+            );
+        let is_trivia = |index: usize| {
+            nodes
+                .get(index)
+                .is_some_and(|&node| document.is_trivia(node))
+        };
         // The driver consumed a declaration only after an identifier, optional
         // trivia and a colon.
         let mut colon = start.index() + 1;
-        while document.is_trivia(nodes[colon]) {
+        while is_trivia(colon) {
             colon += 1;
         }
         let first = colon + 1;
-        let boundary = |index: usize| {
-            offset_of(
-                document
-                    .site(list, index)
-                    .expect("a boundary of the declaration's list"),
-            )
-        };
+        let name_end = name.end;
+        let boundary = |index: usize| document.site(list, index).map_or(name_end, offset_of);
         // Step 6: the last two tokens that are not whitespace are `!` and
         // `important`.
         let bang = declaration
@@ -94,14 +104,14 @@ impl DeclarationText {
                 let significant = |upto: usize| {
                     (first..upto)
                         .rev()
-                        .find(|&index| !document.is_trivia(nodes[index]))
+                        .find(|&index| nodes.get(index).is_some() && !is_trivia(index))
                 };
                 let important = significant(end)?;
                 significant(important)
             })
             .flatten();
         Self {
-            name: name.start.value()..name.end.value(),
+            name,
             value_start: boundary(first),
             value_end: boundary(bang.unwrap_or(end)),
             end: boundary(end),
@@ -120,8 +130,7 @@ pub(super) fn parse_declaration_unit(
     snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
 ) -> Result<ParsedDeclaration, NativeError> {
-    let name_origin = CssParsedOrigin::from_range(snapshot, text.name.clone())
-        .expect("parser name boundaries belong to the original source");
+    let name_origin = CssParsedOrigin::covering(snapshot, text.name.clone());
     let plan = declaration_plan(
         mode,
         name,
@@ -153,8 +162,7 @@ pub(super) fn parse_declaration_unit(
                 error,
             )
         })?;
-    let value_origin = CssParsedOrigin::from_range(snapshot, value)
-        .expect("parser value boundaries belong to the original source");
+    let value_origin = CssParsedOrigin::covering(snapshot, value);
     let importance = match text.bang() {
         None => CssImportance::Normal,
         Some(bang) => {

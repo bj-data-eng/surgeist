@@ -563,7 +563,9 @@ impl Meter for Control<'_> {
         let failure = match failure {
             limits::Failure::Allocation => Failure::Allocation,
             limits::Failure::CapacityOverflow => Failure::CapacityOverflow,
-            _ => unreachable!("the parser crate reports only allocation and overflow failures"),
+            // A failure the parser crate names later is a failure to
+            // account for the extent, which overflow stands for.
+            _ => Failure::CapacityOverflow,
         };
         let _ = self.fail::<()>(failure);
         Refused

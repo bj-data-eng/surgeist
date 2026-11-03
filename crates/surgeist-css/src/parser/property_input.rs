@@ -114,12 +114,14 @@ impl<'i> SiteExt<'i> for Site<'i> {
     fn begins_expression(self) -> bool {
         let document = self.document();
         let nodes = document.list(self.list());
-        let Some(index) = (self.index() + 1..nodes.len())
-            .find(|index| !document.token(nodes[*index]).is_trivia())
+        let Some(node) = nodes
+            .iter()
+            .skip(self.index() + 1)
+            .find(|&&node| !document.token(node).is_trivia())
         else {
             return false;
         };
-        operator(Some(document.token(nodes[index])))
+        operator(Some(document.token(*node)))
     }
 
     fn trailing_operator_end(self) -> Option<Self> {
@@ -128,15 +130,19 @@ impl<'i> SiteExt<'i> for Site<'i> {
         }
         let document = self.document();
         let nodes = document.list(self.list());
-        let operand = (0..self.index())
+        let operand = nodes
+            .iter()
+            .take(self.index())
             .rev()
-            .find(|index| !document.token(nodes[*index]).is_trivia())
-            .is_some_and(|index| document.token(nodes[index]) != Token::Comma);
+            .find(|&&node| !document.token(node).is_trivia())
+            .is_some_and(|&node| document.token(node) != Token::Comma);
         if !operand {
             return None;
         }
-        (self.index() + 1..nodes.len())
-            .all(|index| document.token(nodes[index]).is_trivia())
+        nodes
+            .iter()
+            .skip(self.index() + 1)
+            .all(|&node| document.token(node).is_trivia())
             .then(|| document.site(self.list(), nodes.len()))
             .flatten()
     }
@@ -206,16 +212,16 @@ impl<'i> SiteExt<'i> for Site<'i> {
             next = document.closing_site(parent);
         }
         let mut previous = None;
-        for index in (0..context.index()).rev() {
+        for (index, &node) in nodes.iter().enumerate().take(context.index()).rev() {
             if !step(self.control()) {
                 return (None, None);
             }
-            if !document.token(nodes[index]).is_trivia() {
+            if !document.token(node).is_trivia() {
                 previous = site_at(
                     document,
                     context.list(),
                     index,
-                    document.children(nodes[index]).is_some(),
+                    document.children(node).is_some(),
                 );
                 break;
             }
@@ -266,11 +272,11 @@ impl<'i> SiteExt<'i> for Site<'i> {
         {
             if let Some((component, _)) = self.checked_component() {
                 let closing = match component.view() {
-                    CssComponentValueRef::Function(function) => function.closing_origin(),
-                    CssComponentValueRef::Block(block) => block.closing_origin(),
-                    _ => unreachable!("closing bookmark belongs to an actual group"),
+                    CssComponentValueRef::Function(function) => function.closing_origin().clone(),
+                    CssComponentValueRef::Block(block) => block.closing_origin().clone(),
+                    _ => document.origin(node),
                 };
-                return CssSerializedOrigin::Token(closing.clone());
+                return CssSerializedOrigin::Token(closing);
             }
             if matches!(document.group_end(node), Some(GroupEnd::Eof { .. })) {
                 return group_end_origin(document, node);
@@ -296,7 +302,7 @@ impl<'i> SiteExt<'i> for Site<'i> {
                     CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => {
                         origin
                     }
-                    _ => unreachable!("an ended group retains its closing or opening origin"),
+                    _ => document.origin(node),
                 }
             } else {
                 document.origin(node)
@@ -492,7 +498,10 @@ impl<'i> StreamExt<'i> for Stream<'i> {
     ) -> Result<crate::component::CssComponentValues, CssComponentValueError> {
         let (from, to) = (self.site(), self.end_site());
         let document = from.document();
-        let nodes = &document.list(from.list())[from.index()..to.index()];
+        let nodes = document
+            .list(from.list())
+            .get(from.index()..to.index())
+            .unwrap_or_default();
         crate::component::values::parse::promote_run(document, nodes)
     }
 
@@ -518,7 +527,11 @@ impl<'i> StreamExt<'i> for Stream<'i> {
         );
         let document: &Document<'_> = from.document();
         let mut output = crate::component::values::serialize::CssCanonicalBuilder::new(usize::MAX);
-        for node in &document.list(from.list())[from.index()..to.index()] {
+        for node in document
+            .list(from.list())
+            .get(from.index()..to.index())
+            .unwrap_or_default()
+        {
             let Some(Attached::Component(component)) = document.payload(*node) else {
                 unreachable!("checked property output borrows checked components");
             };

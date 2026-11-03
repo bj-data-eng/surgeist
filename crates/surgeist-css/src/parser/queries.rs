@@ -387,12 +387,17 @@ fn parse_media_type<'i>(
         "tv" => Ok(ParsedMediaType::Known(CssMediaType::Tv)),
         "print" => Ok(ParsedMediaType::Known(CssMediaType::Print)),
         "layer" | "not" | "and" | "only" | "or" => Err(numeric.unexpected(at)),
-        _ => Ok(ParsedMediaType::Unknown(CssUnknownMediaType::new(
-            source
-                .get(numeric.offset(first)..numeric.offset(input.site()))
-                .unwrap_or(ident),
-            numeric.origin_of(first).expect("media type token origin"),
-        ))),
+        _ => {
+            let Some(origin) = numeric.origin_of(first) else {
+                return Err(numeric.unexpected(at));
+            };
+            Ok(ParsedMediaType::Unknown(CssUnknownMediaType::new(
+                source
+                    .get(numeric.offset(first)..numeric.offset(input.site()))
+                    .unwrap_or(ident),
+                origin,
+            )))
+        }
     }
 }
 

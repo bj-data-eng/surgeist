@@ -1971,8 +1971,9 @@ fn require_integer_after_sign<'i>(
 fn ends_with_bare_n(site: Site<'_>) -> bool {
     let document = site.document();
     let nodes = document.list(site.list());
-    let last = nodes[..site.index().min(nodes.len())]
+    let last = nodes
         .iter()
+        .take(site.index())
         .rev()
         .map(|node| document.token(*node))
         .find(|token| !token.is_trivia());

@@ -309,10 +309,9 @@ fn parse_contents_with_snapshot<R: Receiver>(
                     // as the declaration it is, to its `;`.
                     let stop = (start.index()..nodes.len())
                         .find(|&index| {
-                            matches!(
-                                document.token(nodes[index]),
-                                Token::Semicolon | Token::CloseCurly
-                            )
+                            nodes.get(index).is_some_and(|&node| {
+                                matches!(document.token(node), Token::Semicolon | Token::CloseCurly)
+                            })
                         })
                         .unwrap_or(nodes.len());
                     (error, CssRecoveryAction::DropDeclaration, stop)

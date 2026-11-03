@@ -129,9 +129,9 @@ pub(super) fn parse_outer_body<'i>(
     let (members, diagnostics) = drive_members(contents, source, None, &recovery);
     let items = members
         .into_iter()
-        .map(|member| match member {
-            Member::Item(item) => item,
-            Member::Definition(_) => unreachable!("outer body returns only mixed rule items"),
+        .filter_map(|member| match member {
+            Member::Item(item) => Some(item),
+            Member::Definition(_) => None,
         })
         .collect();
     Recovered {
@@ -150,9 +150,9 @@ pub(super) fn parse_definition_body<'i>(
     let (members, diagnostics) = drive_members(contents, source, Some(kind), &recovery);
     let definitions = members
         .into_iter()
-        .map(|member| match member {
-            Member::Definition(value) => value,
-            Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
+        .filter_map(|member| match member {
+            Member::Definition(value) => Some(value),
+            Member::Item(_) => None,
         })
         .collect();
     Recovered {
@@ -248,9 +248,9 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
             drive_members(&mut block, self.source, Some(kind), &self.recovery);
         let definitions = definitions
             .into_iter()
-            .map(|member| match member {
-                Member::Definition(value) => value,
-                Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
+            .filter_map(|member| match member {
+                Member::Definition(value) => Some(value),
+                Member::Item(_) => None,
             })
             .collect();
         let block = CssFontFeatureValueBlock::try_new(kind, definitions)
@@ -317,8 +317,7 @@ impl BodyParser<'_> {
                         numeric,
                         crate::diagnostic::error::unexpected_component_value,
                     )?;
-                    let origin = CssParsedOrigin::from_range(snapshot, range)
-                        .expect("parser value boundaries belong to the original source");
+                    let origin = CssParsedOrigin::covering(snapshot, range);
                     Ok(CssFontFeatureValue::from_parsed(
                         kind, data, components, origin,
                     ))
@@ -347,8 +346,7 @@ impl BodyParser<'_> {
                 Boundary::Validated,
                 |input, components, numeric, range| {
                     let data = display_data(input, &components, numeric)?;
-                    let origin = CssParsedOrigin::from_range(snapshot, range)
-                        .expect("parser value boundaries belong to the original source");
+                    let origin = CssParsedOrigin::covering(snapshot, range);
                     Ok(CssFontFeatureDisplayValue::from_parsed(
                         data, components, origin,
                     ))

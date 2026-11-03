@@ -252,7 +252,7 @@ fn checked_import_target<'i>(
 ) -> Value<'i, CssImportTarget> {
     let numeric = NumericInputContext::components(values, serialized);
     let document = crate::syntax_consumption::checked_document(
-        &values.items()[index..=index],
+        values.items().get(index..=index).unwrap_or_default(),
         crate::syntax_consumption::SyntaxInputLimits::default(),
         0,
     )

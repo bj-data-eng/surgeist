@@ -232,7 +232,9 @@ fn search<'i>(
             match result {
                 Ok(()) => {
                     next.occupied |= bit;
-                    next.starts[slot] = start.site().index();
+                    if let Some(entry) = next.starts.get_mut(slot) {
+                        *entry = start.site().index();
+                    }
                     search(input, numeric, &next, selection);
                 }
                 Err(error) => selection.failed(input, error),

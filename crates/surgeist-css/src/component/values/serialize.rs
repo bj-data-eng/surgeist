@@ -207,7 +207,7 @@ impl CssCanonicalBuilder {
     /// that ends it stays one, which a value that goes on after it would not
     /// allow. For text that only names the components it spells.
     pub(crate) fn into_text(self) -> String {
-        self.emitter.css.expect("canonical output is retained")
+        self.emitter.css.unwrap_or_default()
     }
 
     pub(crate) fn finish(self) -> Result<CssSerializedValue, CssComponentValueError> {

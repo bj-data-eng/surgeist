@@ -87,6 +87,16 @@ fn walked(bytes: usize) {
     WALKED_BYTES.with(|walked| walked.set(walked.get() + bytes));
 }
 
+/// The last character boundary of `text` at or before the byte `at`, or its end
+/// when `at` lies past it.
+pub(crate) fn floor_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
 impl CssSourcePosition {
     /// The start of the input: the position of a failure that names none.
     pub(crate) const START: Self = Self {
@@ -136,8 +146,8 @@ impl CssSourcePosition {
     /// between the two and, going back across a line break, the line of
     /// `target` up to it, and never the text before them.
     pub(crate) fn resolved_near(self, source: &str, target: usize) -> Self {
-        let from = self.byte_offset.value().min(source.len());
-        let target = target.min(source.len());
+        let from = floor_boundary(source, self.byte_offset.value());
+        let target = floor_boundary(source, target);
         if target >= from {
             let mut text = &source[from..target];
             let mut position = self;
@@ -453,6 +463,62 @@ mod tests {
         assert_eq!(empty.start(), start);
         assert_eq!(empty.end(), start);
         assert_eq!(CssSourceSpan::new(end, start), None);
+    }
+
+    /// "a", "é" (2 bytes, 1 UTF-16 unit), "😀" (4 bytes, 2 units) and "b" are the
+    /// bytes 0, 1..3, 3..7 and 7; a byte inside a character belongs to the
+    /// character, and a byte past the text to its end.
+    #[test]
+    fn a_byte_inside_a_character_has_the_position_of_the_start_of_the_character() {
+        let snapshot = CssSourceSnapshot::new("a\u{e9}\u{1f600}b");
+        assert_position(snapshot.position_or_walk(1), 1, 0, 1);
+        assert_position(snapshot.position_or_walk(2), 1, 0, 1);
+        assert_position(snapshot.position_or_walk(3), 3, 0, 2);
+        for inside in [4, 5, 6] {
+            assert_position(snapshot.position_or_walk(inside), 3, 0, 2);
+        }
+        assert_position(snapshot.position_or_walk(7), 7, 0, 4);
+        assert_position(snapshot.position_or_walk(99), 8, 0, 5);
+    }
+
+    #[test]
+    fn a_position_found_near_another_rounds_a_byte_inside_a_character_down() {
+        let text = "a\u{e9}\u{1f600}b";
+        let start = CssSourcePosition::from_byte_offset_in(text, 0);
+        let end = CssSourcePosition::from_byte_offset_in(text, text.len());
+        for (inside, boundary) in [(2, 1), (4, 3), (5, 3), (6, 3)] {
+            let expected = CssSourcePosition::from_byte_offset_in(text, boundary);
+            assert_eq!(
+                start.resolved_near(text, inside),
+                expected,
+                "forward to {inside}"
+            );
+            assert_eq!(
+                end.resolved_near(text, inside),
+                expected,
+                "backward to {inside}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_origin_covering_a_range_rounds_its_ends_to_characters_and_orders_them() {
+        let snapshot = CssSourceSnapshot::new("a\u{e9}b");
+        let span = |range| CssParsedOrigin::covering(&snapshot, range).span();
+        // The bytes 0, 1..3 and 3 are "a", "é" and "b".
+        let whole = span(1..3);
+        assert_position(whole.start(), 1, 0, 1);
+        assert_position(whole.end(), 3, 0, 2);
+        let inside = span(2..4);
+        assert_position(inside.start(), 1, 0, 1);
+        assert_position(inside.end(), 4, 0, 3);
+        let past = span(3..99);
+        assert_position(past.start(), 3, 0, 2);
+        assert_position(past.end(), 4, 0, 3);
+        let (late, early) = (3, 1);
+        let reversed = span(late..early);
+        assert_position(reversed.start(), 3, 0, 2);
+        assert_position(reversed.end(), 3, 0, 2);
     }
 }
 
@@ -781,11 +847,13 @@ impl CssSourceSnapshot {
     }
 
     /// The position of the byte `byte_offset`, or the end of the text when it
-    /// lies past it. The checkpoints of the snapshot bound the walk.
+    /// lies past it, or the start of the character it lies inside. The
+    /// checkpoints of the snapshot bound the walk.
     pub(crate) fn position_or_walk(&self, byte_offset: usize) -> CssSourcePosition {
         let text = self.as_str();
-        self.position_at(byte_offset.min(text.len()))
-            .unwrap_or_else(|| CssSourcePosition::from_byte_offset_in(text, byte_offset))
+        let target = floor_boundary(text, byte_offset);
+        self.position_at(target)
+            .unwrap_or_else(|| CssSourcePosition::from_byte_offset_in(text, target))
     }
 
     pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {
@@ -1026,6 +1094,19 @@ impl CssParsedOrigin {
                 source.position_at(range.end)?,
             )?,
         })
+    }
+
+    /// The origin of the bytes `range` of `source`, for a range the parser
+    /// produced: each end that lies inside a character, or past the text, is
+    /// the nearest position of `source` at or before it, and an end before the
+    /// start is the start.
+    pub(crate) fn covering(source: &CssSourceSnapshot, range: Range<usize>) -> Self {
+        let start = source.position_or_walk(range.start);
+        let end = source.position_or_walk(range.end).max(start);
+        Self {
+            source: source.clone(),
+            span: CssSourceSpan { start, end },
+        }
     }
 
     /// Returns the source snapshot that owns this span.

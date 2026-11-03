@@ -26,6 +26,7 @@ use crate::rule::CssSupportsConditionRule;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, DocumentExt, SyntaxCursor, SyntaxRange, TokenKind,
+    malformed_structure,
 };
 use surgeist_css_parser::document::{BlockKind, Component, Fault, GroupEnd, ListId, NodeId};
 
@@ -108,12 +109,16 @@ pub(super) fn parse_rule<'i>(
         ));
     };
     let at_keyword = promote(start.document(), &[at_node])
+        .and_then(|values| {
+            values
+                .items()
+                .first()
+                .map(|item| item.origin().clone())
+                .ok_or_else(malformed_structure)
+        })
         .map_err(|error| {
             invalid_component_value(location_at(snapshot, offset_of(contents.site())), error)
-        })?
-        .items()[0]
-        .origin()
-        .clone();
+        })?;
     Ok(CssSupportsConditionRule::parsed(
         prelude.name,
         body,
@@ -363,7 +368,9 @@ fn partition(
 ) -> Result<CssSupportsTestBody, CssComponentValueError> {
     let mut frames = vec![PartitionFrame::new(document, list, closing)];
     loop {
-        let frame = frames.last_mut().expect("partition frame");
+        let Some(frame) = frames.last_mut() else {
+            return Err(malformed_structure());
+        };
         while let CursorItem::Node(node) = frame.cursor.peek() {
             if !document.is_trivia(node) {
                 break;
@@ -386,7 +393,10 @@ fn partition(
             let Some(parent) = frames.last_mut() else {
                 return Ok(completed);
             };
-            match parent.pending.take().expect("child continuation") {
+            let Some(pending) = parent.pending.take() else {
+                return Err(malformed_structure());
+            };
+            match pending {
                 PendingChild::At(pending) => {
                     if !pending.malformed {
                         parent
@@ -449,7 +459,11 @@ fn partition(
             } else {
                 promote(document, &candidate.prelude)?
             };
-            let at_keyword = promote(document, &[candidate.name])?.items()[0].clone();
+            let at_keyword = promote(document, &[candidate.name])?
+                .items()
+                .first()
+                .cloned()
+                .ok_or_else(malformed_structure)?;
             if let Some(block) = candidate.block {
                 let opening = document.origin(block);
                 let closing = document.closing_origin(block);
@@ -463,7 +477,7 @@ fn partition(
                 })));
                 frames.push(PartitionFrame::new(
                     document,
-                    document.children(block).expect("body"),
+                    document.children(block).ok_or_else(malformed_structure)?,
                     Some(closing),
                 ));
             } else if !malformed {
@@ -487,7 +501,10 @@ fn partition(
         }
         let mut attempt = frame.cursor.clone();
         let range = syntax::consume_declaration_candidate(&mut attempt);
-        let nodes = &document.list(range.list)[range.start..range.end];
+        let nodes = document
+            .list(range.list)
+            .get(range.start..range.end)
+            .unwrap_or_default();
         let parsed = syntax::consume_declaration(&mut document.cursor_range(&range));
         let custom_name = matches!(document.kind(first), TokenKind::Ident(name) if name.starts_with("--"))
             && parsed.is_ok();
@@ -523,7 +540,7 @@ fn partition(
             if !malformed {
                 let components = promote(document, nodes)?;
                 let TokenKind::Ident(name) = document.kind(declaration.name) else {
-                    unreachable!("declaration name");
+                    return Err(malformed_structure());
                 };
                 frame.run.push(CssSupportsTestDeclaration {
                     components: components.items().to_vec(),
@@ -589,7 +606,9 @@ fn partition(
             })));
             frames.push(PartitionFrame::new(
                 document,
-                document.children(candidate.block).expect("body"),
+                document
+                    .children(candidate.block)
+                    .ok_or_else(malformed_structure)?,
                 Some(closing),
             ));
             continue;
@@ -646,10 +665,11 @@ pub(crate) fn parse_supports_test_contents_with_limits(
             .collect();
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin
+                && let Some(span) =
+                    crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
                 && let Some(diagnostic) = CssRecoveryDiagnostic::new(
                     crate::diagnostic::error::implicit_eof(at.span().end()),
-                    crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
-                        .expect("actual implicit source extent"),
+                    span,
                     CssRecoveryAction::RetainWithImplicitClosure,
                 )
             {
@@ -681,11 +701,7 @@ pub(crate) fn parse_supports_test_child_with_limits(
         let origin = extra
             .map(CssSupportsTestChildRef::origin)
             .cloned()
-            .unwrap_or_else(|| {
-                CssValueOrigin::Parsed(
-                    CssParsedOrigin::from_range(&snapshot, 0..0).expect("original empty position"),
-                )
-            });
+            .unwrap_or_else(|| CssValueOrigin::Parsed(CssParsedOrigin::covering(&snapshot, 0..0)));
         let kind = if first.is_none() {
             CssComponentValueErrorKind::EmptyInput
         } else {
@@ -697,10 +713,15 @@ pub(crate) fn parse_supports_test_child_with_limits(
         ));
         return CssParseReport::new(None, diagnostics);
     }
-    let child = match first.expect("one child") {
-        CssSupportsTestChildRef::Declaration(v) => CssSupportsTestChild::Declaration(v.clone()),
-        CssSupportsTestChildRef::QualifiedRule(v) => CssSupportsTestChild::QualifiedRule(v.clone()),
-        CssSupportsTestChildRef::AtRule(v) => CssSupportsTestChild::AtRule(v.clone()),
+    let child = match first {
+        Some(CssSupportsTestChildRef::Declaration(v)) => {
+            CssSupportsTestChild::Declaration(v.clone())
+        }
+        Some(CssSupportsTestChildRef::QualifiedRule(v)) => {
+            CssSupportsTestChild::QualifiedRule(v.clone())
+        }
+        Some(CssSupportsTestChildRef::AtRule(v)) => CssSupportsTestChild::AtRule(v.clone()),
+        None => return CssParseReport::new(None, diagnostics),
     };
     CssParseReport::new(Some(child), diagnostics)
 }

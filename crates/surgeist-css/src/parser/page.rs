@@ -370,11 +370,10 @@ fn page_margin_body_error(
     snapshot: &crate::source::CssSourceSnapshot,
     offset: usize,
 ) -> NativeError {
+    let location = location_at(snapshot, offset);
     invalid_at_rule_body_at(
-        snapshot
-            .position_at(offset)
-            .expect("a driver boundary of the source is a character boundary"),
-        location_at(snapshot, offset),
+        location,
+        location,
         "page",
         "later.rule.page",
         "page-context margin declarations",
@@ -746,8 +745,7 @@ fn descriptor_value(
         .map_err(|error| native(&numeric, &error))?;
     let components =
         crate::component::values::parse::promote_window(&document).map_err(failed_at)?;
-    let origin = crate::source::CssParsedOrigin::from_range(snapshot, range.clone())
-        .expect("parser value boundaries belong to the original source");
+    let origin = crate::source::CssParsedOrigin::covering(snapshot, range);
     let importance = if text.bang().is_some() {
         crate::declaration::CssImportance::Important
     } else {

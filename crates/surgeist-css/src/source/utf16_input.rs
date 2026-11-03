@@ -567,7 +567,7 @@ impl<'p, 'a, E> PreprocessMeter<'p, 'a, E> {
                 Err(if error.is_refused() {
                     self.failure
                         .take()
-                        .expect("a refused preprocessing recorded its cause")
+                        .unwrap_or_else(CssUtf16InputError::capacity_overflow)
                 } else if let Some(exhausted) = error.exhausted_limit() {
                     CssUtf16InputError::limit(resource(exhausted))
                 } else if error.is_allocation_failure() {
@@ -601,11 +601,7 @@ impl<E> Meter for PreprocessMeter<'_, '_, E> {
 
     fn released(&self, bytes: usize) {
         self.flush();
-        let remaining = self
-            .charged
-            .get()
-            .checked_sub(bytes)
-            .expect("the preprocessing releases only what it charged");
+        let remaining = self.charged.get().saturating_sub(bytes);
         self.charged.set(remaining);
         if remaining > 0 {
             self.pending.set(Some(bytes));

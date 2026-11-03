@@ -1558,17 +1558,17 @@ impl CssSerializedValue {
         let order = self.lookups.by_path.get_or_init(|| {
             let mut order: Vec<usize> = (0..self.component_paths.len()).collect();
             order.sort_unstable_by(|a, b| {
-                self.component_paths[*a]
-                    .1
-                    .cmp(&self.component_paths[*b].1)
-                    .then(a.cmp(b))
+                let path = |index: &usize| self.component_paths.get(*index).map(|(_, path)| path);
+                path(a).cmp(&path(b)).then(a.cmp(b))
             });
             order.into_boxed_slice()
         });
         let first = order.partition_point(|index| {
             #[cfg(test)]
             PATH_COMPARISONS.with(|compared| compared.set(compared.get() + 1));
-            self.component_paths[*index].1.as_slice() < path
+            self.component_paths
+                .get(*index)
+                .is_some_and(|(_, candidate)| candidate.as_slice() < path)
         });
         let (range, candidate) = self.component_paths.get(*order.get(first)?)?;
         (candidate.as_slice() == path).then_some(range)

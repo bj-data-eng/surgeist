@@ -1431,7 +1431,9 @@ pub(super) fn parse_rule_inner(
             let error = if parser.completed {
                 from_parse_error(source, error)
             } else {
-                let failed_unit = &source[offset_of(failed.start())..offset_of(failed.end())];
+                let failed_unit = source
+                    .get(offset_of(failed.start())..offset_of(failed.end()))
+                    .unwrap_or_default();
                 let terminated =
                     super::structure::ends_with_semicolon(failed.start(), offset_of(failed.end()));
                 super::qualified_rule_error(&state, failed_unit, terminated, error)

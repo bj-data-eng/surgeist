@@ -103,16 +103,15 @@ pub(crate) fn finish_report<T>(
             } else if error.is_unterminated_comment() {
                 let end_of_input =
                     *eof.get_or_insert_with(|| after.resolved_near(source, source.len()));
-                let span = crate::source::CssSourceSpan::new(at, end_of_input)
-                    .expect("comment ends at source EOF");
-                diagnostics.push(
-                    crate::diagnostic::CssRecoveryDiagnostic::new(
+                if let Some(span) = crate::source::CssSourceSpan::new(at, end_of_input)
+                    && let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
                         crate::diagnostic::error::implicit_eof(end_of_input),
                         span,
                         crate::diagnostic::CssRecoveryAction::IgnoreUnterminatedComment,
                     )
-                    .expect("comment EOF belongs to its consumed source span"),
-                );
+                {
+                    diagnostics.push(diagnostic);
+                }
             }
         }
     }
@@ -535,12 +534,13 @@ impl RecoveryState {
             return;
         };
         let span = origin.span();
-        let diagnostic = crate::diagnostic::CssRecoveryDiagnostic::new(
+        let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
             crate::diagnostic::error::legacy_navigation_target(target.as_str(), span.start()),
             span,
             crate::diagnostic::CssRecoveryAction::RetainLegacyNavigationTarget,
-        )
-        .expect("target error belongs to original string span");
+        ) else {
+            return;
+        };
         self.retained_navigation_diagnostics
             .borrow_mut()
             .push(diagnostic);
