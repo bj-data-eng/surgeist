@@ -579,7 +579,7 @@ impl SessionStorage {
         ])?;
         self.construction.reserve_records(c, native)?;
         self.construction.reserve_child_tickets(c, native)?;
-        c.reserve_vector(
+        c.reserve_vector_geometric(
             &mut self.payloads.values,
             &mut self.payloads.allocation,
             facts,

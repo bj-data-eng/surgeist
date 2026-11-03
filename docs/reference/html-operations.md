@@ -2348,7 +2348,8 @@ under a byte limit (`managed_capacity_bytes`, `peak_transient_bytes` or
 `atomic_layout_bytes`) exactly when the limit holds the peak that the same parse reports
 under generous limits, and a limit that sufficed while such lists grew by one slot at a
 time can now need up to twice their capacity. Only an allocator refusal of the larger
-target falls back to the capacity that is needed.
+target falls back to the capacity that is needed, and so does a target whose layout
+would exceed `isize::MAX` bytes, which depends on the vector alone too.
 
 A checked fragment context is supplied to
 `HtmlFragmentParseRequest::new(source, context, limits)`; `with_options` also

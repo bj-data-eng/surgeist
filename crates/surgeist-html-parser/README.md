@@ -197,7 +197,8 @@ reservation work. That target depends only on the vector, never on a limit, and 
 admitted before it is allocated: a parse succeeds under a byte limit exactly when the
 limit holds the peak the same parse reports under generous limits, and a limit that holds
 the capacity needed but not the target refuses the reservation. Only an allocator refusal
-of the target falls back to the capacity that is needed.
+of the target falls back to the capacity that is needed, and so does a target whose layout
+would exceed `isize::MAX` bytes, which depends on the vector alone too.
 
 From the repository root, run focused checks through bounded `pisct run`:
 

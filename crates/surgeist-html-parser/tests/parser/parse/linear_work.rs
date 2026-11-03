@@ -834,7 +834,8 @@ fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doub
     // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
     // the `x` that follows reconstructs it, copying every attribute to the new element.
     // Only the reservation work is measured: copying the attributes also visits records
-    // quadratically in their number, which no reservation causes.
+    // quadratically in their number, which no reservation causes. Issue #1731 restores the
+    // total-work measure.
     assert_measures_at_most_two_point_two_times(
         [250, 500, 1_000, 2_000],
         |n| {
