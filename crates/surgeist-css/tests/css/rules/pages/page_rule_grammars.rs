@@ -361,9 +361,11 @@ fn page_body_recovery_rejects_invalid_margin_boxes_nested_rules_and_repeated_fai
                 CssErrorCode::InvalidAtRuleBody,
                 CssRecoveryAction::DropAtRule
             ),
+            // `.nested { color: blue; }` does not begin with an at-keyword, so
+            // it is a qualified rule (Syntax 3 §5.5.5).
             (
                 CssErrorCode::InvalidAtRuleBody,
-                CssRecoveryAction::DropAtRule
+                CssRecoveryAction::DropQualifiedRule
             ),
             (
                 CssErrorCode::UnknownProperty,

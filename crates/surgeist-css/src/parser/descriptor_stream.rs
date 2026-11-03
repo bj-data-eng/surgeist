@@ -904,10 +904,14 @@ where
             UnitKind::AtRule => (dropped.text(), dropped.end),
             _ => dropped.text_to_block(),
         };
+        // Only an at-keyword begins an at-rule (Syntax 3 §5.5.5); a unit that
+        // is neither a declaration nor an at-rule is a qualified rule.
         let action = if is_declaration_recovery_unit(text) {
             declaration
-        } else {
+        } else if crate::diagnostic::error::begins_with_at_keyword(text) {
             CssRecoveryAction::DropAtRule
+        } else {
+            CssRecoveryAction::DropQualifiedRule
         };
         // The span starts where the dropped unit does, whatever part of it the
         // text names.

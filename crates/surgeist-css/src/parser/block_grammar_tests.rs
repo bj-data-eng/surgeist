@@ -160,7 +160,7 @@ fn a_detached_margin_rule_admits_its_declarations_and_reports_what_it_drops() {
                 range_of(source, "margin: var(--a) {")
             ),
             (
-                CssRecoveryAction::DropAtRule,
+                CssRecoveryAction::DropQualifiedRule,
                 CssErrorCode::UnexpectedToken,
                 range_of(source, "1px;")
             ),
@@ -424,7 +424,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
     use CssErrorCode::{
         InvalidAtRuleBody, InvalidQualifiedRule, NestingLimit, UnexpectedEnd, UnexpectedToken,
     };
-    use CssRecoveryAction::{DropAtRule, DropQualifiedRule, StopAtNestingLimit};
+    use CssRecoveryAction::{DropQualifiedRule, StopAtNestingLimit};
     const TABLE: &[CeilingRow] = &[
         (
             "kf-body",
@@ -1009,7 +1009,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             255,
             true,
             1,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1018,7 +1018,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1027,7 +1027,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1036,7 +1036,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             1,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1045,7 +1045,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             2,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1054,7 +1054,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             2,
-            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 26, 27)],
         ),
         (
             "page-block",
@@ -1063,7 +1063,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             2,
-            &[(InvalidAtRuleBody, DropAtRule, 31, 32)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 31, 32)],
         ),
         (
             "page-block",
@@ -1072,7 +1072,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             2,
-            &[(InvalidAtRuleBody, DropAtRule, 31, 32)],
+            &[(InvalidAtRuleBody, DropQualifiedRule, 31, 32)],
         ),
         (
             "page-block",
@@ -1081,7 +1081,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             255,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 537)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 537)],
         ),
         (
             "page-block",
@@ -1090,7 +1090,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 539)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 539)],
         ),
         (
             "page-block",
@@ -1099,7 +1099,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 541)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 541)],
         ),
         (
             "page-block",
@@ -1108,7 +1108,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 2027)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 2027)],
         ),
         (
             "page-block",
@@ -1117,7 +1117,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 539)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 539)],
         ),
         (
             "page-block",
@@ -1126,7 +1126,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 2027)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 2027)],
         ),
         (
             "page-block",
@@ -1135,7 +1135,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 555)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 555)],
         ),
         (
             "page-block",
@@ -1144,7 +1144,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 557)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 557)],
         ),
         (
             "page-block",
@@ -1153,7 +1153,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             255,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 537)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 537)],
         ),
         (
             "page-block",
@@ -1162,7 +1162,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 539)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 539)],
         ),
         (
             "page-block",
@@ -1171,7 +1171,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 541)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 541)],
         ),
         (
             "page-block",
@@ -1180,7 +1180,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 2027)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 2027)],
         ),
         (
             "page-block",
@@ -1189,7 +1189,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 539)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 539)],
         ),
         (
             "page-block",
@@ -1198,7 +1198,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 2027)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 2027)],
         ),
         (
             "page-block",
@@ -1207,7 +1207,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 555)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 555)],
         ),
         (
             "page-block",
@@ -1216,7 +1216,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 557)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 557)],
         ),
         (
             "page-block",
@@ -1225,7 +1225,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             255,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 792)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 792)],
         ),
         (
             "page-block",
@@ -1234,7 +1234,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 795)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 795)],
         ),
         (
             "page-block",
@@ -1243,7 +1243,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 798)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 798)],
         ),
         (
             "page-block",
@@ -1252,7 +1252,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 26, 3027)],
+            &[(UnexpectedEnd, DropQualifiedRule, 26, 3027)],
         ),
         (
             "page-block",
@@ -1261,7 +1261,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 795)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 795)],
         ),
         (
             "page-block",
@@ -1270,7 +1270,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1000,
             true,
             2,
-            &[(UnexpectedToken, DropAtRule, 26, 3027)],
+            &[(UnexpectedToken, DropQualifiedRule, 26, 3027)],
         ),
         (
             "page-block",
@@ -1279,7 +1279,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             256,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 811)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 811)],
         ),
         (
             "page-block",
@@ -1288,7 +1288,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             257,
             true,
             1,
-            &[(UnexpectedEnd, DropAtRule, 31, 814)],
+            &[(UnexpectedEnd, DropQualifiedRule, 31, 814)],
         ),
         (
             "sheet",
@@ -1299,7 +1299,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 544),
-                (InvalidAtRuleBody, DropAtRule, 581, 582),
+                (InvalidAtRuleBody, DropQualifiedRule, 581, 582),
             ],
         ),
         (
@@ -1311,7 +1311,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 546),
-                (InvalidAtRuleBody, DropAtRule, 583, 584),
+                (InvalidAtRuleBody, DropQualifiedRule, 583, 584),
             ],
         ),
         (
@@ -1323,7 +1323,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 548),
-                (InvalidAtRuleBody, DropAtRule, 585, 586),
+                (InvalidAtRuleBody, DropQualifiedRule, 585, 586),
             ],
         ),
         (
@@ -1335,7 +1335,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 2034),
-                (InvalidAtRuleBody, DropAtRule, 2071, 2072),
+                (InvalidAtRuleBody, DropQualifiedRule, 2071, 2072),
             ],
         ),
         (
@@ -1347,7 +1347,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 546),
-                (InvalidAtRuleBody, DropAtRule, 596, 597),
+                (InvalidAtRuleBody, DropQualifiedRule, 596, 597),
             ],
         ),
         (
@@ -1359,7 +1359,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 34, 2034),
-                (InvalidAtRuleBody, DropAtRule, 2084, 2085),
+                (InvalidAtRuleBody, DropQualifiedRule, 2084, 2085),
             ],
         ),
         (
@@ -1371,7 +1371,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 39, 551),
-                (InvalidAtRuleBody, DropAtRule, 604, 605),
+                (InvalidAtRuleBody, DropQualifiedRule, 604, 605),
             ],
         ),
         (
@@ -1383,7 +1383,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (NestingLimit, StopAtNestingLimit, 39, 553),
-                (InvalidAtRuleBody, DropAtRule, 606, 607),
+                (InvalidAtRuleBody, DropQualifiedRule, 606, 607),
             ],
         ),
         (
@@ -1395,7 +1395,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 545),
-                (UnexpectedEnd, DropAtRule, 581, 1092),
+                (UnexpectedEnd, DropQualifiedRule, 581, 1092),
             ],
         ),
         (
@@ -1407,7 +1407,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
-                (UnexpectedEnd, DropAtRule, 583, 1096),
+                (UnexpectedEnd, DropQualifiedRule, 583, 1096),
             ],
         ),
         (
@@ -1419,7 +1419,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 549),
-                (UnexpectedEnd, DropAtRule, 585, 1100),
+                (UnexpectedEnd, DropQualifiedRule, 585, 1100),
             ],
         ),
         (
@@ -1431,7 +1431,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
-                (UnexpectedEnd, DropAtRule, 2071, 4072),
+                (UnexpectedEnd, DropQualifiedRule, 2071, 4072),
             ],
         ),
         (
@@ -1443,7 +1443,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
-                (UnexpectedToken, DropAtRule, 596, 1109),
+                (UnexpectedToken, DropQualifiedRule, 596, 1109),
             ],
         ),
         (
@@ -1455,7 +1455,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
-                (UnexpectedToken, DropAtRule, 2084, 4085),
+                (UnexpectedToken, DropQualifiedRule, 2084, 4085),
             ],
         ),
         (
@@ -1467,7 +1467,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 563),
-                (UnexpectedEnd, DropAtRule, 604, 1128),
+                (UnexpectedEnd, DropQualifiedRule, 604, 1128),
             ],
         ),
         (
@@ -1479,7 +1479,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 565),
-                (UnexpectedEnd, DropAtRule, 606, 1132),
+                (UnexpectedEnd, DropQualifiedRule, 606, 1132),
             ],
         ),
         (
@@ -1491,7 +1491,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 545),
-                (UnexpectedEnd, DropAtRule, 581, 1092),
+                (UnexpectedEnd, DropQualifiedRule, 581, 1092),
             ],
         ),
         (
@@ -1503,7 +1503,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
-                (UnexpectedEnd, DropAtRule, 583, 1096),
+                (UnexpectedEnd, DropQualifiedRule, 583, 1096),
             ],
         ),
         (
@@ -1515,7 +1515,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 549),
-                (UnexpectedEnd, DropAtRule, 585, 1100),
+                (UnexpectedEnd, DropQualifiedRule, 585, 1100),
             ],
         ),
         (
@@ -1527,7 +1527,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
-                (UnexpectedEnd, DropAtRule, 2071, 4072),
+                (UnexpectedEnd, DropQualifiedRule, 2071, 4072),
             ],
         ),
         (
@@ -1539,7 +1539,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
-                (UnexpectedToken, DropAtRule, 596, 1109),
+                (UnexpectedToken, DropQualifiedRule, 596, 1109),
             ],
         ),
         (
@@ -1551,7 +1551,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
-                (UnexpectedToken, DropAtRule, 2084, 4085),
+                (UnexpectedToken, DropQualifiedRule, 2084, 4085),
             ],
         ),
         (
@@ -1563,7 +1563,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 563),
-                (UnexpectedEnd, DropAtRule, 604, 1128),
+                (UnexpectedEnd, DropQualifiedRule, 604, 1128),
             ],
         ),
         (
@@ -1575,7 +1575,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 565),
-                (UnexpectedEnd, DropAtRule, 606, 1132),
+                (UnexpectedEnd, DropQualifiedRule, 606, 1132),
             ],
         ),
         (
@@ -1587,7 +1587,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 800),
-                (UnexpectedEnd, DropAtRule, 836, 1602),
+                (UnexpectedEnd, DropQualifiedRule, 836, 1602),
             ],
         ),
         (
@@ -1599,7 +1599,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 803),
-                (UnexpectedEnd, DropAtRule, 839, 1608),
+                (UnexpectedEnd, DropQualifiedRule, 839, 1608),
             ],
         ),
         (
@@ -1611,7 +1611,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 806),
-                (UnexpectedEnd, DropAtRule, 842, 1614),
+                (UnexpectedEnd, DropQualifiedRule, 842, 1614),
             ],
         ),
         (
@@ -1623,7 +1623,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 3035),
-                (UnexpectedEnd, DropAtRule, 3071, 6072),
+                (UnexpectedEnd, DropQualifiedRule, 3071, 6072),
             ],
         ),
         (
@@ -1635,7 +1635,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 803),
-                (UnexpectedToken, DropAtRule, 852, 1621),
+                (UnexpectedToken, DropQualifiedRule, 852, 1621),
             ],
         ),
         (
@@ -1647,7 +1647,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             2002,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 34, 3035),
-                (UnexpectedToken, DropAtRule, 3084, 6085),
+                (UnexpectedToken, DropQualifiedRule, 3084, 6085),
             ],
         ),
         (
@@ -1659,7 +1659,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 819),
-                (UnexpectedEnd, DropAtRule, 860, 1640),
+                (UnexpectedEnd, DropQualifiedRule, 860, 1640),
             ],
         ),
         (
@@ -1671,7 +1671,7 @@ fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_dri
             1001,
             &[
                 (InvalidQualifiedRule, DropQualifiedRule, 39, 822),
-                (UnexpectedEnd, DropAtRule, 863, 1646),
+                (UnexpectedEnd, DropQualifiedRule, 863, 1646),
             ],
         ),
     ];
