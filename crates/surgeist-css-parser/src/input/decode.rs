@@ -341,28 +341,78 @@ fn check_capacity(length: usize) -> Result<(), DecodeError> {
     }
 }
 
-/// Runs the decoder over `bytes` in fresh buffers of `chunk_size` bytes (at
-/// most [`CHUNK_BYTES`] and at least four), admitting the complete output of
-/// each buffer against `max_bytes` before storing it. A fixed fresh buffer is
-/// independent of the remaining output budget, so a small budget cannot stall
-/// the decoder. The chunk size is a parameter so that tests can exercise a
-/// four-byte sequence continued across buffers.
+/// The capacity that the decoded text grows to when it must hold `needed`
+/// bytes and has room for `capacity`: twice the capacity or `needed`,
+/// whichever is greater, but no more than `max_bytes` (which `needed` does not
+/// exceed) and no more than Rust's allocation interface can represent. Growing
+/// geometrically makes the copying that growth costs linear in the decoded
+/// size.
+const fn grown_capacity(capacity: usize, needed: usize, max_bytes: usize) -> usize {
+    let doubled = capacity.saturating_mul(2);
+    let target = if doubled > needed { doubled } else { needed };
+    let ceiling = if max_bytes < isize::MAX as usize {
+        max_bytes
+    } else {
+        isize::MAX as usize
+    };
+    if target < ceiling { target } else { ceiling }
+}
+
+/// Makes room in `output` for `needed` bytes in all, growing it geometrically
+/// (see [`grown_capacity`]). Returns whether the storage grew.
+fn reserve_output(
+    output: &mut String,
+    needed: usize,
+    max_bytes: usize,
+) -> Result<bool, DecodeError> {
+    if needed <= output.capacity() {
+        return Ok(false);
+    }
+    let capacity = grown_capacity(output.capacity(), needed, max_bytes);
+    output
+        .try_reserve_exact(capacity.saturating_sub(output.len()))
+        .map_err(|_| DecodeError::new(DecodeErrorKind::AllocationFailure))?;
+    Ok(true)
+}
+
+/// Runs the decoder over `bytes` in a fresh chunk of `chunk_size` bytes (at
+/// most [`CHUNK_BYTES`] and at least four) per call, admitting the complete
+/// output of each call against `max_bytes` before storing it. A fixed fresh
+/// chunk is independent of the remaining output budget, so a small budget
+/// cannot stall the decoder. The chunk size is a parameter so that tests can
+/// exercise a four-byte sequence continued across chunks.
 fn decode_bounded(
     bytes: &[u8],
     encoding: Encoding,
     max_bytes: usize,
     chunk_size: usize,
 ) -> Result<(String, Encoding, bool), DecodeError> {
+    decode_counting(bytes, encoding, max_bytes, chunk_size, || {})
+}
+
+/// [`decode_bounded`], calling `grew` each time the decoded text's storage
+/// grows, so that a test can count the growths.
+fn decode_counting(
+    bytes: &[u8],
+    encoding: Encoding,
+    max_bytes: usize,
+    chunk_size: usize,
+    mut grew: impl FnMut(),
+) -> Result<(String, Encoding, bool), DecodeError> {
     let mut decoder = encoding.0.new_decoder();
-    let mut buffer = [0_u8; CHUNK_BYTES];
-    let mut chunk_size = chunk_size.clamp(4, buffer.len());
+    let mut chunk_size = chunk_size.clamp(4, CHUNK_BYTES);
+    let mut chunk = String::new();
+    reserve_chunk(&mut chunk, chunk_size)?;
     let mut remaining = bytes;
     let mut output = String::new();
     let mut had_replacements = false;
     loop {
-        let (result, read, written, replaced) =
-            decoder.decode_to_utf8(remaining, &mut buffer[..chunk_size], true);
-        remaining = &remaining[read..];
+        chunk.clear();
+        // The decoder writes into the chunk's spare capacity and never grows
+        // it, so the chunk holds complete, valid UTF-8.
+        let (result, read, replaced) = decoder.decode_to_string(remaining, &mut chunk, true);
+        let written = chunk.len();
+        remaining = remaining.split_at(read.min(remaining.len())).1;
         had_replacements |= replaced;
         let length = output
             .len()
@@ -372,25 +422,31 @@ fn decode_bounded(
             return Err(DecodeError::new(DecodeErrorKind::DecodedUtf8ByteLimit));
         }
         check_capacity(length)?;
-        output
-            .try_reserve_exact(written)
-            .map_err(|_| DecodeError::new(DecodeErrorKind::AllocationFailure))?;
-        // The codec guarantees complete, valid UTF-8 in every written slice.
-        output.push_str(
-            std::str::from_utf8(&buffer[..written]).expect("encoding_rs guarantees UTF-8"),
-        );
+        if reserve_output(&mut output, length, max_bytes)? {
+            grew();
+        }
+        output.push_str(&chunk);
         if result == CoderResult::InputEmpty {
+            output.shrink_to_fit();
             return Ok((output, Encoding(decoder.encoding()), had_replacements));
         }
         if read == 0 && written == 0 {
             // A few legacy mappings produce several scalars atomically: grow
-            // the buffer, keeping the same decoder.
+            // the chunk, keeping the same decoder.
             chunk_size = chunk_size
                 .checked_mul(2)
-                .filter(|size| *size <= buffer.len())
+                .filter(|size| *size <= CHUNK_BYTES)
                 .ok_or(DecodeError::new(DecodeErrorKind::CapacityOverflow))?;
+            reserve_chunk(&mut chunk, chunk_size)?;
         }
     }
+}
+
+/// Makes the (empty) chunk hold `size` bytes.
+fn reserve_chunk(chunk: &mut String, size: usize) -> Result<(), DecodeError> {
+    chunk
+        .try_reserve_exact(size)
+        .map_err(|_| DecodeError::new(DecodeErrorKind::AllocationFailure))
 }
 
 #[cfg(test)]
@@ -443,6 +499,57 @@ mod tests {
             ),
             Ok(("�AAA�".to_owned(), Encoding(UTF_8), true))
         );
+    }
+
+    #[test]
+    fn the_decoded_text_grows_geometrically_not_once_per_chunk() {
+        // 16 MiB of ASCII is 4096 chunks of CHUNK_BYTES. A text that grows
+        // geometrically holds 2^12 bytes after the first chunk and doubles to
+        // 2^24: 13 growths in all. A text that grew for each chunk would grow
+        // 4096 times.
+        let bytes = vec![b'a'; 1 << 24];
+        let mut growths = 0_u32;
+        let (text, _, replaced) =
+            decode_counting(&bytes, Encoding(UTF_8), usize::MAX, CHUNK_BYTES, || {
+                growths += 1;
+            })
+            .unwrap();
+        assert_eq!(growths, 13);
+        assert!(!replaced);
+        assert_eq!(text.len(), 1 << 24);
+        assert!(text.bytes().all(|byte| byte == b'a'));
+    }
+
+    #[test]
+    fn the_decoded_text_never_grows_past_the_decoded_limit() {
+        // The limit is 10 000 bytes: the text grows to 4096, 8192 and then to
+        // the limit itself, not to 16 384.
+        let bytes = vec![b'a'; 10_000];
+        let mut growths = 0_u32;
+        let (text, _, _) = decode_counting(&bytes, Encoding(UTF_8), 10_000, CHUNK_BYTES, || {
+            growths += 1;
+        })
+        .unwrap();
+        assert_eq!(growths, 3);
+        assert_eq!(text.len(), 10_000);
+        assert_eq!(grown_capacity(0, 4096, 10_000), 4096);
+        assert_eq!(grown_capacity(4096, 8192, 10_000), 8192);
+        assert_eq!(grown_capacity(8192, 10_000, 10_000), 10_000);
+        assert_eq!(grown_capacity(8192, 8193, usize::MAX), 16_384);
+        assert_eq!(
+            grown_capacity(usize::MAX, 1, usize::MAX),
+            isize::MAX as usize
+        );
+    }
+
+    #[test]
+    fn a_decoded_text_has_no_spare_capacity() {
+        let bytes = vec![b'a'; 9000];
+        let text = decode(&bytes, DecodeHints::default(), DecodeLimits::default())
+            .unwrap()
+            .into_text();
+        assert_eq!(text.len(), 9000);
+        assert_eq!(text.capacity(), 9000);
     }
 
     #[test]
