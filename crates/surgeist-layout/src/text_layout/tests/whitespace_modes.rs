@@ -24,7 +24,7 @@ fn paragraph(text: &str, mode: WhiteSpace, wrap: Wrap, rtl: bool, tabs: bool) ->
 
 fn batch<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -53,11 +53,39 @@ fn batch<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -105,7 +133,7 @@ fn assert_copy(layout: &surgeist_text::Layout, length: usize, expected: &str) {
 
 fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
@@ -214,7 +242,16 @@ fn intrinsic<S: LayoutScalar>(
 fn split_spaces<S: LayoutScalar>() {
     for rtl in [false, true] {
         let p = paragraph("A  B", WhiteSpace::BreakSpaces, Wrap::Word, rtl, false);
-        let actual = batch::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+        let actual = batch::<S>(
+            &p,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            rtl,
+        );
         let placed = actual.placed_text()[0].layout();
         assert_eq!(placed.source().text().code_units(), [65, 32, 32, 66]);
         assert_copy(placed, 4, "A  B");
@@ -233,14 +270,35 @@ fn split_spaces<S: LayoutScalar>() {
             assert_eq!(line.measurements().alignment().advance(), 20.0);
         }
         for (available, expected) in [
-            (AvailableOf::MIN_CONTENT, 20.0),
-            (AvailableOf::MAX_CONTENT, 40.0),
+            (
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                20.0,
+            ),
+            (
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                40.0,
+            ),
         ] {
             let measured = intrinsic::<S>(&p, available, rtl);
             assert_eq!(measured.report.inline_extent, S::from_f64(expected));
         }
         let preserved = paragraph("A  B", WhiteSpace::Preserve, Wrap::Word, rtl, false);
-        let actual = batch::<S>(&preserved, AvailableOf::definite(S::from_f64(20.0)), rtl);
+        let actual = batch::<S>(
+            &preserved,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            rtl,
+        );
         let lines = selected(&actual);
         assert_eq!(lines[0].feedback().advance, 30.0);
         assert_eq!(lines[0].measurements().fit().advance(), 10.0);
@@ -267,7 +325,14 @@ fn forced_breaks<S: LayoutScalar>() {
                 rtl,
                 false,
             );
-            let measured = intrinsic::<S>(&p, AvailableOf::MAX_CONTENT, rtl);
+            let measured = intrinsic::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                rtl,
+            );
             assert_eq!(measured.report.inline_extent, S::from_f64(10.0));
             assert_eq!(
                 measured
@@ -294,7 +359,16 @@ fn forced_breaks<S: LayoutScalar>() {
                     .collect::<Vec<_>>(),
                 [4, 7, 8, 9]
             );
-            let actual = batch::<S>(&p, AvailableOf::definite(S::from_f64(100.0)), rtl);
+            let actual = batch::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                rtl,
+            );
             let placed = actual.placed_text()[0].layout();
             assert_eq!(
                 placed.source().text().code_units(),
@@ -329,7 +403,16 @@ fn retained_overflow<S: LayoutScalar>() {
         for wrap in [Wrap::Word, Wrap::None] {
             for width in [15.0, 40.0] {
                 let p = paragraph("X ", WhiteSpace::BreakSpaces, wrap, rtl, false);
-                let actual = batch::<S>(&p, AvailableOf::definite(S::from_f64(width)), rtl);
+                let actual = batch::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 let lines = selected(&actual);
                 assert_eq!(lines.len(), 1);
                 let line = &lines[0];
@@ -377,7 +460,14 @@ fn tab_contributions<S: LayoutScalar>() {
             (WhiteSpace::Preserve, 10.0),
         ] {
             let p = paragraph("A\tB", mode, Wrap::Word, rtl, true);
-            let min = intrinsic::<S>(&p, AvailableOf::MIN_CONTENT, rtl);
+            let min = intrinsic::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                rtl,
+            );
             assert_eq!(min.report.inline_extent, S::from_f64(minimum));
             assert_eq!(
                 min.paragraph
@@ -395,7 +485,14 @@ fn tab_contributions<S: LayoutScalar>() {
                     .advance(),
                 minimum
             );
-            let max = intrinsic::<S>(&p, AvailableOf::MAX_CONTENT, rtl);
+            let max = intrinsic::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                rtl,
+            );
             assert_eq!(max.report.inline_extent, S::from_f64(50.0));
             assert_eq!(max.paragraph.entries.len(), 1);
             assert_eq!(

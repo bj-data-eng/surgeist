@@ -7,6 +7,10 @@ use std::convert::Infallible;
 
 use surgeist::{layout, render, text};
 
+#[path = "support/native_viewport.rs"]
+mod native_viewport;
+use native_viewport::NativeViewport;
+
 struct Tree {
     inputs: [layout::LayoutInput; 4],
     non_box: layout::NodeInput,
@@ -169,11 +173,14 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     let batch = layout::compute_layout_with_flow(
         &capture,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(35.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(35.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     let float = batch

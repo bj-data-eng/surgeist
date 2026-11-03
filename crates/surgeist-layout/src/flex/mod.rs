@@ -1,5 +1,5 @@
 use super::{
-    AlignContent, AlignItems, AspectRatioOf, AvailableOf, BaselinesOf, BoxSizing, Compute,
+    AlignContent, AlignItems, AspectRatioOf, AxisSizingRequestOf, BaselinesOf, BoxSizing, Compute,
     ComputeInputOf, ComputeOutputOf, ContainingLayoutContext, Direction, Edges, FlexDirection,
     FlexWrap, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus,
     ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
@@ -42,8 +42,8 @@ use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
 use items::{
-    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, clamp_available, collect_items,
-    final_layout,
+    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout,
+    has_eligible_items,
 };
 use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
 use scroll::{
@@ -102,72 +102,50 @@ where
             height: Some(height),
         } = constants.node_outer_size
     {
-        return Ok(ComputeOutputOf::<S>::from_outer_size(Size::new(
-            width, height,
-        )));
+        let output = ComputeOutputOf::<S>::from_outer_size(Size::new(width, height));
+        // A requested named fact needs the actual eligible item set even when
+        // known dimensions make child layout unnecessary.
+        return Ok(
+            if input.named_baseline_demand() != crate::output::NamedBaselineDemand::None
+                && !has_eligible_items::<Tree, M>(tree, node)
+            {
+                output.with_named_baselines(crate::NamedBaselinesOf::absent())
+            } else {
+                output
+            },
+        );
     }
 
-    let collected_items = collect_items(tree, node, &constants, input.run_mode())?;
-    let has_collapsed_item = collected_items.iter().any(CollectedFlexItem::is_collapsed);
-    let (layout_constants, resolved_items, lines) = if has_collapsed_item {
-        let first_lines = collect_flex_lines(
-            &collected_items,
-            &constants,
-            FlexLineCollectionRound::Normal,
-        )
-        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (_, _, first_lines) = resolve_flex_round(
-            tree,
-            node,
-            input,
-            &constants,
-            collected_items.clone(),
-            first_lines,
-        )?;
-        let struts = CollapsedFlexStruts::capture(&collected_items, &first_lines);
-        let second_collection_lines = collect_flex_lines(
-            &collected_items,
-            &constants,
-            FlexLineCollectionRound::Collapsed,
-        )
-        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (second_items, second_lines) =
-            struts.prepare_second_round(&collected_items, &second_collection_lines);
-        resolve_flex_round(tree, node, input, &constants, second_items, second_lines)?
-    } else {
-        let lines = collect_flex_lines(
-            &collected_items,
-            &constants,
-            FlexLineCollectionRound::Normal,
-        )
-        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        resolve_flex_round(
-            tree,
-            node,
-            input,
-            &constants,
-            collected_items.clone(),
-            lines,
-        )?
+    let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
+    let (mut layout_constants, mut resolved_items, mut lines) =
+        resolve_flex_collection(tree, node, input, &constants, &collected_items)?;
+    let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
+    let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
+        self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |projection, _| {
+            flex_container_scroll_box::<_, S, M>(
+                node,
+                input.run_mode(),
+                projection,
+                constants,
+                size,
+            )
+        })
     };
-    let container_sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
-    let final_scroll_box = if input.run_mode().is_perform_layout() {
-        Some(self::input::with_flex_scroll_projections::<Tree, M, _>(
-            tree,
-            node,
-            |scroll_box, _| {
-                flex_container_scroll_box::<_, S, M>(
-                    node,
-                    input.run_mode(),
-                    scroll_box,
-                    &layout_constants,
-                    container_sizes.output,
-                )
-            },
-        )?)
-    } else {
-        None
-    };
+    // Normal size queries need the same accepted inline frame as publication.
+    // Constructing this internal box does not stage output geometry.
+    let mut final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
+    if !collected_items.is_empty()
+        && let Some(contents_constants) = constants.normal_inline_contents(final_scroll_box)
+    {
+        // Fix the cyclic inline extent, then perform the real Normal main
+        // calculation. The entry context retains actual block constraints;
+        // the earlier content-derived main size is not a final allocation.
+        collected_items = collect_items(tree, node, &contents_constants, input.run_mode())?;
+        (layout_constants, resolved_items, lines) =
+            resolve_flex_collection(tree, node, input, &contents_constants, &collected_items)?;
+        sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
+        final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
+    }
     let (absolute_contributions, final_items) = if input.run_mode().is_perform_layout() {
         let final_items = final_layout(
             tree,
@@ -176,12 +154,8 @@ where
             &resolved_items,
             &layout_constants,
         )?;
-        let absolute_contributions = layout_absolute_children(
-            tree,
-            node,
-            &layout_constants,
-            final_scroll_box.expect("performed flex layout derives its final canonical box"),
-        )?;
+        let absolute_contributions =
+            layout_absolute_children(tree, node, &layout_constants, final_scroll_box)?;
         layout_hidden_children(
             tree,
             node,
@@ -198,8 +172,7 @@ where
         let final_items = final_items
             .as_deref()
             .expect("performed flex layout retains its final in-flow items");
-        let scroll_box =
-            final_scroll_box.expect("performed flex layout retains its final canonical box");
+        let scroll_box = final_scroll_box;
         let mut contributions = flex_scroll_contributions(
             final_items,
             &absolute_contributions,
@@ -237,8 +210,15 @@ where
         final_items.as_deref(),
         &lines,
         final_geometry_and_content_size.map(|(_, content_size)| content_size),
-        container_sizes,
+        sizes,
     );
+    // Inspect the original eligible collection, not the resolved lines: a
+    // nonempty collection of collapsed items is not proof of named absence.
+    let output = if collected_items.is_empty() {
+        output.with_named_baselines(crate::NamedBaselinesOf::absent())
+    } else {
+        output
+    };
     Ok(
         final_geometry_and_content_size.map_or(output, |(scroll_geometry, _)| {
             retain_flex_scroll_geometry(output, scroll_geometry)
@@ -251,6 +231,53 @@ type ResolvedFlexRound<Tree> = (
     Vec<ResolvedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
     Vec<FlexLine<<Tree as Traverse>::Scalar>>,
 );
+
+fn resolve_flex_collection<'input, Tree, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let has_collapsed_item = collected_items.iter().any(CollectedFlexItem::is_collapsed);
+    Ok(if has_collapsed_item {
+        let first_lines =
+            collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
+                .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+        let (_, _, first_lines) = resolve_flex_round(
+            tree,
+            node,
+            input,
+            constants,
+            collected_items.to_vec(),
+            first_lines,
+        )?;
+        let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
+        let second_collection_lines = collect_flex_lines(
+            collected_items,
+            constants,
+            FlexLineCollectionRound::Collapsed,
+        )
+        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+        let (second_items, second_lines) =
+            struts.prepare_second_round(collected_items, &second_collection_lines);
+        resolve_flex_round(tree, node, input, constants, second_items, second_lines)?
+    } else {
+        let lines = collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+        resolve_flex_round(
+            tree,
+            node,
+            input,
+            constants,
+            collected_items.to_vec(),
+            lines,
+        )?
+    })
+}
 
 fn resolve_flex_round<'input, Tree, M>(
     tree: &mut Tree,
@@ -282,6 +309,7 @@ struct Constants<S: LayoutScalar> {
     axes: FlexAxes,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
+    percentage_parent_size: Size<Option<S>>,
     min_outer_size: Size<Option<S>>,
     max_outer_size: Size<Option<S>>,
     max_inner_size: Size<Option<S>>,
@@ -294,14 +322,18 @@ struct Constants<S: LayoutScalar> {
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
     gap: Size<S>,
     gap_input: Size<LengthOf<S>>,
+    // Entry-qualified own dimensions for this scrollbar pass. None denotes a
+    // cyclic percentage gap, which uses numeric zero, not a missing basis.
+    gap_percentage_basis: Size<Option<S>>,
     align_items: AlignItems,
     authored_align_content: Option<AlignContent>,
     align_content: AlignContent,
     authored_justify_content: Option<AlignContent>,
     justify_content: AlignContent,
     wraps: bool,
-    available: Size<AvailableOf<S>>,
-    available_main: AvailableOf<S>,
+    sizing_request: crate::SizingRequestOf<S>,
+    positioned_fallback_limits: Size<crate::OrthogonalFallbackLimitOf<S>>,
+    available_main: AxisSizingRequestOf<S>,
 }
 
 impl<S: LayoutScalar> Constants<S> {
@@ -416,7 +448,12 @@ impl<S: LayoutScalar> Constants<S> {
                 scroll_box_source.scrollbar_width.get() + scroll_box_source.scrollbar_width.get(),
             );
         let scroll_box_size = node_outer_size
-            .or(input.available().map(AvailableOf::into_option))
+            .or(input.sizing_request().axes().map(|request| {
+                request
+                    .space()
+                    .definite_size()
+                    .map(crate::NonNegativeFiniteOf::get)
+            }))
             .or(max_size)
             .unwrap_or(unconstrained_scroll_box_size)
             .zip_map(padding_border, |size, minimum| size.max(minimum));
@@ -436,15 +473,64 @@ impl<S: LayoutScalar> Constants<S> {
         let gap = style
             .gap
             .zip_map(node_inner_size, |length, basis| {
-                resolve_length_or_zero(length, basis)
+                resolve_length_or_zero(length, Some(basis.unwrap_or(S::ZERO)))
             })
             .transpose_with_node(tree, node)?;
 
+        let fallback_source = crate::scroll::MeasuredLeafContentBoxInsetSourceOf {
+            flow_axes,
+            computed_overflow: scroll_box_source.computed_overflow,
+            item_is_replaced: scroll_box_source.item_is_replaced,
+            scrollbar_gutter: scroll_box_source.scrollbar_gutter,
+            scrollbar_width: scroll_box_source.scrollbar_width,
+            settled_auto_scrollbars: input.settled_auto_scrollbars(),
+            padding,
+            border,
+        };
+        let fixed_outer = if input.sizing_mode() == SizingMode::InherentSize {
+            node_outer_size
+        } else {
+            input.known()
+        };
+        let fallback_sources = crate::layout_math::qualify_fixed_fallback_sources(
+            input,
+            SizingAlgorithm::Flex,
+            &style.common,
+            fixed_outer,
+            box_sizing_adjustment,
+            crate::scroll::UsedOverflow::from_computed(
+                style.common.overflow,
+                style.common.item_is_replaced,
+            )
+            .is_scroll_container(),
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error))?;
+        let fallback = crate::layout_math::child_orthogonal_fallback(
+            input.sizing_request().orthogonal_fallback(),
+            fallback_sources.definite_outer,
+            fallback_sources.minimum_outer,
+            fallback_sources.maximum_outer,
+            fallback_source,
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+        let positioned_fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
+            fallback_sources.minimum_outer,
+            fallback_sources.maximum_outer,
+            crate::scroll::measured_leaf_content_box_inset(
+                crate::scroll::MeasuredLeafContentBoxInsetSourceOf {
+                    padding: Edges::ZERO,
+                    ..fallback_source
+                },
+            )
+            .sum_axes(),
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
         Ok(Self {
             flow_axes,
             axes,
             node_outer_size,
             node_inner_size,
+            percentage_parent_size: node_inner_size,
             min_outer_size: min_size,
             max_outer_size: max_size,
             max_inner_size,
@@ -457,6 +543,7 @@ impl<S: LayoutScalar> Constants<S> {
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             gap,
             gap_input: *style.gap,
+            gap_percentage_basis: node_inner_size,
             align_items: style.align_items.unwrap_or(AlignItems::Stretch),
             authored_align_content: style.align_content,
             align_content: style.align_content.unwrap_or(AlignContent::Stretch),
@@ -466,14 +553,63 @@ impl<S: LayoutScalar> Constants<S> {
                 style.flex_wrap,
                 super::FlexWrap::Wrap | super::FlexWrap::WrapReverse
             ),
-            available: input.available(),
-            available_main: axes.main_size(input.available()),
+            sizing_request: input.sizing_request().with_orthogonal_fallback(fallback),
+            positioned_fallback_limits,
+            available_main: axes.main_size(input.sizing_request().axes()),
         })
+    }
+
+    fn normal_inline_contents(self, accepted: CanonicalScrollBoxOf<S>) -> Option<Self> {
+        let axes = self.flow_axes;
+        let mut percentage_parent = axes.logical_size(self.percentage_parent_size);
+        if percentage_parent.inline.is_some()
+            || axes
+                .logical_size(self.sizing_request.axes())
+                .inline
+                .operation()
+                != crate::SizingOperation::Normal
+        {
+            return None;
+        }
+        // Use the accepted unrounded inline content extent. All block sizing,
+        // availability and maximum authority still come from the entry context.
+        let mut outer = axes.logical_size(self.node_outer_size);
+        let mut inner = axes.logical_size(self.node_inner_size);
+        outer.inline = Some(axes.logical_size(accepted.border_box().size()).inline);
+        inner.inline = Some(axes.logical_size(accepted.content_box().size()).inline);
+        percentage_parent.inline = inner.inline;
+        let inline_edges = |original, used| {
+            let mut original = axes.logical_edges(original);
+            let used = axes.logical_edges(used);
+            original.inline_start = used.inline_start;
+            original.inline_end = used.inline_end;
+            axes.physical_edges(original)
+        };
+        let mut contents = self;
+        contents.node_outer_size = axes.physical_size(outer);
+        contents.node_inner_size = axes.physical_size(inner);
+        contents.percentage_parent_size = axes.physical_size(percentage_parent);
+        contents.scrollport_inset = inline_edges(
+            self.scrollport_inset,
+            accepted.effective_border() + accepted.effective_gutter(),
+        );
+        contents.content_box_inset =
+            inline_edges(self.content_box_inset, accepted.content_box_inset());
+        contents.max_inner_size = self
+            .max_outer_size
+            .sub_optional_unchecked(contents.content_box_inset.sum_axes())
+            .max_optional(Size::ZERO.map(Some));
+        Some(contents)
     }
 
     fn with_final_scroll_box(mut self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
         self.node_outer_size = scroll_box.border_box().size().map(Some);
         self.node_inner_size = scroll_box.content_box().size().map(Some);
+        self.percentage_parent_size = self
+            .percentage_parent_size
+            .zip_map(scroll_box.content_box().size(), |original, used| {
+                original.map(|_| used)
+            });
         self.scrollport_inset = scroll_box.effective_border() + scroll_box.effective_gutter();
         self.non_gutter_box_inset = scroll_box.effective_border() + scroll_box.effective_padding();
         self.content_box_inset = scroll_box.content_box_inset();
@@ -1097,18 +1233,24 @@ where
             )
         })
         .map(|cross| cross.max(padding_border_cross));
-    let available_cross = clamp_available(
-        constants
-            .axes
-            .cross_size(constants.node_inner_size)
-            .map(AvailableOf::definite)
-            .unwrap_or(constants.axes.cross_size(constants.available)),
+    let cross_request = crate::layout_math::with_available_extent(
+        constants.axes.cross_size(constants.sizing_request.axes()),
+        constants.axes.cross_size(constants.node_inner_size),
+    )
+    .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+    let available_cross = crate::layout_math::clamp_axis_request_space(
+        cross_request,
         constants.axes.cross_size(item.min_size),
         constants.axes.cross_size(item.max_size),
-    );
-    let available_cross = match available_cross {
-        AvailableOf::Definite(value) => AvailableOf::Definite(value.max(padding_border_cross)),
-        other => other,
+    )
+    .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+    let available_cross = if let Some(extent) = available_cross.space().definite_size() {
+        available_cross.with_space(
+            crate::layout_math::checked_available_space(extent.get().max(padding_border_cross))
+                .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
+        )
+    } else {
+        available_cross
     };
     let measured_cross = if let Some(authored_cross) = authored_cross {
         authored_cross
@@ -1137,20 +1279,25 @@ where
                         Some(constants.axes.main_size(item.target_size)),
                         authored_cross,
                     ),
-                    constants.node_inner_size,
+                    constants.percentage_parent_size,
                     ContainingLayoutContext::new(
                         constants.flow_axes,
                         ParentFormattingContext::Flex,
                     ),
-                    constants.axes.size_from_main_cross(
-                        item.intrinsic_flex_basis.unwrap_or_else(|| {
-                            constants
-                                .axes
-                                .main_size(constants.node_inner_size)
-                                .map(AvailableOf::definite)
-                                .unwrap_or(AvailableOf::MAX_CONTENT)
-                        }),
-                        available_cross,
+                    constants.sizing_request.with_axes(
+                        constants.axes.size_from_main_cross(
+                            crate::layout_math::with_available_extent(
+                                crate::AxisSizingRequestOf::new(
+                                    crate::AvailableSpaceOf::Indefinite,
+                                    crate::SizingOperation::Normal,
+                                ),
+                                Some(constants.axes.main_size(item.target_size)),
+                            )
+                            .map_err(|error| {
+                                crate::error::sizing_resolution_error(item.node, error.into())
+                            })?,
+                            available_cross,
+                        ),
                     ),
                 )
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
@@ -1209,7 +1356,9 @@ fn container_sizes<Node, S: LayoutScalar>(
         .main_size(constants.node_outer_size)
         .is_none()
         && lines.len() > 1
-        && let AvailableOf::Definite(available_main) = constants.axes.main_size(input.available())
+        && let Some(available_main) = crate::layout_math::normal_available_size(
+            constants.axes.main_size(input.sizing_request().axes()),
+        )
     {
         output_size = constants.axes.with_main_size(
             output_size,
@@ -1336,7 +1485,17 @@ mod fri06_c13_t06_characterization_tests {
                 containing_flow_axes,
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         )
     }
 

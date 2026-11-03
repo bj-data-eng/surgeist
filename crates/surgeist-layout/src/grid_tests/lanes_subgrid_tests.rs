@@ -11,11 +11,10 @@ use super::fixtures::{
     fri08_c02_flex_track, fri08_c02_stretch_track, fri08_c02_stretch_tree,
     fri08_c02_track_mix_tree, fri08_c02_track_sizes, fri08_c03_auto_fit_batch,
     fri08_c03_auto_fit_named_repeat, fri08_c04_standalone_intrinsic_minimum_width,
-    fri08_c06r_assert_cold_warm, inherited_placement_group, inherited_placement_member,
-    inherited_placement_witness, invalid_numeric_lp, local_line_names, lp,
-    single_grid_placement_context, subgrid_axis_report, subgrid_child_parent_context,
+    fri08_c06r_assert_cold_warm, inherited_placement_member, inherited_placement_witness,
+    invalid_numeric_lp, local_line_names, lp, subgrid_axis_report, subgrid_child_parent_context,
     subgrid_child_parent_context_with_geometry, subgrid_eligibility, subgrid_track,
-    subgrid_track_of, tagged_baseline, traversal_leaf, vertical_baseline_measure,
+    subgrid_track_of, traversal_leaf, vertical_baseline_measure,
     with_projected_subgrid_child_input,
 };
 use super::*;
@@ -25,7 +24,11 @@ fn child_subgrid_gap<S: LayoutScalar>(
     axis: GridAxisKind,
     area_size: Size<S>,
 ) -> Result<ResolvedSubgridGap<S>, crate::LengthResolutionStatus<S>> {
-    super::child::child_subgrid_gap(&grid_container_projection!(style), axis, area_size)
+    super::child::child_subgrid_gap(
+        &grid_container_projection!(style),
+        axis,
+        area_size.map(Some),
+    )
 }
 
 fn needs_intrinsic_subgrid_context<Node: Copy, S: LayoutScalar>(
@@ -522,12 +525,28 @@ fn assert_fri08_c02r_lanes_stretch_exclusions<S: LayoutScalar>() {
                     tracks: vec![fri08_c02_stretch_track(MinTrackSizingOf::<S>::MIN_CONTENT)],
                     measurements: &[20.0],
                 });
-            let indefinite_batch = compute_layout(
-                &indefinite_tree,
-                1,
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-                    .expect("indefinite lanes track-phase viewport"),
-            )
+            let indefinite_batch = compute_layout(&indefinite_tree, 1, {
+                let axes = Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                ));
+                let definite = axes.map(|axis| axis.space().definite_size());
+                crate::LayoutRootRequestOf::standalone(
+                    SizingRequestOf::new(
+                        axes,
+                        OrthogonalFallbackOf::new(
+                            definite,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    crate::geometry::FlowAxes::new(
+                        crate::WritingMode::HorizontalTb,
+                        crate::Direction::Ltr,
+                    ),
+                    definite,
+                )
+            })
             .expect("indefinite lanes track sizing completes");
             let indefinite_size = indefinite_flow_axes
                 .logical_size(fri08_c01_placement_output(&indefinite_batch, 2).size);
@@ -713,8 +732,33 @@ where
             column: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Column),
             row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
         };
+        let mut parent_column_functions = Vec::new();
+        let mut parent_row_functions = Vec::new();
+        extend_auto_tracks(
+            &mut parent_column_functions,
+            &parent_style.grid_auto_columns,
+            None,
+            scalar(10.0),
+            4,
+        )
+        .unwrap();
+        extend_auto_tracks(
+            &mut parent_row_functions,
+            &parent_style.grid_auto_rows,
+            None,
+            S::ZERO,
+            1,
+        )
+        .unwrap();
         let context = subgrid_child_parent_context_with_geometry(
             SubgridChildParentContextInput {
+                minimum_functions: GridMinimumParentFunctions {
+                    columns: Some(GridMinimumTrackFunctions::new(
+                        &parent_column_functions,
+                        None,
+                    )),
+                    rows: Some(GridMinimumTrackFunctions::new(&parent_row_functions, None)),
+                },
                 item,
                 child_style: &child_style,
                 area: GridArea {
@@ -731,10 +775,6 @@ where
                 parent_named_columns: &NamedGridLines::new(GridAxisKind::Column, 4),
                 parent_named_rows: &NamedGridLines::new(GridAxisKind::Row, 1),
                 parent_area_facts: None,
-                parent_baseline_groups: &GridBaselineGroups {
-                    columns: vec![TrackBaselineGroup::default(); 4],
-                    rows: vec![TrackBaselineGroup::default()],
-                },
                 margin: Edges::all(Some(S::ZERO)),
                 border: Edges::all(S::ZERO),
                 padding: Edges::all(S::ZERO),
@@ -782,9 +822,26 @@ where
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::Grid,
                 ),
-                Size::new(
-                    AvailableOf::Definite(scalar(190.0)),
-                    AvailableOf::Definite(scalar(20.0)),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(scalar(190.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(scalar(20.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
                 ),
             ),
             context,
@@ -969,15 +1026,31 @@ fn fri08_c02_auto_fit_public_active_subgrid_preserves_space_between_boundary_geo
             },
         );
 
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequest::viewport(Size::new(
-            Available::Definite(500.0),
-            Available::Definite(40.0),
-        ))
-        .expect("finite active inherited-axis viewport"),
-    )
+    let batch = compute_layout(&tree, 1, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(500.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequest::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("active inherited-axis layout");
     let subgrid = fri08_c01_placement_output(&batch, 2);
     let second_track_child = fri08_c01_placement_output(&batch, 3);
@@ -1374,12 +1447,30 @@ fn fri06_c07_subgrid_rtl_mismatches<S: LayoutScalar>() -> Vec<String> {
     let mut physical_inline_mismatches = Vec::new();
     for row in FRI06_C07_SUBGRID_RTL_ROWS {
         let case = fri06_c07_subgrid_rtl_tree::<S>(row);
-        let batch = compute_layout(
-            &case.tree,
-            0,
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(400.0))))
-                .expect("RTL subgrid viewport is valid"),
-        )
+        let batch = compute_layout(&case.tree, 0, {
+            let axes = Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(400.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ));
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        })
         .expect("RTL subgrid alignment computes through the public front door");
         let inline_grid =
             fri06_c07_height_output(batch.unrounded_entries(), case.target_inline_grid);
@@ -1450,7 +1541,23 @@ fn fri05_c05_grid_geometry_measurement_remains_absent_while_grid_lanes_publish()
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(40.0), Available::definite(30.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(30.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1960,11 +2067,18 @@ where
         SourceIndex::new(5),
     ]);
     let constants = Constants {
+        child_orthogonal_fallback: OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         explicit_definite_content_size: Size::NONE,
         node_outer_size: Size::NONE,
         node_inner_size: Size::NONE,
         node_min_size: Size::NONE,
+        fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
         node_max_size: Size::NONE,
         available_inner_size: Size::NONE,
         content_box_inset: Edges::ZERO,
@@ -1976,34 +2090,110 @@ where
     let container_input = compute.node_input(0);
     let container_style = grid_container_projection!(container_input);
     let subgrid_report = collect_subgrid_report(&container_style, &placements);
-    let intrinsic_sizes = lane_intrinsic_track_sizes(
+    let row_tracks =
+        expand_track_components(&container_input.grid_template_rows, None, S::ZERO, None).unwrap();
+    let lines = GridLines {
+        column_explicit_start: 0,
+        column_explicit_count: 2,
+        row_explicit_start: 0,
+        row_explicit_count: 1,
+    };
+    let named_columns = named::NamedGridLines::new(GridAxisKind::Column, tracks.len());
+    let named_rows = named::NamedGridLines::new(GridAxisKind::Row, row_tracks.len());
+    let grid = IntrinsicGrid {
+        style: &container_style,
+        constants: &constants,
+        sizing_flow_axes: constants.flow_axes,
+        track_basis: constants.flow_axes.logical_size(constants.node_inner_size),
+        minimum_functions: GridMinimumParentFunctions {
+            columns: Some(GridMinimumTrackFunctions::new(&tracks, None)),
+            rows: Some(GridMinimumTrackFunctions::new(&row_tracks, None)),
+        },
+        column_tracks: &tracks,
+        row_tracks: &row_tracks,
+        gap: LogicalSizeOf::new(S::ZERO, S::ZERO),
+        column_gutters: None,
+        row_gutters: None,
+        lines,
+        named_columns: &named_columns,
+        named_rows: &named_rows,
+        area_facts: None,
+        subgrid_report: &subgrid_report,
+        placements: &placements,
+        query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
+    };
+    let rows = lane_intrinsic_contribution_rows(
         &mut compute,
         0,
         LaneIntrinsicTrackSizeInput {
+            grid,
+            frame: intrinsic_stage::IntrinsicStageFrame {
+                axis: GridAxisKind::Column,
+                stage: GridSizingStage {
+                    first_axis: GridAxisKind::Column,
+                    through: GridSizingPhase::InitialFirst,
+                },
+                columns: None,
+                rows: None,
+                observed_axis: None,
+            },
             container_style: &container_style,
             constants: &constants,
             axis: GridAxisKind::Column,
             tracks: &tracks,
             gap: S::ZERO,
-            available: AvailableOf::MAX_CONTENT,
-            available_basis: None,
             gutters: None,
-            lines: GridLines {
-                column_explicit_start: 0,
-                column_explicit_count: 2,
-                row_explicit_start: 0,
-                row_explicit_count: 1,
-            },
+            lines,
             placements: &placements,
             subgrid_report: &subgrid_report,
         },
     )
     .expect("intrinsic collection succeeds")
     .expect("intrinsic placement is valid");
+    assert_eq!(rows.len(), 2);
+    for (span, value) in [
+        (GridTrackSpan::new(1, 2), S::from_f64(80.0)),
+        (GridTrackSpan::new(1, 3), S::from_f64(100.0)),
+    ] {
+        let row = rows
+            .iter()
+            .find(|row| row.span == span)
+            .expect("actual Lane span is retained");
+        assert_eq!(
+            [
+                row.contributions.minimum,
+                row.contributions.min_content,
+                row.contributions.max_content
+            ],
+            [value; 3],
+            "fixed authored widths retain each actual purpose at its source span",
+        );
+    }
+    let intrinsic_phases = resolve_grid_contribution_rows(
+        SpanningTrackContext {
+            tracks: &tracks,
+            basis: None,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            gap: S::ZERO,
+            gutters: None,
+            base_floors: &[],
+        },
+        &rows,
+    )
+    .expect("collected row phases are valid");
     assert_eq!(
-        intrinsic_sizes,
+        intrinsic_phases.base_sizes,
         vec![S::from_f64(80.0), S::from_f64(20.0)],
         "overlapping definite spans use the ordinary contribution leveling phase in order-modified sequence"
+    );
+    // Grid 1 §11.5 carries the existing first-track occupancy through the
+    // spanning phases: a 100-wide span needs only the remaining 20 after 80.
+    assert_eq!(
+        intrinsic_phases.growth_limits,
+        vec![Some(S::from_f64(80.0)), Some(S::from_f64(20.0))],
     );
 
     let output = compute_grid(
@@ -2019,12 +2209,28 @@ where
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .expect("order-modified grid-lanes layout succeeds");
 
-    assert_eq!(output.size.width, S::from_f64(130.0));
+    assert_eq!(output.size.width, S::from_f64(100.0));
     for (node, expected_y) in [(3, 0.0), (5, 20.0), (1, 50.0), (6, 60.0)] {
         let layout = tree.layout(node).expect("in-flow lane child is staged");
         assert_eq!(layout.source_index, SourceIndex::new((node - 1) as usize));
@@ -2101,11 +2307,18 @@ where
             let container_projection = grid_container_projection!(&container_style);
             let child_projection = grid_item_projection!(&child_style);
             let constants = Constants {
+                child_orthogonal_fallback: OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
                 flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 explicit_definite_content_size: Size::NONE,
                 node_outer_size: Size::NONE,
                 node_inner_size: Size::NONE,
                 node_min_size: Size::NONE,
+                fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+                fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
                 node_max_size: Size::NONE,
                 available_inner_size: Size::NONE,
                 content_box_inset: Edges::ZERO,
@@ -2252,7 +2465,19 @@ where
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::splat(AvailableOf::definite(S::from_f64(80.0))),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("order-modified ordinary-grid layout succeeds");
@@ -2337,7 +2562,17 @@ fn fri04_c03_grid_track_grid_and_lanes_consume_nested_properties_on_both_axes_an
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::splat(Available::definite(200.0)),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("grid property calculations resolve");
@@ -2368,7 +2603,17 @@ fn fri04_c03_grid_track_grid_and_lanes_consume_nested_properties_on_both_axes_an
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::splat(Available::definite(200.0)),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("negative complete calculations clamp after evaluation");
@@ -2411,7 +2656,27 @@ fn fri04_c03_grid_track_grid_and_lanes_preserve_missing_and_definite_property_ba
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::definite(120.0), Available::definite(200.0)),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(200.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("definite property bases resolve");
@@ -2436,7 +2701,17 @@ fn fri04_c03_grid_track_grid_and_lanes_preserve_missing_and_definite_property_ba
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::splat(Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("missing property bases retain intrinsic sizing");
@@ -2494,7 +2769,19 @@ fn fri04_c03_grid_track_grid_and_lanes_propagate_invalid_property_numeric() {
                             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                             ParentFormattingContext::NoParent,
                         ),
-                        Size::splat(Available::definite(f32::MAX)),
+                        SizingRequestOf::new(
+                            Size::splat(AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(f32::MAX).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            )),
+                            OrthogonalFallbackOf::new(
+                                Size::NONE,
+                                crate::NearestScrollportOf::Absent,
+                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                     ),
                 )
                 .expect_err("invalid nested grid property numeric must fail");
@@ -2819,7 +3106,23 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -2861,7 +3164,23 @@ fn grid_lanes_content_size_preserves_resolved_track_sum() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2968,7 +3287,23 @@ fn named_grid_lanes_intrinsic_sizing_uses_resolved_raw_grid_axis_placement() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3033,7 +3368,23 @@ fn named_grid_lanes_resolve_repeated_named_start_and_end_lines() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3091,7 +3442,23 @@ fn grid_lanes_with_rows_template_uses_columns_as_lane_axis_for_intrinsic_width()
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3137,67 +3504,349 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::definite(72.0), Available::MIN_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::definite(72.0), Available::MIN_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available_width(Available::MAX_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MaxContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(54.0, 30.0)))
-                .available_width(Available::MIN_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(54.0, 30.0)))
-                .available(Size::new(
-                    Available::definite(54.0),
-                    Available::definite(15.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(15.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(15.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .known(Size::new(Some(72.0), None))
                 .parent(Size::new(Some(72.0), Some(0.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .parent(Size::new(Some(72.0), Some(0.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(54.0, 30.0)))
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(None, Some(30.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::definite(30.0))),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(54.0, 30.0)))
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(Some(72.0), Some(30.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::definite(30.0))),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
@@ -3205,10 +3854,42 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(Some(72.0), Some(30.0)))
-                .available(Size::new(
-                    Available::definite(72.0),
-                    Available::definite(30.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
@@ -3216,10 +3897,42 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(Some(54.0), Some(30.0)))
-                .available(Size::new(
-                    Available::definite(54.0),
-                    Available::definite(30.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
@@ -3227,55 +3940,245 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(Some(54.0), Some(30.0)))
                 .parent(Size::new(Some(54.0), Some(30.0)))
-                .available(Size::new(
-                    Available::definite(54.0),
-                    Available::definite(30.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(54.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available_width(Available::MIN_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available_width(Available::MAX_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MaxContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(
-                    Available::definite(72.0),
-                    Available::definite(15.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(15.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(15.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .known(Size::new(Some(72.0), None))
                 .parent(Size::new(Some(72.0), Some(0.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .parent(Size::new(Some(72.0), Some(0.0)))
-                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(None, Some(30.0)))
-                .available(Size::new(Available::MAX_CONTENT, Available::definite(30.0))),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(Some(72.0), Some(30.0)))
-                .available(Size::new(Available::MAX_CONTENT, Available::definite(30.0))),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
@@ -3283,10 +4186,42 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(None, Some(30.0)))
                 .parent(Size::new(Some(72.0), Some(30.0)))
-                .available(Size::new(
-                    Available::definite(72.0),
-                    Available::definite(30.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
@@ -3294,10 +4229,42 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(Some(72.0), Some(30.0)))
                 .parent(Size::new(Some(72.0), Some(30.0)))
-                .available(Size::new(
-                    Available::definite(72.0),
-                    Available::definite(30.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(72.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         );
 
     let output = crate::compute_grid(
@@ -3316,7 +4283,23 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3324,7 +4307,17 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
     assert_eq!(output.size, Size::new(72.0, 60.0));
     assert!(tree.inputs(2).iter().any(|input| {
         input.run_mode() == RunMode::ComputeSize
-            && input.available() == Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)
+            && input.sizing_request().axes()
+                == Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                )
     }));
 }
 
@@ -3589,10 +4582,6 @@ where
     let parent_area_size = LogicalSizeOf::new(scalar(77.0), scalar(121.0));
     let parent_named_columns = named::NamedGridLines::new(GridAxisKind::Column, 2);
     let parent_named_rows = named::NamedGridLines::new(GridAxisKind::Row, 2);
-    let parent_baseline_groups = GridBaselineGroups {
-        rows: vec![TrackBaselineGroup::default(); 2],
-        columns: vec![TrackBaselineGroup::default(); 2],
-    };
 
     for writing_mode in [
         WritingMode::HorizontalTb,
@@ -3638,6 +4627,10 @@ where
             assert_eq!(row_mapping.child_axis, GridAxisKind::Row);
 
             let mut context = subgrid_child_parent_context(SubgridChildParentContextInput {
+                minimum_functions: GridMinimumParentFunctions {
+                    columns: None,
+                    rows: None,
+                },
                 item,
                 child_style: &child_style,
                 area: GridArea {
@@ -3654,7 +4647,6 @@ where
                 parent_named_columns: &parent_named_columns,
                 parent_named_rows: &parent_named_rows,
                 parent_area_facts: None,
-                parent_baseline_groups: &parent_baseline_groups,
                 margin: Edges::all(Some(S::ZERO)),
                 border: Edges::ZERO,
                 padding: Edges::ZERO,
@@ -3731,7 +4723,21 @@ where
                         parent_flow_axes,
                         crate::ParentFormattingContext::NoParent,
                     ),
-                    parent_physical_size.map(AvailableOf::definite),
+                    SizingRequestOf::new(
+                        parent_physical_size.map(|value| {
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(value).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            )
+                        }),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                 ),
                 context,
             )
@@ -3808,7 +4814,23 @@ fn subgrid_template_resolves_to_empty_explicit_tracks_and_grows_implicit_tracks(
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3876,7 +4898,23 @@ fn row_subgrid_intrinsic_width_uses_inherited_rows_for_column_auto_flow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3946,7 +4984,23 @@ fn row_subgrid_constrained_sizing_keeps_fixed_descendants_when_sibling_uses_perc
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4005,16 +5059,77 @@ fn row_subgrid_auto_track_sizing_tree(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(58.0, 84.0)))
                 .run_mode(RunMode::ComputeSize)
-                .available_width(Available::Definite(58.0)),
+                .operations(Size::new(
+                    Some(
+                        (AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(58.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ))
+                        .operation(),
+                    ),
+                    None,
+                ))
+                .spaces(Size::new(
+                    ((AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(58.0).unwrap()),
+                        SizingOperation::Normal,
+                    ))
+                    .operation()
+                        == SizingOperation::Normal)
+                        .then_some(
+                            (AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(58.0).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ))
+                            .space(),
+                        ),
+                    None,
+                )),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(58.0, 84.0)))
                 .run_mode(RunMode::PerformLayout)
-                .available(Size::new(
-                    Available::Definite(58.0),
-                    Available::Definite(84.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(58.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(84.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(58.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(84.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure(3, ComputeOutput::from_outer_size(Size::new(58.0, 116.0)))
 }
@@ -4042,7 +5157,23 @@ fn row_subgrid_auto_track_sizing_fixed_then_auto_uses_descendant_contribution_on
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4074,7 +5205,23 @@ fn row_subgrid_auto_track_sizing_auto_then_fixed_uses_descendant_contribution_on
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4146,13 +5293,31 @@ fn row_subgrid_intrinsic_width_accumulates_standalone_percent_columns() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
 
     assert_eq!(output.content_size.width, 200.0);
-    assert_eq!(tree.layout(2).unwrap().size.width, 100.0);
+    // The two standalone columns contribute 100 each before their percentages
+    // resolve to 40 and 60 against the established 200px min-content width.
+    assert_eq!(tree.layout(2).unwrap().size.width, 200.0);
 }
 
 #[test]
@@ -4180,18 +5345,24 @@ fn vertical_intrinsic_subgrid_final_sizing_keeps_definite_physical_height() {
         .measure(2, ComputeOutput::from_outer_size(Size::new(100.0, 10.0)))
         .measure(3, ComputeOutput::from_outer_size(Size::new(100.0, 10.0)));
 
+    // The ancestor declares Auto independently of its allocated 100px row.
+    let parent_row_functions = [TrackSizing::AUTO];
     let parent_context = GridParentContext {
         columns: None,
         rows: Some(InheritedGridAxis {
+            baseline_reference: crate::GridBaselineReference::Physical,
             offset: 0.0,
             gap: 0.0,
             tracks: vec![100.0],
+            minimum_functions: Some(
+                GridMinimumTrackFunctions::new(&parent_row_functions, None)
+                    .retain()
+                    .unwrap(),
+            ),
             geometry: UsedGridAxisGeometryOf::new(vec![100.0], vec![false], 0.0),
             named_lines: named::NamedGridLines::new(GridAxisKind::Row, 1),
             area_facts: None,
             template_area_expanded: false,
-            major_baselines: vec![None],
-            minor_baselines: vec![None],
             owner_baseline_targets: None,
             parent_start: 0,
             parent_end: 1,
@@ -4215,7 +5386,23 @@ fn vertical_intrinsic_subgrid_final_sizing_keeps_definite_physical_height() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::Definite(100.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
         parent_context,
     )
@@ -4505,7 +5692,23 @@ fn grid_subgrid_declaration_without_parent_grid_keeps_ordinary_grid_fallback() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4518,33 +5721,44 @@ fn grid_subgrid_declaration_without_parent_grid_keeps_ordinary_grid_fallback() {
 }
 
 #[test]
-fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_through_production_context_builder()
- {
+fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_through_context_builder()
+{
+    let owner_flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let progression = owner_flow.physical_axis_progression(PhysicalAxis::Vertical);
     let owner_member =
         inherited_placement_member(91, GridAxisKind::Row, AncestorBaselineRole::First, 1, 17.0);
     let owner_group = AncestorBaselineGroup::reduce(
         1_u32,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         4,
         [owner_member],
     );
     let owner_direct_member =
         inherited_placement_member(92, GridAxisKind::Row, AncestorBaselineRole::First, 1, 10.0);
-    assert_eq!(
-        owner_group.placement_offset(owner_direct_member, 100.0, 20.0, 0.0),
-        Some(7.0),
-        "the owner-direct item consumes the immutable owner target",
-    );
+    // Four25px tracks with10px gutters place owner row1 at35..60. Its
+    // immutable First distance17 selects physical52, so a port10 item starts42.
+    let owner_start = 35.0;
+    let owner_end = 60.0;
+    let owner_point = 52.0;
+    let owner_offset = owner_group
+        .placement_offset(owner_direct_member, owner_start, owner_end)
+        .expect("owner-direct item selects the declared owner track");
+    assert_eq!(owner_offset, 42.0);
+    assert_eq!(owner_offset - owner_start, 7.0);
+    assert_eq!(owner_offset + 10.0, owner_point);
     let ancestor_groups = final_ancestor_baseline_groups_for_transport_test(
         owner_group.clone(),
         AncestorBaselineGroup::reduce(
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
+            crate::GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
+        owner_flow,
     );
     let parent_style = NodeInput {
         display: Display::Grid,
@@ -4558,6 +5772,10 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
     };
     let context = subgrid_child_parent_context_from_ancestor_groups(
         SubgridChildParentContextInput {
+            minimum_functions: GridMinimumParentFunctions {
+                columns: None,
+                rows: None,
+            },
             item: SubgridItemReport {
                 node: 7_u32,
                 column: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Column),
@@ -4569,19 +5787,15 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
                 column: 0,
                 row_end: 4,
                 column_end: 1,
-                size: LogicalSizeOf::new(25.0, 178.0),
+                size: LogicalSizeOf::new(25.0, 130.0),
             },
-            content_box_size: Size::new(25.0, 178.0),
+            content_box_size: Size::new(25.0, 130.0),
             columns: &[25.0],
             rows: &[25.0; 4],
             gap: LogicalSizeOf::new(0.0, 10.0),
             parent_named_columns: &NamedGridLines::new(GridAxisKind::Column, 1),
             parent_named_rows: &NamedGridLines::new(GridAxisKind::Row, 4),
             parent_area_facts: None,
-            parent_baseline_groups: &GridBaselineGroups {
-                rows: vec![TrackBaselineGroup::default(); 4],
-                columns: vec![TrackBaselineGroup::default()],
-            },
             margin: Edges::all(Some(0.0)),
             border: Edges::ZERO,
             padding: Edges::ZERO,
@@ -4592,12 +5806,16 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
     .unwrap();
 
     let row = context.rows.as_ref().unwrap();
-    assert_eq!(
-        row.major_baselines[1].unwrap().coordinate(),
-        9.0,
-        "the child-internal envelope retains its reviewed geometry",
-    );
+    // The actual26px gutters consume8px from each incident track side:
+    // [17,9,9,17] + three26px gutters still occupy the authored130px span.
+    assert_eq!(row.geometry.sizes(), &[17.0, 9.0, 9.0, 17.0]);
+    assert_eq!(row.geometry.total_extent(), 130.0);
+    assert_eq!(row.geometry.line_offsets()[1], 43.0);
     let transported = row.owner_baseline_targets.as_ref().unwrap();
+    assert_eq!(transported.group.owner(), 1);
+    assert_eq!(transported.mapping.owner(), 1);
+    assert_eq!(transported.mapping.current_grid(), 7);
+    assert_eq!(transported.mapping.boundary_count(), 1);
     assert_eq!(
         transported
             .group
@@ -4605,11 +5823,12 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
             .unwrap()
             .finite_owner_logical_target(),
         17.0,
-        "production context transport must not rewrite the owner target from the envelope",
+        "production context transport preserves the original owner's target",
     );
     let placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &transported.group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: transported.mapping.clone(),
@@ -4617,25 +5836,42 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
                 GridAxisKind::Row,
                 AncestorBaselineRole::First,
                 1,
+                progression,
+                progression,
             ),
             current_grid: 7,
             item: 11,
         },
     )
     .unwrap();
-    assert_eq!(placement.translated_target(), 25.0);
+    assert_eq!(placement.selected_local_track(), 1);
+    assert_eq!(placement.immutable_owner_target(), 17.0);
+    assert_eq!(placement.translated_target(), 9.0);
+    assert_eq!(
+        row.geometry.line_offsets()[1] + placement.translated_target(),
+        owner_point
+    );
 
     let current_rows = row.tracks.clone();
     let current_groups = final_ancestor_baseline_groups_with_parent_context_for_transport_test(
         final_ancestor_baseline_groups_for_transport_test(
-            inherited_placement_group(GridAxisKind::Row, AncestorBaselineRole::First, 1, 17.0),
+            AncestorBaselineGroup::reduce(
+                7_u32,
+                GridAxisKind::Row,
+                PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
+                4,
+                Vec::<AncestorBaselineMember<u32>>::new(),
+            ),
             AncestorBaselineGroup::reduce(
                 7_u32,
                 GridAxisKind::Column,
                 PhysicalAxis::Horizontal,
+                crate::GridBaselineReference::Physical,
                 1,
                 Vec::<AncestorBaselineMember<u32>>::new(),
             ),
+            owner_flow,
         ),
         &context,
     );
@@ -4647,6 +5883,10 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
     };
     let nested_context = subgrid_child_parent_context_from_ancestor_groups(
         SubgridChildParentContextInput {
+            minimum_functions: GridMinimumParentFunctions {
+                columns: None,
+                rows: None,
+            },
             item: SubgridItemReport {
                 node: 11_u32,
                 column: subgrid_axis_report(&child_style, &nested_style, GridAxisKind::Column),
@@ -4658,19 +5898,15 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
                 column: 0,
                 row_end: 4,
                 column_end: 1,
-                size: LogicalSizeOf::new(25.0, 202.0),
+                size: LogicalSizeOf::new(25.0, 130.0),
             },
-            content_box_size: Size::new(25.0, 202.0),
+            content_box_size: Size::new(25.0, 130.0),
             columns: &[25.0],
             rows: &current_rows,
             gap: LogicalSizeOf::new(0.0, 26.0),
             parent_named_columns: &NamedGridLines::new(GridAxisKind::Column, 1),
             parent_named_rows: &NamedGridLines::new(GridAxisKind::Row, 4),
             parent_area_facts: None,
-            parent_baseline_groups: &GridBaselineGroups {
-                rows: vec![TrackBaselineGroup::default(); 4],
-                columns: vec![TrackBaselineGroup::default()],
-            },
             margin: Edges::all(Some(0.0)),
             border: Edges::ZERO,
             padding: Edges::ZERO,
@@ -4680,19 +5916,20 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
     )
     .unwrap();
     let nested_row = nested_context.rows.as_ref().unwrap();
-    assert_eq!(nested_row.major_baselines[1].unwrap().coordinate(), 5.0);
+    // Increasing the genuine gutter26→34 consumes another4px per side.
+    // The selected start is now47, so the same physical52 needs distance5.
+    assert_eq!(nested_row.geometry.sizes(), &[13.0, 1.0, 1.0, 13.0]);
+    assert_eq!(nested_row.geometry.total_extent(), 130.0);
+    assert_eq!(nested_row.geometry.line_offsets()[1], 47.0);
     let nested_transport = nested_row.owner_baseline_targets.as_ref().unwrap();
-    assert_eq!(
-        nested_transport
-            .group
-            .target_record(AncestorBaselineRole::First, 1)
-            .unwrap()
-            .finite_owner_logical_target(),
-        17.0,
-    );
+    assert_eq!(nested_transport.group.owner(), 1);
+    assert_eq!(nested_transport.mapping.owner(), 1);
+    assert_eq!(nested_transport.mapping.current_grid(), 11);
+    assert_eq!(nested_transport.mapping.boundary_count(), 2);
     let nested_placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &nested_transport.group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: nested_transport.mapping.clone(),
@@ -4702,13 +5939,21 @@ fn nested_inherited_grid_axis_preserves_owner_targets_without_envelope_rewrite_t
                 GridAxisKind::Row,
                 GridTrackSpan::new(1, 2),
                 AncestorBaselineRole::First,
+                progression,
+                progression,
             ),
             current_grid: 11,
             item: 12,
         },
     )
     .unwrap();
-    assert_eq!(nested_placement.translated_target(), 21.0);
+    assert_eq!(nested_placement.selected_local_track(), 1);
+    assert_eq!(nested_placement.immutable_owner_target(), 17.0);
+    assert_eq!(nested_placement.translated_target(), 5.0);
+    assert_eq!(
+        nested_row.geometry.line_offsets()[1] + nested_placement.translated_target(),
+        owner_point
+    );
     assert_eq!(
         owner_group
             .target_record(AncestorBaselineRole::First, 1)
@@ -4856,11 +6101,34 @@ fn fri06_c12_t08_nested_inherited_row_baseline_delta(
     };
     tree = tree.measure(3, direct).measure(5, nested);
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        1,
-        Size::new(Available::Definite(140.0), Available::Definite(80.0)),
-    )
+    {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(140.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(80.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        let style = tree.node_input(1);
+        let flow = FlowAxes::new(style.writing_mode, style.direction);
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            flow,
+            definite,
+        );
+        compute_root(&mut tree.borrow_compute(), 1, request)
+    }
     .expect("nested inherited-row layout computes");
     round_layout(&mut tree.borrow_compute(), 1).expect("nested inherited-row layout rounds");
 
@@ -4896,74 +6164,6 @@ fn fri06_c12_t08_inherited_row_gap_adjustment_stays_in_member_and_view_mapping()
         )
     });
     assert_eq!(deltas, [0.0; 8]);
-}
-
-#[test]
-fn fri06_c12_t08_inherited_gap_transform_uses_local_first_and_last_edges_after_reversal() {
-    let parent_major = [
-        Some(tagged_baseline(PhysicalAxis::Vertical, 14.0)),
-        Some(tagged_baseline(PhysicalAxis::Vertical, 30.0)),
-    ];
-    let parent_minor = [
-        Some(tagged_baseline(PhysicalAxis::Vertical, 6.0)),
-        Some(tagged_baseline(PhysicalAxis::Vertical, 12.0)),
-    ];
-
-    let forward = inherit_subgrid_baselines(SubgridBaselineInheritanceInput {
-        parent_major: &parent_major,
-        parent_minor: &parent_minor,
-        physical_axis: PhysicalAxis::Vertical,
-        parent_span: GridTrackSpan::new(1, 3),
-        reversed: false,
-        start_mbp: 2.0,
-        end_mbp: 3.0,
-        parent_gap: 10.0,
-        subgrid_gap: 20.0,
-    })
-    .unwrap();
-    assert_eq!(
-        forward.final_major,
-        vec![
-            Some(tagged_baseline(PhysicalAxis::Vertical, 12.0)),
-            Some(tagged_baseline(PhysicalAxis::Vertical, 25.0)),
-        ],
-        "first baselines rebase only across their local start edge",
-    );
-    assert_eq!(
-        forward.final_minor,
-        vec![
-            Some(tagged_baseline(PhysicalAxis::Vertical, 1.0)),
-            Some(tagged_baseline(PhysicalAxis::Vertical, 9.0)),
-        ],
-        "last baselines rebase only across their local end edge",
-    );
-
-    let reversed = inherit_subgrid_baselines(SubgridBaselineInheritanceInput {
-        parent_major: &parent_major,
-        parent_minor: &parent_minor,
-        physical_axis: PhysicalAxis::Vertical,
-        parent_span: GridTrackSpan::new(1, 3),
-        reversed: true,
-        start_mbp: 2.0,
-        end_mbp: 3.0,
-        parent_gap: 10.0,
-        subgrid_gap: 20.0,
-    })
-    .unwrap();
-    assert_eq!(
-        reversed.final_major,
-        vec![
-            Some(tagged_baseline(PhysicalAxis::Vertical, 28.0)),
-            Some(tagged_baseline(PhysicalAxis::Vertical, 9.0)),
-        ],
-    );
-    assert_eq!(
-        reversed.final_minor,
-        vec![
-            Some(tagged_baseline(PhysicalAxis::Vertical, 7.0)),
-            Some(tagged_baseline(PhysicalAxis::Vertical, 3.0)),
-        ],
-    );
 }
 
 #[test]
@@ -5014,27 +6214,118 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(100.0, 64.0)))
                 .run_mode(RunMode::ComputeSize)
                 .known(Size::new(None, None))
-                .available(Size::new(
-                    Available::Definite(100.0),
-                    Available::MAX_CONTENT,
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(80.0, 96.0)))
                 .run_mode(RunMode::ComputeSize)
                 .known(Size::new(Some(80.0), None))
-                .available(Size::new(Available::Definite(80.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(80.0, 96.0)))
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(None, None))
-                .available(Size::new(
-                    Available::Definite(80.0),
-                    Available::Definite(96.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(96.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(96.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(100.0, 64.0)));
 
@@ -5054,7 +6345,23 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -5112,17 +6419,80 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(50.0, 90.0)))
                 .run_mode(RunMode::ComputeSize)
                 .known(Size::new(Some(50.0), None))
-                .available(Size::new(Available::Definite(50.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(50.0, 90.0)))
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(None, None))
-                .available(Size::new(
-                    Available::Definite(50.0),
-                    Available::Definite(90.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(90.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(90.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure(3, ComputeOutput::from_outer_size(Size::new(100.0, 40.0)));
 
@@ -5142,7 +6512,23 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -5164,7 +6550,11 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
             .iter()
             .any(|input| input.run_mode() == RunMode::ComputeSize
                 && input.known().width == Some(50.0)
-                && input.available().width == Available::Definite(50.0)),
+                && input.sizing_request().axes().width
+                    == AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(50.0).unwrap()),
+                        SizingOperation::Normal
+                    )),
         "row contribution should measure the leaf against its 50px column span"
     );
 }
@@ -5250,7 +6640,23 @@ fn orthogonal_nested_subgrid_width_includes_full_horizontal_leaf_contribution() 
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -5310,12 +6716,30 @@ fn grid_auto_size_ignores_ineligible_row_subgrid_when_resolving_percent_columns(
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
 
-    assert_eq!(output.size.width, 100.0);
+    // An ineligible row declaration does not suppress the two column queries.
+    // Cyclic 50% columns each contribute 100 as Auto, establishing width 200.
+    assert_eq!(output.size.width, 200.0);
 }
 
 #[test]
@@ -5386,11 +6810,28 @@ fn subgrid_intrinsic_row_sizing_uses_subgrid_content_not_parent_height() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        1,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        let style = tree.node_input(1);
+        let flow = FlowAxes::new(style.writing_mode, style.direction);
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            flow,
+            definite,
+        );
+        compute_root(&mut tree.borrow_compute(), 1, request)
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
     let child = tree.final_layout(2).expect("child grid should be laid out");
@@ -5414,6 +6855,11 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
     };
     let container_style = NodeInput::default();
     let constants = Constants {
+        child_orthogonal_fallback: OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
         flow_axes: crate::geometry::FlowAxes::new(
             container_style.writing_mode,
             container_style.direction,
@@ -5422,6 +6868,8 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
         node_outer_size: Size::new(Some(200.0), Some(80.0)),
         node_inner_size: Size::new(Some(200.0), Some(80.0)),
         node_min_size: Size::NONE,
+        fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
         node_max_size: Size::NONE,
         available_inner_size: Size::new(Some(200.0), Some(80.0)),
         content_box_inset: Edges::ZERO,
@@ -5464,7 +6912,13 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
         .expect("measurement should compute the child");
     assert_eq!(input.known().width, Some(170.0));
     assert_eq!(input.parent().width, Some(200.0));
-    assert_eq!(input.available().width, Available::Definite(170.0));
+    assert_eq!(
+        input.sizing_request().axes().width,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(170.0).unwrap()),
+            SizingOperation::Normal
+        )
+    );
 }
 
 struct LaneMarginMeasureTree {
@@ -5914,7 +7368,15 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
                         .resolve_simple_with_status(input.parent().width)
                         .expect("affine preferred width is supported")
                         .value
-                        .or_else(|| input.available().width.into_option())
+                        .or_else(|| {
+                            input
+                                .sizing_request()
+                                .axes()
+                                .width
+                                .space()
+                                .definite_size()
+                                .map(crate::NonNegativeFiniteOf::get)
+                        })
                         .unwrap_or(0.0),
                     style
                         .size
@@ -5922,7 +7384,15 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
                         .resolve_simple_with_status(input.parent().height)
                         .expect("affine preferred height is supported")
                         .value
-                        .or_else(|| input.available().height.into_option())
+                        .or_else(|| {
+                            input
+                                .sizing_request()
+                                .axes()
+                                .height
+                                .space()
+                                .definite_size()
+                                .map(crate::NonNegativeFiniteOf::get)
+                        })
                         .unwrap_or(0.0),
                 ));
                 ComputeOutputOf::from_sizes(size, size)
@@ -5963,7 +7433,17 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -6237,12 +7717,25 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
             size: LogicalSizeOf::new(Scalar::ZERO, Scalar::ZERO),
         },
         Size::<Scalar>::ZERO,
-        (None, None),
+        SubgridParentTrackSource {
+            baseline_references: crate::GridBaselineReferences::default(),
+            flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            gap: Size::ZERO,
+            columns: None,
+            rows: None,
+            minimum_functions: GridMinimumParentFunctions {
+                columns: None,
+                rows: None,
+            },
+            algorithm: None,
+            allocated: LogicalSizeOf::new(None, None),
+        },
         &parent,
         &parent,
         None,
     )
-    .unwrap();
+    .unwrap()
+    .expect("eligible inherited axis is represented");
     let local = local_subgrid_entries(&[&[], &[], &[], &[]]);
     let lines = named::inherit_subgrid_named_lines(
         &axis.named_lines,
@@ -6665,9 +8158,11 @@ fn test_inherited_axis(
 ) -> InheritedGridAxis {
     let track_count = parent_end - parent_start;
     InheritedGridAxis {
+        baseline_reference: crate::GridBaselineReference::Physical,
         offset: 0.0,
         gap: 0.0,
         tracks: vec![0.0; track_count],
+        minimum_functions: None,
         geometry: UsedGridAxisGeometryOf::new(
             vec![0.0; track_count],
             vec![false; track_count],
@@ -6676,8 +8171,6 @@ fn test_inherited_axis(
         named_lines,
         area_facts,
         template_area_expanded: false,
-        major_baselines: vec![None; track_count],
-        minor_baselines: vec![None; track_count],
         owner_baseline_targets: None,
         parent_start,
         parent_end,
@@ -6719,11 +8212,170 @@ fn vertical_subgrid_percentage_gap_uses_flow_relative_axis_basis() {
     );
 }
 
+// Build the native parent and all borrowed track/placement authority through
+// the same canonical owners used by real Grid. The source declares exactly
+// the200/1 inline and100/1 block track profile; the extra1px track may overflow.
+fn collect_percentage_edge_parent_traversal<'input>(
+    tree: &'input mut OracleTree,
+    axis: GridAxisKind,
+) -> SubgridTraversalReport<'input, u32> {
+    let mut compute = tree.borrow_compute();
+    let parent_style = grid_container_projection!(compute.node_input(1));
+    let flow = FlowAxes::new(parent_style.writing_mode, parent_style.direction);
+    let available = Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(200.0).unwrap()),
+            SizingOperation::Normal,
+        ),
+    );
+    let constants = Constants::new::<_, core::convert::Infallible>(
+        &compute,
+        1,
+        &parent_style,
+        ComputeInput::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+            SizingRequestOf::new(
+                available,
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        ),
+    )
+    .expect("the registered native parent resolves its authored size");
+    assert_eq!(
+        constants.node_inner_size,
+        Size::new(Some(100.0), Some(200.0))
+    );
+    let parent_context = GridParentContext::none();
+    let initialized = initialize_grid_tracks::<_, core::convert::Infallible>(
+        &compute,
+        1,
+        &parent_style,
+        &constants,
+        &parent_context,
+        available,
+    )
+    .expect("the real parent admits its actual child and original track functions");
+    let children = compute.children(1).collect::<Vec<_>>();
+    assert_eq!(children, [2]);
+    let columns = [200.0, 1.0];
+    let rows = [100.0, 1.0];
+    let placed_areas = resolve_grid_child_areas(ResolveGridChildAreasInput {
+        children: &children,
+        placements: &initialized.placements,
+        style: &parent_style,
+        columns: &columns,
+        rows: &rows,
+        gap: initialized.context.gap,
+        lines: initialized.context.lines,
+    });
+    let area = placed_areas[0].expect("the genuine first-track child is placed");
+    assert_eq!(area.size, LogicalSizeOf::new(200.0, 100.0));
+    let grid = IntrinsicGrid {
+        style: &parent_style,
+        constants: &constants,
+        sizing_flow_axes: flow,
+        track_basis: initialized.context.percent_basis,
+        minimum_functions: minimum_parent_functions(
+            &initialized.column_tracks,
+            &initialized.row_tracks,
+            initialized.context.percent_basis,
+            &parent_context,
+        ),
+        column_tracks: &initialized.column_tracks,
+        row_tracks: &initialized.row_tracks,
+        gap: initialized.context.gap,
+        column_gutters: Some(&initialized.context.column_gutters),
+        row_gutters: Some(&initialized.context.row_gutters),
+        lines: initialized.context.lines,
+        named_columns: &initialized.context.named_columns,
+        named_rows: &initialized.context.named_rows,
+        area_facts: initialized.context.area_facts.as_ref(),
+        subgrid_report: &initialized.subgrid_report,
+        placements: &initialized.placements,
+        query: IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent),
+    };
+    let grid = intrinsic_stage::intrinsic_role_grid(
+        grid,
+        intrinsic_stage::IntrinsicStageFrame {
+            axis,
+            stage: GridSizingStage::COMPLETE,
+            columns: Some(&columns),
+            rows: Some(&rows),
+            observed_axis: None,
+        },
+        GridContributionPurpose::MaxContent,
+    )
+    .unwrap();
+    // These authored profiles contain only fixed or min-content minima.
+    // Preserve true intrinsic eligibility; fixed rows do not acquire it.
+    let queried_tracks = match axis {
+        GridAxisKind::Column => &initialized.column_tracks,
+        GridAxisKind::Row => &initialized.row_tracks,
+    };
+    let intrinsic = queried_tracks
+        .iter()
+        .map(|track| match &track.min {
+            MinTrackSizing::MinContent => true,
+            MinTrackSizing::Calculation(_) => false,
+            _ => unreachable!("the declared parent has only the qualified two minima"),
+        })
+        .collect::<Vec<_>>();
+    collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
+        &mut compute,
+        GridSubgridIntrinsicTraversalInput {
+            grid,
+            axis,
+            containing_flow_axes: flow,
+            children: &children,
+            placed_areas: &placed_areas,
+            placements: &initialized.placements,
+            subgrid_report: &initialized.subgrid_report,
+            named_columns: &initialized.context.named_columns,
+            named_rows: &initialized.context.named_rows,
+            area_facts: initialized.context.area_facts.as_ref(),
+            parent_gap: Size::new(
+                initialized.context.gap.inline,
+                initialized.context.gap.block,
+            ),
+            column_gutters: Some(&initialized.context.column_gutters),
+            row_gutters: Some(&initialized.context.row_gutters),
+            column_sizes: &columns,
+            row_sizes: &rows,
+            container_size: constants.node_inner_size,
+            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&intrinsic),
+            query: grid.query,
+        },
+    )
+    .expect("the actual prepared property frames resolve")
+    .expect("the source-declared inherited axis is eligible")
+}
+
 #[test]
 fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
     let parent_style = NodeInput {
         display: Display::Grid,
         writing_mode: WritingMode::VerticalRl,
+        size: Size::new(PreferredSize::px(100.0), PreferredSize::px(200.0)),
+        grid_template_columns: vec![
+            TrackComponent::minmax(MinTrackSizing::MIN_CONTENT, MaxTrackSizing::px(200.0)),
+            TrackComponent::px(1.0),
+        ],
+        grid_template_rows: vec![TrackComponent::px(100.0), TrackComponent::px(1.0)],
+        justify_content: Some(AlignContent::Start),
+        align_content: Some(AlignContent::Start),
         ..NodeInput::default()
     };
     let child_style = NodeInput {
@@ -6731,60 +8383,20 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
         writing_mode: WritingMode::VerticalRl,
         grid_template_columns: subgrid_track(),
         padding: Edges::all(Length::percent(0.1)),
+        // The real200-high border makes the min-content parent track200,
+        // while10% padding retains its genuine200-high containing basis.
+        box_sizing: BoxSizing::BorderBox,
+        size: Size::new(PreferredSize::AUTO, PreferredSize::px(200.0)),
         ..NodeInput::default()
     };
     let mut tree = OracleTree::new()
+        .children(1, [2])
         .children(2, [3])
         .children(3, [])
-        .style(2, child_style.clone())
+        .style(1, parent_style)
+        .style(2, child_style)
         .style(3, NodeInput::default());
-    let area = GridArea {
-        column: 0,
-        column_end: 1,
-        row: 0,
-        row_end: 1,
-        size: LogicalSizeOf::new(200.0, 100.0),
-    };
-    let named_columns = named::NamedGridLines::new(GridAxisKind::Column, 2);
-    let named_rows = named::NamedGridLines::new(GridAxisKind::Row, 2);
-
-    let children = [2];
-    let placed_areas = [Some(area)];
-    let placements = single_grid_placement_context(2, &child_style);
-    let subgrid_report = GridSubgridReport {
-        items: vec![SubgridItemReport {
-            node: 2,
-            column: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Column),
-            row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
-        }],
-    };
-    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &mut tree.borrow_compute(),
-        GridSubgridIntrinsicTraversalInput {
-            axis: GridAxisKind::Column,
-            containing_flow_axes: crate::geometry::FlowAxes::new(
-                parent_style.writing_mode,
-                parent_style.direction,
-            ),
-            children: &children,
-            placed_areas: &placed_areas,
-            placements: &placements,
-            subgrid_report: &subgrid_report,
-            named_columns: &named_columns,
-            named_rows: &named_rows,
-            area_facts: None,
-            parent_gap: Size::ZERO,
-            column_gutters: None,
-            row_gutters: None,
-            column_sizes: &[200.0, 1.0],
-            row_sizes: &[100.0, 1.0],
-            container_size: Size::new(Some(100.0), Some(200.0)),
-            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
-            query: IntrinsicGridQuery::complete(),
-        },
-    )
-    .unwrap()
-    .expect("eligible subgrid traversal must produce a report");
+    let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
     assert_eq!(
@@ -6798,66 +8410,34 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
     let parent_style = NodeInput {
         display: Display::Grid,
         writing_mode: WritingMode::VerticalRl,
+        size: Size::new(PreferredSize::px(100.0), PreferredSize::px(200.0)),
+        grid_template_columns: vec![
+            TrackComponent::minmax(MinTrackSizing::MIN_CONTENT, MaxTrackSizing::px(200.0)),
+            TrackComponent::px(1.0),
+        ],
+        grid_template_rows: vec![TrackComponent::px(100.0), TrackComponent::px(1.0)],
+        justify_content: Some(AlignContent::Start),
+        align_content: Some(AlignContent::Start),
         ..NodeInput::default()
     };
     let child_style = NodeInput {
         display: Display::Grid,
         grid_template_rows: subgrid_track(),
         padding: Edges::all(Length::percent(0.1)),
+        // The real200-high border makes the min-content parent track200,
+        // while10% padding retains its genuine200-high containing basis.
+        box_sizing: BoxSizing::BorderBox,
+        size: Size::new(PreferredSize::AUTO, PreferredSize::px(200.0)),
         ..NodeInput::default()
     };
     let mut tree = OracleTree::new()
+        .children(1, [2])
         .children(2, [3])
         .children(3, [])
-        .style(2, child_style.clone())
+        .style(1, parent_style)
+        .style(2, child_style)
         .style(3, NodeInput::default());
-    let area = GridArea {
-        column: 0,
-        column_end: 1,
-        row: 0,
-        row_end: 1,
-        size: LogicalSizeOf::new(200.0, 100.0),
-    };
-    let named_columns = named::NamedGridLines::new(GridAxisKind::Column, 2);
-    let named_rows = named::NamedGridLines::new(GridAxisKind::Row, 2);
-
-    let children = [2];
-    let placed_areas = [Some(area)];
-    let placements = single_grid_placement_context(2, &child_style);
-    let subgrid_report = GridSubgridReport {
-        items: vec![SubgridItemReport {
-            node: 2,
-            column: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Column),
-            row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
-        }],
-    };
-    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &mut tree.borrow_compute(),
-        GridSubgridIntrinsicTraversalInput {
-            axis: GridAxisKind::Column,
-            containing_flow_axes: crate::geometry::FlowAxes::new(
-                parent_style.writing_mode,
-                parent_style.direction,
-            ),
-            children: &children,
-            placed_areas: &placed_areas,
-            placements: &placements,
-            subgrid_report: &subgrid_report,
-            named_columns: &named_columns,
-            named_rows: &named_rows,
-            area_facts: None,
-            parent_gap: Size::ZERO,
-            column_gutters: None,
-            row_gutters: None,
-            column_sizes: &[200.0, 1.0],
-            row_sizes: &[100.0, 1.0],
-            container_size: Size::new(Some(100.0), Some(200.0)),
-            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
-            query: IntrinsicGridQuery::complete(),
-        },
-    )
-    .unwrap()
-    .expect("eligible subgrid traversal must produce a report");
+    let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
     assert_eq!(
@@ -6871,6 +8451,11 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
     let parent_style = NodeInput {
         display: Display::Grid,
         writing_mode: WritingMode::VerticalRl,
+        size: Size::new(PreferredSize::px(100.0), PreferredSize::px(200.0)),
+        grid_template_columns: vec![TrackComponent::px(200.0), TrackComponent::px(1.0)],
+        grid_template_rows: vec![TrackComponent::px(100.0), TrackComponent::px(1.0)],
+        justify_content: Some(AlignContent::Start),
+        align_content: Some(AlignContent::Start),
         ..NodeInput::default()
     };
     let outer_style = NodeInput {
@@ -6878,6 +8463,10 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
         writing_mode: WritingMode::VerticalRl,
         grid_template_rows: subgrid_track(),
         grid_template_columns: vec![TrackComponent::percent(1.0)],
+        // Actual border height190 is the200-high area minus margins3+7.
+        // It establishes a source-owned property frame, not an inline estimate.
+        box_sizing: BoxSizing::BorderBox,
+        size: Size::new(PreferredSize::AUTO, PreferredSize::px(190.0)),
         margin: Edges::new(
             LengthAuto::px(3.0),
             LengthAuto::px(5.0),
@@ -6903,6 +8492,9 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
         writing_mode: WritingMode::VerticalRl,
         grid_template_rows: subgrid_track(),
         grid_template_columns: vec![TrackComponent::percent(1.0)],
+        // Outer190 minus top/bottom border+padding13+19+29+37 gives92.
+        box_sizing: BoxSizing::BorderBox,
+        size: Size::new(PreferredSize::AUTO, PreferredSize::px(92.0)),
         padding: Edges::new(
             Length::percent(0.1),
             Length::percent(0.2),
@@ -6912,61 +8504,56 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
         ..NodeInput::default()
     };
     let mut tree = OracleTree::new()
+        .children(1, [2])
         .children(2, [3])
         .children(3, [4])
         .children(4, [])
-        .style(2, outer_style.clone())
+        .style(1, parent_style)
+        .style(2, outer_style)
         .style(3, inner_style)
         .style(4, NodeInput::default());
-    let area = GridArea {
-        column: 0,
-        column_end: 1,
-        row: 0,
-        row_end: 1,
-        size: LogicalSizeOf::new(200.0, 100.0),
-    };
-    let children = [2];
-    let placed_areas = [Some(area)];
-    let placements = single_grid_placement_context(2, &outer_style);
-    let subgrid_report = GridSubgridReport {
-        items: vec![SubgridItemReport {
-            node: 2,
-            column: subgrid_axis_report(&parent_style, &outer_style, GridAxisKind::Column),
-            row: subgrid_axis_report(&parent_style, &outer_style, GridAxisKind::Row),
-        }],
-    };
-    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &mut tree.borrow_compute(),
-        GridSubgridIntrinsicTraversalInput {
-            axis: GridAxisKind::Row,
-            containing_flow_axes: crate::geometry::FlowAxes::new(
-                parent_style.writing_mode,
-                parent_style.direction,
-            ),
-            children: &children,
-            placed_areas: &placed_areas,
-            placements: &placements,
-            subgrid_report: &subgrid_report,
-            named_columns: &named::NamedGridLines::new(GridAxisKind::Column, 2),
-            named_rows: &named::NamedGridLines::new(GridAxisKind::Row, 2),
-            area_facts: None,
-            parent_gap: Size::ZERO,
-            column_gutters: None,
-            row_gutters: None,
-            column_sizes: &[200.0, 1.0],
-            row_sizes: &[100.0, 1.0],
-            container_size: Size::new(Some(100.0), Some(200.0)),
-            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
-            query: IntrinsicGridQuery::complete(),
-        },
-    )
-    .unwrap()
-    .expect("eligible nested same-flow traversal must produce a report");
+    let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Row);
 
+    assert_eq!(report.leaves.len(), 1);
+    let leaf = &report.leaves[0];
+    assert_eq!(leaf.node, 4);
+    let frame = leaf
+        .min_frame
+        .expect("the genuine immediate parent owns the query frame");
+    let prepared = frame.prepared();
+    let flow = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
+    assert_eq!(frame.flow_axes, flow);
+    assert_eq!(frame.axis, GridAxisKind::Row);
+    assert_eq!(frame.algorithm, SizingAlgorithm::Grid);
+    assert_eq!(prepared.containing_flow_axes(), flow);
+    // This replaces the former detached Auto estimate with authored known
+    // geometry. Preserve the percentage equation in the represented lane.
+    let outer_border: Scalar = 200.0 - (3.0 + 7.0);
+    let inner_border = outer_border - (13.0 + 19.0 + 29.0 + 37.0);
+    let nearest_content = inner_border - (0.1 * inner_border + 0.3 * inner_border);
+    assert_eq!(outer_border, 190.0);
+    assert_eq!(inner_border, 92.0);
     assert_eq!(
-        report.leaves[0].available_inline_size,
-        Some(55.2),
-        "physical vertical edge sums must reduce the local inline track before nesting"
+        prepared.parent().height,
+        Some(nearest_content),
+        "the property basis comes from the nearest parent's real content box"
+    );
+    assert_eq!(
+        prepared.known().height,
+        Some(nearest_content),
+        "only the genuine opposite-axis stretch is prepared"
+    );
+    assert_eq!(
+        prepared.sizing_request().axes().height,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(nearest_content).unwrap()),
+            SizingOperation::Normal
+        )
+    );
+    assert_eq!(
+        prepared.sizing_request().axes().width,
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        "the queried physicalX axis retains its actual MaxContent role"
     );
 }
 
@@ -7512,13 +9099,12 @@ fn traversal_subgrid<'input>(
     children: Vec<SubgridTraversalChild<'input, u32>>,
 ) -> SubgridTraversalChild<'input, u32> {
     SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+        min_frame: None,
         node,
         style: default_grid_item_projection(default_input),
         axis: SubgridTraversalAxis::Inherited,
         reversed: false,
         span_in_parent: GridTrackSpan::new(start, end),
-        available_inline_size: None,
-        available_inline_size_is_known: false,
         align_self: AlignItems::Stretch,
         standalone_parent_context: None,
         margins: SubgridAxisEdges::default(),
@@ -7537,13 +9123,12 @@ fn subgrid_traversal_keeps_edge_lower_bounds_off_non_intrinsic_tracks() {
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[false, false]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 3),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges {
@@ -7571,13 +9156,12 @@ fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(2, 5),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7617,13 +9201,12 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges {
@@ -7635,13 +9218,12 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
             parent_gap: 0.0,
             subgrid_gap: 0.0,
             children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+                min_frame: None,
                 node: 2,
                 style: default_grid_item_projection(&default_input),
                 axis: SubgridTraversalAxis::Inherited,
                 reversed: false,
                 span_in_parent: GridTrackSpan::new(2, 3),
-                available_inline_size: None,
-                available_inline_size_is_known: false,
                 align_self: AlignItems::Stretch,
                 standalone_parent_context: None,
                 margins: SubgridAxisEdges {
@@ -7675,13 +9257,12 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7690,13 +9271,12 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
             parent_gap: 10.0,
             subgrid_gap: 20.0,
             children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+                min_frame: None,
                 node: 2,
                 style: default_grid_item_projection(&default_input),
                 axis: SubgridTraversalAxis::Inherited,
                 reversed: false,
                 span_in_parent: GridTrackSpan::new(2, 3),
-                available_inline_size: None,
-                available_inline_size_is_known: false,
                 align_self: AlignItems::Stretch,
                 standalone_parent_context: None,
                 margins: SubgridAxisEdges::default(),
@@ -7726,13 +9306,12 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7761,13 +9340,12 @@ fn subgrid_traversal_uses_positive_gap_adjustments_as_empty_track_lower_bounds()
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 5),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7792,13 +9370,12 @@ fn subgrid_traversal_combines_empty_edge_and_gap_lower_bounds() {
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 5),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7824,13 +9401,12 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -7853,13 +9429,12 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Standalone,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),

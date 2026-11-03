@@ -202,8 +202,16 @@ where
         .transpose_with_node(tree, child)?;
     let non_auto_margin = unresolved_margin.map(|margin| margin.unwrap_or(Tree::Scalar::ZERO));
     let available_size = Size::new(
-        (physical_area_size.width - non_auto_margin.horizontal_sum()).max(Tree::Scalar::ZERO),
-        (physical_area_size.height - non_auto_margin.vertical_sum()).max(Tree::Scalar::ZERO),
+        crate::layout_math::remaining_available_extent(
+            physical_area_size.width,
+            non_auto_margin.horizontal_sum(),
+        )
+        .map_err(|status| crate::error::value_resolution_error(child, status))?,
+        crate::layout_math::remaining_available_extent(
+            physical_area_size.height,
+            non_auto_margin.vertical_sum(),
+        )
+        .map_err(|status| crate::error::value_resolution_error(child, status))?,
     );
     let padding = containing_flow_axes
         .zip_physical_edges_with_inline_extent(child_style.padding, area_parent, |length, basis| {
@@ -315,6 +323,15 @@ where
     let known = known
         .apply_aspect_ratio(child_style.aspect_ratio)
         .clamp_optional(min_size, max_size);
+    let fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
+        constants.fallback_minimum_outer,
+        constants.fallback_maximum_outer,
+        (constants.border + constants.scrollbar_gutter).sum_axes(),
+    )
+    .map_err(|status| crate::error::value_resolution_error(child, status))?;
+    let orthogonal_fallback = constants
+        .child_orthogonal_fallback
+        .for_child(fallback_limits, crate::ScrollportFallbackChangeOf::Preserve);
     let output = tree.compute_child(
         child,
         ComputeInputOf::for_child(
@@ -330,9 +347,35 @@ where
                 ),
                 crate::ParentFormattingContext::Grid,
             ),
-            Size::new(
-                AvailableOf::definite(available_size.width),
-                AvailableOf::definite(available_size.height),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        crate::layout_math::checked_available_space(available_size.width).map_err(
+                            |_| {
+                                crate::error::value_resolution_error(
+                                    child,
+                                    LengthResolutionStatus::InvalidNumeric {
+                                        value: available_size.width,
+                                    },
+                                )
+                            },
+                        )?,
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        crate::layout_math::checked_available_space(available_size.height)
+                            .map_err(|_| {
+                                crate::error::value_resolution_error(
+                                    child,
+                                    LengthResolutionStatus::InvalidNumeric {
+                                        value: available_size.height,
+                                    },
+                                )
+                            })?,
+                        SizingOperation::Normal,
+                    ),
+                ),
+                orthogonal_fallback,
             ),
         )
         .with_containing_auto_scrollbar_pass(context.containing_auto_scrollbar_pass),

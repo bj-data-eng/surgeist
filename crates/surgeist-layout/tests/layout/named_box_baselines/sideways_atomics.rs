@@ -368,10 +368,13 @@ fn qualify_parent(parent: &Captured, kind: t::InlineBoxKind) {
     assert_eq!(text.source(), &parent.source);
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(width)),
-        l::AvailableOf::definite(n(height)),
+fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 fn child_input<S: l::LayoutScalar>(kind: t::InlineBoxKind) -> l::NodeInputOf<S> {
@@ -419,7 +422,7 @@ fn run<S: l::LayoutScalar>(
     host: &Host<S>,
     bindings: Vec<l::TextParagraphBinding<u32>>,
     changed: &[u32],
-    space: l::Size<l::AvailableOf<S>>,
+    space: surgeist_layout::SizingRequestOf<S>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow =
         l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
@@ -427,7 +430,19 @@ fn run<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(space).unwrap(),
+        {
+            let sizing_request = space;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }

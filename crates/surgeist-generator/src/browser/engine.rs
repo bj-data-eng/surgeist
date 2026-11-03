@@ -923,14 +923,27 @@ fn validate_expected_counts(
     corpus: &BrowserCorpus,
     report: &BrowserGenerationReport,
 ) -> Result<()> {
-    if corpus
-        .expected_counts
-        .as_ref()
-        .is_some_and(|expected| expected != report.summary())
+    if let Some(expected) = corpus.expected_counts.as_ref()
+        && expected != report.summary()
     {
+        let actual = report.summary();
         return Err(invalid(
             "validate full report accounting",
-            "generation counts differ from declared expectations",
+            format!(
+                "generation counts differ from declared expectations; \
+                 expected [generated={}, unsupported={}, expected_fail={}, quarantined={}, failed_to_generate={}]; \
+                 actual [generated={}, unsupported={}, expected_fail={}, quarantined={}, failed_to_generate={}]",
+                expected.generated(),
+                expected.unsupported(),
+                expected.expected_fail(),
+                expected.quarantined(),
+                expected.failed_to_generate(),
+                actual.generated(),
+                actual.unsupported(),
+                actual.expected_fail(),
+                actual.quarantined(),
+                actual.failed_to_generate(),
+            ),
         ));
     }
     for scope in &corpus.report_paths {

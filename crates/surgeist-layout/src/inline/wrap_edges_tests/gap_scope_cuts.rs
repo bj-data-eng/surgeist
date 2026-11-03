@@ -71,7 +71,15 @@ fn formatter_edge_outside_actual_run<S: LayoutScalar>(leading: bool) {
         boxes: vec![InlineBoxRef::NativePair { start: 20, end: 21 }],
     });
     let flow = f.flow();
-    let error = compute_layout_with_flow(&flow, 0, request(f.width)).expect_err(
+    let error = compute_layout_with_flow(
+        &flow,
+        0,
+        request(f.width, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect_err(
         "a real float outside the fitting run separates its cut from the formatter source edge",
     );
     assert!(

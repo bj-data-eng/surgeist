@@ -342,7 +342,15 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         vec![],
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&flow, ROOT, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        ROOT,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         batch.placed_text().len(),
         2,

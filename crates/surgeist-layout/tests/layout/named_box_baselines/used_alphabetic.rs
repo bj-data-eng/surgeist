@@ -427,10 +427,13 @@ fn placed<S: l::LayoutScalar>(
         .unwrap()
         .layout()
 }
-fn space<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(width)),
-        l::AvailableOf::definite(n(height)),
+fn space<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 fn solve<S: l::LayoutScalar>(
@@ -442,11 +445,19 @@ fn solve<S: l::LayoutScalar>(
     let flow =
         l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
             .expect("actual issued origins/atomic must bind to real tree members");
-    l::compute_layout_with_flow(
-        &flow,
-        0,
-        l::LayoutRootRequestOf::viewport(space(width, height)).unwrap(),
-    )
+    l::compute_layout_with_flow(&flow, 0, {
+        let sizing_request = space(width, height);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .expect("genuine used Alphabetic preparation must supply Layout Named(Alphabetic)")
 }
 fn child_input<S: l::LayoutScalar>(

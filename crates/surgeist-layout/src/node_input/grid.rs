@@ -219,3 +219,30 @@ impl GridAutoFlow {
         matches!(self, Self::RowDense | Self::ColumnDense)
     }
 }
+
+/// Resolved reference selected by a Grid shared alignment context.
+/// This does not select a child's inline paragraph reference or First/Last set.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum GridBaselineReference {
+    #[default]
+    Physical,
+    Named(crate::BaselineName),
+}
+
+/// References for this container's local Column and Row alignment contexts.
+/// An inherited shared context retains its actual owner's reference instead.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct GridBaselineReferences {
+    pub columns: GridBaselineReference,
+    pub rows: GridBaselineReference,
+}
+
+/// Invalid named baseline facts supplied to a Grid alignment operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GridBaselineError {
+    AxisMismatch {
+        expected: crate::PhysicalAxis,
+        actual: crate::PhysicalAxis,
+    },
+    UnrepresentableCoordinate,
+}

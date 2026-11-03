@@ -136,7 +136,15 @@ fn compute<S: LayoutScalar>(p: &PreparedParagraph, width: f64) -> CompletedLayou
         Vec::new(),
     )
     .unwrap();
-    let result = compute_layout_with_flow(&captured, 0, request(width)).unwrap();
+    let result = compute_layout_with_flow(
+        &captured,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((captured).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         result.placed_text()[0]
             .layout()

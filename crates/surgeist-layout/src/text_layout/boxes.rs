@@ -443,6 +443,6 @@ pub(crate) struct BoxRunUse<Node, S: crate::LayoutScalar> {
     pub prepared: surgeist_text::PreparedText,
     pub nodes: Vec<Node>,
     pub input: crate::ComputeInputOf<S>,
-    pub available: super::fit::Available,
+    pub available: crate::AxisSizingRequestOf<f64>,
     pub trials: Vec<BoxTrialUse>,
 }

@@ -6,7 +6,7 @@ use std::fmt;
 use serde::{Deserialize, Deserializer};
 use serde_json::value::RawValue;
 
-pub(super) const VERSION: u32 = 2;
+pub(super) const VERSION: u32 = 4;
 
 #[cfg(test)]
 #[derive(Debug, Eq, PartialEq)]
@@ -165,9 +165,9 @@ mod tests {
     #[test]
     fn unknown_duplicate_and_trailing_envelope_data_are_rejected() {
         for prefix in [
-            "\"schemaVersion\":2,\"extra\":true,",
-            "\"schemaVersion\":2,\"schemaVersion\":2,",
-            "\"schemaVersion\":2,\"borderBoxLtrData\":{},",
+            "\"schemaVersion\":4,\"extra\":true,",
+            "\"schemaVersion\":4,\"schemaVersion\":4,",
+            "\"schemaVersion\":4,\"borderBoxLtrData\":{},",
         ] {
             assert_eq!(
                 decode(&payload(prefix)).unwrap_err().kind(),
@@ -175,7 +175,7 @@ mod tests {
             );
         }
         assert_eq!(
-            decode(&(payload("\"schemaVersion\":2,") + " {}"))
+            decode(&(payload("\"schemaVersion\":4,") + " {}"))
                 .unwrap_err()
                 .kind(),
             EnvelopeErrorKind::Decode
@@ -184,10 +184,10 @@ mod tests {
 
     #[test]
     fn every_variant_is_required_and_raw_duplicate_node_fields_survive_ingress() {
-        let error = decode("{\"schemaVersion\":2}").unwrap_err();
+        let error = decode("{\"schemaVersion\":4}").unwrap_err();
         assert_eq!(error.kind(), EnvelopeErrorKind::MissingVariant);
         assert_eq!(error.field_path(), "borderBoxLtrData");
-        let payload = payload("\"schemaVersion\":2,").replacen(
+        let payload = payload("\"schemaVersion\":4,").replacen(
             "\"borderBoxLtrData\":{}",
             "\"borderBoxLtrData\":{\"children\":[],\"children\":[]}",
             1,

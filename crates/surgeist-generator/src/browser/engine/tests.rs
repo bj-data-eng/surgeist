@@ -292,20 +292,51 @@ fn adapter_missing_duplicate_and_typed_failure_leave_artifacts_unchanged() {
 
 #[test]
 fn expected_accounting_mismatch_is_rejected_before_publication() {
-    let harness = Harness::new();
-    let corpus = harness
-        .corpus
-        .clone()
-        .with_expected_counts(BrowserReportSummary::new(2, 0, 0, 0, 0).expect("counts"));
-    let request =
-        GenerationRequest::new(corpus, harness.browser_path.clone(), None, None).expect("request");
-    assert!(
-        harness
-            .run(request, Adapter::generated(), TestBrowserPlan::Success)
-            .is_err()
-    );
-    assert!(!harness.root.join("xml").exists());
-    harness.terminal();
+    for (outcome, actual) in [
+        (
+            Mode::Generated,
+            "actual [generated=1, unsupported=0, expected_fail=0, quarantined=0, failed_to_generate=0]",
+        ),
+        (
+            Mode::Unsupported,
+            "actual [generated=0, unsupported=1, expected_fail=0, quarantined=0, failed_to_generate=0]",
+        ),
+    ] {
+        let harness = Harness::new();
+        let corpus = harness
+            .corpus
+            .clone()
+            .with_expected_counts(BrowserReportSummary::new(2, 0, 0, 0, 0).expect("counts"));
+        let request = GenerationRequest::new(corpus, harness.browser_path.clone(), None, None)
+            .expect("request");
+        let error = harness
+            .run(
+                request,
+                Adapter {
+                    outcome,
+                    ..Adapter::generated()
+                },
+                TestBrowserPlan::Success,
+            )
+            .expect_err("a one-case result must not satisfy the declared two generated cases");
+        let GenerationError::Generator(error) = error else {
+            panic!("accounting rejection must retain its typed Generator failure");
+        };
+        assert_eq!(error.kind(), GeneratorErrorKind::InvalidInventory);
+        assert!(!harness.root.join("xml").exists());
+        harness.terminal();
+
+        // The one declared active case genuinely generated or was reported
+        // unsupported by the adapter. Neither outcome admits two generated cases.
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "validate full report accounting: generation counts differ from declared expectations; \
+                 expected [generated=2, unsupported=0, expected_fail=0, quarantined=0, failed_to_generate=0]; \
+                 {actual}"
+            ),
+        );
+    }
 }
 
 #[test]

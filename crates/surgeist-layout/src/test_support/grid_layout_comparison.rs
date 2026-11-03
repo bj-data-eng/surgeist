@@ -7,10 +7,10 @@ use super::oracle::grid::{
 };
 use crate::test_support::layout_tree::{OracleTree, OracleTreeOf};
 use crate::{
-    AlignContent, AlignItems, Available, Compute, ComputeInput, ComputeOutput, ComputedOverflow,
-    Direction, Display, Edges, GridAutoFlow, GridPlacement, Length, LengthAuto, NodeInput,
-    NodeOutput, NodeOutputOf, Point, Position, PreferredSize, RequestedAxis, Round, RunMode, Size,
-    SizingMode, SubgridTrack, TrackComponent, WritingMode, compute_grid, round_layout,
+    AlignContent, AlignItems, Compute, ComputeInput, ComputeOutput, ComputedOverflow, Direction,
+    Display, Edges, GridAutoFlow, GridPlacement, Length, LengthAuto, NodeInput, NodeOutput,
+    NodeOutputOf, Point, Position, PreferredSize, RequestedAxis, Round, RunMode, Size, SizingMode,
+    SubgridTrack, TrackComponent, WritingMode, compute_grid, round_layout,
 };
 
 type Scalar = f32;
@@ -239,6 +239,8 @@ impl GridLayoutComparison {
         let scenario = self.expected_scenario(expected_columns, expected_rows);
         let (mut tree, identities) = self.tree();
 
+        // The scalar comparison supplies percentage context independently; it
+        // does not claim an ICB or scrollport merely from its authored root size.
         let output = compute_grid(
             &mut tree.borrow_compute(),
             1,
@@ -255,7 +257,17 @@ impl GridLayoutComparison {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        Size::new(None, None),
+                        crate::NearestScrollportOf::Unknown,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -309,6 +321,8 @@ impl GridLayoutComparison {
 
     pub fn assert_layout_size(self, expected_size: Size<f32>) {
         let (mut tree, identities) = self.tree();
+        // The scalar comparison supplies percentage context independently; it
+        // does not claim an ICB or scrollport merely from its authored root size.
         let output = compute_grid(
             &mut tree.borrow_compute(),
             1,
@@ -325,7 +339,17 @@ impl GridLayoutComparison {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        Size::new(None, None),
+                        crate::NearestScrollportOf::Unknown,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -976,7 +1000,17 @@ mod tests {
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(Available::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    Size::new(None, None),
+                    crate::NearestScrollportOf::Unknown,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
     }
 

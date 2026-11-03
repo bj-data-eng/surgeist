@@ -19,7 +19,12 @@ fn exercise<S: LayoutScalar>(
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Ltr,
-        AvailableOf::definite(S::from_f64(25.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
     );
     let tree = PublicLayoutTreeOf::<S>::new()
         .children(100, [1, 2, 3, 4, 5])
@@ -297,7 +302,10 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             InlineFlowOf::new(
                 WritingMode::HorizontalTb,
                 Direction::Ltr,
-                AvailableOf::MAX_CONTENT,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
             ),
             InlineMetricsOf::from_line_height_and_baseline(
                 crate::InlineBaselineContext::Physical,

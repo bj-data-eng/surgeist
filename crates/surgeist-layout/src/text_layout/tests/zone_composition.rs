@@ -233,7 +233,15 @@ fn check<S: LayoutScalar>(zone: f64, allowed: bool) {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     let expected = if allowed {
         // Fallback U90 > Z75, although the candidate's 60px band would give

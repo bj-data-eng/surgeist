@@ -2,6 +2,9 @@
 
 //! Genuine empty captured paragraphs associate domains without adding text layout.
 
+#[path = "support/native_request.rs"]
+mod native_request;
+
 use std::{convert::Infallible, sync::Arc};
 use surgeist_layout as layout;
 use surgeist_text as text;
@@ -271,11 +274,25 @@ fn fixture() -> (
 }
 
 fn request() -> layout::LayoutRootRequest {
-    layout::LayoutRootRequest::viewport(layout::Size::new(
-        layout::Available::definite(500.0),
-        layout::Available::MAX_CONTENT,
-    ))
-    .unwrap()
+    {
+        let sizing_request = crate::native_request::sizing(
+            surgeist_layout::Size::new(Some(500.0), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        layout::LayoutRootRequest::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::WritingMode::HorizontalTb,
+                surgeist_layout::Direction::Ltr,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 
 #[test]

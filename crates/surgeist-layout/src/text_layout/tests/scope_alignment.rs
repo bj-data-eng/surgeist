@@ -666,7 +666,14 @@ fn solve<S: LayoutScalar>(
     width: f64,
 ) -> Result<CompletedLayoutBatchOf<u32, S>, LayoutErrorOf<u32, S>> {
     let input = LayoutFlowInput::try_new(tree, 0, case.bindings(), WrappingInput::default(), rows)?;
-    compute_layout_with_flow(&input, 0, request(width))
+    compute_layout_with_flow(
+        &input,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
 }
 
 fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
@@ -790,7 +797,15 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         vec![valid.clone()],
     )
     .unwrap();
-    let prior = compute_layout_with_flow(&admitted, 0, request(100.0)).unwrap();
+    let prior = compute_layout_with_flow(
+        &admitted,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((admitted).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let prior_entries = prior.final_entries().to_vec();
     let prior_line = lines(&prior).remove(0);
     let prior_feedback = prior_line.feedback();
@@ -801,7 +816,14 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
     let missing =
         LayoutFlowInput::try_new(&tree, 0, case.bindings(), WrappingInput::default(), vec![])
             .unwrap();
-    let error = match compute_layout_with_flow(&missing, 0, request(100.0)) {
+    let error = match compute_layout_with_flow(
+        &missing,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((missing).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    ) {
         Ok(_) => panic!("missing demanded scope fact published a completed batch"),
         Err(error) => error,
     };
@@ -1420,7 +1442,15 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
         let rows = || vec![case.row(1, shifted(3.0))];
         let input =
             LayoutFlowInput::try_new(&tree, 0, case.bindings(), wrapping(false), rows()).unwrap();
-        let batch = compute_layout_with_flow(&input, 0, request(100.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &input,
+            0,
+            request(100.0, {
+                let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let line = lines(&batch).remove(0);
         // Child's actual6/8 bounds become9/5 under parent+3. The parent's
         // Ahem10 glyph becomes11/-1; actual root8/2 gives union11/5 =16.
@@ -1533,7 +1563,14 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 // consumed box proof when constructing the Text request.
                 let admitted =
                     LayoutFlowInput::try_new(&tree, 0, case.bindings(), asserted, rows()).unwrap();
-                let error = match compute_layout_with_flow(&admitted, 0, super::request(100.0)) {
+                let error = match compute_layout_with_flow(
+                    &admitted,
+                    0,
+                    super::request(100.0, {
+                        let root_input = crate::LayoutTree::node_input((admitted).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    }),
+                ) {
                     Ok(_) => panic!("unproven source owner published a completed batch"),
                     Err(error) => error,
                 };

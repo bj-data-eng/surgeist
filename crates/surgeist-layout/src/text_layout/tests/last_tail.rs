@@ -15,7 +15,16 @@ fn lines<S: LayoutScalar>(
     width: f64,
     policy: HyphenateLimitLast,
 ) -> Vec<(Range, f64, bool)> {
-    let batch = batch::<S>(p, AvailableOf::definite(S::from_f64(width)), policy);
+    let batch = batch::<S>(
+        p,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        policy,
+    );
     line_facts(p, &batch)
 }
 fn line_facts<S: LayoutScalar>(
@@ -100,14 +109,14 @@ fn manual_later_ceiling_and_anti_permanent_ban_are_real_selected_sequences() {
 
 fn batch<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     policy: HyphenateLimitLast,
 ) -> CompletedLayoutBatchOf<u32, S> {
     batch_with_style(p, width, policy, TextWrapStyle::Auto)
 }
 fn batch_with_style<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     policy: HyphenateLimitLast,
     wrap_style: TextWrapStyle,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -167,11 +176,39 @@ fn batch_with_style<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MaxContent)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -268,7 +305,12 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
             );
             let batch = batch::<S>(
                 &p,
-                AvailableOf::definite(S::from_f64(100.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
                 HyphenateLimitLast::Always,
             );
             let layout = batch.placed_text()[0].layout();
@@ -363,8 +405,20 @@ fn intrinsic_contributions_do_not_construct_a_virtual_terminal_tail() {
             HyphenateLimitLast::None,
         ] {
             for (width, expected) in [
-                (AvailableOf::MinContent, 50.0),
-                (AvailableOf::MaxContent, 140.0),
+                (
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MinContent,
+                    ),
+                    50.0,
+                ),
+                (
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                    140.0,
+                ),
             ] {
                 let b = batch::<S>(&p, width, policy);
                 assert_eq!(
@@ -444,7 +498,15 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             Vec::new(),
         )
         .unwrap();
-        let error = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap_err();
+        let error = compute_layout_with_flow(
+            &capture,
+            0,
+            request(80.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap_err();
         assert!(matches!(
             error.kind(),
             LayoutErrorKindOf::MissingContext(LayoutMissingContext::TextBlockTail)
@@ -522,9 +584,15 @@ fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pr
                 Vec::new(),
             )
             .unwrap();
-            let batch =
-                compute_layout_with_flow(&capture, 0, request(if forced { 30.0 } else { 80.0 }))
-                    .unwrap();
+            let batch = compute_layout_with_flow(
+                &capture,
+                0,
+                request(if forced { 30.0 } else { 80.0 }, {
+                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                }),
+            )
+            .unwrap();
             assert_eq!(batch.placed_text().len(), 2);
             assert_eq!(
                 batch.placed_text()[0].layout().source().text().code_units(),
@@ -620,7 +688,15 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(70.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(70.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout
@@ -838,7 +914,14 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         assert!(first.run_views().all(|run| run.face().bytes() == font
             && run.effective_instance().unwrap().font_size() == 10.0));
         for policy in [HyphenateLimitLast::None, HyphenateLimitLast::Always] {
-            let b = batch::<S>(&p, AvailableOf::MinContent, policy);
+            let b = batch::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                policy,
+            );
             assert_eq!(
                 b.final_entries()
                     .iter()

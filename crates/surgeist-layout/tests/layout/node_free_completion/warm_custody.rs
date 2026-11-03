@@ -46,12 +46,26 @@ impl<S: l::LayoutScalar> l::LayoutTree for WarmRoot<'_, S> {
     }
 }
 impl<S: l::LayoutScalar> WarmRoot<'_, S> {
-    fn request() -> l::LayoutRootRequestOf<S> {
-        l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(30.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap()
+    fn request(&self) -> l::LayoutRootRequestOf<S> {
+        {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        }
     }
     fn attach(
         &self,
@@ -60,7 +74,7 @@ impl<S: l::LayoutScalar> WarmRoot<'_, S> {
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
         let capture =
             l::LayoutFlowInput::try_new(self, 0, vec![f.binding()], inventory, Vec::new())?;
-        l::compute_layout_with_flow(&capture, 0, Self::request())
+        l::compute_layout_with_flow(&capture, 0, self.request())
     }
 }
 
@@ -84,7 +98,7 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     };
     // This is an actual previous publication using the same unchanged native
     // childless tree before its captured Text paragraph is attached.
-    let native = l::compute_layout(&host, 0, WarmRoot::<S>::request()).unwrap();
+    let native = l::compute_layout(&host, 0, host.request()).unwrap();
     assert_eq!(
         root_output(&native).size,
         l::Size::new(S::from_f64(30.0), S::ZERO)

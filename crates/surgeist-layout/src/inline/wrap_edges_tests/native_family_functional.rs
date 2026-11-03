@@ -135,7 +135,12 @@ fn contribution_edges<S: LayoutScalar>(f: &mut Fixture<S>, start: f64, end: f64)
             InlineFlowOf::new(
                 boundary.writing_mode(),
                 boundary.direction(),
-                AvailableOf::definite(f.width),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             ),
             boundary.metrics(),
             InlineControlAlignment::Baseline,
@@ -238,7 +243,15 @@ fn demanded_wraps<S: LayoutScalar>() {
     // All mutations precede this admission. Both requests use this SAME flow;
     // private numeric() would create a different admitted family.
     let flow = f.flow();
-    let wide = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let wide = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&wide),
         [
@@ -299,7 +312,15 @@ fn demanded_wraps<S: LayoutScalar>() {
         assert_eq!(piece.source_aliases().count(), 0);
     }
 
-    let narrow = compute_layout_with_flow(&flow, 0, request(n(30.0))).unwrap();
+    let narrow = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(30.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Actual permitted cuts follow atoms1 and3. The first/final lines consume
     // 20; the middle consumes 3 + 10 + 10 + 5 = 28, with two adjacent pieces.
     assert_eq!(
@@ -386,7 +407,15 @@ fn mixed_level_contiguous<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Reversing one odd-level operand cannot separate its adjacent owner peer.
     assert_eq!(
         atom_positions(&batch),
@@ -433,7 +462,15 @@ fn zero_contribution_aliases<S: LayoutScalar>() {
     let mut f = prepared_fixture::<S>([0, 0, 0, 1, 1, 1], false);
     contribution_edges(&mut f, 0.0, 0.0);
     let ordinary = f.flow();
-    let prior = compute_layout_with_flow(&ordinary, 0, request(n(100.0))).unwrap();
+    let prior = compute_layout_with_flow(
+        &ordinary,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Ordinary contributions remain supplied operands: End separates the odd
     // atomic3 from the final odd pair. Merely being zero is not transparency.
     assert_eq!(
@@ -455,7 +492,15 @@ fn zero_contribution_aliases<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], demanded, Vec::new()).unwrap();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&batch),
         [
@@ -535,7 +580,15 @@ fn nonzero_contribution_refusal<S: LayoutScalar>() {
     let mut f = prepared_fixture::<S>([0, 0, 0, 1, 1, 1], false);
     contribution_edges(&mut f, 3.0, 5.0);
     let ordinary = f.flow();
-    let prior = compute_layout_with_flow(&ordinary, 0, request(n(100.0))).unwrap();
+    let prior = compute_layout_with_flow(
+        &ordinary,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&prior),
         [
@@ -573,7 +626,15 @@ fn nonzero_contribution_refusal<S: LayoutScalar>() {
     // Failed demand neither changes the actual inputs nor poisons prior output
     // or the still-valid ordinary operation.
     assert_eq!(atom_positions(&prior)[3], (33.0, 0.0));
-    let retry = compute_layout_with_flow(&ordinary, 0, request(n(100.0))).unwrap();
+    let retry = compute_layout_with_flow(
+        &ordinary,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(atom_positions(&retry), atom_positions(&prior));
 }
 

@@ -1,0 +1,17 @@
+<test name="block-translation-0-25__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="inline-grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" direction="ltr" position="absolute" width="10.5px" height="10.5px">
+      <div source-tag="div" display="flex" direction="ltr" width="10.5px" height="10.5px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="11" height="11">
+      <node x="0" y="0" width="11" height="11"/>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="11" height="11" scroll-width="11" scroll-height="11" client-width="11" client-height="11"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="11" height="11" scroll-width="11" scroll-height="11" client-width="11" client-height="11"/>
+  </diagnostics>
+</test>

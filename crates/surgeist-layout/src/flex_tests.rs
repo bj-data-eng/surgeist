@@ -33,3 +33,15 @@ mod items;
 mod lines_distribution;
 #[path = "flex_tests/wrap_edges_tests.rs"]
 mod wrap_edges_tests;
+
+#[path = "flex_tests/maximum_cross_authority.rs"]
+mod maximum_cross_authority;
+
+#[path = "flex_tests/used_main_floor.rs"]
+mod used_main_floor;
+
+#[path = "flex_tests/named_empty_absence.rs"]
+mod named_empty_absence;
+
+#[path = "flex_tests/inline_percentage_completion.rs"]
+mod inline_percentage_completion;

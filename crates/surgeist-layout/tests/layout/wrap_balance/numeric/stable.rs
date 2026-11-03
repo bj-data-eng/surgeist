@@ -46,7 +46,13 @@ fn assert_plain_cuts<S: l::LayoutScalar>(
 }
 
 fn ordinary_transition_and_suffix<S: l::LayoutScalar>(direction: l::Direction) {
-    let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+    let capacity = crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
+    );
     let mut tree = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
     let auto = numeric_compute(&tree, capacity, &[]);
     assert_plain_cuts(&auto, direction, false);
@@ -126,7 +132,13 @@ fn stable_native_prefix_survives_style_switches_and_a_coherent_suffix_change() {
 }
 
 fn forced_and_prohibited<S: l::LayoutScalar>(direction: l::Direction) {
-    let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+    let capacity = crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
+    );
     let mut forced = partition_tree::<S>(direction, 2, l::InlineBreakOpportunity::Allowed);
     let ordinary = numeric_compute(&forced, capacity, &[]);
     let stable = numeric_style(&mut forced, l::TextWrapStyle::Stable, capacity);
@@ -185,9 +197,21 @@ fn ordinary_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
             ..old
         });
         let available = if minimum {
-            l::AvailableOf::MIN_CONTENT
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MinContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            )
         } else {
-            l::AvailableOf::MAX_CONTENT
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MaxContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            )
         };
         let auto = numeric_compute(&tree, available, &[]);
         let stable = numeric_style(&mut tree, l::TextWrapStyle::Stable, available);

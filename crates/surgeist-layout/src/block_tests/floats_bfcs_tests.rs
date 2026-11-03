@@ -49,11 +49,34 @@ fn assert_replaced_fixed_block_clears_full_width_float<S: LayoutScalar>() {
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(scalar(100.0)),
-                AvailableOf::definite(scalar(100.0)),
-            ))
-            .expect("finite float viewport"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                        Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    ),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            )),
         )
         .expect("fixed block siblings lay out");
         let float = public_final_output(&batch, 1);
@@ -126,11 +149,34 @@ fn assert_replaced_auto_block_retains_natural_measurement_around_floats<S: Layou
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(scalar(100.0)),
-                AvailableOf::definite(scalar(100.0)),
-            ))
-            .expect("finite float viewport"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                        Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    ),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            )),
         )
         .expect("naturally measured replacement lays out");
         let float = public_final_output(&batch, 1);
@@ -218,8 +264,24 @@ fn fri06_c04_float_batch<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(root_size.map(AvailableOf::definite))
-            .expect("finite float viewport is valid"),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            root_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+            OrthogonalFallbackOf::new(
+                root_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(root_size.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        })),
     )
     .expect("rectangular float layout succeeds")
 }
@@ -254,7 +316,19 @@ fn fri06_c04_block_layout_without_shape_provider<S: LayoutScalar>(
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            root_size.map(AvailableOf::definite),
+            SizingRequestOf::new(
+                root_size.map(|value| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .expect("C04 block layout succeeds without a shape provider");
@@ -342,11 +416,31 @@ fn fri06_c05_provider_tree<S: LayoutScalar>(
 }
 
 fn fri06_c05_provider_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(100.0)),
-        AvailableOf::definite(S::from_f64(80.0)),
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            Some(NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap()),
+        ),
+        OrthogonalFallbackOf::new(
+            Size::new(
+                Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                Some(NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap()),
+            ),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
     ))
-    .expect("finite provider test viewport is valid")
 }
 
 fn fri06_c05_expected_query<S: LayoutScalar>() -> FloatExclusionQueryOf<S> {
@@ -559,8 +653,21 @@ fn fri06_c05_shape_request<S: LayoutScalar>(flow_axes: FlowAxes) -> LayoutRootRe
         scalar_value(100.0),
         scalar_value(160.0),
     ));
-    LayoutRootRequestOf::viewport(root_size.map(AvailableOf::definite))
-        .expect("finite shape-band viewport is valid")
+    crate::test_support::requests::NativeRootFrameOf::new(
+        flow_axes,
+        root_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+        OrthogonalFallbackOf::new(
+            root_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(root_size.map(|value| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+            SizingOperation::Normal,
+        )
+    }))
 }
 
 fn fri06_c05_shape_float_style<S: LayoutScalar>(
@@ -1123,11 +1230,33 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(S::from_f64(180.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap(),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap()),
+                    None,
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap()),
+                        None,
+                    ),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .expect("shape-excluded inline layout succeeds");
 
@@ -1237,11 +1366,33 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(S::from_f64(180.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap(),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap()),
+                    None,
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap()),
+                        None,
+                    ),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(180.0)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .expect("shape-backed float slot layout succeeds");
         let flow_inline_starts = [2, 3]
@@ -1538,7 +1689,19 @@ fn fri06_c04_line_band_direct_compute_inherits_float_into_internal_line_both_sca
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                root_size.map(AvailableOf::definite),
+                SizingRequestOf::new(
+                    root_size.map(|value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                            SizingOperation::Normal,
+                        )
+                    }),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .expect("direct block compute succeeds");
@@ -1868,7 +2031,17 @@ fn block_float_contributes_to_intrinsic_width_and_places_from_right_edge() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1928,11 +2101,29 @@ fn block_bfc_zero_width_child_fits_between_opposing_floats() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -1996,11 +2187,29 @@ fn block_bfc_zero_width_child_fits_between_opposing_floats_above_full_width_floa
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2054,11 +2263,29 @@ fn block_bfc_overflow_clip_zero_width_child_ignores_float_exclusion_without_clea
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2088,11 +2315,29 @@ fn block_bfc_hidden_child_keeps_legacy_right_alignment_without_float_exclusion()
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2125,11 +2370,29 @@ fn block_bfc_hidden_child_keeps_legacy_center_alignment_without_float_exclusion(
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2169,11 +2432,29 @@ fn block_bfc_float_content_size_height_excludes_container_top_inset() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2234,11 +2515,29 @@ fn block_bfc_clear_only_visible_child_keeps_normal_x_while_clearing_y() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2302,11 +2601,29 @@ fn block_bfc_zero_width_child_with_clear_left_sits_below_left_float_row() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
@@ -2366,11 +2683,29 @@ fn block_bfc_zero_width_child_with_clear_right_sits_below_all_right_floats() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        0,
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
-    )
+    {
+        let root_frame = crate::test_support::requests::NativeRootFrameOf::new(
+            {
+                let source = tree.borrow_compute();
+                let root = source.node_input(0);
+                FlowAxes::new(root.writing_mode, root.direction)
+            },
+            Size::new(None, None),
+            OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        compute_root(
+            &mut tree.borrow_compute(),
+            0,
+            root_frame.request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
+        )
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 0).unwrap();
 

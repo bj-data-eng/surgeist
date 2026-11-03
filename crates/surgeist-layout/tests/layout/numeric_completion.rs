@@ -58,11 +58,25 @@ impl<S: l::LayoutScalar> NumericTree<S> {
         }
     }
     fn compute(&self) -> l::CompletedLayoutBatchOf<u32, S> {
-        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(60.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         l::compute_layout(self, 0, request).unwrap()
     }
 }

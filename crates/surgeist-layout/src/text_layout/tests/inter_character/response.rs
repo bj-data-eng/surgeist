@@ -192,7 +192,12 @@ fn deferred<S: LayoutScalar>() {
         assert_eq!(exact.measurements().alignment().advance(), 0.0);
         let error = run::<S>(
             &only,
-            AvailableOf::definite(S::from_f64(15.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             PreferredSizeOf::px(S::from_f64(15.0)),
             TextAlignLast::Justify,
         )

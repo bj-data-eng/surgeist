@@ -106,20 +106,35 @@ fn root_auto_block_contains_float_in_each_writing_mode<S: l::LayoutScalar>() {
             inputs: [root, float],
             children: [vec![1], vec![]],
         };
-        // Available sizes are physical: logical inline is finite100, while
-        // logical block is intrinsic MaxContent and the authored block is AUTO.
+        // The native viewport has physical finite100 on logical inline. Logical
+        // block is indefinite Normal space, and the authored block size is AUTO.
         let available = if horizontal {
-            l::Size::new(
-                l::AvailableOf::definite(n(100.0)),
-                l::AvailableOf::MAX_CONTENT,
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(n(100.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
             )
         } else {
-            l::Size::new(
-                l::AvailableOf::MAX_CONTENT,
-                l::AvailableOf::definite(n(100.0)),
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, Some(n(100.0))),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
             )
         };
-        let request = l::LayoutRootRequestOf::viewport(available).unwrap();
+        let request = {
+            let sizing_request = available;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(mode, surgeist_layout::Direction::Ltr),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         let batch = l::compute_layout(&tree, 0, request).unwrap();
         assert!(batch.placed_text().is_empty());
         assert!(batch.unrounded_inline_fragments().is_empty());

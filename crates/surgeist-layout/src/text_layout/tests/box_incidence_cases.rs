@@ -406,15 +406,47 @@ impl Case {
         }
         let flow =
             LayoutFlowInput::try_new(&tree, 0, vec![self.binding.clone()], inventory, Vec::new())?;
-        compute_layout_with_flow(
-            &flow,
-            0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(S::from_f64(width)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap(),
-        )
+        compute_layout_with_flow(&flow, 0, {
+            let containing_flow_axes = {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            };
+            let requested_axes = Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            );
+            let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+            // These fixtures perform ordinary block-size layout independently of
+            // the explicitly requested inline contribution operation.
+            logical_requests.block = logical_requests
+                .block
+                .with_operation(crate::SizingOperation::Normal);
+            logical_requests.inline = logical_requests
+                .inline
+                .with_operation(crate::SizingOperation::Normal);
+            let axes = containing_flow_axes.physical_size(logical_requests);
+            // The old Native NoParent fixture explicitly supplied these percentage
+            // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+            let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+            let fallback = crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            );
+            crate::LayoutRootRequestOf::standalone(
+                crate::SizingRequestOf::new(axes, fallback),
+                containing_flow_axes,
+                percentage_parent,
+            )
+        })
     }
 }
 fn lines<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<text::FinalizedLine> {
@@ -902,15 +934,47 @@ fn rejected_tall_trial<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(
-        &flow,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(15.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout_with_flow(&flow, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap();
     // At y0 the real first line without S has height10 and available15, so A10
     // fits. Preferred outgoing S makes height20, intersects the lower shape,
@@ -1002,15 +1066,47 @@ fn run_inventory<S: LayoutScalar>(
 ) -> Result<CompletedLayoutBatchOf<u32, S>, LayoutErrorOf<u32, S>> {
     let tree = f.tree::<S>(15.0, false);
     let flow = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], inventory, Vec::new())?;
-    compute_layout_with_flow(
-        &flow,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(15.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    compute_layout_with_flow(&flow, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
 }
 fn omit_s(inventory: &mut WrappingInput<u32>, f: &Case) {
     inventory.scopes.retain(
@@ -1841,15 +1937,47 @@ fn realization_compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &input,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(15.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    compute_layout_with_flow(&input, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 fn realization_geometry<S: LayoutScalar>(
@@ -2267,15 +2395,47 @@ fn exterior_custody<S: LayoutScalar>() {
                     Vec::new(),
                 )
                 .unwrap();
-                let actual = compute_layout_with_flow(
-                    &input,
-                    0,
-                    LayoutRootRequestOf::viewport(Size::new(
-                        AvailableOf::definite(S::from_f64(15.0)),
-                        AvailableOf::MAX_CONTENT,
-                    ))
-                    .unwrap(),
-                )
+                let actual = compute_layout_with_flow(&input, 0, {
+                    let containing_flow_axes = {
+                        let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    };
+                    let requested_axes = Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
+                    );
+                    let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+                    // These fixtures perform ordinary block-size layout independently of
+                    // the explicitly requested inline contribution operation.
+                    logical_requests.block = logical_requests
+                        .block
+                        .with_operation(crate::SizingOperation::Normal);
+                    logical_requests.inline = logical_requests
+                        .inline
+                        .with_operation(crate::SizingOperation::Normal);
+                    let axes = containing_flow_axes.physical_size(logical_requests);
+                    // The old Native NoParent fixture explicitly supplied these percentage
+                    // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+                    let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+                    let fallback = crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    );
+                    crate::LayoutRootRequestOf::standalone(
+                        crate::SizingRequestOf::new(axes, fallback),
+                        containing_flow_axes,
+                        percentage_parent,
+                    )
+                })
                 .unwrap();
                 // Paragraph entry has no previous line to consume leading S.
                 // Paragraph completion cannot leave trailing S to an invented

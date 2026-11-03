@@ -165,11 +165,25 @@ impl<S: LayoutScalar> NumericTree<S> {
             },
             Vec::new(),
         )?;
-        let request = LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(width)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(width)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         compute_layout_with_flow(&flow, 0, request).map_err(Box::new)
     }
 }

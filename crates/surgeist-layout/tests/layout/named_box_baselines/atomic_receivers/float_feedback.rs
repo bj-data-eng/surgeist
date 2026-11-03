@@ -143,7 +143,19 @@ impl<S: l::LayoutScalar> TriangleHost<S> {
     fn compute(&self) -> l::CompletedLayoutBatchOf<u32, S> {
         // Compute through this wrapper so real float queries reach the shape
         // provider; inner.compute would omit the provider entirely.
-        l::compute_layout_invalidated(self, 0, request(l::WritingMode::HorizontalTb), &[]).unwrap()
+        l::compute_layout_invalidated(
+            self,
+            0,
+            request(
+                l::WritingMode::HorizontalTb,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+            ),
+            &[],
+        )
+        .unwrap()
     }
 }
 

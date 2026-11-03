@@ -30,11 +30,6 @@ impl UsedOverflowAxis {
     }
 
     #[must_use]
-    pub(crate) const fn clips_contents(self) -> bool {
-        !matches!(self.value, Overflow::Visible)
-    }
-
-    #[must_use]
     pub(crate) const fn exposes_scroll_range(self) -> bool {
         matches!(
             self.value,

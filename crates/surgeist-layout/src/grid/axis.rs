@@ -1,7 +1,7 @@
 use super::*;
 use crate::geometry::{FlowAxes, LogicalAxis};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum GridAxisKind {
     Column,
     Row,
