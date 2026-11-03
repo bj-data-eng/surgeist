@@ -818,7 +818,7 @@ four-field record: value unsafe-none, reporting endpoint null, report-only
 value unsafe-none, report-only reporting endpoint null. Native creation without
 an opener does not select the distinct value noopener-allow-popups.
 
-The [HTML language producer](../crates/surgeist-html/src/opener_policy.rs)
+The [HTML language producer](../crates/surgeist-html/src/internal/security/opener_policy.rs)
 owns the exact five `HtmlOpenerPolicyValue` spellings and the immutable
 `HtmlOpenerPolicy` initial record. This qualifies language values and defaults;
 it establishes no Document provenance, actual parent association or policy

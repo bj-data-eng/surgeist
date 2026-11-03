@@ -369,14 +369,14 @@ remain charged and polled. Other input states, hosted initialization, general
 setters remain separate work.
 
 The Submit/Reset/Button extension adds only canonical input-kind mappings and
-Default-mode selection in [the shared input rules](../surgeist-html/src/input.rs). Existing
+Default-mode selection in [the shared input rules](../surgeist-html/src/internal/elements/input.rs). Existing
 source-ordered initialization, nonempty Value-to-Default writeback, fresh reset,
 cloning and actual content readback use the same controlled parser owner. Absent
 value supplies empty; present empty stays empty. No display label, activation,
 submission, form-wide reset event or new upstream source is introduced.
 
 The Radio extension adds Surgeist-owned shared state rules and admitted peer
-effects in `../surgeist-html/src/input.rs` and `src/construction/radio.rs`.
+effects in `../surgeist-html/src/internal/elements/input.rs` and `src/construction/radio.rs`.
 No additional upstream parser source is ingested. The selected HTML
 [radio-button group clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 governs exact name/tree/form-owner membership and the five qualifying triggers.
@@ -389,7 +389,7 @@ captured connection facts remain qualified refusals. This construction adapter
 does not supply DOM identity, live mutations, browser activation or events.
 
 The Email/URL extension is Surgeist-owned shared value interpretation in
-`../surgeist-html/src/input.rs`, using the same lenient comma-token owner as `src/tokens.rs`.
+`../surgeist-html/src/internal/elements/input.rs`, using the same lenient comma-token owner as `../surgeist-html/src/internal/microsyntax/tokens.rs`.
 The selected HTML URL and Email state sanitizers govern ASCII trimming,
 newline handling and actual `multiple` presence. The parser adapter charges
 the borrowed cursor and actual source/origin copies before advancing. Produced
@@ -399,8 +399,8 @@ histories remain independent. No additional upstream source is ingested, and
 address/URL validation, live editing and external execution remain separate.
 
 The five-state temporal extension is Surgeist-owned. The shared borrowed strict
-cursor in [temporal.rs](../surgeist-html/src/temporal.rs) is consumed by both ordinary component
-recognition and the [input sanitizer](../surgeist-html/src/input.rs); the existing numeric
+cursor in [temporal.rs](../surgeist-html/src/internal/microsyntax/temporal.rs) is consumed by both ordinary component
+recognition and the [input sanitizer](../surgeist-html/src/internal/elements/input.rs); the existing numeric
 one-digit remainder kernel supplies arbitrary-year calendar decisions without
 machine-integer materialization. The selected
 [input clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-input-element)

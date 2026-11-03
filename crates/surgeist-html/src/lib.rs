@@ -4,6 +4,23 @@
 //! preserve exact UTF-16 code units; live document identity and mutation belong
 //! to the consuming DOM subsystem.
 //!
+//! # Modules
+//!
+//! - [`values`]: document strings, names, attributes and other immutable
+//!   construction values.
+//! - [`vocabulary`]: exact name recognition and the specification's inventories.
+//! - [`microsyntax`]: numbers, temporal values, colors and tokens.
+//! - [`attributes`]: interpretation of individual attributes.
+//! - [`elements`]: element-specific rules, by element family.
+//! - [`focus`]: document-level focus algorithms.
+//! - [`security`]: Content Security Policy, nonces and opener policy.
+//! - [`parsing`]: decisions the HTML parser consumes.
+//! - [`construction`]: native authoring and immutable construction output.
+//! - [`bounded`]: controlled operations that a caller drives step by step
+//!   under its own admission policy. Each submodule mirrors a domain module;
+//!   [`bounded::lexical`] holds the token cursors and ASCII helpers that several
+//!   domains share.
+//!
 //! # Errors
 //!
 //! Every type that a public function returns in an `Err` implements `Debug`,

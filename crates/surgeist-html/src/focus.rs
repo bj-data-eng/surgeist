@@ -1,4 +1,7 @@
-//! The document-level focus algorithms: autofocus, the currently focused area, focus chains, delegates, events, updates and focusable areas.
+//! Document-level focus algorithms.
+//!
+//! Autofocus, the currently focused area, focus chains, delegates, focus events,
+//! focus updates and focusable areas.
 
 pub use crate::internal::focus::autofocus::{
     HtmlAutofocusInsertionAction, HtmlAutofocusInsertionCursor, HtmlAutofocusInsertionError,

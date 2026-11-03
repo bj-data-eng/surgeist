@@ -1018,7 +1018,7 @@ fields. No operation accepts a parser or semantic controller.
 | --- | --- |
 | `HtmlValueInterpreter::admit_attribute_raw`; semantic attribute helpers throughout `semantics/` | Public `admit_attribute_raw`; checks optional UTF-16 length without cloning/allocating. Reports are assembled only through owner operations. `time_element_report_from_attempts` stays private: a public caller cannot assert that arbitrary attempts belong to arbitrary raw text. |
 | `numeric::{try_parse_integer, IntegerUnitStep, IntegerUnitStepResult, IntegerUnitStepError, try_floating_point_number, FloatingPointParseMode, FloatingPointParseResult, FloatingPointAllocationError}`; semantic ordinals/range/time/dimensions | Export bounded parse/materialization/step operations and checked result/error accessors, including integer-prefix scanning, long-integer interpretation and capped nonnegative recovery used by image dimensions, tabindex, select and inheritance. Preserve requested/actual capacity accounting on both success and failure. |
-| `NumericMaterialized`, `NumericMaterializationFailure`, `NumericMaterializationError` and current bounded methods on integer/decimal/rational values; semantic time/dimensions | Export the bounded materialization result/error domain and the exact existing `try_*` operations with their work-bound methods; values retain private canonical digits. |
+| `NumericMaterialized`, `NumericMaterializationFailure`, `HtmlNumericMaterializationError` and current bounded methods on integer/decimal/rational values; semantic time/dimensions | Export the bounded materialization result/error domain and the exact existing `try_*` operations with their work-bound methods; values retain private canonical digits. |
 | `numeric::natural_ratio::{NaturalDigits, NaturalProduct, NaturalComparison, NaturalDifference}`; `semantics/natural_dimensions.rs` | Export immutable borrowed operands and bounded arithmetic cursor operations; semantic resource/host qualification stays in semantics. |
 | `numeric::range` and its ingress/best/lattice cursors; `construction/parser_session/range.rs` | Export the numerical request/reply/cursor boundary, scratch roles and exact layout descriptions; scratch allocation stays with parser, not HTML. |
 | `temporal::{TemporalAlternative, TemporalPhase, BorrowedTemporalPlan, BorrowedYear, BorrowedDate, BorrowedDurationPlan, BorrowedGlobalDateTime, recognize_time_alternative, temporal_recognition_work_bound}`; `semantics/time_element.rs` | HTML owns `HtmlTimeElementInterpretation`, retaining one raw operand and its recognition/materialization phases. Its bounded actions describe recognition, numeric allocation and owner assembly before execution; only its completed operation creates the report. The listed borrowed plans remain private to HTML. Temporal input-coordinate conversion belongs in a distinct HTML module under #1181, retaining its current API. |
@@ -1121,10 +1121,10 @@ all such execution failures retain the owner and prevent publication.
 
 #### Rel interpretation and refinement
 
-The rel owner retains the actual `RelInputs<'raw>` used by initial
+The rel owner retains the actual `HtmlRelInputs<'raw>` used by initial
 interpretation: role, rel, rev, href, imagesrcset, itemprop, title, type hint and
 as-destination. These are borrowed operands or fixed values, not reconstructed
-from `RelData`, which does not retain all of them. `RelInputs` has private fields
+from `RelData`, which does not retain all of them. `HtmlRelInputs` has private fields
 and a constructor taking these explicit operands. Initial interpretation keeps
 the existing `interpret` work, reservation and raw-sharing order. The owner
 holds its occurrence vector and single data-record vector; it introduces no
@@ -1673,9 +1673,9 @@ and otherwise that it names a rule or vocabulary.
 | --- | --- | --- |
 | `HtmlConstructionRefusal`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
 | `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
-| Resource accounting that a consumer matches exhaustively: `IntegerUnitStepError` and `NumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `FloatingPointAllocationError` (semantics `range.rs`), `IntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `AutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
+| Resource accounting that a consumer matches exhaustively: `HtmlIntegerUnitStepError` and `HtmlNumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `HtmlFloatingPointAllocationError` (semantics `range.rs`), `HtmlIntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `HtmlAutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
 | Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
-| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `RangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
+| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `HtmlRangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
 
 Keyword and state sets that the pinned standard enumerates, and the action,
 reply, outcome and step enums of the controlled operations, are exhaustive. Every
