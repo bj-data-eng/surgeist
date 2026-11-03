@@ -99,9 +99,13 @@ merge. Give each such issue its own `Closes #N` line in the body, because
 GitHub links only the first issue of a list. Use `Refs #N` for every other
 issue the pull request concerns.
 
-A pushed branch is published history: do not rebase, amend, or force-push it.
-Bring it up to date by merging `origin/main` into it, and correct defects with
-new commits.
+`main` is published history: never rebase, amend, or force-push it. A
+repository ruleset rejects non-fast-forward pushes to the default branch.
+Until a branch lands, its history may be rewritten, including after it is
+pushed, when that makes the landed history truthful, for example to split a
+commit whose message misdescribes it. This repository rule takes precedence
+over PISCT's general rule against rewriting published history, for branches
+only. Bring a branch up to date by merging `origin/main` into it.
 
 Every merge, into the branch or into `main`, is a `git merge --no-ff` whose
 authored message passes `pisct commit validate` before the merge and again on

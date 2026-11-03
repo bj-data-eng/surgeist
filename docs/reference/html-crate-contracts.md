@@ -512,17 +512,24 @@ Insert, move and Detach edit the parents' actual `Children` banks in place at
 the atomic commit, and nothing is written to a child order before it. A refused
 or aborted operation therefore leaves every order, parent link and logical fact
 unchanged, and no pending child-order bank exists. Planning finds each place by
-walking the order backward from its end, one entry per `Inspect` action: the
-moving node's place in its old parent, then the reference sibling's place in the
-new parent (`before: None` needs no walk). A walk costs the entries from the end
-of the order back to its target, and the commit shifts the entries behind the
-target: all of them for an insertion, all but the removed entry for a removal.
-Its `Commit` description counts the parent link, the removed and inserted
-entries and every shifted entry as `record_writes` of one word each in
-`copied_bytes`, besides the depth work.
-A change among any number of unrelated leading siblings therefore describes the
-same work as one among none, and appending, which shifts nothing, describes work
-independent of the parent's child count.
+walking the order from both ends in turn, starting at the last entry, one entry
+per `Inspect` action: the moving node's place in its old parent, then the
+reference sibling's place in the new parent (`before: None` needs no walk). A
+walk costs about twice the entries between the target and the nearer end of the
+order. Each `Children` bank is a deque, so the commit shifts only the entries
+between the place it closes or opens and the nearer end: for a removal at
+position `p` of `n` entries the lesser of `p` and `n - 1 - p`, and for an
+insertion at `p` among `n` entries the lesser of `p` and `n - p`. When a node
+moves within one parent, `n` for the insertion counts the entries left after
+its removal. Its `Commit`
+description counts the parent link, the removed and inserted entries and every
+shifted entry as `record_writes` of one word each in `copied_bytes`, besides
+the depth work.
+A change near either end of an order therefore describes work independent of
+the parent's child count, whatever siblings lie between it and the far end, and
+appending, which shifts nothing and needs no walk, does too. Moving every child
+from the front of one parent to the end of another costs a constant for each
+child, so work linear in their number.
 
 Only a push into a full order allocates. When the new parent's `Children` bank
 has no spare capacity, a `PrepareAllocationReport` and a `Reserve` action on it
