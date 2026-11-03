@@ -1733,26 +1733,21 @@ impl HtmlCaptureBuilder {
         if child == parent {
             return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
         }
-        if !self.data.records[child].dependents.is_empty() {
-            let mut ancestor = Some(parent);
-            while let Some(i) = ancestor {
-                preflight::work(admit, 3)?;
-                if i == child {
-                    return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
-                }
-                ancestor = self.data.records[i].incoming();
-            }
-        }
+        // The new edge closes a cycle exactly when `parent` is `child` or below
+        // it. Every ordinary, host and template edge is recorded in `dependents`
+        // as well as in the dependent's own `incoming`, so the traversal that
+        // revises the depths below `child` reaches `parent` in that case.
         let first = add(self.data.records[parent].depth, 1)?;
         self.depth(first)?;
         let mut updates = Vec::new();
         preflight::reserve(&mut updates, 1, admit)?;
         updates.push((child, first));
-        self.propagate_depths(&mut updates, None, admit)?;
+        self.propagate_depths(&mut updates, Some(parent), admit)?;
         Ok(updates)
     }
-    /// Depths of every record below the seeded ones, in breadth-first order. With
-    /// `forbidden`, reaching that record is a cycle. Work is proportional to the
+    /// Depths of every record below the seeded ones, in breadth-first order. At
+    /// each record, reaching `forbidden` is a cycle and is reported before that
+    /// record's depth is checked against the limit. Work is proportional to the
     /// records visited, never to the whole forest.
     fn propagate_depths<E>(
         &self,
@@ -2196,7 +2191,7 @@ impl HtmlCaptureBuilder {
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<(), preflight::Failure<E>> {
         preflight::references(self, admit)?;
-        preflight::depths(self, &[], scratch, admit)
+        preflight::depths(self, scratch, admit)
     }
 }
 

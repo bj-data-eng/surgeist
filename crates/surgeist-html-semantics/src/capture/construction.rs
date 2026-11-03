@@ -149,10 +149,10 @@ impl HtmlConstructionCaptureFacts {
 }
 /// Finite adapter allowances, separate from capture retention limits.
 ///
-/// Importing is linear in the nodes and facts: node and fact lookups are indexed
-/// and charged one work credit each, array and index growth is charged when it
-/// moves entries, and establishing a container's children revises only the
-/// subtrees it attaches. Each supplied fact and each mapped node holds one
+/// Importing through the adapter is linear in the nodes and facts: node and fact
+/// lookups are indexed and charged one work credit each, array and index growth
+/// is charged when it moves entries, and establishing a container's children or
+/// attaching template contents revises only the subtrees it attaches. Each supplied fact and each mapped node holds one
 /// scratch entry for the whole import, in addition to the worklist and one
 /// container's temporary lists, so scratch is a constant number of entries per
 /// node.
@@ -627,13 +627,6 @@ impl HtmlConstructionCaptureAdapter {
     }
 }
 
-fn find(
-    index: &Positions<HtmlNodeId>,
-    node: &HtmlNodeId,
-    control: &mut Control,
-) -> Result<Option<usize>, HtmlConstructionCaptureError> {
-    index.get(node, control)
-}
 fn fact<'a>(
     facts: &'a HtmlConstructionCaptureFacts,
     index: &Positions<&'a HtmlNodeId>,
@@ -652,7 +645,7 @@ fn reached(
     structural: bool,
     control: &mut Control,
 ) -> Result<usize, HtmlConstructionCaptureError> {
-    if let Some(position) = find(index, &node, control)? {
+    if let Some(position) = index.get(&node, control)? {
         map.entries[position].structural |= structural;
         return Ok(position);
     }
@@ -931,7 +924,8 @@ fn traverse<'a>(
                         .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?;
                     control.work(10)?;
                     if let Some(HtmlFragmentOwner::ShadowHost(host)) = node.fragment_owner() {
-                        let host = find(node_index, host, control)?
+                        let host = node_index
+                            .get(host, control)?
                             .and_then(|i| map.entries[i].subject.as_ref())
                             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
                         builder.add_shadow_root(
@@ -1033,7 +1027,8 @@ fn traverse<'a>(
             let mut children = Vec::new();
             control.reserve(&mut children, node.children().len())?;
             for id in node.children() {
-                let i = find(node_index, &id, control)?
+                let i = node_index
+                    .get(&id, control)?
                     .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
                 children.push(
                     map.entries[i]
@@ -1053,7 +1048,8 @@ fn traverse<'a>(
         }
         // Associations from supplemental fragment views are still established.
         if let Some(HtmlFragmentOwner::Template(host)) = node.fragment_owner() {
-            let host = find(node_index, host, control)?
+            let host = node_index
+                .get(host, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
             let mark = control.scratch_live;
@@ -1071,7 +1067,8 @@ fn traverse<'a>(
             let id = node
                 .template_contents()
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
-            let target = find(node_index, &id, control)?
+            let target = node_index
+                .get(&id, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
             let HtmlNodeKind::Element(element) = node.kind() else {

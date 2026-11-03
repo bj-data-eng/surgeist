@@ -187,7 +187,6 @@ pub(super) fn references<E>(
 /// all four real reservations. References never become incoming owning edges.
 pub(super) fn depths<E>(
     builder: &HtmlCaptureBuilder,
-    edges: &[(usize, usize)],
     scratch: &mut DepthScratch,
     admit: &mut impl FnMut(Action) -> Result<(), E>,
 ) -> Result<(), Failure<E>> {
@@ -201,10 +200,6 @@ pub(super) fn depths<E>(
     for record in &builder.data.records {
         work(admit, 4)?;
         scratch.incoming.push(record.incoming());
-    }
-    for &(child, parent) in edges {
-        work(admit, 3)?;
-        scratch.incoming[child] = Some(parent);
     }
     reserve_storage(&mut scratch.state, n, false, builder.controlled, admit)?;
     for _ in 0..n {

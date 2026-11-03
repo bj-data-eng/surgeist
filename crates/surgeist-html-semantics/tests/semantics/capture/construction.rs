@@ -1343,6 +1343,9 @@ fn charged_work_stays_linear_when_every_container_has_children() {
         paired_fragment,
         HtmlConstructionCaptureUsage::work,
     );
+}
+#[test]
+fn charged_work_stays_linear_for_a_deep_chain() {
     assert_charge_is_linear(
         "chain",
         "work",

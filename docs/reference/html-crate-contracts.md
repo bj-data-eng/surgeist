@@ -1456,11 +1456,17 @@ as `DuplicateNodeFacts` at its first repetition, in fact order, after the
 foreign-result check of the same fact. Retained arrays and indexes are charged
 for moving their existing entries only when growth actually moves them, so those
 charges sum to a constant number of credits per entry. Establishing a container's
-children revises only the depths of the subtrees it attaches, and charges for
-them; a cycle is the parent being found below an attached child. The one
-remaining whole-capture pass is `finish`, which runs once. No charge scales with
-the number of other nodes, so a work allowance sized as a fixed amount per node,
-attribute, name or value unit and relationship admits every import of that size.
+children or attaching template contents revises only the depths of the subtrees
+it attaches, and charges for them; a cycle is the parent being found at or below
+an attached child, reported at the first such record the breadth-first revision
+reaches (before that record's depth is checked against the limit). The one
+remaining whole-capture pass is `finish`, which runs once. No
+`HtmlConstructionCaptureAdapter` charge scales with the number of other nodes,
+so a work allowance sized as a fixed amount per node, attribute, name or value
+unit and relationship admits every adapter import of that size. The crate-private
+controlled-storage builder mode, whose duplicate-child detection compares every
+pair, is not reachable through the adapter, which always uses a builder in
+ordinary storage mode.
 
 Scratch entries are counted per live logical entry: one per supplied fact and
 one per mapped node while the import runs (both indexes are released at its
