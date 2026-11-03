@@ -15,9 +15,9 @@ use surgeist_html::{
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedNodeKind, HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag,
-    HtmlCustomControlClassification, HtmlDesignMode, HtmlDirectionality,
+    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds,
+    HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlControlFacts, HtmlControlFactsLimits,
+    HtmlControlFlag, HtmlCustomControlClassification, HtmlDesignMode, HtmlDirectionality,
     HtmlDocumentDesignModeFact, HtmlDocumentLanguageFallback, HtmlFlatTreeProducerId,
     HtmlFlatTreeRevision, HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits,
     HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlInertFactLimits,
@@ -726,6 +726,51 @@ fn producer_context_rejects_duplicate_foreign_and_over_capacity_records() {
         .unwrap_err(),
         HtmlSemanticContextError::Capture(HtmlCaptureError::ForeignCapture)
     );
+}
+
+#[test]
+fn producer_context_reports_the_first_refusal_in_record_order() {
+    let (mut b, d) = builder();
+    let a = element(&mut b, &d, "x-a", &[]);
+    let x = element(&mut b, &d, "x-b", &[]);
+    let y = element(&mut b, &d, "x-c", &[]);
+    let text = b.add_text(&d, "t".into()).unwrap();
+    let c = b.finish().unwrap();
+    let a = c.subject_id(&a).unwrap();
+    let x = c.subject_id(&x).unwrap();
+    let y = c.subject_id(&y).unwrap();
+    let text = c.subject_id(&text).unwrap();
+    let classify = |subjects: &[&HtmlCaptureSubjectId]| {
+        HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(
+                subjects
+                    .iter()
+                    .map(|subject| HtmlCustomControlClassification::new((*subject).clone(), true))
+                    .collect(),
+            ),
+            8,
+        )
+        .map(|_| ())
+    };
+    assert_eq!(classify(&[&a, &x, &y]), Ok(()));
+    // The second occurrence that completes a repeat first is the one reported.
+    assert_eq!(
+        classify(&[&a, &x, &y, &x, &a]),
+        Err(HtmlSemanticContextError::DuplicateSubject(x.clone()))
+    );
+    // A repeat before a non-element record, and the reverse.
+    assert_eq!(
+        classify(&[&a, &a, &text]),
+        Err(HtmlSemanticContextError::DuplicateSubject(a.clone()))
+    );
+    assert!(matches!(
+        classify(&[&a, &text, &a]),
+        Err(HtmlSemanticContextError::Capture(
+            HtmlCaptureError::WrongKind { .. }
+        ))
+    ));
 }
 
 fn cancelled_failure(
