@@ -1,5 +1,7 @@
 #[path = "surgeist-layout-generate/adapter.rs"]
 mod adapter;
+#[path = "../layout/browser_parity/atomic_paragraph_metrics.rs"]
+mod atomic_paragraph_metrics;
 #[path = "surgeist-layout-generate/browser_profile.rs"]
 mod browser_profile;
 #[path = "surgeist-layout-generate/cli.rs"]

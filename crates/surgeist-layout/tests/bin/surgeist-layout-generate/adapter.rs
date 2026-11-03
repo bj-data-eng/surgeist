@@ -372,7 +372,7 @@ fn helper_setup_expression(
     ]))
     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof prepareAtomicParagraphMetricsFont === 'function') {{ await prepareAtomicParagraphMetricsFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 

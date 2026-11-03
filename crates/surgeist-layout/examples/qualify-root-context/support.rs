@@ -24,6 +24,7 @@ type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 pub(super) enum QualificationMode {
     Regular,
     StylesheetCustody,
+    FontCustody,
     NumericDiagnostics,
 }
 
@@ -35,6 +36,9 @@ fn select_records(
     match (mode, fixture) {
         (QualificationMode::StylesheetCustody, None) => {
             return Err("stylesheet custody qualification requires one declared fixture".into());
+        }
+        (QualificationMode::FontCustody, None) => {
+            return Err("font custody qualification requires one declared fixture".into());
         }
         (QualificationMode::NumericDiagnostics, None) => {
             return Err("numeric diagnostics require one declared fixture".into());
@@ -61,18 +65,47 @@ fn select_records(
                         "stylesheet custody qualification requires a Generated fixture".into(),
                     );
                 }
+                QualificationMode::FontCustody => {
+                    return Err("font custody qualification requires a Generated fixture".into());
+                }
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
                 QualificationMode::Regular => {}
             }
         }
+        let named = declared_atomic_paragraphs(&declaration.records[0]);
+        match mode {
+            QualificationMode::StylesheetCustody if named.is_some() => {
+                return Err(
+                    "stylesheet custody excludes declared named-font sources; use --font-custody"
+                        .into(),
+                );
+            }
+            QualificationMode::FontCustody if named.is_none() => {
+                return Err("font custody requires a declared named-font source".into());
+            }
+            _ => {}
+        }
     }
     Ok(())
 }
 
+fn declared_atomic_paragraphs(record: &Record) -> Option<usize> {
+    match &record.expected {
+        ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    atomic_paragraphs: Some(count),
+                    ..
+                },
+        } if *count > 0 => Some(*count),
+        _ => None,
+    }
+}
+
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
-const STYLESHEET_CUSTODY: &[u8] = include_bytes!("stylesheet_custody.js");
+const CUSTODY_HELPER: &[u8] = include_bytes!("custody.js");
 const INPUTS: &[(&str, &[u8])] = &[
     (
         "scripts/gentest/test_helper.js",
@@ -138,6 +171,7 @@ enum ExpectedMetadata {
         root_direction: String,
         root_writing_mode: String,
         root_position: String,
+        atomic_paragraphs: Option<usize>,
     },
 }
 #[derive(Clone, Deserialize)]
@@ -469,10 +503,14 @@ fn qualify(
         report.summary().generated(),
         report.summary().unsupported()
     );
-    if mode == QualificationMode::StylesheetCustody {
-        eprintln!(
-            "qualify-root-context: focused real-browser stylesheet custody checks completed; original fixture, dispositions and strict observations retained"
-        );
+    match mode {
+        QualificationMode::StylesheetCustody => eprintln!(
+            "qualify-root-context: focused real-browser stylesheet custody checks completed on a declaration without named-font custody; original fixture, dispositions and strict observations retained"
+        ),
+        QualificationMode::FontCustody => eprintln!(
+            "qualify-root-context: focused real-browser loaded-font custody checks completed; original loaded identity, declarations and strict observations retained"
+        ),
+        QualificationMode::Regular | QualificationMode::NumericDiagnostics => {}
     }
     Ok(())
 }
@@ -584,6 +622,20 @@ fn prepare_inventory(
         global_inputs: Vec::new(),
         expected_inputs: BTreeMap::new(),
     };
+    let custody_installation = match mode {
+        QualificationMode::StylesheetCustody => {
+            Some("installCustodyProbe('stylesheet', 0);".to_owned())
+        }
+        QualificationMode::FontCustody => {
+            let [record] = records else {
+                return Err("font custody requires one selected declaration".into());
+            };
+            let count = declared_atomic_paragraphs(record)
+                .ok_or("font custody requires a declared named-font source")?;
+            Some(format!("installCustodyProbe('font', {count});"))
+        }
+        QualificationMode::Regular | QualificationMode::NumericDiagnostics => None,
+    };
     for (name, bytes) in INPUTS
         .iter()
         .copied()
@@ -592,10 +644,10 @@ fn prepare_inventory(
         let path = RelativePath::new(name)?;
         // Instrument only this invocation's real helper input. Register its exact
         // augmented bytes before the shared generator authenticates any job.
-        let augmented = if mode == QualificationMode::StylesheetCustody
-            && name == "scripts/gentest/test_helper.js"
-        {
-            Some([bytes, b"\n", STYLESHEET_CUSTODY].concat())
+        let augmented = if name == "scripts/gentest/test_helper.js" {
+            custody_installation
+                .as_deref()
+                .map(|install| [bytes, b"\n", CUSTODY_HELPER, b"\n", install.as_bytes()].concat())
         } else {
             None
         };
@@ -849,6 +901,7 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
             root_direction,
             root_writing_mode,
             root_position,
+            atomic_paragraphs: _,
         } => {
             // The zero-edge Htb Auto body owns only its actual inline extent.
             // No used/root height is promoted into a body percentage basis or
@@ -904,6 +957,13 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
         .children()
         .find(|node| node.has_tag_name("input"))
         .ok_or("missing root input")?;
+    let expected_atomic_paragraphs = match metadata {
+        ExpectedMetadata::BlockFlow {
+            atomic_paragraphs, ..
+        } => *atomic_paragraphs,
+        ExpectedMetadata::AbsoluteLocal { .. } => None,
+    };
+    qualify_atomic_metric_census(input, expected_atomic_paragraphs, case.case.id())?;
     let root = input
         .children()
         .find(roxmltree::Node::is_element)
@@ -927,6 +987,51 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
         root_direction
     };
     assert_eq!(root.attribute("direction"), Some(root_direction));
+    Ok(())
+}
+
+fn qualify_atomic_metric_census(
+    input: roxmltree::Node<'_, '_>,
+    expected: Option<usize>,
+    case: &str,
+) -> Result<()> {
+    let captures = input
+        .descendants()
+        .filter_map(|node| node.attribute("atomic-paragraph-metrics"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        captures.len(),
+        expected.unwrap_or(0),
+        "{case}: actual named paragraph census"
+    );
+    for raw in captures {
+        let value: serde_json::Value = serde_json::from_str(raw)?;
+        assert_eq!(value["profile"], 1);
+        assert_eq!(
+            value["font"]["sha256"],
+            "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c"
+        );
+        assert_eq!(value["font"]["loaded"], true);
+        assert_eq!(value["font"]["size"].as_f64(), Some(10.0));
+        assert_eq!(value["reference"], "central");
+        assert!(["auto", "baseline"].contains(&value["alignmentBaseline"].as_str().unwrap_or("")));
+        assert_eq!(value["verticalAlign"], "baseline");
+        assert_eq!(value["before"].as_f64(), Some(0.0));
+        assert_eq!(value["after"].as_f64(), Some(0.0));
+        let order = value["order"]
+            .as_array()
+            .ok_or("missing actual atomic order")?;
+        assert_eq!(order.len(), 3);
+        assert_eq!(order[1]["kind"], "break");
+        assert_eq!(order[1]["reference"], "central");
+        assert_eq!(order[1]["before"].as_f64(), Some(0.0));
+        assert_eq!(order[1]["after"].as_f64(), Some(0.0));
+    }
+    if let Some(count) = expected {
+        eprintln!(
+            "qualify-root-context: {case}: {count} actual loaded-font Central paragraph/BR certificates qualified"
+        );
+    }
     Ok(())
 }
 
@@ -1360,5 +1465,157 @@ mod numeric_diagnostic_tests {
         let diagnostics = NumericDiagnostics::default();
         assert!(diagnostics.finish(1, &[error.to_string()]).is_err());
         assert!(diagnostics.finish(1, &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod custody_applicability_tests {
+    use super::*;
+
+    fn declaration() -> Declaration {
+        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
+            .unwrap()
+    }
+
+    fn source(named: bool) -> String {
+        declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+                    && declared_atomic_paragraphs(record).is_some() == named
+            })
+            .expect("actual declared Generated source for this custody profile")
+            .source
+            .as_str()
+            .to_owned()
+    }
+
+    #[test]
+    fn custody_modes_require_one_actual_declared_generated_fixture() {
+        for (mode, expected) in [
+            (
+                QualificationMode::StylesheetCustody,
+                "stylesheet custody qualification requires one declared fixture",
+            ),
+            (
+                QualificationMode::FontCustody,
+                "font custody qualification requires one declared fixture",
+            ),
+        ] {
+            assert_eq!(
+                select_records(&mut declaration(), None, mode)
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+        }
+        let unsupported = declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Unsupported { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&unsupported),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "font custody qualification requires a Generated fixture"
+        );
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some("html/undeclared.html"),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "focused qualification requires one declared source"
+        );
+    }
+
+    #[test]
+    fn destructive_stylesheet_checks_refuse_declared_named_font_custody() {
+        let named = source(true);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&named),
+                QualificationMode::StylesheetCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "stylesheet custody excludes declared named-font sources; use --font-custody"
+        );
+        let mut selected = declaration();
+        select_records(&mut selected, Some(&named), QualificationMode::FontCustody).unwrap();
+        assert!(declared_atomic_paragraphs(&selected.records[0]).unwrap() > 0);
+        assert_eq!(selected.expected().unwrap().generated(), 4);
+        assert_eq!(selected.expected().unwrap().unsupported(), 0);
+        for mode in [
+            QualificationMode::Regular,
+            QualificationMode::NumericDiagnostics,
+        ] {
+            let mut selected = declaration();
+            select_records(&mut selected, Some(&named), mode).unwrap();
+            assert_eq!(selected.expected().unwrap().generated(), 4);
+        }
+    }
+
+    #[test]
+    fn font_custody_refuses_a_declaration_without_named_certificates() {
+        let unnamed = source(false);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&unnamed),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "font custody requires a declared named-font source"
+        );
+        let mut selected = declaration();
+        select_records(
+            &mut selected,
+            Some(&unnamed),
+            QualificationMode::StylesheetCustody,
+        )
+        .unwrap();
+        assert_eq!(selected.expected().unwrap().generated(), 4);
+        assert_eq!(selected.expected().unwrap().unsupported(), 0);
+    }
+
+    #[test]
+    fn custody_modes_keep_the_existing_complete_pair_requirement() {
+        let paired = declaration()
+            .records
+            .into_iter()
+            .find(|record| record.relation.is_some())
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        for mode in [
+            QualificationMode::StylesheetCustody,
+            QualificationMode::FontCustody,
+        ] {
+            assert_eq!(
+                select_records(&mut declaration(), Some(&paired), mode)
+                    .unwrap_err()
+                    .to_string(),
+                "paired observations require the complete inventory"
+            );
+        }
     }
 }

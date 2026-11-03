@@ -5,6 +5,7 @@ use crate::pinned_font;
 use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
+use crate::atomic_paragraph_metrics;
 #[cfg(test)]
 use surgeist_layout::GridSpan;
 use surgeist_layout::{ComputeInput, ComputeOutput, LayoutTree as _};
@@ -57,6 +58,15 @@ impl Golden {
         let test = document.root_element();
         expect_tag(test, "test")?;
 
+        if test
+            .descendants()
+            .any(|node| node.attribute("atomic-paragraph-metrics").is_some())
+            && test.attribute("measurement-version") != Some("4")
+        {
+            return Err(Error::new(
+                "named atomic paragraph capability requires measurement-version=4",
+            ));
+        }
         let viewport = one_child(test, "viewport")?;
         let input = one_child(test, "input")?;
         let expectations = one_child(test, "expectations")?;
@@ -194,6 +204,30 @@ fn compare_captured_expectations(
             numeric,
         },
     )
+}
+
+#[cfg(test)]
+pub(super) fn assert_named_atomic_paragraph_inputs(root: &Node) -> Result<(), Error> {
+    let tree = TestTree::from_golden(root, None)?;
+    assert_eq!(tree.nodes.len(), 4);
+    let expected = layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+    assert_eq!(
+        tree.nodes[0]
+            .layout_input
+            .as_box()
+            .unwrap()
+            .inline_baseline_context,
+        expected
+    );
+    let metrics = tree.nodes[2]
+        .layout_input
+        .as_line_break()
+        .unwrap()
+        .metrics();
+    assert_eq!(metrics.reference(), expected);
+    assert_eq!(metrics.baseline(), 0.0);
+    assert_eq!(metrics.after_baseline(), 0.0);
+    Ok(())
 }
 
 /// Explicit authored Native input test; historical capture metadata grants no
@@ -334,6 +368,7 @@ pub struct Node {
     atomic_line_strut: Option<layout::InlineMetrics>,
     anonymous_grid_text_wrapper: bool,
     layout_ready_inline_root: bool,
+    atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -650,6 +685,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
                 atomic_line_strut: None,
                 anonymous_grid_text_wrapper: false,
                 layout_ready_inline_root: false,
+                atomic_paragraph_metrics: None,
             });
         }
         if kind != NodeKind::Text || layout_input != "inline-text" {
@@ -806,6 +842,12 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
     {
         return Err(Error::new("prepared leaf has no containing source capture"));
     }
+    let atomic_paragraph_metrics = parse_atomic_paragraph_metrics(&style, &mut children)?;
+    if atomic_paragraph_metrics.is_some() && prepared.is_some() {
+        return Err(Error::new(
+            "a paragraph cannot carry both named numeric and Prepared authority",
+        ));
+    }
     Ok(Node {
         prepared_occurrence: None,
         prepared_origin: None,
@@ -822,7 +864,89 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         atomic_line_strut: None,
         anonymous_grid_text_wrapper,
         layout_ready_inline_root,
+        atomic_paragraph_metrics,
     })
+}
+
+fn parse_atomic_paragraph_metrics(
+    style: &StyleAttrs,
+    children: &mut [Node],
+) -> Result<Option<atomic_paragraph_metrics::Capture>, Error> {
+    let Some(raw) = style.get("atomic-paragraph-metrics") else {
+        return Ok(None);
+    };
+    let capture: atomic_paragraph_metrics::Capture = serde_json::from_str(raw)
+        .map_err(|error| Error::new(format!("invalid atomic metric certificate: {error}")))?;
+    capture.validate().map_err(Error::new)?;
+    let frame = |style: &StyleAttrs| -> Result<bool, Error> {
+        Ok(style.get("font-family") == Some("ahem")
+            && font_size(style)? == Some(10.0)
+            && line_height(style)? == Some(0.0)
+            && style.get("writing-mode") == Some(capture.writing_mode.as_str())
+            && style.get("direction") == Some(capture.direction.as_str())
+            // vertical-align is non-inherited and baseline is its semantic
+            // initial value, intentionally elided by the ordinary serializer.
+            && style.get("vertical-align").unwrap_or("baseline") == capture.vertical_align.as_str())
+    };
+    if style.get("source-tag") != Some("div")
+        || style.get("display") != Some("block")
+        || !frame(style)?
+        || children.len() != 3
+    {
+        return Err(Error::new(
+            "named atomic metric certificate disagrees with its actual containing box",
+        ));
+    }
+    for (index, row) in capture.order.iter().enumerate() {
+        let child = &children[index];
+        if !frame(&child.style)?
+            || !child.children.is_empty()
+            || child.text.is_some()
+            || child.inline_text.is_some()
+            || child.prepared.is_some()
+            || child.prepared_occurrence.is_some()
+            || child.inline_boundary.is_some()
+            || child.atomic_paragraph_metrics.is_some()
+        {
+            return Err(Error::new(
+                "named atomic metric occurrence has foreign source/frame authority",
+            ));
+        }
+        let valid = match row {
+            atomic_paragraph_metrics::Occurrence::Atomic { bidi_level, .. } => {
+                child.style.get("source-tag") == Some("span")
+                    && child.style.get("display") == Some("inline-block")
+                    && child.atomic_inline_participation.is_some_and(|atomic| {
+                        Some(atomic.bidi_level())
+                            == surgeist_text::BidiLevel::try_new(*bidi_level).ok()
+                            && atomic.following_break()
+                                == layout::InlineBreakOpportunity::Prohibited
+                    })
+            }
+            atomic_paragraph_metrics::Occurrence::Break { .. } => {
+                child.style.get("source-tag") == Some("br")
+                    && child.style.get("display") == Some("inline")
+                    && child.style.get("line-control") == Some("forced-break")
+                    && inline_metrics(&child.style)?.is_some_and(|metrics| {
+                        metrics.baseline() == 0.0 && metrics.line_extent() == 0.0
+                    })
+                    && child.atomic_inline_participation.is_none()
+            }
+        };
+        if !valid {
+            return Err(Error::new(
+                "named atomic metric certificate does not match its actual atomic/BR occurrence",
+            ));
+        }
+    }
+    let metrics = layout::InlineMetrics::try_new(
+        layout::InlineBaselineContext::Named(layout::BaselineName::Central),
+        0.0,
+        0.0,
+    )
+    .map_err(|error| Error::new(format!("invalid certified Central metric: {error:?}")))?;
+    children[1].atomic_line_strut = Some(metrics);
+    Ok(Some(capture))
 }
 
 fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
@@ -890,6 +1014,7 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
         atomic_line_strut,
         anonymous_grid_text_wrapper: false,
         layout_ready_inline_root: false,
+        atomic_paragraph_metrics: None,
     })
 }
 
@@ -1113,6 +1238,7 @@ fn parse_inline_text_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         atomic_line_strut: None,
         anonymous_grid_text_wrapper: false,
         layout_ready_inline_root: false,
+        atomic_paragraph_metrics: None,
     })
 }
 
@@ -2243,6 +2369,23 @@ impl TestTree {
                 }
             }
         };
+        if node.atomic_paragraph_metrics.is_some() {
+            let mut input = layout_input
+                .as_box()
+                .ok_or_else(|| Error::new("named atomic paragraph requires an actual box"))?
+                .clone();
+            input.inline_baseline_context =
+                layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+            layout_input = layout::LayoutInput::box_input(input);
+        }
+        if node.style.get("source-tag") == Some("br")
+            && let Some(metrics) = node.atomic_line_strut
+        {
+            let control = layout_input
+                .as_line_break()
+                .ok_or_else(|| Error::new("certified BR metric requires an actual control"))?;
+            layout_input = layout::LayoutInput::line_break(control.with_metrics(metrics));
+        }
         if let Some(capture) = &node.prepared
             && capture.prepared.orientation() == surgeist_text::LineOrientation::Vertical
         {
@@ -12615,3 +12758,7 @@ mod source_root_frame_tests {
 #[cfg(test)]
 #[path = "numeric_comparison_tests.rs"]
 mod numeric_comparison_tests;
+
+#[cfg(test)]
+#[path = "atomic_paragraph_metrics_tests.rs"]
+mod atomic_paragraph_metrics_tests;

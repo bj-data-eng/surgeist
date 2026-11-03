@@ -3,6 +3,8 @@
 
 #[path = "../tests/bin/surgeist-layout-generate/adapter.rs"]
 mod adapter;
+#[path = "../tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
+mod atomic_paragraph_metrics;
 #[path = "../tests/bin/surgeist-layout-generate/browser_profile.rs"]
 mod browser_profile;
 #[path = "../tests/bin/surgeist-layout-generate/envelope.rs"]
@@ -39,11 +41,14 @@ fn parse_arguments(
         [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
             Ok((Some(source.as_str()), QualificationMode::StylesheetCustody))
         }
+        [mode, flag, source] if mode == "--font-custody" && flag == "--fixture" => {
+            Ok((Some(source.as_str()), QualificationMode::FontCustody))
+        }
         [mode, flag, source] if mode == "--numeric-diagnostics" && flag == "--fixture" => {
             Ok((Some(source.as_str()), QualificationMode::NumericDiagnostics))
         }
         _ => Err(
-            "usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -97,5 +102,34 @@ mod tests {
                 QualificationMode::StylesheetCustody
             ))
         );
+    }
+    #[test]
+    fn font_custody_cli_requires_one_explicit_fixture_and_no_other_mode() {
+        let args = arguments(&["--font-custody", "--fixture", "html/subgrid/named.html"]);
+        assert_eq!(
+            parse_arguments(&args),
+            Ok((
+                Some("html/subgrid/named.html"),
+                QualificationMode::FontCustody
+            ))
+        );
+        for values in [
+            vec!["--font-custody"],
+            vec!["--fixture", "html/subgrid/named.html", "--font-custody"],
+            vec![
+                "--font-custody",
+                "--stylesheet-custody",
+                "--fixture",
+                "html/subgrid/named.html",
+            ],
+            vec![
+                "--numeric-diagnostics",
+                "--font-custody",
+                "--fixture",
+                "html/subgrid/named.html",
+            ],
+        ] {
+            assert!(parse_arguments(&arguments(&values)).is_err());
+        }
     }
 }

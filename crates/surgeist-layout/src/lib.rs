@@ -221,6 +221,9 @@
 #[cfg(test)]
 use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
+#[cfg(test)]
+#[path = "../tests/layout/browser_parity/atomic_paragraph_metrics.rs"]
+mod atomic_paragraph_metrics;
 mod baseline_offset;
 mod block;
 mod cache;

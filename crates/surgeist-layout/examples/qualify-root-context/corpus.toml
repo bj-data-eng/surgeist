@@ -532,6 +532,7 @@ parent_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 root_position = "relative"
+atomic_paragraphs = 6
 
 [[records]]
 source = "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html"
@@ -550,6 +551,7 @@ parent_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "vertical-rl"
 root_position = "relative"
+atomic_paragraphs = 6
 
 [[records]]
 source = "html/qualification/boxless-descendant.html"
@@ -819,3 +821,59 @@ source_kind = "authored"
 [records.expected]
 kind = "unsupported"
 reason = "Root context: UnrepresentedLogicalBlockEdges"
+
+[[records]]
+source = "html/qualification/atomic-named-foreign-font.html"
+source_sha256 = "110f7993eb31e697301b0650a885a9bb10e947859a3f0226f28a1abf04de5cec"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-font-size.html"
+source_sha256 = "dbaa3b6461f73012b02258431fe950c37f9297d0bf8d78f18ed0b499e406cb12"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-dominant-override.html"
+source_sha256 = "9956631716403a6bc96e18d21491c4cc8ca3732a10c2b9c46b5d4a9decfe672a"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedMetricOverride"
+
+[[records]]
+source = "html/qualification/atomic-named-sideways.html"
+source_sha256 = "347ab3e9932b972d5a103ec2bbff60c39b3c2867ca0f2223a1cb4a4a3d528dd2"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedReferenceContext"
+
+[[records]]
+source = "html/qualification/atomic-named-br-font-size.html"
+source_sha256 = "7bddbee97d93b2d38b6ff6955ef03bf6c8f2ca536b09a6fb11584dca1729f2e5"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: MismatchedOccurrenceReference"
+
+[[records]]
+source = "html/qualification/atomic-named-synthetic-weight.html"
+source_sha256 = "5bbed7ab5f4f683e9d9fe6ed1dc9b6b246808e7b23434de7a971cfe8f6dcb7d5"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-relative-offset.html"
+source_sha256 = "b4a6aed8ca3cc0ef095e69ea8d73f6e28acf59610a97364a5f78685db8f47bbd"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedOccurrence"

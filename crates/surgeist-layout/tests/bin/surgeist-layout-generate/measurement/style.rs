@@ -268,6 +268,11 @@ pub(super) struct InlineMetrics {
     baseline: f64,
     line_height: f64,
 }
+impl InlineMetrics {
+    pub(super) fn is_zero(&self) -> bool {
+        self.baseline == 0.0 && self.line_height == 0.0
+    }
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Track {
@@ -1720,3 +1725,17 @@ pub(super) fn test_position(raw: &str) -> Result<Option<String>, MeasurementErro
 #[cfg(test)]
 #[path = "style_tests.rs"]
 mod tests;
+
+impl Style {
+    pub(super) fn has_atomic_metric_font(&self) -> bool {
+        let px = |value: &Option<Dimension>, expected| matches!(value, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(actual)) }) if *actual == expected);
+        self.font_family.as_deref() == Some("ahem")
+            && px(&self.font_size, 10.0)
+            && px(&self.line_height, 0.0)
+    }
+    pub(super) fn has_zero_inline_metrics(&self) -> bool {
+        self.inline_metrics
+            .as_ref()
+            .is_some_and(InlineMetrics::is_zero)
+    }
+}

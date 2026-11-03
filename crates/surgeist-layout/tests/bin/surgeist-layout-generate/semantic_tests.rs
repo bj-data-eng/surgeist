@@ -5819,3 +5819,6 @@ fn v4_local_and_world_channels_refuse_missing_or_contradictory_payloads() {
         assert!(browser_parity_support::Golden::parse(&invalid).is_err());
     }
 }
+
+#[path = "atomic_metrics_semantic_tests.rs"]
+mod atomic_metrics_semantic_tests;

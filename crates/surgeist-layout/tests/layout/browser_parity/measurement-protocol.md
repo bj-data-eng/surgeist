@@ -215,6 +215,90 @@ capture and full comparison exist. Filtered or finite-example generation does
 not verify the full corpus. Do not alter counts, fonts, HTML, CSS or geometry to
 hide missing source authority.
 
+## Source-qualified atomic-only named metrics
+
+V4 optionally carries `atomicParagraphMetrics`, independently versioned by
+`profile: 1`. It is an explicit new source capability, not a reinterpretation
+of Physical measurements. XML retains the same JSON as the containing input
+box's `atomic-paragraph-metrics` attribute. Absence keeps the existing Physical
+operation. Prepared source/font capture remains separate and unchanged.
+
+The closed source candidate is a layout-ready, non-Prepared vertical block at
+line-height 0 with exactly two actual empty inline-block SPAN occurrences and one
+intervening actual inline BR. Only discarded ASCII whitespace/comments may be
+omitted. The profile authenticates the actual source indices and emitted child
+indices, order, homogeneous frame, default inline alignment and break roles.
+Its required `verticalAlign: "baseline"` is the applicable HTML alignment
+authority on the containing paragraph and each actual occurrence. Raw wire
+styles and XML may omit the separate non-inherited `vertical-align` field
+when it has its semantic initial baseline value; every present value must
+agree. The computed certificate field itself remains required. Inherited
+font-family/font-size authority remains explicit and is not inferred from
+absence.
+Occurrences must be undisplaced: static positioning, or relative positioning
+with Auto or zero used insets. All-Auto relative insets use zero under
+[CSS2 relative positioning](../../../../../references/css2--visuren.html--3f334c530cf4.md#relative-positioning).
+Nonzero resolved displacement refuses this closed profile.
+Mixed typography supplies neutral atomic levels 0/1 from the actual LTR/RTL
+paragraph direction. Upright is admitted only with actual LTR direction; the
+separate used-direction projection needed for Upright+RTL is not inferred.
+Authored bidi/break/strut overrides and other content require separate proof.
+
+The first font must be the actual normal 400 Ahem face from the controlled base
+stylesheet: the 1,496-byte WOFF2 SHA256
+`e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c`.
+This is Ahem 1.1, not the Prepared 1.50 TTF resource. The adapter already checks the
+exact base resource; its one CSS FontFace is loaded in the asynchronous setup
+stage without constructing a replacement face. Capture retains that loaded
+object and checks the same unique FontFaceSet member on every variant.
+Missing, competing, replaced, unloaded or unsupported face/style/metric authority
+refuses. Repeated setup never reloads or substitutes a face. A transient competing
+face must actually be removed before pristine capture can resume.
+
+The analytic certificate is limited to actual 10px regular font metrics and the
+supported default Mixed/Upright Central reference and line-fit context. The
+certificate preserves actual computed `alignmentBaseline` as `auto` or
+`baseline`; it does not turn the SVG property token into a general baseline
+alias. Pinned Blink 79051446 keeps this raw CSSOM token, skips its SVG
+alignment switch for HTML, and applies actual HTML `vertical-align: baseline`
+while the inline owner selects Central for vertical Mixed/Upright. The
+original WOFF2 has UPEM 1000, hhea/OS2 ascent 800/descent −200/gap 0, with no BASE,
+vhea, vmtx, fvar or MVAR. Used Central has symmetric 5/5 sides. At line-height 0,
+half-leading −5/−5 yields the certified before 0/after 0 tuple for the paragraph and
+each actual BR. Zero line-height alone is never this proof. Unsupported font,
+dominant/alignment-baseline, line-fit/trim or occurrence overrides refuse before
+certificate issuance. This is a closed resource proof, not a generic font-table
+parser, font provider identity, glyph paragraph or rectangle-derived metric.
+
+Raw named-coordinate absence and used upright metrics remain distinct. Text's
+`baseline(VerticalX, Central)` may be unavailable while `upright_metrics`
+separately supplies used em sides at the nominal pen. Text's public SFNT/TTC
+metric input does not admit these WOFF2 bytes unchanged; the closed proof does
+not register the different TTF under a fictional shared identity. See the
+[actual font metric owner](../../../../surgeist-text/src/font/metrics.rs),
+[used upright adapter](../../../../surgeist-text/src/font/metrics/upright.rs)
+and [font provenance](fonts/PROVENANCE.md).
+
+The decoder and independent reader validate the complete certificate and every
+actual atomic/BR binding. The reader sets only that paragraph's intrinsic
+`InlineBaselineContext::Named(Central)` and uses the matching checked zero BR
+metrics. No synthetic Text occurrence or boundary is inserted. An asymmetric
+signed zero-height tuple cannot fit the existing checked InlineMetrics API and
+refuses rather than being clamped. Parent Grid alignment-reference selection is
+a separate owner; a named paragraph does not choose or relabel that reference.
+
+The existing qualification inventory records the expected six paragraph/BR
+certificates for each original column/vertical-row source. Its real-browser
+[loaded-font custody mode](../../../examples/qualify-root-context/README.md#loaded-font-custody)
+inserts a real competing FontFace from the same owned src, requires exact
+refusal, removes only that introduced face, and requires fresh pristine capture
+with the original loaded identity. Destructive stylesheet checks use a separate
+non-font declaration because detaching a stylesheet can replace its FontFace
+generation. Unit browser-host controls do not substitute for this real
+FontFaceSet qualification. Strict
+Native errors and original XML observations remain visible; named metrics do not
+certify complete row geometry or whole corpus conformance.
+
 ## Authentic prepared-text input
 
 The original-source profile introduced in version 2 is independently validated

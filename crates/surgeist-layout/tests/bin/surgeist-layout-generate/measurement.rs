@@ -10,6 +10,9 @@ mod root_context;
 use root_context::WireViewport;
 
 use serde::Deserialize;
+
+use crate::atomic_paragraph_metrics;
+
 use std::fmt;
 #[cfg(test)]
 use style::Dimension;
@@ -162,6 +165,8 @@ struct WireNode {
     inline_segments: Option<Vec<WireSegment>>,
     #[serde(default, deserialize_with = "present")]
     prepared_paragraph: Option<prepared_text::Paragraph>,
+    #[serde(default, deserialize_with = "present")]
+    atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
     #[serde(default, deserialize_with = "present")]
     prepared_occurrence: Option<usize>,
     #[serde(default, deserialize_with = "present")]
@@ -541,6 +546,79 @@ impl WireNode {
         })
     }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            if let Err(detail) = capture.validate() {
+                return Err(context.error(
+                    "atomicParagraphMetrics",
+                    MeasurementErrorKind::InvalidValue,
+                    detail,
+                ));
+            }
+            let style = context.required(self.style.as_ref(), "style")?;
+            context.compatible(
+                self.layout_input == LayoutInput::Box
+                    && self.tag_name.as_deref() == Some("div")
+                    && self.prepared_paragraph.is_none()
+                    && self.prepared_occurrence.is_none()
+                    && self.inline_segments.is_none()
+                    && self.text_content.is_none()
+                    && style.display.as_deref() == Some("block")
+                    && style.writing_mode.as_deref() == Some(capture.writing_mode.as_str())
+                    && style.direction.as_deref() == Some(capture.direction.as_str())
+                    && style.vertical_align.as_deref().unwrap_or("baseline")
+                        == capture.vertical_align.as_str()
+                    && style.has_atomic_metric_font(),
+                "atomicParagraphMetrics",
+                "named paragraph certificate disagrees with actual containing box",
+            )?;
+            let children = context.required(self.children.as_ref(), "children")?;
+            context.compatible(
+                children.len() == 3,
+                "atomicParagraphMetrics.order",
+                "certificate requires all three actual atomic/BR occurrences",
+            )?;
+            for (index, row) in capture.order.iter().enumerate() {
+                let child = &children[index];
+                let own = context.required(child.style.as_ref(), "children.style")?;
+                let same_frame = own.writing_mode == style.writing_mode
+                    && own.direction == style.direction
+                    && own.vertical_align.as_deref().unwrap_or("baseline")
+                        == capture.vertical_align.as_str()
+                    && own.has_atomic_metric_font();
+                let empty_box = child.layout_input == LayoutInput::Box
+                    && child.children.as_ref().is_some_and(Vec::is_empty)
+                    && child.text_content.is_none()
+                    && child.prepared_paragraph.is_none()
+                    && child.atomic_paragraph_metrics.is_none();
+                let role = match row {
+                    atomic_paragraph_metrics::Occurrence::Atomic { bidi_level, .. } => {
+                        child.tag_name.as_deref() == Some("span")
+                            && own.display.as_deref() == Some("inline-block")
+                            && child.line_control_participation.is_none()
+                            && child
+                                .atomic_inline_participation
+                                .as_ref()
+                                .is_some_and(|atomic| {
+                                    atomic.bidi_level == u64::from(*bidi_level)
+                                        && atomic.following_break == BreakKind::Prohibited
+                                })
+                    }
+                    atomic_paragraph_metrics::Occurrence::Break { .. } => {
+                        child.tag_name.as_deref() == Some("br")
+                            && own.display.as_deref() == Some("inline")
+                            && child.line_control_participation.is_some()
+                            && child.atomic_inline_participation.is_none()
+                            && own.has_zero_inline_metrics()
+                    }
+                };
+                context.compatible(
+                    same_frame && empty_box && role,
+                    "atomicParagraphMetrics.order",
+                    "certificate does not match actual same-reference atomic/BR child",
+                )?;
+            }
+        }
+
         context.compatible(
             self.world_rounded_layout.is_none() || self.layout_input == LayoutInput::Box,
             "worldRoundedLayout",
@@ -607,6 +685,7 @@ impl WireNode {
                     && self.world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && self.prepared_paragraph.is_none()
+                    && self.atomic_paragraph_metrics.is_none()
                     && self.prepared_occurrence.is_none()
                     && self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
@@ -750,6 +829,16 @@ impl WireNode {
         is_root: bool,
     ) -> Result<Node, MeasurementError> {
         let mut attrs = Vec::new();
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            let encoded = serde_json::to_string(capture).map_err(|_| {
+                context.error(
+                    "atomicParagraphMetrics",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode finite metric certificate",
+                )
+            })?;
+            attrs.push(("atomic-paragraph-metrics", encoded));
+        }
         if let Some(tag) = &self.tag_name {
             validate_xml_text(tag, context, "tagName")?;
         }
@@ -1239,6 +1328,19 @@ impl WireNode {
             viewport.validate(context)?;
         }
         prepare_control_expectations(&writing_mode, &mut children, context)?;
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            // validate_wire bound these exact font facts to the paragraph and
+            // all three actual occurrences. Default compression must not erase
+            // authority required by the independent certificate reader.
+            let font_attrs = [
+                ("font-family", capture.font.family.clone()),
+                ("font-size", format!("{}px", number(capture.font.size))),
+            ];
+            attrs.extend(font_attrs.clone());
+            for child in &mut children {
+                child.attrs.extend(font_attrs.clone());
+            }
+        }
         Ok(Node {
             kind,
             prepared_paragraph,

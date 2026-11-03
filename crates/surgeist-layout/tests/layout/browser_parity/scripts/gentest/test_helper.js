@@ -220,6 +220,124 @@ function qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width) {
   return proof.hypotheticalDisplay === 'inline-flex' ? indent : 0;
 }
 
+// Closed font-wide metric evidence for atomic-only paragraphs. This is not a
+// registered Text font, a Prepared paragraph or a provider-issued identity.
+const ATOMIC_METRIC_FONT_SHA256 = 'e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c';
+let atomicParagraphFontState;
+function atomicMetricFamily(value) { return value.replace(/^['"]|['"]$/g, '').toLowerCase(); }
+function isUnshiftedInlinePosition(style) {
+  return ['static', 'relative'].includes(style.position) &&
+    (style.position !== 'relative' || ['top', 'right', 'bottom', 'left'].every(edge =>
+      style[edge] === 'auto' || parseCssPx(style[edge]) === 0));
+}
+function atomicParagraphSource(element) {
+  if (!hasLayoutReadyInlineFixture(element)) return undefined;
+  const style = getComputedStyle(element);
+  if (element.tagName !== 'DIV' || style.display !== 'block' ||
+      !['vertical-rl', 'vertical-lr'].includes(style.writingMode) || parseCssPx(style.lineHeight) !== 0) return undefined;
+  if (element.closest('[data-surgeist-prepared-text]')) return undefined;
+  const order = Array.from(element.childNodes).map((node, source) => ({ node, source })).filter(({node}) =>
+    node.nodeType !== Node.COMMENT_NODE &&
+    !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)));
+  if (order.length !== 3 || order[1].node.tagName !== 'BR' ||
+      ![order[0], order[2]].every(({node}) => node.nodeType === Node.ELEMENT_NODE && isLoweredAtomicInline(node))) return undefined;
+  return order;
+}
+function atomicMetricFace() {
+  const faces = Array.from(document.fonts).filter(face => atomicMetricFamily(face.family) === 'ahem');
+  if (faces.length !== 1) throw new Error(faces.length ? 'CompetingFontResource' : 'MissingFontResource');
+  const face = faces[0];
+  if (face.style !== 'normal' || !['normal', '400'].includes(face.weight) ||
+      !['normal', '100%'].includes(face.stretch) || face.unicodeRange.toUpperCase() !== 'U+0-10FFFF' ||
+      face.featureSettings !== 'normal' || face.variationSettings !== 'normal' ||
+      face.ascentOverride !== 'normal' || face.descentOverride !== 'normal' ||
+      face.lineGapOverride !== 'normal' || face.sizeAdjust !== '100%') throw new Error('UnsupportedFontResourceSettings');
+  return face;
+}
+async function prepareAtomicParagraphMetricsFont() {
+  const proof = rootContextCapture;
+  if (!proof || proof.reason) return;
+  const root = document.getElementById('test-root');
+  if (!root || ![root, ...root.querySelectorAll('*')].some(atomicParagraphSource)) return;
+  if (atomicParagraphFontState?.owner === proof.ownedStyle) {
+    // Preserve the original load outcome and face. Per-capture checks reject a
+    // transient competitor/missing face; repeated setup cannot reload or repair it.
+    return;
+  }
+  const state = { owner: proof.ownedStyle, face: undefined, loaded: false, error: undefined };
+  atomicParagraphFontState = state;
+  try {
+    state.face = atomicMetricFace();
+    let loaded;
+    try { loaded = await state.face.load(); } catch (_) { throw new Error('FontLoadFailed'); }
+    if (loaded !== state.face) throw new Error('ForeignLoadedFontResource');
+    await document.fonts.ready;
+    if (state.face.status !== 'loaded' || atomicMetricFace() !== state.face) throw new Error('FontResourceChanged');
+    state.loaded = true;
+  } catch (error) { state.error = error.message || 'FontLoadFailed'; }
+}
+function requireAtomicParagraphFont() {
+  const state = atomicParagraphFontState;
+  if (!state || state.owner !== rootContextCapture?.ownedStyle) throw new Error('MissingLoadedFontAuthority');
+  if (state.error) throw new Error(state.error);
+  if (!state.loaded || state.face.status !== 'loaded') throw new Error('FontNotLoaded');
+  if (atomicMetricFace() !== state.face) throw new Error('FontResourceChanged');
+}
+function atomicParagraphMetricsForElement(element, children) {
+  const order = atomicParagraphSource(element);
+  if (!order) return undefined;
+  const fail = reason => { throw new Error('Atomic paragraph metrics: ' + reason); };
+  try { requireAtomicParagraphFont(); } catch (error) { fail(error.message); }
+  const style = getComputedStyle(element);
+  for (let node = element; node; node = node.parentElement) {
+    if (['line-fit-edge', 'text-box-trim', 'text-box-edge', 'text-fit', 'dominant-baseline', 'alignment-baseline'].some(property => node.style.getPropertyValue(property)) ||
+        ['data-surgeist-inline-struts', 'data-surgeist-inline-breaks', 'data-surgeist-inline-bidi-levels'].some(attribute => node.hasAttribute(attribute))) fail('UnsupportedMetricOverride');
+    if (node.id === 'test-root') break;
+  }
+  if (element.tagName !== 'DIV' || style.display !== 'block' ||
+      !['ltr', 'rtl'].includes(style.direction) || !['mixed', 'upright'].includes(style.textOrientation) ||
+      (style.textOrientation === 'upright' && style.direction !== 'ltr') ||
+      style.dominantBaseline !== 'auto' || !['auto', 'baseline'].includes(style.alignmentBaseline) ||
+      style.verticalAlign !== 'baseline' ||
+      style.textCombineUpright !== 'none' || !['normal', 'isolate'].includes(style.unicodeBidi) ||
+      style.whiteSpace !== 'normal' || style.textEmphasisStyle !== 'none') fail('UnsupportedReferenceContext');
+  const matchingFont = own => atomicMetricFamily(own.fontFamily) === 'ahem' &&
+    own.fontSize === '10px' && parseCssPx(own.lineHeight) === 0 && own.fontStyle === 'normal' &&
+    own.fontWeight === '400' && ['normal', '100%'].includes(own.fontStretch) &&
+    own.fontFeatureSettings === 'normal' && own.fontVariationSettings === 'normal' &&
+    own.fontVariant === 'normal' && own.fontSizeAdjust === 'none';
+  if (!matchingFont(style) || children.length !== 3) fail('UnsupportedFirstFontMetrics');
+  const level = style.direction === 'rtl' ? 1 : 0;
+  for (const [index, row] of order.entries()) {
+    const own = getComputedStyle(row.node), described = children[index];
+    if (['line-fit-edge', 'text-box-trim', 'text-box-edge', 'text-fit', 'dominant-baseline', 'alignment-baseline'].some(property => row.node.style.getPropertyValue(property))) fail('UnsupportedMetricOverride');
+    if (!matchingFont(own) || own.writingMode !== style.writingMode || own.direction !== style.direction ||
+        own.textOrientation !== style.textOrientation || own.verticalAlign !== 'baseline' ||
+        own.cssFloat !== 'none' || !['static', 'relative'].includes(own.position) ||
+        !['auto', 'baseline'].includes(own.alignmentBaseline) ||
+        own.dominantBaseline !== 'auto' || own.textCombineUpright !== 'none' ||
+        own.unicodeBidi !== 'normal' || own.textEmphasisStyle !== 'none') fail('MismatchedOccurrenceReference');
+    if (row.node.childNodes.length || !isUnshiftedInlinePosition(own)) fail('UnsupportedOccurrence');
+    if (index === 1) {
+      if (own.display !== 'inline' || described.lineControlParticipation?.kind !== 'forced-break' ||
+          described.style?.inlineMetrics?.baseline !== 0 || described.style?.inlineMetrics?.lineHeight !== 0) fail('MismatchedBreakMetrics');
+    } else if (row.node.tagName !== 'SPAN' || own.display !== 'inline-block' ||
+        described.atomicInlineParticipation?.bidiLevel !== level ||
+        described.atomicInlineParticipation?.followingBreak !== 'prohibited') fail('MismatchedAtomicOccurrence');
+  }
+  // Actual WOFF2 Ahem1.1: UPEM1000, hhea/OS2 800/-200, no BASE/vhea/MVAR.
+  // Used Central at10px is5/5; H0 half-leading is-5/-5. No glyph or rectangle.
+  return { profile: 1, font: { sha256: ATOMIC_METRIC_FONT_SHA256, family: 'ahem', size: 10,
+      style: 'normal', weight: 400, stretch: 'normal', loaded: true },
+    writingMode: style.writingMode, direction: style.direction, textOrientation: style.textOrientation,
+    dominantBaseline: 'auto', alignmentBaseline: style.alignmentBaseline, verticalAlign: style.verticalAlign,
+    lineFit: 'leading', reference: 'central',
+    before: 0, after: 0, lineHeight: 0,
+    order: order.map((row, child) => child === 1
+      ? { kind: 'break', child, source: row.source, reference: 'central', before: 0, after: 0 }
+      : { kind: 'atomic', child, source: row.source, bidiLevel: level }) };
+}
+
 function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
   const reject = reason => { rootContextCapture = { reason }; };
   try {
@@ -1413,6 +1531,7 @@ function describeElement(e, expectedElement = null) {
   return {
     layoutInput: 'box',
     preparedParagraph: preparedCapture?.paragraph,
+    atomicParagraphMetrics: !preparedCapture ? atomicParagraphMetricsForElement(e, children) : undefined,
     tagName: e.tagName.toLowerCase(),
     layoutReadyInlineRoot: layoutReadyInlineRoot || undefined,
     layoutReadyAnonymousGridTextWrapper: layoutReadyAnonymousGridTextWrapper(e, computedStyle, children),
@@ -2075,6 +2194,7 @@ function describeChildNodes(e, expectedElement = null) {
   const inlineBreaks = layoutReadyInlineBreaks(e, childNodes);
   const inlineStruts = layoutReadyInlineStruts(e, childNodes);
   const inlineBidiLevels = layoutReadyInlineBidiLevels(e, childNodes);
+  const atomicMetricSource = atomicParagraphSource(e);
   const layoutReadyInlineRun = hasLayoutReadyInlineFixture(e) && childNodes.some((child, index) => {
     return child.nodeType === Node.ELEMENT_NODE && child.tagName === 'BR' ||
       child.nodeType === Node.TEXT_NODE && shouldSerializeLayoutReadyText(child, childNodes, index, e);
@@ -2094,7 +2214,7 @@ function describeChildNodes(e, expectedElement = null) {
       const described = describeElement(child, expectedElement);
       if (layoutReadyInlineRun && child.tagName !== 'BR' && isLoweredAtomicInline(child)) {
         described.atomicInlineParticipation = {
-          bidiLevel: consumeLayoutReadyInlineBidiLevel(inlineBidiLevels, i),
+          bidiLevel: atomicMetricSource ? (getComputedStyle(e).direction === 'rtl' ? 1 : 0) : consumeLayoutReadyInlineBidiLevel(inlineBidiLevels, i),
           ...(inlineBreaks.get(i) || { followingBreak: 'prohibited' }),
         };
         inlineBreaks.delete(i);
@@ -2494,9 +2614,7 @@ function qualifyTransparentPreparedInline(node, containingElement) {
     throw new Error('Transparent inline requires zero actual margin, padding and border edges');
   }
   if (style.verticalAlign !== 'baseline' || style.cssFloat !== 'none' || style.transform !== 'none' ||
-      !['static', 'relative'].includes(style.position) ||
-      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
-        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+      !isUnshiftedInlinePosition(style)) {
     throw new Error('Transparent inline positioning/alignment context is unsupported');
   }
 }
@@ -2521,9 +2639,7 @@ function qualifyPreparedBreak(node, containingFrame, containingText) {
   if (own.fontSize !== containingText.fontSize || own.lineHeight !== containingText.lineHeight ||
       style.display !== 'inline' || style.verticalAlign !== 'baseline' ||
       style.cssFloat !== 'none' || style.clear !== 'none' || style.transform !== 'none' ||
-      !['static', 'relative'].includes(style.position) ||
-      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
-        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+      !isUnshiftedInlinePosition(style)) {
     throw new Error('Prepared BR requires the containing font strut and undisplaced baseline control context');
   }
   const edges = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
