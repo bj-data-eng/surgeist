@@ -424,7 +424,6 @@ fn corpus_for_inventory(
         .contains_key(&RelativePath::new("origin/source-receipt.json")?)
     {
         exact_roots.push(RelativePath::new("origin")?);
-        exact_roots.push(RelativePath::new("html")?);
     }
     Ok(BrowserCorpus::new(
         BrowserLocation::new(owner, root)?,
