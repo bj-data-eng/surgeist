@@ -406,8 +406,8 @@ fn constraints<S: l::LayoutScalar>() {
     standalone(&parent, None);
     for mode in MODES {
         for (inline, width, height, columns) in [
-            (l::AvailableOf::MIN_CONTENT, 20.0, 10.0, 2),
-            (l::AvailableOf::MAX_CONTENT, 10.0, 20.0, 1),
+            (surgeist_layout::SizingOperation::MinContent, 20.0, 10.0, 2),
+            (surgeist_layout::SizingOperation::MaxContent, 10.0, 20.0, 1),
         ] {
             let (mut host, binding) = paragraph_scene::<S>(&parent, mode, l::Direction::Ltr, 40.0);
             host.change(0, |input| {
@@ -417,7 +417,10 @@ fn constraints<S: l::LayoutScalar>() {
                 &host,
                 vec![binding],
                 &[],
-                l::Size::new(l::AvailableOf::MAX_CONTENT, inline),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                ),
             )
             .unwrap();
             assert_eq!(
@@ -911,7 +914,19 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,
-            l::LayoutRootRequestOf::viewport(available(40.0, self.capacity)).unwrap(),
+            {
+                let sizing_request = available(40.0, self.capacity);
+                l::LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                        surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            },
             changed,
         )
     }

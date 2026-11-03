@@ -11,10 +11,13 @@ fn central() -> l::InlineBaselineContext {
     l::InlineBaselineContext::Named(l::BaselineName::Central)
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(width)),
-        l::AvailableOf::definite(n(height)),
+fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 
@@ -382,7 +385,19 @@ fn compute<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(available(40.0, 22.0)).unwrap(),
+        {
+            let sizing_request = available(40.0, 22.0);
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }
@@ -404,11 +419,19 @@ fn qualify_child<S: l::LayoutScalar>(child: &Fixture) {
         Vec::new(),
     )
     .unwrap();
-    let batch = l::compute_layout_with_flow(
-        &flow,
-        0,
-        l::LayoutRootRequestOf::viewport(available(6.0, 14.0)).unwrap(),
-    )
+    let batch = l::compute_layout_with_flow(&flow, 0, {
+        let sizing_request = available(6.0, 14.0);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .unwrap();
     let text = placed(&batch, 0);
     assert_eq!(text.source(), &child.source);

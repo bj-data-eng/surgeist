@@ -155,34 +155,549 @@ class TrackSizingParser {
 
 }
 
-function parseViewportConstraint(e, boundingRect) {
-  if (e.parentNode.classList.contains('viewport')) {
-    const parentStyle = getComputedStyle(e.parentElement);
-    const hostInlineSize = parentStyle.writingMode === 'horizontal-tb'
-      ? boundingRect.width
-      : boundingRect.height;
-    return {
-      width: parseDimension(e.parentNode.style.width || 'max-content'),
-      height: parseDimension(e.parentNode.style.height || 'max-content'),
-      rootContext: 'flex-item',
-      parentWritingMode: parentStyle.writingMode,
-      parentDirection: parentStyle.direction,
-      hostInlineSize,
+
+// The capture profile is source-qualified, not a CSS cascade implementation.
+// Its producer is the adapter holding the exact HTML/base/helper input bytes.
+let rootContextCapture;
+// One synchronous observation occurrence; restored after every variant.
+let rootLocalObservation;
+
+// Closed source facts for the two additional root-local capabilities. These
+// predicates do not read used rectangles, body height, fonts or line metrics.
+function rootContextLiteralPx(value) {
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)px$/.test(value)) return undefined;
+  const number = Number(value.slice(0, -2));
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function rootContextBodyIndent(body) {
+  if (!body.style.length) return 0;
+  if (body.style.length !== 1 || body.style.item(0) !== 'text-indent') return undefined;
+  return rootContextLiteralPx(body.style.textIndent);
+}
+
+function rootContextStaticSpacer(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE || node.tagName !== 'DIV' ||
+      node.childNodes.length || Array.from(node.attributes).some(attribute => attribute.name !== 'style')) return false;
+  const properties = Array.from(node.style);
+  return properties.length === 4 &&
+    properties.every(property => ['display', 'position', 'width', 'height'].includes(property)) &&
+    node.style.display === 'block' && node.style.position === 'static' &&
+    rootContextLiteralPx(node.style.width) === 0 && rootContextLiteralPx(node.style.height) > 0;
+}
+
+function rootContextBodySequence(body, root) {
+  let reachedRoot = false;
+  for (const node of body.childNodes) {
+    if (node === root) { reachedRoot = true; continue; }
+    if (node.nodeType === Node.COMMENT_NODE ||
+        (node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent))) continue;
+    if (reachedRoot || !rootContextStaticSpacer(node)) return false;
+  }
+  return reachedRoot;
+}
+
+function qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width) {
+  const fail = () => { throw new Error('Root context: UnrepresentedInheritedIndent'); };
+  const indent = rootContextBodyIndent(proof.body);
+  if (indent === undefined || indent > width || htmlStyle.direction !== 'ltr' ||
+      parentStyle.direction !== 'ltr' || !['flex', 'inline-flex'].includes(proof.hypotheticalDisplay) ||
+      Array.from(proof.body.children).some(node => node.id !== 'test-root')) fail();
+  // text-indent inherits. Only empty fixed native Flex items are admitted here:
+  // no descendant inline line can consume a fact omitted by its normalized input.
+  if (Array.from(root.childNodes).some(node => node.nodeType !== Node.ELEMENT_NODE &&
+      node.nodeType !== Node.COMMENT_NODE &&
+      !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) fail();
+  if (!root.children.length || getComputedStyle(root).display !== 'flex') fail();
+  for (const child of root.children) {
+    if (child.tagName !== 'DIV' || child.childNodes.length ||
+        Array.from(child.attributes).some(attribute => attribute.name !== 'style') ||
+        Array.from(child.style).some(property => !['width', 'height', 'flex-shrink'].includes(property)) ||
+        !(rootContextLiteralPx(child.style.width) > 0) ||
+        !(rootContextLiteralPx(child.style.height) > 0) || child.style.flexShrink !== '0') fail();
+  }
+  if (rootContextLiteralPx(parentStyle.textIndent) !== indent) fail();
+  return proof.hypotheticalDisplay === 'inline-flex' ? indent : 0;
+}
+
+// Closed font-wide metric evidence for atomic-only paragraphs. This is not a
+// registered Text font, a Prepared paragraph or a provider-issued identity.
+const REFERENCE_FONT_SHA256 = 'e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c';
+let namedReferenceFontState;
+function referenceFontFamily(value) { return value.replace(/^['"]|['"]$/g, '').toLowerCase(); }
+function isUnshiftedInlinePosition(style) {
+  return ['static', 'relative'].includes(style.position) &&
+    (style.position !== 'relative' || ['top', 'right', 'bottom', 'left'].every(edge =>
+      style[edge] === 'auto' || parseCssPx(style[edge]) === 0));
+}
+function atomicParagraphSource(element) {
+  if (!hasLayoutReadyInlineFixture(element)) return undefined;
+  const style = getComputedStyle(element);
+  if (element.tagName !== 'DIV' || style.display !== 'block' ||
+      !['vertical-rl', 'vertical-lr'].includes(style.writingMode) || parseCssPx(style.lineHeight) !== 0) return undefined;
+  if (element.closest('[data-surgeist-prepared-text]')) return undefined;
+  const order = Array.from(element.childNodes).map((node, source) => ({ node, source })).filter(({node}) =>
+    node.nodeType !== Node.COMMENT_NODE &&
+    !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)));
+  if (order.length !== 3 || order[1].node.tagName !== 'BR' ||
+      ![order[0], order[2]].every(({node}) => node.nodeType === Node.ELEMENT_NODE && isLoweredAtomicInline(node))) return undefined;
+  return order;
+}
+function referenceMetricFace() {
+  const faces = Array.from(document.fonts).filter(face => referenceFontFamily(face.family) === 'ahem');
+  if (faces.length !== 1) throw new Error(faces.length ? 'CompetingFontResource' : 'MissingFontResource');
+  const face = faces[0];
+  if (face.style !== 'normal' || !['normal', '400'].includes(face.weight) ||
+      !['normal', '100%'].includes(face.stretch) || face.unicodeRange.toUpperCase() !== 'U+0-10FFFF' ||
+      face.featureSettings !== 'normal' || face.variationSettings !== 'normal' ||
+      face.ascentOverride !== 'normal' || face.descentOverride !== 'normal' ||
+      face.lineGapOverride !== 'normal' || face.sizeAdjust !== '100%') throw new Error('UnsupportedFontResourceSettings');
+  return face;
+}
+function gridAlignmentSource(element) {
+  if (!hasLayoutReadyInlineFixture(element)) return undefined;
+  const own = getComputedStyle(element);
+  if (!['grid', 'inline-grid'].includes(own.display) ||
+      !['vertical-rl', 'vertical-lr'].includes(own.writingMode)) return undefined;
+  return own;
+}
+function hasClosedReferenceFont(own) {
+  return referenceFontFamily(own.fontFamily) === 'ahem' && own.fontSize === '10px' &&
+    own.fontStyle === 'normal' && own.fontWeight === '400' && ['normal', '100%'].includes(own.fontStretch) &&
+    own.fontFeatureSettings === 'normal' && own.fontVariationSettings === 'normal' &&
+    own.fontVariant === 'normal' && own.fontSizeAdjust === 'none';
+}
+function gridAlignmentReferenceForElement(element) {
+  const own = gridAlignmentSource(element);
+  if (!own) return undefined;
+  const fail = reason => { throw new Error('Grid alignment reference: ' + reason); };
+  if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml' || !['DIV', 'SPAN'].includes(element.tagName)) fail('UnsupportedGridSourceRole');
+  for (let node = element; node; node = node.parentElement) {
+    if (['dominant-baseline', 'alignment-baseline'].some(property => node.style.getPropertyValue(property))) fail('UnsupportedReferenceOverride');
+    if (node.id === 'test-root') break;
+  }
+  if (!['ltr', 'rtl'].includes(own.direction) || !['mixed', 'upright'].includes(own.textOrientation) ||
+      own.dominantBaseline !== 'auto' || !['auto', 'baseline'].includes(own.alignmentBaseline) ||
+      own.textCombineUpright !== 'none') fail('UnsupportedReferenceContext');
+  if (!hasClosedReferenceFont(own)) fail('UnsupportedFirstFontAuthority');
+  try { requireNamedReferenceFont(); } catch (error) { fail(error.message); }
+  return {profile:1, display:own.display, writingMode:own.writingMode, direction:own.direction,
+    textOrientation:own.textOrientation, dominantBaseline:own.dominantBaseline, alignmentBaseline:own.alignmentBaseline,
+    font:{sha256:REFERENCE_FONT_SHA256,family:'ahem',size:10,style:'normal',weight:400,stretch:'normal',loaded:true},reference:'central'};
+}
+function completeGridAlignmentProfile(root) {
+  const owners = [];
+  function visit(node, path) {
+    if (node.gridAlignmentReference) owners.push(path);
+    (node.children || []).forEach((child, index) => visit(child, path === '/' ? '/' + index : path + '/' + index));
+  }
+  visit(root, '/');
+  return {profile:1, owners};
+}
+
+async function prepareNamedReferenceFont() {
+  const proof = rootContextCapture;
+  if (!proof || proof.reason) return;
+  const root = document.getElementById('test-root');
+  if (!root || ![root, ...root.querySelectorAll('*')].some(element => atomicParagraphSource(element) || gridAlignmentSource(element))) return;
+  if (namedReferenceFontState?.owner === proof.ownedStyle) {
+    // Preserve the original load outcome and face. Per-capture checks reject a
+    // transient competitor/missing face; repeated setup cannot reload or repair it.
+    return;
+  }
+  const state = { owner: proof.ownedStyle, face: undefined, loaded: false, error: undefined };
+  namedReferenceFontState = state;
+  try {
+    state.face = referenceMetricFace();
+    let loaded;
+    try { loaded = await state.face.load(); } catch (_) { throw new Error('FontLoadFailed'); }
+    if (loaded !== state.face) throw new Error('ForeignLoadedFontResource');
+    await document.fonts.ready;
+    if (state.face.status !== 'loaded' || referenceMetricFace() !== state.face) throw new Error('FontResourceChanged');
+    state.loaded = true;
+  } catch (error) { state.error = error.message || 'FontLoadFailed'; }
+}
+function requireNamedReferenceFont() {
+  const state = namedReferenceFontState;
+  if (!state || state.owner !== rootContextCapture?.ownedStyle) throw new Error('MissingLoadedFontAuthority');
+  if (state.error) throw new Error(state.error);
+  if (!state.loaded || state.face.status !== 'loaded') throw new Error('FontNotLoaded');
+  if (referenceMetricFace() !== state.face) throw new Error('FontResourceChanged');
+}
+function atomicParagraphMetricsForElement(element, children) {
+  const order = atomicParagraphSource(element);
+  if (!order) return undefined;
+  const fail = reason => { throw new Error('Atomic paragraph metrics: ' + reason); };
+  try { requireNamedReferenceFont(); } catch (error) { fail(error.message); }
+  const style = getComputedStyle(element);
+  for (let node = element; node; node = node.parentElement) {
+    if (['line-fit-edge', 'text-box-trim', 'text-box-edge', 'text-fit', 'dominant-baseline', 'alignment-baseline'].some(property => node.style.getPropertyValue(property)) ||
+        ['data-surgeist-inline-struts', 'data-surgeist-inline-breaks', 'data-surgeist-inline-bidi-levels'].some(attribute => node.hasAttribute(attribute))) fail('UnsupportedMetricOverride');
+    if (node.id === 'test-root') break;
+  }
+  if (element.tagName !== 'DIV' || style.display !== 'block' ||
+      !['ltr', 'rtl'].includes(style.direction) || !['mixed', 'upright'].includes(style.textOrientation) ||
+      (style.textOrientation === 'upright' && style.direction !== 'ltr') ||
+      style.dominantBaseline !== 'auto' || !['auto', 'baseline'].includes(style.alignmentBaseline) ||
+      style.verticalAlign !== 'baseline' ||
+      style.textCombineUpright !== 'none' || !['normal', 'isolate'].includes(style.unicodeBidi) ||
+      style.whiteSpace !== 'normal' || style.textEmphasisStyle !== 'none') fail('UnsupportedReferenceContext');
+  const matchingFont = own => hasClosedReferenceFont(own) && parseCssPx(own.lineHeight) === 0;
+  if (!matchingFont(style) || children.length !== 3) fail('UnsupportedFirstFontMetrics');
+  const level = style.direction === 'rtl' ? 1 : 0;
+  for (const [index, row] of order.entries()) {
+    const own = getComputedStyle(row.node), described = children[index];
+    if (['line-fit-edge', 'text-box-trim', 'text-box-edge', 'text-fit', 'dominant-baseline', 'alignment-baseline'].some(property => row.node.style.getPropertyValue(property))) fail('UnsupportedMetricOverride');
+    if (!matchingFont(own) || own.writingMode !== style.writingMode || own.direction !== style.direction ||
+        own.textOrientation !== style.textOrientation || own.verticalAlign !== 'baseline' ||
+        own.cssFloat !== 'none' || !['static', 'relative'].includes(own.position) ||
+        !['auto', 'baseline'].includes(own.alignmentBaseline) ||
+        own.dominantBaseline !== 'auto' || own.textCombineUpright !== 'none' ||
+        own.unicodeBidi !== 'normal' || own.textEmphasisStyle !== 'none') fail('MismatchedOccurrenceReference');
+    if (row.node.childNodes.length || !isUnshiftedInlinePosition(own)) fail('UnsupportedOccurrence');
+    if (index === 1) {
+      if (own.display !== 'inline' || described.lineControlParticipation?.kind !== 'forced-break' ||
+          described.style?.inlineMetrics?.baseline !== 0 || described.style?.inlineMetrics?.lineHeight !== 0) fail('MismatchedBreakMetrics');
+    } else if (row.node.tagName !== 'SPAN' || own.display !== 'inline-block' ||
+        described.atomicInlineParticipation?.bidiLevel !== level ||
+        described.atomicInlineParticipation?.followingBreak !== 'prohibited') fail('MismatchedAtomicOccurrence');
+  }
+  // Actual WOFF2 Ahem1.1: UPEM1000, hhea/OS2 800/-200, no BASE/vhea/MVAR.
+  // Used Central at10px is5/5; H0 half-leading is-5/-5. No glyph or rectangle.
+  return { profile: 1, font: { sha256: REFERENCE_FONT_SHA256, family: 'ahem', size: 10,
+      style: 'normal', weight: 400, stretch: 'normal', loaded: true },
+    writingMode: style.writingMode, direction: style.direction, textOrientation: style.textOrientation,
+    dominantBaseline: 'auto', alignmentBaseline: style.alignmentBaseline, verticalAlign: style.verticalAlign,
+    lineFit: 'leading', reference: 'central',
+    before: 0, after: 0, lineHeight: 0,
+    order: order.map((row, child) => child === 1
+      ? { kind: 'break', child, source: row.source, reference: 'central', before: 0, after: 0 }
+      : { kind: 'atomic', child, source: row.source, bidiLevel: level }) };
+}
+
+function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
+  const reject = reason => { rootContextCapture = { reason }; };
+  try {
+    const parsed = new DOMParser().parseFromString(source, 'text/html');
+    if (parsed.doctype?.name.toLowerCase() !== 'html' ||
+        parsed.querySelectorAll('#test-root').length !== 1 ||
+        parsed.querySelectorAll('body').length !== 1) return reject('SourceDocument');
+    if (parsed.documentElement.style.length || rootContextBodyIndent(parsed.body) === undefined) return reject('AuthoredBodyOrHtmlStyle');
+    if ([parsed.documentElement, parsed.body].some(node =>
+        Array.from(node.attributes).some(attribute =>
+          !['lang', 'dir', 'class'].includes(attribute.name) && !(node === parsed.body && attribute.name === 'style')))) return reject('SourceAncestorAttribute');
+    if (parsed.querySelector('style, iframe, frame, object, embed, base')) return reject('SourceFrameOrStyle');
+    if (Array.from(parsed.querySelectorAll('*')).some(node =>
+        Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
+    const scripts = Array.from(parsed.querySelectorAll('script'));
+    const links = Array.from(parsed.querySelectorAll('link'));
+    const helperUrl = new URL(helperReference, document.baseURI).href;
+    const styleUrl = new URL(styleReference, document.baseURI).href;
+    if (scripts.length !== 1 || scripts[0].textContent.trim() ||
+        new URL(scripts[0].getAttribute('src') || '', document.baseURI).href !== helperUrl ||
+        links.length !== 1 || links[0].rel !== 'stylesheet' ||
+        Array.from(links[0].attributes).some(attribute => !['rel', 'type', 'href'].includes(attribute.name)) ||
+        (links[0].hasAttribute('type') && links[0].getAttribute('type') !== 'text/css') ||
+        links[0].parentElement !== parsed.head ||
+        new URL(links[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
+    const sourceRoot = parsed.getElementById('test-root');
+    if (sourceRoot.parentElement !== parsed.body) return reject('SourceParent');
+    if (!rootContextBodySequence(parsed.body, sourceRoot)) return reject('SourceBodySiblings');
+    if (document.body.innerHTML !== parsed.body.innerHTML) return reject('SourceBodyChanged');
+    const expectedSheet = new CSSStyleSheet();
+    expectedSheet.replaceSync(baseStyle);
+    const rules = Array.from(expectedSheet.cssRules, rule => rule.cssText);
+    const previous = rootContextCapture;
+    let ownedStyle;
+    let bodyChildren;
+    if (previous && !previous.reason && previous.source === source &&
+        previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
+        previous.styleUrl === styleUrl) {
+      // Repeated setup retains the same authenticated owner; a marker alone
+      // never authorizes a replacement sheet or repairs a changed document.
+      ownedStyle = previous.ownedStyle;
+      bodyChildren = previous.bodyChildren;
+      if (!bodyChildren || bodyChildren.length !== document.body.childNodes.length ||
+          bodyChildren.some((node, index) => document.body.childNodes[index] !== node)) return reject('SourceBodyChanged');
+      if (!ownedStyle.isConnected || ownedStyle.parentElement !== document.head ||
+          ownedStyle.textContent !== baseStyle ||
+          document.querySelectorAll('style, link').length !== 1 ||
+          document.styleSheets.length !== 1 ||
+          document.styleSheets[0].ownerNode !== ownedStyle ||
+          document.adoptedStyleSheets.length !== 0) return reject('StylesheetChanged');
+    } else {
+      bodyChildren = Array.from(document.body.childNodes);
+      const liveLinks = Array.from(document.querySelectorAll('link'));
+      if (liveLinks.length !== 1 || liveLinks[0].parentElement !== document.head ||
+          liveLinks[0].outerHTML !== links[0].outerHTML || liveLinks[0].disabled ||
+          document.querySelectorAll('style').length !== 0 ||
+          document.styleSheets.length !== 1 ||
+          document.styleSheets[0].ownerNode !== liveLinks[0] ||
+          document.styleSheets[0].disabled || document.adoptedStyleSheets.length !== 0) return reject('StylesheetSource');
+      // The file:// LINK's cssRules may be opaque. Replace only the exact
+      // source-authenticated owned resource, in its original cascade position.
+      // Its bytes (including the data-URI font) remain the captured input.
+      ownedStyle = document.createElement('style');
+      ownedStyle.setAttribute('data-surgeist-root-source', 'true');
+      ownedStyle.textContent = baseStyle;
+      liveLinks[0].replaceWith(ownedStyle);
     }
-  } else {
-    return {
-      width: rootFillsBrowserViewport(e, boundingRect) ? px(window.innerWidth) : { unit: 'max-content' },
-      height: { unit: 'max-content' },
-      rootContext: 'root',
-    }
+    // Only this exact base sheet supplies the DIV default. Restoring position,
+    // float and clear must not use the live absolute box's blockified display.
+    const hypotheticalDisplay = sourceRoot.style.getPropertyValue('all') ? null :
+      sourceRoot.style.display || (sourceRoot.tagName === 'DIV' ? 'flex' : null);
+    rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
+      sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
+      body: parsed.body, bodyChildren, rules, helperUrl, styleUrl };
+  } catch (_) {
+    reject('SourceQualificationUnavailable');
   }
 }
 
-function rootFillsBrowserViewport(e, boundingRect) {
-  if (e.style.width) return false;
-  if (e.style.display === 'inline-grid' || e.style.display === 'inline-flex' || e.style.display === 'inline-block') return false;
-  return Math.round(boundingRect.width) === window.innerWidth;
+function captureRootContext(root) {
+  const fail = reason => { throw new Error('Root context: ' + reason); };
+  const proof = rootContextCapture;
+  if (!proof || proof.reason) fail(proof?.reason || 'MissingSourceAuthority');
+  const html = document.documentElement, body = document.body;
+  if (document.compatMode !== 'CSS1Compat' || window.top !== window ||
+      document.scrollingElement !== html || root.parentElement !== body ||
+      document.querySelectorAll('#test-root').length !== 1 ||
+      root.outerHTML !== proof.sourceRoot) fail('DocumentFrameChanged');
+  for (const [live, original] of [[html, proof.html], [body, proof.body]]) {
+    // Body class is the generator-owned four-variant switch. Everything else
+    // affecting the ancestor source must remain the captured original.
+    const attrs = element => Array.from(element.attributes)
+      .filter(attribute => live === body ? attribute.name !== 'class' : true)
+      .map(attribute => [attribute.name, attribute.value]).sort();
+    if (JSON.stringify(attrs(live)) !== JSON.stringify(attrs(original))) fail('AncestorSourceChanged');
+  }
+  if (!rootContextBodySequence(body, root) || body.innerHTML !== proof.body.innerHTML ||
+      proof.bodyChildren.length !== body.childNodes.length ||
+      proof.bodyChildren.some((node, index) => body.childNodes[index] !== node)) fail('BodySiblings');
+  const scripts = Array.from(document.scripts);
+  if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
+  const sheets = Array.from(document.styleSheets);
+  if (document.adoptedStyleSheets.length !== 0) fail('AdoptedStylesheet');
+  if (sheets.length !== 1 || document.querySelectorAll('style, link').length !== 1) fail('StylesheetInventory');
+  for (const sheet of sheets) {
+    const owner = sheet.ownerNode;
+    if (owner !== proof.ownedStyle || owner?.tagName !== 'STYLE' ||
+        owner.parentElement !== document.head ||
+        owner.getAttribute('data-surgeist-root-source') !== 'true' ||
+        owner.textContent !== proof.baseStyle || sheet.disabled) fail('StylesheetSource');
+    let rules;
+    try { rules = Array.from(sheet.cssRules, rule => rule.cssText); }
+    catch (_) { fail('OpaqueStylesheet'); }
+    if (JSON.stringify(rules) !== JSON.stringify(proof.rules)) fail('StylesheetChanged');
+  }
+  const zero = value => /^[-+]?0(?:\.0+)?px$/.test(value);
+  const marginProperties = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'];
+  const paddingBorderProperties = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  const edgeProperties = [...marginProperties, ...paddingBorderProperties];
+  const unshifted = style => style.transform === 'none' && style.perspective === 'none' &&
+    style.filter === 'none' && style.contain === 'none' && style.willChange === 'auto' &&
+    ['normal', '1'].includes(style.zoom) && style.contentVisibility === 'visible' &&
+    style.animationName === 'none' && style.transitionProperty === 'all' &&
+    style.transitionDuration.split(',').every(value => parseFloat(value) === 0);
+  const parentStyle = getComputedStyle(body), htmlStyle = getComputedStyle(html);
+  for (const style of [parentStyle, htmlStyle]) {
+    if (style.writingMode !== 'horizontal-tb' || style.display !== 'block' ||
+        style.position !== 'static' || style.cssFloat !== 'none' || style.clear !== 'none' ||
+        style.overflowX !== 'visible' || style.overflowY !== 'visible' ||
+        style.scrollbarGutter !== 'auto' || !unshifted(style) ||
+        edgeProperties.some(property => !zero(style[property]))) fail('ContainingFrame');
+  }
+  // The only admitted body declaration is a separately qualified literal indent.
+  // Neither it nor a fixed spacer establishes a body block-size percentage basis.
+  if (rootContextBodyIndent(body) === undefined || html.style.length) fail('AncestorInlineStyleChanged');
+  if (![parentStyle.direction, htmlStyle.direction].every(value => ['ltr', 'rtl'].includes(value))) fail('ContainingDirection');
+  if (window.scrollX !== 0 || window.scrollY !== 0) fail('ScrolledFrame');
+  const visual = window.visualViewport;
+  if (!visual || visual.scale !== 1 || visual.offsetLeft !== 0 || visual.offsetTop !== 0) fail('ViewportScale');
+  const width = html.clientWidth, height = html.clientHeight;
+  if (![width, height].every(value => Number.isFinite(value) && value >= 0) ||
+      width !== visual.width || height !== visual.height ||
+      body.clientWidth !== width) fail('ViewportExtentAuthority');
+  const hasSpacers = Array.from(body.children).some(node => node !== root);
+  for (const spacer of body.children) {
+    if (spacer === root) continue;
+    const spacerStyle = getComputedStyle(spacer);
+    if (spacerStyle.display !== 'block' || spacerStyle.position !== 'static' ||
+        spacerStyle.writingMode !== 'horizontal-tb' || spacerStyle.cssFloat !== 'none' ||
+        spacerStyle.clear !== 'none' || !unshifted(spacerStyle) ||
+        spacerStyle.clipPath !== 'none' || !['normal', 'none'].includes(spacerStyle.content) ||
+        edgeProperties.some(property => !zero(spacerStyle[property]))) fail('BodySiblings');
+  }
+  const style = getComputedStyle(root);
+  if (hasSpacers && style.position !== 'absolute') fail('SourceBodySiblings');
+  if (body.style.length && style.position !== 'absolute') fail('AuthoredBodyOrHtmlStyle');
+  if (root.tagName !== 'DIV' || !['normal', 'none'].includes(style.content)) fail('RootBoxRole');
+  if (marginProperties.some(property => root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]))) fail('AuthoredRootEdges');
+  if (!unshifted(style) || style.cssFloat !== 'none' || style.clear !== 'none' ||
+      marginProperties.some(property => !zero(style[property]))) fail('RootEdgesOrDisplacement');
+  const authoredPaddingBorder = paddingBorderProperties.some(property =>
+    root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]));
+  const usedPaddingBorder = paddingBorderProperties.some(property => !zero(style[property]));
+  // The in-flow certificate still promises the initial normal-flow origin.
+  // Only the separate absolute-local capability can admit nonzero box edges.
+  if (style.position !== 'absolute') {
+    if (authoredPaddingBorder) fail('AuthoredRootEdges');
+    if (usedPaddingBorder) fail('RootEdgesOrDisplacement');
+  }
+  const physicalInsets = ['top', 'right', 'bottom', 'left'];
+  const logicalInsets = ['inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end'];
+  if (physicalInsets.some(property => root.style[property] && root.style[property] !== 'auto') ||
+      logicalInsets.some(property => root.style.getPropertyValue(property) &&
+        root.style.getPropertyValue(property) !== 'auto')) fail('AuthoredInsets');
+  if (!['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootDisplay');
+  const nonCollapsingBoundary = ['flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display) ||
+    (style.display === 'block' && [style.overflowX, style.overflowY].some(value => ['hidden', 'auto', 'scroll'].includes(value)));
+  const fallback = { initialContainingBlock: { width, height }, nearestScrollport: 'none',
+    containingLimits: { width: 'unbounded', height: 'unbounded' } };
+  if (style.position === 'absolute') {
+    if (style.writingMode !== 'horizontal-tb' ||
+        style.aspectRatio !== 'auto' || style.alignSelf !== 'auto' ||
+        style.justifySelf !== 'auto' || ['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED', 'INPUT'].includes(root.tagName)) {
+      fail('PositionedRootProfile');
+    }
+    if (authoredPaddingBorder || usedPaddingBorder) {
+      // Reuse the descriptor's physical/logical preferred-size projection.
+      // Computed used width and the observed root rectangle are not proof of a
+      // fixed own preferred size. The full authenticated CB, not W-s, supplies
+      // a percentage width's basis. General calc/intrinsic/Auto edge-sensitive
+      // shrink-to-fit has not been qualified by this source profile.
+      const preferred = parseElementSize(property => {
+        const input = root.style[property];
+        return requireSizingProjection(input, parseSizeDimension(input));
+      }, style)?.width;
+      const definite = preferred?.unit === 'px' ? preferred.value :
+        preferred?.unit === 'percent' ? preferred.value * width : undefined;
+      if (!Number.isFinite(definite) || definite < 0) fail('AuthoredRootEdges');
+    }
+    const hypotheticalDisplay = proof.hypotheticalDisplay;
+    const blockified = { 'inline-flex': 'flex', 'inline-grid': 'grid' };
+    if (!['block', 'flow-root', 'flex', 'inline-flex', 'grid', 'inline-grid', 'grid-lanes'].includes(hypotheticalDisplay) ||
+        style.display !== (blockified[hypotheticalDisplay] || hypotheticalDisplay)) fail('HypotheticalDisplaySource');
+    // A qualified spacer changes only the omitted common block translation.
+    // No font/strut or used root/body rectangle supplies a static-position operand.
+    if (parentStyle.whiteSpace !== 'normal' || parentStyle.textAlign !== 'start' ||
+        ![parentStyle.unicodeBidi, style.unicodeBidi].every(value => ['normal', 'isolate'].includes(value))) fail('HypotheticalInlineStartUnavailable');
+    // Actual absolute positioning supplies the root's independent formatting
+    // context even for visible-overflow Block. Local observation does not
+    // promise its hypothetical block origin; complete subtree independence
+    // below remains mandatory before that translation can be omitted.
+    qualifyRootLocalSubtree(root, unshifted);
+    let hypotheticalInlineOffset = 0;
+    if (body.style.length) {
+      hypotheticalInlineOffset = qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width);
+    } else if (!zero(parentStyle.textIndent)) {
+      fail('HypotheticalInlineStartUnavailable');
+    }
+    return { kind: 'absolute-root-local', containingWidth: width,
+      containingHeight: height, containingDirection: htmlStyle.direction,
+      hypotheticalDirection: parentStyle.direction, hypotheticalDisplay,
+      hypotheticalAnchor: 'inline-start', hypotheticalInlineOffset, fallback };
+  }
+  if (style.position === 'static' || style.position === 'relative') {
+    if (!nonCollapsingBoundary) fail('UnqualifiedInitialBlockOrigin');
+    return { kind: 'block-flow-auto', parentInlineExtent: width,
+      parentDirection: parentStyle.direction, fallback };
+  }
+  fail('UnsupportedPosition');
 }
+
+
+// This is a closed source/capture capability, not a CSS cascade or an assumed
+// zero block origin. Every accepted producer must commute with a common root
+// translation before publication rounding. The exact base/inline declarations
+// and complete source/live subtree equality are authenticated above.
+function qualifyRootLocalSubtree(root, unshifted) {
+  const fail = reason => { throw new Error('Root context: ' + reason); };
+  const blockProperties = ['height', 'min-height', 'max-height',
+    'block-size', 'min-block-size', 'max-block-size'];
+  for (const property of blockProperties) {
+    const value = root.style.getPropertyValue(property);
+    if (/(?:^|[^a-z-])(?:stretch|fit-content|(?:-webkit-)?fill-available|available|contain)(?:$|[^a-z-])/i.test(value)) fail('RootLocalBlockSizeDependency');
+  }
+  const logicalBlockEdges = ['padding-block-start', 'padding-block-end',
+    'inset-block-start', 'inset-block-end'];
+  const pending = [root];
+  while (pending.length) {
+    const node = pending.pop();
+    const style = getComputedStyle(node);
+    if (logicalBlockEdges.some(property => styleDeclarationValue(node.style, property))) {
+      fail('UnrepresentedLogicalBlockEdges');
+    }
+    if (node !== root && !['static', 'relative', 'absolute'].includes(style.position)) fail('RootLocalExternalFrame');
+    if (!unshifted(style) || style.clipPath !== 'none' ||
+        !['normal', 'none'].includes(style.content)) fail('RootLocalExternalFrame');
+    if (style.writingMode !== 'horizontal-tb') fail('RootLocalWritingMode');
+    // These elements have no border-box observation that can share the root's
+    // omitted translation. A world-zero rectangle is not a local zero box.
+    if (['none', 'contents'].includes(style.display)) fail('RootLocalBoxlessObservation');
+    if (!['DIV', 'SPAN'].includes(node.tagName) ||
+        !['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootLocalBoxProfile');
+    // Unlike variant box-sizing/direction rules, .viewport supplies dimensions
+    // absent from this inline-declaration-only normalized sizing channel.
+    if (node.classList.contains('viewport')) fail('RootLocalUnrepresentedClass');
+    if (Array.from(node.attributes).some(attribute => attribute.name.startsWith('data-surgeist-'))) fail('RootLocalObservationChannel');
+    if (node.scrollLeft !== 0 || node.scrollTop !== 0) fail('RootLocalScrolledBox');
+    for (const property of Array.from(node.style)) {
+      const value = node.style.getPropertyValue(property);
+      if (property === 'all' || property.startsWith('anchor-') || property.startsWith('position-') ||
+          property === 'container-type' || property === 'container-name' ||
+          /(?:anchor(?:-size)?|env)\s*\(/i.test(value) ||
+          /(?:^|[^a-z-])(?:[sld]?v[whib]|[sld]?vmin|[sld]?vmax)(?:$|[^a-z-])/i.test(value)) fail('RootLocalExternalSize');
+    }
+    // Absolute descendants have a containing box inside this actual absolute
+    // root; local hidden/scroll clipping remains in that same moving subtree.
+    // Fixed/sticky, transformed, viewport-dependent and typed inline producers
+    // have deliberately not been qualified by this first capability.
+    pending.push(...node.children);
+  }
+}
+
+function qualifyAnalyticCaptureText(node, containingMode, inheritedOrthogonal = false) {
+  // A genuine Prepared paragraph retains its own font/source/control authority.
+  if (node.preparedParagraph) return;
+  const mode = node.style?.writingMode || containingMode;
+  const orthogonal = inheritedOrthogonal ||
+    ((mode === 'horizontal-tb') !== (containingMode === 'horizontal-tb'));
+  if (orthogonal && typeof node.textContent === 'string' && node.textContent.length) {
+    throw new Error('Root context: UnsupportedAnalyticOrthogonalTextProfile');
+  }
+  for (const child of node.children || []) qualifyAnalyticCaptureText(child, mode, orthogonal);
+}
+
+function captureRootVariant(root, className) {
+  document.body.className = className;
+  const previousObservation = rootLocalObservation;
+  try {
+    const before = captureRootContext(root);
+    if (before.kind === 'absolute-root-local') {
+      const rectangle = root.getBoundingClientRect();
+      // These coordinates are observation operands only, never source/static
+      // position evidence or inputs to the root sizing context above.
+      rootLocalObservation = { root, x: rectangle.left, y: rectangle.top };
+    } else {
+      rootLocalObservation = undefined;
+    }
+    const data = describeElement(root);
+    // Base-CSS positioning is real normalized input, not an omitted authored value.
+    data.style.position = getComputedStyle(root).position;
+    qualifyAnalyticCaptureText(data, getComputedStyle(document.body).writingMode);
+    const after = captureRootContext(root);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Root context: UnstableContainingFrame');
+    data.viewport = { rootContext: before };
+    return data;
+  } catch (error) {
+    return unsupportedTestData(error.message);
+  } finally {
+    rootLocalObservation = previousObservation;
+  }
+}
+
 
 function parseRepetition(input) {
   if (input === "auto-fill") return { unit: 'auto-fill' };
@@ -550,6 +1065,45 @@ function parseResolvedDimension(input, computedInput) {
   return parseSizingDimension(input) || (input ? parseSizingDimension(computedInput) : undefined);
 }
 
+// Try-parsers retain their grammar/absence contract. The actual descriptor
+// consumer must not publish an omitted field for a present sizing declaration.
+function requireSizingProjection(input, projected) {
+  if (input && projected === undefined) {
+    throw new Error('Root context: UnresolvedSizingDeclaration');
+  }
+  return projected;
+}
+
+function representedEdges(edges) {
+  const projected = parseEdges(edges);
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    requireSizingProjection(edges[edge], projected?.[edge]);
+  }
+  return projected;
+}
+
+function representedInlineEdges(edges, inlineStart, inlineEnd, computedStyle) {
+  for (const [edge, input] of [
+    [inlineStartEdge(computedStyle), inlineStart],
+    [inlineEndEdge(computedStyle), inlineEnd],
+  ]) {
+    if (!input) continue;
+    // Physical and logical declarations on the same side need cascade authority
+    // that this closed descriptor does not provide. Opposite sides remain valid.
+    if (edges[edge]) throw new Error('Root context: ConflictingEdgeDeclarations');
+    edges[edge] = input;
+  }
+  return representedEdges(edges);
+}
+
+function representedGaps(styleValue) {
+  const values = { gap: styleValue('gap'), rowGap: styleValue('rowGap'), columnGap: styleValue('columnGap') };
+  const projected = parseGaps(property => values[property]);
+  requireSizingProjection(values.gap || values.rowGap, projected?.row);
+  requireSizingProjection(values.gap || values.columnGap, projected?.column);
+  return projected;
+}
+
 function parseNumber(input) {
   if (input === '' || isNaN(input)) return undefined;
   return Number(input);
@@ -675,7 +1229,7 @@ function parseEffectiveMargin(e, computedStyle) {
   const authoredEdges = authoredMarginEdges(e, computedStyle);
   if (!hasAuthoredMarginDeclaration(e, computedStyle) && !Object.values(autoEdges).some(Boolean)) return undefined;
 
-  return parseEdges({
+  return representedEdges({
     left: effectiveMarginValue(authoredEdges.left, computedStyle.marginLeft, autoEdges.left),
     right: effectiveMarginValue(authoredEdges.right, computedStyle.marginRight, autoEdges.right),
     top: effectiveMarginValue(authoredEdges.top, computedStyle.marginTop, autoEdges.top),
@@ -707,16 +1261,23 @@ function px(value) {
   return { unit: 'px', value };
 }
 
+// The getter supplies one preferred/minimum/maximum group's actual values.
+// All three roles share this one node-writing-mode axis/alias projection.
 function parseElementSize(styleValue, computedStyle) {
   const width = styleValue("width");
   const height = styleValue("height");
   const inlineSize = styleValue("inlineSize");
   const blockSize = styleValue("blockSize");
 
-  if (isVerticalWritingMode(computedStyle.writingMode)) {
-    return parseSize({ width: width || blockSize, height: height || inlineSize });
+  const vertical = isVerticalWritingMode(computedStyle.writingMode);
+  const logicalWidth = vertical ? blockSize : inlineSize;
+  const logicalHeight = vertical ? inlineSize : blockSize;
+  // Specified logical/physical declarations remain distinct but cascade into
+  // one computed axis. This source profile does not interpret their priority.
+  if ((width && logicalWidth) || (height && logicalHeight)) {
+    throw new Error('Root context: ConflictingSizingDeclarations');
   }
-  return parseSize({ width: width || inlineSize, height: height || blockSize });
+  return parseSize({ width: width || logicalWidth, height: height || logicalHeight });
 }
 
 function isVerticalWritingMode(writingMode) {
@@ -732,8 +1293,11 @@ function parseGaps(styleValue) {
       const parsedGap = parseDimension(gap);
       return { row: parsedGap, column: parsedGap };
     }
-    const gaps = splitCssComponentValues(gap).map(part => parseDimension(part));
-    return { row: gaps[0], column: gaps[1] ?? gaps[0] };
+    const components = splitCssComponentValues(gap);
+    const gaps = components.map(part => parseDimension(part));
+    // Only one authored component repeats. A present second component whose
+    // projection failed must reach representedGaps as absent, not inherit row.
+    return { row: gaps[0], column: components.length === 1 ? gaps[0] : gaps[1] };
   }
   if (rowGap || columnGap) {
     return { row: parseDimension(rowGap), column: parseDimension(columnGap) };
@@ -947,6 +1511,25 @@ function describeElement(e, expectedElement = null) {
   // Get precise, unrounded dimensions for the current element and it's parent
   let boundingRect = e.getBoundingClientRect();
   let parentBoundingRect = e.parentNode.getBoundingClientRect();
+  const observation = rootLocalObservation;
+  const isLocalRoot = observation?.root === e;
+  // Retain the prior world-corner observation as diagnostics. Its x/y have
+  // always been parent-local, not document positions.
+  const worldRoundedLayout = {
+    width: Math.round(boundingRect.right) - Math.round(boundingRect.left),
+    height: Math.round(boundingRect.bottom) - Math.round(boundingRect.top),
+    x: Math.round(boundingRect.x - parentBoundingRect.x),
+    y: Math.round(boundingRect.y - parentBoundingRect.y),
+    scrollWidth: e.scrollWidth, scrollHeight: e.scrollHeight,
+    clientWidth: e.clientWidth, clientHeight: e.clientHeight,
+  };
+  const smartRoundedLayout = observation ? {
+    ...worldRoundedLayout,
+    width: Math.round(boundingRect.right - observation.x) - Math.round(boundingRect.left - observation.x),
+    height: Math.round(boundingRect.bottom - observation.y) - Math.round(boundingRect.top - observation.y),
+    x: isLocalRoot ? 0 : worldRoundedLayout.x,
+    y: isLocalRoot ? 0 : worldRoundedLayout.y,
+  } : worldRoundedLayout;
 
   const computedStyle = getComputedStyle(e);
   const useAuthoredCssRules = expectedElement !== null;
@@ -959,6 +1542,20 @@ function describeElement(e, expectedElement = null) {
     if (typed?.unit === "calc") return typed;
     return inlineCalc;
   };
+  const preferredSizeValue = property => {
+    const input = lengthStyleValue(property);
+    return requireSizingProjection(input, parseSizeDimension(input));
+  };
+  const resolvedSizeValue = property => {
+    const input = lengthStyleValue(property);
+    return requireSizingProjection(input, parseResolvedDimension(input, computedStyle[property]));
+  };
+  const boundSize = prefix => parseElementSize(
+    property => resolvedSizeValue(prefix + property[0].toUpperCase() + property.slice(1)),
+    computedStyle,
+  );
+  const basisInput = lengthStyleValue('flexBasis');
+  const flexBasis = requireSizingProjection(basisInput, parseSizingDimension(basisInput));
   const layoutReadyInlineRoot = e.getAttribute?.('data-surgeist-layout-ready-inline') === 'true';
   if (layoutReadyInlineRoot) resetLayoutReadyRangeLineRegistry(e);
   const preparedCapture = e.getAttribute?.('data-surgeist-prepared-text') === 'ahem-ttf-v1'
@@ -968,9 +1565,11 @@ function describeElement(e, expectedElement = null) {
   const lineControlParticipation = layoutReadyLineControlParticipation(e, computedStyle);
   const hasTypedInlineText = children.some((child) => ['inline-text', 'prepared-text'].includes(child.layoutInput));
 
-  return {
+  const described = {
     layoutInput: 'box',
     preparedParagraph: preparedCapture?.paragraph,
+    gridAlignmentReference: gridAlignmentReferenceForElement(e),
+    atomicParagraphMetrics: !preparedCapture ? atomicParagraphMetricsForElement(e, children) : undefined,
     tagName: e.tagName.toLowerCase(),
     layoutReadyInlineRoot: layoutReadyInlineRoot || undefined,
     layoutReadyAnonymousGridTextWrapper: layoutReadyAnonymousGridTextWrapper(e, computedStyle, children),
@@ -1028,7 +1627,7 @@ function describeElement(e, expectedElement = null) {
 
       flexGrow: parseNumber(styleValue("flexGrow")),
       flexShrink: parseNumber(styleValue("flexShrink")),
-      flexBasis: parseSizingDimension(lengthStyleValue("flexBasis")),
+      flexBasis,
 
       gridTemplateRows: parseGridTrackDefinitions(lengthStyleValue("gridTemplateRows")),
       gridTemplateColumns: parseGridTrackDefinitions(lengthStyleValue("gridTemplateColumns")),
@@ -1044,41 +1643,35 @@ function describeElement(e, expectedElement = null) {
       gridColumnStart: parseGridPosition(styleValue("gridColumnStart")),
       gridColumnEnd: parseGridPosition(styleValue("gridColumnEnd")),
 
-      gap: parseGaps(lengthStyleValue),
+      gap: representedGaps(lengthStyleValue),
 
-      size: parseElementSize(lengthStyleValue, computedStyle),
-      minSize: parseSize({
-        width: parseResolvedDimension(lengthStyleValue("minWidth"), computedStyle.minWidth),
-        height: parseResolvedDimension(lengthStyleValue("minHeight"), computedStyle.minHeight),
-      }),
-      maxSize: parseSize({
-        width: parseResolvedDimension(lengthStyleValue("maxWidth"), computedStyle.maxWidth),
-        height: parseResolvedDimension(lengthStyleValue("maxHeight"), computedStyle.maxHeight),
-      }),
+      size: parseElementSize(preferredSizeValue, computedStyle),
+      minSize: boundSize('min'),
+      maxSize: boundSize('max'),
       aspectRatio: parseRatio(styleValue("aspectRatio")),
 
       margin: parseEffectiveMargin(e, computedStyle),
 
-      padding: parseEdges({
+      padding: representedInlineEdges({
         left: lengthStyleValue("paddingLeft"),
         right: lengthStyleValue("paddingRight"),
         top: lengthStyleValue("paddingTop"),
         bottom: lengthStyleValue("paddingBottom"),
-      }),
+      }, lengthStyleValue("paddingInlineStart"), lengthStyleValue("paddingInlineEnd"), computedStyle),
 
-      border: parseEdges({
+      border: representedEdges({
         left: lengthStyleValue("borderLeftWidth"),
         right: lengthStyleValue("borderRightWidth"),
         top: lengthStyleValue("borderTopWidth"),
         bottom: lengthStyleValue("borderBottomWidth"),
       }),
 
-      inset: parseEdges({
+      inset: representedInlineEdges({
         left: lengthStyleValue("left"),
         right: lengthStyleValue("right"),
         top: lengthStyleValue("top"),
         bottom: lengthStyleValue("bottom"),
-      }),
+      }, lengthStyleValue("insetInlineStart"), lengthStyleValue("insetInlineEnd"), computedStyle),
     },
 
     // The textContent is used for generating intrinsic sizing measure funcs
@@ -1091,16 +1684,16 @@ function describeElement(e, expectedElement = null) {
     unroundedLayout: {
       width: boundingRect.width,
       height: boundingRect.height,
-      x: boundingRect.x - parentBoundingRect.x,
-      y: boundingRect.y - parentBoundingRect.y,
+      x: isLocalRoot ? 0 : boundingRect.x - parentBoundingRect.x,
+      y: isLocalRoot ? 0 : boundingRect.y - parentBoundingRect.y,
       scrollWidth: e.scrollWidth,
       scrollHeight: e.scrollHeight,
       clientWidth: e.clientWidth,
       clientHeight: e.clientHeight,
     },
 
-    // The naively rounded layout of the node. This is equivalent to calling Math.round() on
-    // each value in the unrounded layout individually
+    // Original offset/offset-parent diagnostics. These do not define the
+    // selected absolute-local observation or its cumulative corner phase.
     naivelyRoundedLayout: {
       width: e.offsetWidth,
       height: e.offsetHeight,
@@ -1112,29 +1705,23 @@ function describeElement(e, expectedElement = null) {
       clientHeight: e.clientHeight,
     },
 
-    // The naive rounding can result in 1px gaps in the layout. Chrome also uses
-    // a smarter algorithm, but it doesn't expose the output of that rounding.
-    // So we emulate the cumulative edge computation here.
-    smartRoundedLayout: {
-      width: Math.round(boundingRect.right) - Math.round(boundingRect.left),
-      height: Math.round(boundingRect.bottom) - Math.round(boundingRect.top),
-      x: Math.round(boundingRect.x - parentBoundingRect.x),
-      y: Math.round(boundingRect.y - parentBoundingRect.y),
-      scrollWidth: e.scrollWidth,
-      scrollHeight: e.scrollHeight,
-      clientWidth: e.clientWidth,
-      clientHeight: e.clientHeight,
-    },
+    // Absolute-local observations normalize continuous corners BEFORE Q.
+    // Child locations retain Native's Q(parent-local delta) policy; only the
+    // root location is zero. BlockFlow keeps its actual world-corner phase.
+    smartRoundedLayout,
+    worldRoundedLayout,
 
     // Whether the test should enable rounding
     useRounding: e.getAttribute("data-test-rounding") !== "false",
 
-    viewport: parseViewportConstraint(e, boundingRect),
+    viewport: undefined,
 
     shapeBands: layoutReadyShapeBands(e),
 
     children,
   };
+  if (e.id === 'test-root') described.gridAlignmentProfile = completeGridAlignmentProfile(described);
+  return described;
 }
 
 window.__surgeistGridTemplateAreaCaptureInstalled = true;
@@ -1647,6 +2234,7 @@ function describeChildNodes(e, expectedElement = null) {
   const inlineBreaks = layoutReadyInlineBreaks(e, childNodes);
   const inlineStruts = layoutReadyInlineStruts(e, childNodes);
   const inlineBidiLevels = layoutReadyInlineBidiLevels(e, childNodes);
+  const atomicMetricSource = atomicParagraphSource(e);
   const layoutReadyInlineRun = hasLayoutReadyInlineFixture(e) && childNodes.some((child, index) => {
     return child.nodeType === Node.ELEMENT_NODE && child.tagName === 'BR' ||
       child.nodeType === Node.TEXT_NODE && shouldSerializeLayoutReadyText(child, childNodes, index, e);
@@ -1666,7 +2254,7 @@ function describeChildNodes(e, expectedElement = null) {
       const described = describeElement(child, expectedElement);
       if (layoutReadyInlineRun && child.tagName !== 'BR' && isLoweredAtomicInline(child)) {
         described.atomicInlineParticipation = {
-          bidiLevel: consumeLayoutReadyInlineBidiLevel(inlineBidiLevels, i),
+          bidiLevel: atomicMetricSource ? (getComputedStyle(e).direction === 'rtl' ? 1 : 0) : consumeLayoutReadyInlineBidiLevel(inlineBidiLevels, i),
           ...(inlineBreaks.get(i) || { followingBreak: 'prohibited' }),
         };
         inlineBreaks.delete(i);
@@ -2066,9 +2654,7 @@ function qualifyTransparentPreparedInline(node, containingElement) {
     throw new Error('Transparent inline requires zero actual margin, padding and border edges');
   }
   if (style.verticalAlign !== 'baseline' || style.cssFloat !== 'none' || style.transform !== 'none' ||
-      !['static', 'relative'].includes(style.position) ||
-      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
-        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+      !isUnshiftedInlinePosition(style)) {
     throw new Error('Transparent inline positioning/alignment context is unsupported');
   }
 }
@@ -2093,9 +2679,7 @@ function qualifyPreparedBreak(node, containingFrame, containingText) {
   if (own.fontSize !== containingText.fontSize || own.lineHeight !== containingText.lineHeight ||
       style.display !== 'inline' || style.verticalAlign !== 'baseline' ||
       style.cssFloat !== 'none' || style.clear !== 'none' || style.transform !== 'none' ||
-      !['static', 'relative'].includes(style.position) ||
-      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
-        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+      !isUnshiftedInlinePosition(style)) {
     throw new Error('Prepared BR requires the containing font strut and undisplaced baseline control context');
   }
   const edges = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
@@ -2224,7 +2808,7 @@ function getTestData() {
   if (!root) {
     const reason = "Unsupported missing #test-root fixture root";
     return JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 4,
       borderBoxLtrData: unsupportedTestData(reason),
       contentBoxLtrData: unsupportedTestData(reason),
       borderBoxRtlData: unsupportedTestData(reason),
@@ -2232,16 +2816,12 @@ function getTestData() {
     });
   }
 
-  document.body.className = "border-box ltr";
-  const borderBoxLtrData = describeElement(root);
-  document.body.className = "content-box ltr";
-  const contentBoxLtrData = describeElement(root);
-  document.body.className = "border-box rtl";
-  const borderBoxRtlData = describeElement(root);
-  document.body.className = "content-box rtl";
-  const contentBoxRtlData = describeElement(root);
+  const borderBoxLtrData = captureRootVariant(root, "border-box ltr");
+  const contentBoxLtrData = captureRootVariant(root, "content-box ltr");
+  const borderBoxRtlData = captureRootVariant(root, "border-box rtl");
+  const contentBoxRtlData = captureRootVariant(root, "content-box rtl");
 
-  return JSON.stringify({ schemaVersion: 2, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
+  return JSON.stringify({ schemaVersion: 4, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
 }
 
 // Useful when developing this script. Logs the parsed style to the console when any test fixture is opened in a browser.

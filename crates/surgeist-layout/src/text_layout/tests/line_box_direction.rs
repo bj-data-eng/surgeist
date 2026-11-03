@@ -147,15 +147,58 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(&capture, 0, request(width)).unwrap()
+    compute_layout_with_flow(
+        &capture,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 
-fn request<S: LayoutScalar>(width: f64) -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(width)),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap()
+fn request<S: LayoutScalar>(
+    width: f64,
+    containing_flow_axes: crate::FlowAxes,
+) -> LayoutRootRequestOf<S> {
+    {
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    }
 }
 
 fn glyphs<S: LayoutScalar>(
@@ -364,7 +407,15 @@ fn chronology<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        compute_layout_with_flow(&capture, 0, request(40.0)).unwrap()
+        compute_layout_with_flow(
+            &capture,
+            0,
+            request(40.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap()
     };
     let batch = run(&tree);
     let find = |node| {
@@ -466,7 +517,7 @@ fn preserved_space_keeps_body_edge_ownership_under_opposed_line_box_alignment() 
 
 fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
@@ -575,8 +626,26 @@ fn independent_intrinsics<S: LayoutScalar>() {
     };
     let before = finite();
     for order in [
-        [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT],
-        [AvailableOf::MAX_CONTENT, AvailableOf::MIN_CONTENT],
+        [
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        ],
+        [
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+        ],
     ] {
         for available in order {
             let output = intrinsic::<S>(&p, available);
@@ -588,7 +657,12 @@ fn independent_intrinsics<S: LayoutScalar>() {
                     .available_inline
                     .is_none()
             }));
-            if available == AvailableOf::MIN_CONTENT {
+            if available
+                == crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                )
+            {
                 assert_eq!(output.report.inline_extent, S::from_f64(10.0));
                 let directions = output
                     .paragraph
@@ -770,7 +844,15 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                 Vec::new(),
             )
             .unwrap();
-            let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+            let batch = compute_layout_with_flow(
+                &capture,
+                0,
+                request(40.0, {
+                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                }),
+            )
+            .unwrap();
             assert_eq!(
                 glyphs(&batch, 0)
                     .iter()

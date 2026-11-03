@@ -82,7 +82,7 @@ fn compute_space<S: l::LayoutScalar>(
     host: &Host<S>,
     bindings: Vec<l::TextParagraphBinding<u32>>,
     changed: &[u32],
-    space: l::Size<l::AvailableOf<S>>,
+    space: surgeist_layout::SizingRequestOf<S>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow =
         l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
@@ -90,7 +90,19 @@ fn compute_space<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(space).unwrap(),
+        {
+            let sizing_request = space;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }
@@ -395,8 +407,8 @@ fn sizing<S: l::LayoutScalar>() {
             );
         }
         for (inline, width, height, columns) in [
-            (l::AvailableOf::MIN_CONTENT, 20.0, 4.0, 2),
-            (l::AvailableOf::MAX_CONTENT, 10.0, 8.0, 1),
+            (surgeist_layout::SizingOperation::MinContent, 20.0, 4.0, 2),
+            (surgeist_layout::SizingOperation::MaxContent, 10.0, 8.0, 1),
         ] {
             let (mut host, bindings) = scene::<S>(&parent, &child, mode);
             host.change(0, |input| {
@@ -406,7 +418,10 @@ fn sizing<S: l::LayoutScalar>() {
                 &host,
                 bindings,
                 &[],
-                l::Size::new(l::AvailableOf::MAX_CONTENT, inline),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                ),
             )
             .unwrap();
             assert_eq!(

@@ -17,7 +17,12 @@ pub(super) fn input<S: LayoutScalar>(
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: AvailableOf::definite(S::from_f64(60.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
@@ -133,7 +138,16 @@ fn numeric_balance_keeps_forced_groups_intrinsics_and_real_zero_atomics() {
                     surgeist_text::LineEnd::Paragraph,
                 ]
             );
-            for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+            for available in [
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ] {
                 let mut auto = input::<S>(&[30.0, 30.0, 10.0], &[], direction, TextWrapStyle::Auto);
                 auto.available_inline_extent = available;
                 let mut balance = auto.clone();

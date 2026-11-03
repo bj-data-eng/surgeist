@@ -190,10 +190,24 @@ fn percentage_vertical_contexts<S: LayoutScalar>(definite_bases: &[bool]) {
                             compute_layout(
                                 tree,
                                 0,
-                                LayoutRootRequestOf::viewport(Size::splat(
-                                    AvailableOf::MAX_CONTENT,
-                                ))
-                                .unwrap(),
+                                crate::test_support::requests::NativeRootFrameOf::new(
+                                    FlowAxes::new(
+                                        tree.node_input(0).writing_mode,
+                                        tree.node_input(0).direction,
+                                    ),
+                                    Size::splat(None),
+                                    OrthogonalFallbackOf::new(
+                                        Size::splat(None),
+                                        NearestScrollportOf::Absent,
+                                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                                    ),
+                                )
+                                .request(Size::splat(
+                                    AxisSizingRequestOf::new(
+                                        AvailableSpaceOf::Indefinite,
+                                        SizingOperation::Normal,
+                                    ),
+                                )),
                             )
                             .unwrap()
                         };

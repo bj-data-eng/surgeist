@@ -46,11 +46,25 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
         let batch = compute_layout_with_flow(
             &capture,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(px::<S>(50.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap(),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()), None),
+                OrthogonalFallbackOf::new(
+                    Size::new(Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()), None),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .unwrap();
         fractional_atomic_source_and_font(&batch, false);

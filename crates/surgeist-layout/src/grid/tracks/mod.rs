@@ -6,24 +6,72 @@ mod ordinary;
 mod subgrid_intrinsic;
 mod validation;
 
+// Grid's phase/finishing owner chooses algorithmic free space independently
+// from the caller's physical space. Formal intrinsic requests have no finite
+// free space; an explicit maximum may bound finishing of retained phases.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::grid) struct GridTrackSizingConstraint<S: LayoutScalar> {
+    pub(in crate::grid) operation: SizingOperation,
+    pub(in crate::grid) available_extent: Option<S>,
+}
+
 pub(super) use flexible::*;
 pub(super) use intrinsic::*;
 pub(super) use ordinary::{
-    OrdinaryIntrinsicContributionInput, apply_ordinary_intrinsic_contribution, resolve_axis_tracks,
-    track_base_size, track_resolution_intrinsic_sizes,
+    GridAxisTrackPhases, GridIntrinsicContributionRow, OrdinaryIntrinsicContributionInput,
+    SpanningContributionError, SpanningTrackContext, apply_ordinary_intrinsic_contribution,
+    grid_contribution_rows, resolve_grid_contribution_rows, track_base_size,
 };
 #[cfg(test)]
 pub(super) use ordinary::{
-    resolve_tracks, track_base_size_for_intrinsics, track_growth_limit,
-    track_min_size_for_intrinsics,
+    track_base_size_for_intrinsics, track_growth_limit, track_min_size_for_intrinsics,
 };
 #[cfg(test)]
 pub(super) use subgrid_intrinsic::needs_intrinsic_subgrid_context;
 pub(super) use subgrid_intrinsic::{
-    PercentTrackContent, cyclic_percent_track_content_size, item_inherits_parent_axis,
-    track_components_have_percent_sizing,
+    IntrinsicGridChildInput, compute_prepared_intrinsic_grid_child, intrinsic_stage_child_input,
+    item_inherits_parent_axis,
 };
 pub(super) use validation::*;
+
+// Fixed maxima are qualified against the authored fixed minimum in the same
+// owning percentage basis. No used track allocation substitutes for a function.
+pub(in crate::grid) fn effective_fixed_track_maximum<S: LayoutScalar>(
+    track: &TrackSizingOf<S>,
+    basis: Option<S>,
+) -> Result<Option<S>, LengthResolutionStatus<S>> {
+    let resolve = |calculation: &crate::SizingCalculationOf<S>| {
+        let resolution = resolve_track_calculation(calculation, basis);
+        match resolution.status() {
+            LengthResolutionStatus::Resolved => Ok(resolution.value),
+            LengthResolutionStatus::MissingBasis => Ok(None),
+            status => Err(status),
+        }
+    };
+    let minimum = match &track.min {
+        MinTrackSizingOf::Calculation(calculation) => resolve(calculation)?,
+        MinTrackSizingOf::Auto | MinTrackSizingOf::MinContent | MinTrackSizingOf::MaxContent => {
+            None
+        }
+    };
+    let maximum = match &track.max {
+        MaxTrackSizingOf::Calculation(calculation) => resolve(calculation)?,
+        _ => None,
+    };
+    Ok(maximum.map(|maximum| minimum.map_or(maximum, |minimum| maximum.max(minimum))))
+}
+
+// A cyclic percentage acts as Auto only when its actual calculation reports
+// the missing-basis state. Invalid calculations do not acquire that role.
+pub(in crate::grid) fn track_calculation_is_cyclic_auto<S: LayoutScalar>(
+    calculation: &crate::SizingCalculationOf<S>,
+    basis: Option<S>,
+) -> bool {
+    matches!(
+        resolve_track_calculation(calculation, basis).status(),
+        LengthResolutionStatus::MissingBasis
+    )
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct OrdinaryGridAxisGuttersOf<S: LayoutScalar = Scalar> {

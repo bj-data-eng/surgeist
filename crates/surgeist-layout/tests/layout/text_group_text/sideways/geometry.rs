@@ -37,16 +37,22 @@ pub(super) fn paragraph<S: l::LayoutScalar>(
         t::PreparationOptions::default().with_orientation(t::LineOrientation::SidewaysClockwise),
     )
 }
-pub(super) fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(S::from_f64(width)),
-        l::AvailableOf::definite(S::from_f64(height)),
+pub(super) fn available<S: l::LayoutScalar>(
+    width: f64,
+    height: f64,
+) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(S::from_f64(width)), Some(S::from_f64(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 pub(super) fn run<S: l::LayoutScalar>(
     host: &Host<S>,
     paragraphs: &[&Paragraph],
-    available: l::Size<l::AvailableOf<S>>,
+    available: surgeist_layout::SizingRequestOf<S>,
     changed: &[u32],
 ) -> l::CompletedLayoutBatchOf<u32, S> {
     let flow = l::LayoutFlowInput::try_new(
@@ -57,7 +63,19 @@ pub(super) fn run<S: l::LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request = l::LayoutRootRequestOf::viewport(available).unwrap();
+    let request = {
+        let sizing_request = available;
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    };
     let batch = l::compute_layout_with_flow_invalidated(&flow, 0, request, changed).unwrap();
     // These core fixtures use integer physical boxes. Final publication must
     // retain the actual unrounded box geometry and native source custody.
@@ -178,10 +196,7 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
     // A finite outer40-wide Srl frame anchors an AUTO20-wide root at GX20.
     // A nonfinite block request instead anchors it at GX0. Both are actual
     // root requests; no provisional-width frame is supplied by the test.
-    for (block_space, gx, right) in [
-        (l::AvailableOf::definite(S::from_f64(40.0)), 20.0, 40.0),
-        (l::AvailableOf::MAX_CONTENT, 0.0, 20.0),
-    ] {
+    for (block_space, gx, right) in [(Some(S::from_f64(40.0)), 20.0, 40.0), (None, 0.0, 20.0)] {
         let mut host = fixture::<S>(l::Direction::Ltr, None, Some(15.0));
         let p = paragraph(
             &mut host,
@@ -193,7 +208,13 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
         let batch = run(
             &host,
             &[&p],
-            l::Size::new(block_space, l::AvailableOf::definite(S::from_f64(15.0))),
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(block_space, Some(S::from_f64(15.0))),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
             &[],
         );
         let root = node_output(&batch, 0);
@@ -207,8 +228,8 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
     // These are real Layout MIN/MAX_CONTENT requests along physical height
     // (Srl inline), not a claim that one whole-line measurement is global min.
     for (inline_space, width, height) in [
-        (l::AvailableOf::MIN_CONTENT, 20.0, 10.0),
-        (l::AvailableOf::MAX_CONTENT, 10.0, 20.0),
+        (surgeist_layout::SizingOperation::MinContent, 20.0, 10.0),
+        (surgeist_layout::SizingOperation::MaxContent, 10.0, 20.0),
     ] {
         let mut host = fixture::<S>(l::Direction::Ltr, None, None);
         let p = paragraph(
@@ -221,7 +242,10 @@ fn auto_and_intrinsic<S: l::LayoutScalar>() {
         let batch = run(
             &host,
             &[&p],
-            l::Size::new(l::AvailableOf::MAX_CONTENT, inline_space),
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline_space),
+            ),
             &[],
         );
         let root = node_output(&batch, 0);

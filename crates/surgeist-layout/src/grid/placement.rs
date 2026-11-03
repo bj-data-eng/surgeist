@@ -1123,8 +1123,9 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
     }
 
     let Some((start, end)) =
-        placement_range(placement, tracks.len(), explicit_start, explicit_count)
-            .filter(|_| has_definite_line(placement))
+        placement_range(placement, tracks.len(), explicit_start, explicit_count).filter(
+            |(start, end)| has_definite_line(placement) && start < end && *end <= offsets.len(),
+        )
     else {
         return AbsoluteGridAxisArea {
             location: padding_box_location,

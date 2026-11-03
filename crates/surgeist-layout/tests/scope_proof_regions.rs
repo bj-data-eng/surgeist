@@ -2,6 +2,9 @@
 
 //! Emitted scope extents demand their flow, without widening through dormant gaps.
 
+#[path = "support/native_request.rs"]
+mod native_request;
+
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use surgeist_layout as layout;
 use surgeist_text as text;
@@ -542,11 +545,25 @@ fn fixture_with_child_topology(
 }
 
 fn request() -> layout::LayoutRootRequest {
-    layout::LayoutRootRequest::viewport(layout::Size::new(
-        layout::Available::definite(200.0),
-        layout::Available::MAX_CONTENT,
-    ))
-    .unwrap()
+    {
+        let sizing_request = crate::native_request::sizing(
+            surgeist_layout::Size::new(Some(200.0), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        layout::LayoutRootRequest::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::WritingMode::HorizontalTb,
+                surgeist_layout::Direction::Ltr,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 
 fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<usize> {

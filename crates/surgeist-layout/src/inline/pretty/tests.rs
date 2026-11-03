@@ -185,7 +185,12 @@ fn native_pretty_preserves_tail_then_improves_body_and_keeps_actual_fixed_guards
             ] {
                 let mut request = input::<S>(widths, &[], direction, crate::TextWrapStyle::Pretty);
                 if widths[0] == 160.0 {
-                    request.available_inline_extent = AvailableOf::definite(S::from_f64(170.0));
+                    request.available_inline_extent = crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(170.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    );
                 }
                 assert_eq!(groups(&run(request)), expected);
             }
@@ -301,7 +306,12 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
                         Direction::Ltr,
                         crate::TextWrapStyle::Pretty,
                     );
-                    request.available_inline_extent = AvailableOf::definite(S::from_f64(100.0));
+                    request.available_inline_extent = crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    );
                     run(request);
                 }
                 1 => {

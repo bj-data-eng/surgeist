@@ -19,16 +19,21 @@ use crate::sizing::resolve::{
     resolve_preferred_sizing,
 };
 use crate::{
-    AspectRatioOf, AvailableOf, BoxSizing, CollapsibleMarginOf, ComputeInputOf, ComputeOutputOf,
-    DefaultScalar, Edges, LayoutScalar, LayoutTree, LengthResolutionOf, LengthResolutionStatus,
-    NodeInputOf, NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf,
-    PhysicalBlockMarginCollapseOf, Position, RunMode, Size, SizingMode,
+    AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, CollapsibleMarginOf,
+    ComputeInputOf, ComputeOutputOf, ContentSizingRequestOf, DefaultScalar, Edges, LayoutScalar,
+    LayoutTree, LengthResolutionOf, LengthResolutionStatus, NodeInputOf, NonNegativeFiniteOf,
+    PhysicalBlockMarginCollapseOf, Position, RunMode, Size, SizingMode, SizingOperation,
 };
+
+#[cfg(test)]
+use crate::SizingRequestOf;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LeafMeasureInputOf<S: LayoutScalar = DefaultScalar> {
     known_content_size: Size<Option<S>>,
-    available_content_size: Size<MeasurementAvailableOf<S>>,
+    content_sizing_request: ContentSizingRequestOf<S>,
+    flow_axes: FlowAxes,
+    containing_layout_context: crate::ContainingLayoutContext,
 }
 
 pub type LeafMeasureInput = LeafMeasureInputOf<DefaultScalar>;
@@ -39,57 +44,29 @@ impl<S: LayoutScalar> LeafMeasureInputOf<S> {
         self.known_content_size
     }
 
+    /// Effective content-space requests after owned property/edge lowering.
+    /// The fallback extents are this leaf's final content-space projection, not a
+    /// recursive ICB/scrollport frame to forward to another generated child.
     #[must_use]
-    pub const fn available_content_size(&self) -> Size<MeasurementAvailableOf<S>> {
-        self.available_content_size
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum MeasurementAvailableOf<S: LayoutScalar = DefaultScalar> {
-    Definite(NonNegativeFiniteOf<S>),
-    MinContent,
-    MaxContent,
-}
-
-pub type MeasurementAvailable = MeasurementAvailableOf<DefaultScalar>;
-
-impl<S: LayoutScalar> MeasurementAvailableOf<S> {
-    pub const MIN_CONTENT: Self = Self::MinContent;
-    pub const MAX_CONTENT: Self = Self::MaxContent;
-
-    pub fn definite(value: S) -> Result<Self, NonNegativeFiniteScalarErrorOf<S>> {
-        Ok(Self::Definite(NonNegativeFiniteOf::new(value)?))
+    pub const fn content_sizing_request(&self) -> ContentSizingRequestOf<S> {
+        self.content_sizing_request
     }
 
+    /// Actual normalized used axes of the measured node, supplied by Layout.
     #[must_use]
-    pub const fn definite_value(self) -> Option<NonNegativeFiniteOf<S>> {
-        match self {
-            Self::Definite(value) => Some(value),
-            Self::MinContent | Self::MaxContent => None,
-        }
+    pub const fn flow_axes(&self) -> FlowAxes {
+        self.flow_axes
     }
 
+    /// The exact containing boundary supplied to the compute operation.
+    ///
+    /// Opaque providers own their actual content-formatting policy. These facts
+    /// permit a supported profile to select a required orthogonal inline
+    /// fallback, without guessing the frame or capping every indefinite Normal
+    /// request. They do not declare a general orthogonal-layout algorithm.
     #[must_use]
-    pub const fn into_available(self) -> AvailableOf<S> {
-        match self {
-            Self::Definite(value) => AvailableOf::Definite(value.get()),
-            Self::MinContent => AvailableOf::MinContent,
-            Self::MaxContent => AvailableOf::MaxContent,
-        }
-    }
-
-    fn from_content_space(value: AvailableOf<S>) -> Result<Self, S> {
-        match value {
-            AvailableOf::Definite(value) => {
-                let Ok(value) = NonNegativeFiniteOf::new(finite_floor_at_zero(value)?) else {
-                    unreachable!("finite content-space availability is non-negative")
-                };
-                Ok(Self::Definite(value))
-            }
-            AvailableOf::MinContent => Ok(Self::MinContent),
-            AvailableOf::MaxContent => Ok(Self::MaxContent),
-        }
+    pub const fn containing_layout_context(&self) -> crate::ContainingLayoutContext {
+        self.containing_layout_context
     }
 }
 
@@ -141,8 +118,8 @@ struct LeafResolvedValues<S: LayoutScalar> {
     node_size: Size<Option<S>>,
     node_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
-    preferred_intrinsic_availability: Size<Option<AvailableOf<S>>>,
-    flex_basis_intrinsic_availability: Size<Option<AvailableOf<S>>>,
+    preferred_intrinsic_operation: Size<Option<SizingOperation>>,
+    flex_basis_intrinsic_operation: Size<Option<SizingOperation>>,
     aspect_ratio: Option<AspectRatioOf<S>>,
 }
 
@@ -177,43 +154,53 @@ where
         Size::ZERO
     };
 
-    let (node_size, node_min_size, node_max_size, preferred_intrinsic_availability, aspect_ratio) =
+    let (node_size, node_min_size, node_max_size, preferred_intrinsic_operation, aspect_ratio) =
         match input.sizing_mode() {
             SizingMode::ContentSize => (input.known(), Size::NONE, Size::NONE, Size::NONE, None),
             SizingMode::InherentSize => {
                 let missing_basis_is_indefinite = input.run_mode() == RunMode::ComputeSize;
-                let preferred = Size::new(
-                    resolve_preferred_sizing(
-                        &style.size.width,
-                        SizingAlgorithm::Leaf,
-                        PhysicalAxis::Horizontal,
-                        input.parent().width,
-                        missing_basis_is_indefinite,
-                    )?,
-                    resolve_preferred_sizing(
-                        &style.size.height,
-                        SizingAlgorithm::Leaf,
-                        PhysicalAxis::Vertical,
-                        input.parent().height,
-                        missing_basis_is_indefinite,
-                    )?,
-                );
-                let style_size = validate_resolved_leaf_size(
-                    preferred
-                        .map(|resolved| match resolved {
-                            ResolvedPreferredSize::Definite(value) => Some(value),
-                            ResolvedPreferredSize::Auto
-                            | ResolvedPreferredSize::MinContent
-                            | ResolvedPreferredSize::MaxContent => None,
-                        })
-                        .apply_aspect_ratio(style.aspect_ratio)
-                        .add_optional(box_sizing_adjustment),
-                )?;
-                let preferred_intrinsic_availability = preferred.map(|resolved| match resolved {
-                    ResolvedPreferredSize::MinContent => Some(AvailableOf::MIN_CONTENT),
-                    ResolvedPreferredSize::MaxContent => Some(AvailableOf::MAX_CONTENT),
-                    ResolvedPreferredSize::Auto | ResolvedPreferredSize::Definite(_) => None,
-                });
+                let (style_size, preferred_intrinsic_operation) = if input.known().width.is_some()
+                    && input.known().height.is_some()
+                {
+                    // Both used border dimensions are authoritative. Their own
+                    // preferred size and intrinsic operation are no longer a
+                    // demand; min/max and box-edge resolution remain independent.
+                    (Size::NONE, Size::NONE)
+                } else {
+                    let preferred = Size::new(
+                        resolve_preferred_sizing(
+                            &style.size.width,
+                            SizingAlgorithm::Leaf,
+                            PhysicalAxis::Horizontal,
+                            input.parent().width,
+                            missing_basis_is_indefinite,
+                        )?,
+                        resolve_preferred_sizing(
+                            &style.size.height,
+                            SizingAlgorithm::Leaf,
+                            PhysicalAxis::Vertical,
+                            input.parent().height,
+                            missing_basis_is_indefinite,
+                        )?,
+                    );
+                    let style_size = validate_resolved_leaf_size(
+                        preferred
+                            .map(|resolved| match resolved {
+                                ResolvedPreferredSize::Definite(value) => Some(value),
+                                ResolvedPreferredSize::Auto
+                                | ResolvedPreferredSize::MinContent
+                                | ResolvedPreferredSize::MaxContent => None,
+                            })
+                            .apply_aspect_ratio(style.aspect_ratio)
+                            .add_optional(box_sizing_adjustment),
+                    )?;
+                    let preferred_intrinsic_operation = preferred.map(|resolved| match resolved {
+                        ResolvedPreferredSize::MinContent => Some(SizingOperation::MinContent),
+                        ResolvedPreferredSize::MaxContent => Some(SizingOperation::MaxContent),
+                        ResolvedPreferredSize::Auto | ResolvedPreferredSize::Definite(_) => None,
+                    });
+                    (style_size, preferred_intrinsic_operation)
+                };
                 let style_min_size = validate_resolved_leaf_size(
                     Size::new(
                         resolve_minimum_optional(
@@ -258,7 +245,7 @@ where
                     input.known().or(style_size),
                     style_min_size,
                     style_max_size,
-                    preferred_intrinsic_availability,
+                    preferred_intrinsic_operation,
                     style.aspect_ratio,
                 )
             }
@@ -266,18 +253,19 @@ where
     let flex_basis_intrinsic =
         if input.parent_formatting_context() == crate::ParentFormattingContext::Flex {
             if style.flex_basis.is_min_content() {
-                Some(AvailableOf::MIN_CONTENT)
+                Some(SizingOperation::MinContent)
             } else if style.flex_basis.is_max_content() {
-                Some(AvailableOf::MAX_CONTENT)
+                Some(SizingOperation::MaxContent)
             } else {
                 None
             }
         } else {
             None
         };
-    let flex_basis_intrinsic_availability = input
-        .available()
-        .map(|available| flex_basis_intrinsic.filter(|intrinsic| *intrinsic == available));
+    let flex_basis_intrinsic_operation = input
+        .sizing_request()
+        .axes()
+        .map(|request| flex_basis_intrinsic.filter(|intrinsic| *intrinsic == request.operation()));
 
     Ok(LeafResolvedValues {
         margin,
@@ -285,8 +273,8 @@ where
         node_size,
         node_min_size,
         node_max_size,
-        preferred_intrinsic_availability,
-        flex_basis_intrinsic_availability,
+        preferred_intrinsic_operation,
+        flex_basis_intrinsic_operation,
         aspect_ratio,
     })
 }
@@ -568,43 +556,42 @@ where
         validate_leaf_size(content_box_inset.sum_axes()).map_err(|value| {
             invalid_numeric_error_at_site(site, LayoutOperation::LeafMeasurement, value)
         })?;
-    let available = Size::new(
-        input
-            .known()
-            .width
-            .map(AvailableOf::definite)
-            .unwrap_or(input.available().width)
-            .sub_margin(resolved.margin.horizontal_sum())
-            .set_optional(input.known().width)
-            .set_optional(resolved.node_size.width)
-            .map_definite(|value| {
-                value.clamp_max_before_min_optional(
-                    resolved.node_min_size.width,
-                    resolved.node_max_size.width,
-                ) - content_box_inset.horizontal_sum()
-            }),
-        input
-            .known()
-            .height
-            .map(AvailableOf::definite)
-            .unwrap_or(input.available().height)
-            .sub_margin(resolved.margin.vertical_sum())
-            .set_optional(input.known().height)
-            .set_optional(resolved.node_size.height)
-            .map_definite(|value| {
-                value.clamp_max_before_min_optional(
-                    resolved.node_min_size.height,
-                    resolved.node_max_size.height,
-                ) - content_box_inset.vertical_sum()
-            }),
-    )
-    .zip_map(
-        resolved.preferred_intrinsic_availability,
-        |available, intrinsic| intrinsic.unwrap_or(available),
-    )
-    .zip_map(
-        resolved.flex_basis_intrinsic_availability,
-        |available, intrinsic| intrinsic.unwrap_or(available),
+    let axes = input.sizing_request().axes();
+    let facts = |axis: PhysicalAxis| LeafAxisSpace {
+        known: physical_axis(input.known(), axis),
+        node_size: physical_axis(resolved.node_size, axis),
+        minimum: physical_axis(resolved.node_min_size, axis),
+        maximum: physical_axis(resolved.node_max_size, axis),
+        margin: match axis {
+            PhysicalAxis::Horizontal => resolved.margin.horizontal_sum(),
+            PhysicalAxis::Vertical => resolved.margin.vertical_sum(),
+        },
+        inset: physical_axis(content_box_inset_size, axis),
+        intrinsic: physical_axis(resolved.flex_basis_intrinsic_operation, axis)
+            .or(physical_axis(resolved.preferred_intrinsic_operation, axis)),
+    };
+    let lower = |axis| {
+        leaf_content_axis(physical_axis(axes, axis), facts(axis)).map_err(|value| {
+            invalid_numeric_error_at_site(site, LayoutOperation::LeafMeasurement, value)
+        })
+    };
+    let content_axes = Size::new(
+        lower(PhysicalAxis::Horizontal)?,
+        lower(PhysicalAxis::Vertical)?,
+    );
+    let fallback = input.sizing_request().orthogonal_fallback();
+    let lower_fallback = |axis| {
+        let facts = facts(axis);
+        // An unresolved/unrepresentable fallback is carried as a precise Result.
+        // A provider that does not use that axis must not fail because of it.
+        content_fallback(fallback, axis, facts.margin, facts.inset)
+    };
+    let content_sizing_request = ContentSizingRequestOf::new(
+        content_axes,
+        Size::new(
+            lower_fallback(PhysicalAxis::Horizontal),
+            lower_fallback(PhysicalAxis::Vertical),
+        ),
     );
 
     let known_content_size = match input.run_mode() {
@@ -621,13 +608,11 @@ where
         transpose_leaf_known_content_size(known_content_size).map_err(|value| {
             invalid_numeric_error_at_site(site, LayoutOperation::LeafMeasurement, value)
         })?;
-    let available_content_size =
-        measurement_available_content_size(available).map_err(|value| {
-            invalid_numeric_error_at_site(site, LayoutOperation::LeafMeasurement, value)
-        })?;
     let measurement_input = LeafMeasureInputOf {
         known_content_size,
-        available_content_size,
+        content_sizing_request,
+        flow_axes: FlowAxes::new(style.writing_mode, style.direction),
+        containing_layout_context: input.containing_layout_context(),
     };
     Ok(LeafPassInputOf {
         content_box_inset_size,
@@ -703,18 +688,6 @@ where
     S: LayoutScalar,
 {
     Ok(Size::new(size.width.transpose()?, size.height.transpose()?))
-}
-
-fn measurement_available_content_size<S>(
-    available: Size<AvailableOf<S>>,
-) -> Result<Size<MeasurementAvailableOf<S>>, S>
-where
-    S: LayoutScalar,
-{
-    Ok(Size::new(
-        MeasurementAvailableOf::from_content_space(available.width)?,
-        MeasurementAvailableOf::from_content_space(available.height)?,
-    ))
 }
 
 fn invalid_numeric_error_at_site<Node, S, M>(
@@ -793,32 +766,71 @@ where
     resolution_optional_fallible(resolution)
 }
 
-trait AvailableExt {
-    type Scalar: LayoutScalar;
-
-    fn sub_margin(self, margin: Self::Scalar) -> Self;
-    fn set_optional(self, value: Option<Self::Scalar>) -> Self;
-    fn map_definite(self, f: impl FnOnce(Self::Scalar) -> Self::Scalar) -> Self;
+fn content_fallback<S: LayoutScalar>(
+    fallback: crate::OrthogonalFallbackOf<S>,
+    axis: PhysicalAxis,
+    margin: S,
+    inset: S,
+) -> Result<NonNegativeFiniteOf<S>, crate::OrthogonalFallbackErrorOf<S>> {
+    fallback.resolve(axis).and_then(|value| {
+        let raw = value.get() - margin - inset;
+        finite_floor_at_zero(raw)
+            .and_then(|value| NonNegativeFiniteOf::new(value).map_err(|_| value))
+            .map_err(|value| crate::OrthogonalFallbackErrorOf::InvalidContentSpace { axis, value })
+    })
 }
 
-impl<S: LayoutScalar> AvailableExt for AvailableOf<S> {
-    type Scalar = S;
+#[derive(Clone, Copy)]
+struct LeafAxisSpace<S: LayoutScalar> {
+    known: Option<S>,
+    node_size: Option<S>,
+    minimum: Option<S>,
+    maximum: Option<S>,
+    margin: S,
+    inset: S,
+    intrinsic: Option<SizingOperation>,
+}
 
-    fn sub_margin(self, margin: S) -> Self {
-        self.map_definite(|value| value - margin)
+fn physical_axis<T>(size: Size<T>, axis: PhysicalAxis) -> T {
+    match axis {
+        PhysicalAxis::Horizontal => size.width,
+        PhysicalAxis::Vertical => size.height,
     }
+}
 
-    fn set_optional(self, value: Option<S>) -> Self {
-        value.map_or(self, AvailableOf::definite)
-    }
-
-    fn map_definite(self, f: impl FnOnce(S) -> S) -> Self {
-        match self {
-            AvailableOf::Definite(value) => AvailableOf::Definite(f(value)),
-            AvailableOf::MinContent => AvailableOf::MinContent,
-            AvailableOf::MaxContent => AvailableOf::MaxContent,
+fn leaf_content_axis<S: LayoutScalar>(
+    request: AxisSizingRequestOf<S>,
+    facts: LeafAxisSpace<S>,
+) -> Result<AxisSizingRequestOf<S>, S> {
+    let raw_space = facts.node_size.or(facts.known).or_else(|| {
+        request
+            .space()
+            .definite_size()
+            .map(|value| value.get() - facts.margin)
+    });
+    let space = match raw_space {
+        Some(value) => {
+            // Preserve invalid arithmetic before clamping: scalar min/max must not hide NaN.
+            if !value.is_finite() {
+                return Err(value);
+            }
+            let value =
+                value.clamp_max_before_min_optional(facts.minimum, facts.maximum) - facts.inset;
+            let value = finite_floor_at_zero(value)?;
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).map_err(|_| value)?)
         }
-    }
+        None => AvailableSpaceOf::Indefinite,
+    };
+    // A resolved authored/imposed body size is a used-size authority. A finite
+    // external space (including a clamped bound) is not. ContentSize suppresses
+    // authored size in resolve_leaf_values, so only genuine imposed known sizes
+    // take this branch for that mode.
+    let operation = if facts.known.is_some() || facts.node_size.is_some() {
+        SizingOperation::Normal
+    } else {
+        facts.intrinsic.unwrap_or(request.operation())
+    };
+    Ok(AxisSizingRequestOf::new(space, operation))
 }
 
 #[cfg(test)]
@@ -919,17 +931,30 @@ mod tests {
             FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         );
-        let available = Size::splat(AvailableOf::MAX_CONTENT);
+        // This case isolates missing percentage-edge authority, not an intrinsic
+        // size calculation: both direct entrypoints use Normal with genuinely
+        // indefinite space and no supplied ICB/scrollport fallback frame.
+        let request = SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        );
         let measured = Size::new(S::from_f64(12.0), S::from_f64(8.0));
 
         let content_size_input =
-            ComputeInputOf::leaf_content_size(Size::NONE, Size::NONE, context, available)
-                .unwrap_or_else(|_| panic!("indefinite intrinsic leaf input is valid"));
+            ComputeInputOf::leaf_content_size(Size::NONE, Size::NONE, context, request)
+                .unwrap_or_else(|_| panic!("normal indefinite content-size input is valid"));
         let content_size = compute_leaf(content_size_input, &style, |_input| Ok::<_, ()>(measured))
             .unwrap_or_else(|_| panic!("ComputeSize explicitly treats missing edge basis as zero"));
         assert_eq!(content_size.size, measured);
 
-        let layout_input = ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, context, available)
+        let layout_input = ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, context, request)
             .unwrap_or_else(|_| panic!("indefinite layout leaf input is valid"));
         let error = compute_leaf(layout_input, &style, |_input| -> Result<Size<S>, ()> {
             panic!("layout missing-basis failure must precede measurement")
@@ -953,3 +978,421 @@ mod tests {
         assert_fri06_c13_t06_leaf_missing_basis_counterexample::<f64>();
     }
 }
+
+#[cfg(test)]
+mod leaf_body_size_authority_tests {
+    use super::*;
+
+    fn qualify<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let thirty = NonNegativeFiniteOf::new(px(30.0)).unwrap();
+        let request = SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(thirty),
+                    SizingOperation::MinContent,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        );
+        let context = crate::ContainingLayoutContext::new(
+            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::ParentFormattingContext::NoParent,
+        );
+        let authored = NodeInputOf::<S> {
+            size: Size::new(
+                crate::PreferredSizeOf::px(px(30.0)),
+                crate::PreferredSizeOf::AUTO,
+            ),
+            ..NodeInputOf::default()
+        };
+        let automatic = NodeInputOf::<S>::default();
+        let normal =
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(thirty), SizingOperation::Normal);
+        let intrinsic = request.axes().width;
+        // This opaque native leaf has an unbreakable 40x10 content rectangle.
+        // Its content may overflow an authored 30px border box; it has no Text
+        // source, invented Grid output, or dependency on the observed request.
+        let content = Size::new(px(40.0), px(10.0));
+        let measure = |input, style: &NodeInputOf<S>| {
+            let mut observed = None;
+            let output = compute_leaf(input, style, |packet| {
+                observed = Some(packet);
+                Ok::<_, ()>(packet.known_content_size().unwrap_or(content))
+            })
+            .unwrap();
+            (
+                output,
+                observed.expect("unknown height requires actual leaf measurement"),
+            )
+        };
+
+        let layout = ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, context, request).unwrap();
+        let (authored_output, authored_packet) = measure(layout, &authored);
+        let (bounded_output, bounded_packet) = measure(layout, &automatic);
+        assert_eq!(authored_packet.known_content_size().width, None);
+        assert_eq!(bounded_packet.known_content_size().width, None);
+        assert_eq!(
+            authored_packet.content_sizing_request().axes().width,
+            normal
+        );
+        assert_eq!(
+            bounded_packet.content_sizing_request().axes().width,
+            intrinsic
+        );
+        assert_ne!(authored_packet, bounded_packet);
+        assert_eq!(authored_output.size.width, px(30.0));
+        assert_eq!(bounded_output.size.width, px(40.0));
+        assert_eq!(authored_output.content_size.width, px(40.0));
+        assert_eq!(layout.sizing_request(), request);
+
+        // ContentSize deliberately ignores authored preferred size; physical
+        // availability stays 30 while the intrinsic operation remains MIN.
+        let content_input =
+            ComputeInputOf::leaf_content_size(Size::NONE, Size::NONE, context, request).unwrap();
+        let (suppressed_output, suppressed_packet) = measure(content_input, &authored);
+        let (_, automatic_content_packet) = measure(content_input, &automatic);
+        assert_eq!(suppressed_packet, automatic_content_packet);
+        assert_eq!(
+            suppressed_packet.content_sizing_request().axes().width,
+            intrinsic
+        );
+        assert_eq!(suppressed_output.size.width, px(40.0));
+
+        // A real imposed known size survives ContentSize's authored suppression.
+        let imposed = ComputeInputOf::leaf_content_size(
+            Size::new(Some(px(30.0)), None),
+            Size::NONE,
+            context,
+            request,
+        )
+        .unwrap();
+        let (imposed_output, imposed_packet) = measure(imposed, &authored);
+        assert_eq!(imposed_packet.known_content_size().width, Some(px(30.0)));
+        assert_eq!(imposed_packet.content_sizing_request().axes().width, normal);
+        assert_eq!(imposed_output.size.width, px(30.0));
+        assert_eq!(imposed.sizing_request(), request);
+    }
+
+    #[test]
+    fn authored_size_and_external_intrinsic_bound_remain_distinct_f32() {
+        qualify::<f32>();
+    }
+
+    #[test]
+    fn authored_size_and_external_intrinsic_bound_remain_distinct_f64() {
+        qualify::<f64>();
+    }
+}
+
+#[cfg(test)]
+mod leaf_fallback_projection_tests {
+    use super::*;
+
+    fn qualify<S: LayoutScalar>(maximum: S) {
+        let nn = |v| NonNegativeFiniteOf::new(S::from_f64(v)).unwrap();
+        let unbounded = Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded);
+        let fallback = crate::OrthogonalFallbackOf::new(
+            Size::new(Some(nn(100.0)), None),
+            crate::NearestScrollportOf::Absent,
+            unbounded,
+        );
+        let request = SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(nn(20.0)),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            fallback,
+        );
+        let context = crate::ContainingLayoutContext::new(
+            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::ParentFormattingContext::NoParent,
+        );
+        let input = ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, context, request).unwrap();
+        let mut observed = None;
+        let output = compute_leaf(input, &NodeInputOf::<S>::default(), |packet| {
+            observed = Some(packet);
+            Ok::<_, ()>(Size::new(S::from_f64(10.0), S::from_f64(10.0)))
+        })
+        .unwrap();
+        assert_eq!(output.size, Size::new(S::from_f64(10.0), S::from_f64(10.0)));
+        let final_fallback = observed
+            .unwrap()
+            .content_sizing_request()
+            .orthogonal_fallback();
+        assert_eq!(final_fallback.width, Ok(nn(100.0)));
+        assert_eq!(
+            final_fallback.height,
+            Err(
+                crate::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                    axis: PhysicalAxis::Vertical
+                }
+            )
+        );
+        assert_eq!(input.sizing_request().orthogonal_fallback(), fallback);
+        assert_eq!(
+            content_fallback(
+                fallback,
+                PhysicalAxis::Horizontal,
+                S::from_f64(20.0),
+                S::from_f64(90.0)
+            ),
+            Ok(NonNegativeFiniteOf::ZERO)
+        );
+        let huge = crate::OrthogonalFallbackOf::new(
+            Size::new(Some(NonNegativeFiniteOf::new(maximum).unwrap()), None),
+            crate::NearestScrollportOf::Absent,
+            unbounded,
+        );
+        assert_eq!(
+            content_fallback(huge, PhysicalAxis::Horizontal, -maximum, S::ZERO),
+            Err(crate::OrthogonalFallbackErrorOf::InvalidContentSpace {
+                axis: PhysicalAxis::Horizontal,
+                value: S::INFINITY
+            })
+        );
+    }
+
+    #[test]
+    fn projects_available_axis_without_rejecting_unused_missing_axis_f32() {
+        qualify::<f32>(f32::MAX);
+    }
+    #[test]
+    fn projects_available_axis_without_rejecting_unused_missing_axis_f64() {
+        qualify::<f64>(f64::MAX);
+    }
+}
+
+#[cfg(test)]
+mod leaf_flow_context_tests {
+    use super::*;
+
+    // A native measured strip has FOUR breakable 10x10 tiles. This provider
+    // owns only this declared profile: its ordinary indefinite request is
+    // unbounded; its orthogonal Auto Normal request needs the supplied inline
+    // fallback. This is not Text/Unicode or a general WM4 7.3.3 implementation.
+    fn native_tiles<S: LayoutScalar>(
+        packet: LeafMeasureInputOf<S>,
+    ) -> Result<Size<S>, crate::OrthogonalFallbackErrorOf<S>> {
+        let flow = packet.flow_axes();
+        let axis = flow.inline_axis();
+        let request = physical_axis(packet.content_sizing_request().axes(), axis);
+        let known = physical_axis(packet.known_content_size(), axis);
+        let extent = match request.operation() {
+            SizingOperation::MinContent => Some(S::from_f64(10.0)),
+            SizingOperation::MaxContent => None,
+            SizingOperation::Normal => match request.space().definite_size() {
+                Some(value) => Some(value.get()),
+                None if axis != packet.containing_layout_context().flow_axes().inline_axis() => {
+                    Some(
+                        physical_axis(packet.content_sizing_request().orthogonal_fallback(), axis)?
+                            .get(),
+                    )
+                }
+                None => None,
+            },
+        };
+        let columns = extent.map_or(4, |value| {
+            (value / S::from_f64(10.0))
+                .floor_to_usize_saturating()
+                .clamp(1, 4)
+        });
+        let rows = 4_usize.div_ceil(columns);
+        let inline = known.unwrap_or(S::from_usize(columns) * S::from_f64(10.0));
+        Ok(flow.physical_size(crate::geometry::LogicalSizeOf::new(
+            inline,
+            S::from_usize(rows) * S::from_f64(10.0),
+        )))
+    }
+
+    fn qualify<S: LayoutScalar>() {
+        let nn = |value| NonNegativeFiniteOf::new(S::from_f64(value)).unwrap();
+        let unbounded = Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded);
+        let fallback = crate::OrthogonalFallbackOf::new(
+            Size::splat(Some(nn(20.0))),
+            crate::NearestScrollportOf::Absent,
+            unbounded,
+        );
+        let missing_height = crate::OrthogonalFallbackOf::new(
+            Size::new(Some(nn(20.0)), None),
+            crate::NearestScrollportOf::Absent,
+            unbounded,
+        );
+        let missing_width = crate::OrthogonalFallbackOf::new(
+            Size::new(None, Some(nn(20.0))),
+            crate::NearestScrollportOf::Absent,
+            unbounded,
+        );
+        let containing = crate::ContainingLayoutContext::new(
+            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Rtl),
+            crate::ParentFormattingContext::BlockFlow,
+        );
+        let request = |fallback| {
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::Normal,
+                )),
+                fallback,
+            )
+        };
+        let parallel = NodeInputOf::<S> {
+            display: crate::Display::Block,
+            ..NodeInputOf::default()
+        };
+        let orthogonal = NodeInputOf::<S> {
+            writing_mode: crate::WritingMode::VerticalRl,
+            ..parallel.clone()
+        };
+        let run = |input, style: &NodeInputOf<S>| {
+            let mut packet = None;
+            let output = compute_leaf(input, style, |observed| {
+                packet = Some(observed);
+                native_tiles(observed)
+            });
+            (output, packet)
+        };
+        let ordinary_input =
+            ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, containing, request(fallback))
+                .unwrap();
+        let (ordinary, ordinary_packet) = run(ordinary_input, &parallel);
+        assert_eq!(
+            ordinary.unwrap().size,
+            Size::new(S::from_f64(40.0), S::from_f64(10.0))
+        );
+        let ordinary_packet = ordinary_packet.unwrap();
+        assert_eq!(
+            ordinary_packet.flow_axes(),
+            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr)
+        );
+        assert_eq!(ordinary_packet.containing_layout_context(), containing);
+        assert_eq!(
+            ordinary_packet.content_sizing_request().axes(),
+            ordinary_input.sizing_request().axes()
+        );
+        let (orthogonal_output, orthogonal_packet) = run(ordinary_input, &orthogonal);
+        assert_eq!(
+            orthogonal_output.unwrap().size,
+            Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        );
+        let orthogonal_packet = orthogonal_packet.unwrap();
+        assert_eq!(
+            orthogonal_packet.flow_axes(),
+            FlowAxes::new(crate::WritingMode::VerticalRl, crate::Direction::Ltr)
+        );
+        assert_eq!(orthogonal_packet.containing_layout_context(), containing);
+        assert_eq!(
+            orthogonal_packet.content_sizing_request().axes(),
+            ordinary_input.sizing_request().axes()
+        );
+
+        let partial_input =
+            ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, containing, request(missing_width))
+                .unwrap();
+        assert_eq!(
+            run(partial_input, &orthogonal).0.unwrap().size,
+            Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        );
+        let missing_input = ComputeInputOf::leaf_layout(
+            Size::NONE,
+            Size::NONE,
+            containing,
+            request(missing_height),
+        )
+        .unwrap();
+        assert_eq!(
+            run(missing_input, &parallel).0.unwrap().size,
+            Size::new(S::from_f64(40.0), S::from_f64(10.0))
+        );
+        let required = run(missing_input, &orthogonal).0.unwrap_err();
+        assert_eq!(required.operation(), LayoutOperation::LeafMeasurement);
+        assert!(matches!(
+            required.kind(),
+            LayoutErrorKindOf::Measurement(
+                crate::OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                    axis: PhysicalAxis::Vertical
+                }
+            )
+        ));
+        for (operation, expected) in [
+            (
+                SizingOperation::MinContent,
+                Size::new(S::from_f64(40.0), S::from_f64(10.0)),
+            ),
+            (
+                SizingOperation::MaxContent,
+                Size::new(S::from_f64(10.0), S::from_f64(40.0)),
+            ),
+        ] {
+            let mut axes = request(missing_height).axes();
+            axes.height = axes.height.with_operation(operation);
+            let input = ComputeInputOf::leaf_layout(
+                Size::NONE,
+                Size::NONE,
+                containing,
+                request(missing_height).with_axes(axes),
+            )
+            .unwrap();
+            assert_eq!(run(input, &orthogonal).0.unwrap().size, expected);
+        }
+        // A real authored inline height becomes Normal/Definite before the
+        // provider; it does not require the missing external fallback.
+        let authored = NodeInputOf::<S> {
+            size: Size::new(
+                crate::PreferredSizeOf::AUTO,
+                crate::PreferredSizeOf::px(S::from_f64(30.0)),
+            ),
+            ..orthogonal
+        };
+        let mut axes = request(missing_height).axes();
+        axes.height = axes.height.with_operation(SizingOperation::MinContent);
+        let authored_request = request(missing_height).with_axes(axes);
+        let input =
+            ComputeInputOf::leaf_layout(Size::NONE, Size::NONE, containing, authored_request)
+                .unwrap();
+        let (sized, packet) = run(input, &authored);
+        assert_eq!(
+            sized.unwrap().size,
+            Size::new(S::from_f64(20.0), S::from_f64(30.0))
+        );
+        assert_eq!(
+            packet
+                .unwrap()
+                .content_sizing_request()
+                .axes()
+                .height
+                .operation(),
+            SizingOperation::Normal
+        );
+        // ContentSize suppression restores the genuine MIN request, not a
+        // fallback-derived known height or an unconditional ICB cap.
+        let input =
+            ComputeInputOf::leaf_content_size(Size::NONE, Size::NONE, containing, authored_request)
+                .unwrap();
+        assert_eq!(
+            run(input, &authored).0.unwrap().size,
+            Size::new(S::from_f64(40.0), S::from_f64(10.0))
+        );
+    }
+
+    #[test]
+    fn opaque_provider_uses_actual_flow_and_only_required_fallback_f32() {
+        qualify::<f32>();
+    }
+    #[test]
+    fn opaque_provider_uses_actual_flow_and_only_required_fallback_f64() {
+        qualify::<f64>();
+    }
+}
+
+#[cfg(test)]
+#[path = "measurement/known_preferred_authority_tests.rs"]
+mod known_preferred_authority_tests;

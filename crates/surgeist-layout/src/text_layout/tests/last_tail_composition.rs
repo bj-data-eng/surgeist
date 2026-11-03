@@ -157,7 +157,15 @@ fn check<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap_or_else(|error| {
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap_or_else(|error| {
         panic!(
             "{} {wrap_style:?} source={text:?} policy={policy:?} expected={expected:?}: {error:?}",
             std::any::type_name::<S>()
@@ -471,7 +479,15 @@ fn check_choice_order<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(60.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(60.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),

@@ -1,8 +1,8 @@
 use crate::{
-    AvailableOf, ComputeInputOf, ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKindOf,
-    LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation, LayoutScalar,
-    LengthPercentageOf, NumericResolutionOf, ParentFormattingContext, PercentageBasisOf,
-    RequestedAxis, RunMode, ScrollPaddingOf, ScrollPaddingValueOf, Size, SizingMode, WritingMode,
+    ComputeInputOf, ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKindOf, LayoutErrorOf,
+    LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation, LayoutScalar, LengthPercentageOf,
+    NumericResolutionOf, ParentFormattingContext, PercentageBasisOf, RequestedAxis, RunMode,
+    ScrollPaddingOf, ScrollPaddingValueOf, Size, SizingMode, WritingMode,
 };
 
 pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
@@ -15,6 +15,10 @@ pub(crate) fn geometry_error_largest_finite<S: LayoutScalar>() -> S {
 
 pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> ComputeInputOf<S> {
     let largest = geometry_error_largest_finite::<S>();
+    let physical_extent = crate::NonNegativeFiniteOf::new(largest)
+        .expect("the selected scalar maximum is finite and nonnegative");
+    // Finite query space and the authored percentage parent are independent of
+    // any unsupplied ICB, scrollport or containing-limit authority.
     ComputeInputOf::for_child(
         run_mode,
         SizingMode::InherentSize,
@@ -25,7 +29,17 @@ pub(crate) fn geometry_error_input<S: LayoutScalar>(run_mode: RunMode) -> Comput
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(AvailableOf::definite(largest)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(physical_extent),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                Size::new(None, None),
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 

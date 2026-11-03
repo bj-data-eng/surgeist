@@ -1,8 +1,14 @@
-//! Attribute storage and validation and shared value pools.
+//! Attribute storage and validation, shared value pools and the name index.
 
 pub use crate::internal::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
+};
+pub use crate::internal::values::name_index::{
+    HtmlNameIndex, HtmlNameIndexError, HtmlNameIndexForeignProbe, HtmlNameIndexHasher,
+    HtmlNameIndexInsertError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,
+    HtmlNameIndexSlots, HtmlNameIndexStep, HtmlNameIndexStorageError, HtmlNameIndexTable,
+    HtmlNameIndexVacancy,
 };
 pub use crate::internal::values::sharing::{
     HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,

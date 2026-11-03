@@ -135,6 +135,15 @@ pub(crate) fn bank(
 /// An element fragment context: a captured no-quirks HTML document whose
 /// root is a `div`, with scripting disabled and a null registry.
 pub(crate) fn fragment_context() -> HtmlFragmentContext {
+    fragment_context_for("div", HtmlScriptingStatus::Disabled)
+}
+
+/// As [`fragment_context`], with an HTML context element named `local` in a
+/// captured document whose scripting status is `scripting`.
+pub(crate) fn fragment_context_for(
+    local: &str,
+    scripting: HtmlScriptingStatus,
+) -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
@@ -142,7 +151,7 @@ pub(crate) fn fragment_context() -> HtmlFragmentContext {
     let document = builder
         .add_document(
             HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Disabled,
+            scripting,
             HtmlCaptureRegistryInput::Null,
         )
         .unwrap();
@@ -154,17 +163,17 @@ pub(crate) fn fragment_context() -> HtmlFragmentContext {
             HtmlCaptureTemplateCacheInput::Absent,
         )
         .unwrap();
-    let div = builder
+    let element = builder
         .add_element(
             &document,
-            QualifiedName::new(Namespace::html(), None, "div"),
+            QualifiedName::new(Namespace::html(), None, local),
             OrderedAttributes::default(),
             HtmlCapturedIsValue::Absent,
             HtmlCaptureRegistryInput::Null,
         )
         .unwrap();
-    builder.establish_root(&div).unwrap();
-    builder.establish_no_shadow_root(&div).unwrap();
+    builder.establish_root(&element).unwrap();
+    builder.establish_no_shadow_root(&element).unwrap();
     let capture = builder.finish().unwrap();
-    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap()
 }

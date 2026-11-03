@@ -115,7 +115,7 @@ fn paragraph<S: LayoutScalar>(
     source: &str,
     overflow: OverflowWrap,
     wrap: Wrap,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
 ) -> (f64, Vec<LineFact>) {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
@@ -125,8 +125,8 @@ fn paragraph<S: LayoutScalar>(
         Source::identified(source, surgeist_text::Id::from_u64(42), 7),
         style,
     );
-    let width = match available {
-        AvailableOf::Definite(value) => PreferredSizeOf::px(value),
+    let width = match available.space() {
+        crate::AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
         _ => PreferredSizeOf::AUTO,
     };
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -154,8 +154,39 @@ fn paragraph<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request =
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
     let width = batch
         .final_entries()
@@ -184,13 +215,19 @@ fn native_anywhere_wraps_the_actual_aaaa_into_two_fitting_lines() {
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            AvailableOf::definite(20.0),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            AvailableOf::definite(20.0),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
         ),
     );
     assert_eq!(actual, (expected_twenty(), expected_twenty()));
@@ -202,13 +239,19 @@ fn native_break_word_wraps_the_actual_aaaa_into_two_fitting_lines() {
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            AvailableOf::definite(20.0),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            AvailableOf::definite(20.0),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
         ),
     );
     assert_eq!(actual, (expected_twenty(), expected_twenty()));
@@ -225,10 +268,50 @@ fn native_fitting_ordinary_endpoints_win_over_possible_conditional_cuts() {
         );
         let at50 = (50.0, vec![line(0, 5, 50.0, 50.0, 0.0, 0.0, false)]);
         let actual = [
-            paragraph::<f32>("AA AA", overflow, Wrap::Word, AvailableOf::definite(40.0)),
-            paragraph::<f64>("AA AA", overflow, Wrap::Word, AvailableOf::definite(40.0)),
-            paragraph::<f32>("AA AA", overflow, Wrap::Word, AvailableOf::definite(50.0)),
-            paragraph::<f64>("AA AA", overflow, Wrap::Word, AvailableOf::definite(50.0)),
+            paragraph::<f32>(
+                "AA AA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            paragraph::<f64>(
+                "AA AA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            paragraph::<f32>(
+                "AA AA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            paragraph::<f64>(
+                "AA AA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(50.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
         ];
         assert_eq!(actual, [at40.clone(), at40, at50.clone(), at50]);
     }
@@ -246,13 +329,19 @@ fn native_anywhere_min_content_uses_actual_ten_pixel_pieces() {
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            AvailableOf::MIN_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::Anywhere,
             Wrap::Word,
-            AvailableOf::MIN_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
         ),
     );
     assert_eq!(actual, (expected.clone(), expected));
@@ -265,13 +354,19 @@ fn native_break_word_min_content_retains_the_ordinary_forty_pixel_word() {
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            AvailableOf::MIN_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
         ),
         paragraph::<f64>(
             "AAAA",
             OverflowWrap::BreakWord,
             Wrap::Word,
-            AvailableOf::MIN_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
         ),
     );
     assert_eq!(actual, (expected.clone(), expected));
@@ -340,14 +435,56 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                 // indication splits into 20px and 30px pieces. Only Anywhere admits
                 // the 10px emergency pieces into min-content.
                 for (available, expected) in [
-                    (AvailableOf::MIN_CONTENT, minimum),
-                    (AvailableOf::MAX_CONTENT, 50.0),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MinContent,
+                        ),
+                        minimum,
+                    ),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
+                        50.0,
+                    ),
                 ] {
-                    let request = LayoutRootRequestOf::viewport(Size::new(
-                        available,
-                        AvailableOf::MAX_CONTENT,
-                    ))
-                    .unwrap();
+                    let request = {
+                        let containing_flow_axes = {
+                            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                        };
+                        let requested_axes = Size::new(
+                            available,
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MaxContent,
+                            ),
+                        );
+                        let mut logical_requests =
+                            containing_flow_axes.logical_size(requested_axes);
+                        // These fixtures perform ordinary block-size layout independently of
+                        // the explicitly requested inline contribution operation.
+                        logical_requests.block = logical_requests
+                            .block
+                            .with_operation(crate::SizingOperation::Normal);
+                        let axes = containing_flow_axes.physical_size(logical_requests);
+                        // The old Native NoParent fixture explicitly supplied these percentage
+                        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+                        let percentage_parent =
+                            requested_axes.map(|axis| axis.space().definite_size());
+                        let fallback = crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        );
+                        crate::LayoutRootRequestOf::standalone(
+                            crate::SizingRequestOf::new(axes, fallback),
+                            containing_flow_axes,
+                            percentage_parent,
+                        )
+                    };
                     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
                     let width = batch
                         .final_entries()
@@ -375,8 +512,24 @@ fn native_max_content_keeps_both_overflow_wrap_modes_unbroken() {
     let expected = (40.0, vec![line(0, 4, 40.0, 40.0, 0.0, 0.0, false)]);
     for overflow in [OverflowWrap::Anywhere, OverflowWrap::BreakWord] {
         let actual = (
-            paragraph::<f32>("AAAA", overflow, Wrap::Word, AvailableOf::MAX_CONTENT),
-            paragraph::<f64>("AAAA", overflow, Wrap::Word, AvailableOf::MAX_CONTENT),
+            paragraph::<f32>(
+                "AAAA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            paragraph::<f64>(
+                "AAAA",
+                overflow,
+                Wrap::Word,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
         );
         assert_eq!(actual, (expected.clone(), expected.clone()));
     }
@@ -386,8 +539,28 @@ fn native_nowrap_does_not_acquire_conditional_permission() {
     let expected = (20.0, vec![line(0, 4, 40.0, 20.0, 0.0, 0.0, false)]);
     for overflow in [OverflowWrap::Anywhere, OverflowWrap::BreakWord] {
         let actual = (
-            paragraph::<f32>("AAAA", overflow, Wrap::None, AvailableOf::definite(20.0)),
-            paragraph::<f64>("AAAA", overflow, Wrap::None, AvailableOf::definite(20.0)),
+            paragraph::<f32>(
+                "AAAA",
+                overflow,
+                Wrap::None,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(20.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            paragraph::<f64>(
+                "AAAA",
+                overflow,
+                Wrap::None,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(20.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
         );
         assert_eq!(actual, (expected.clone(), expected.clone()));
     }
@@ -452,7 +625,15 @@ fn interleaved<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let location = batch
         .final_entries()
         .iter()

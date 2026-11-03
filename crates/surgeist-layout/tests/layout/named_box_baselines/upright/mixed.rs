@@ -215,7 +215,7 @@ fn binding(
 fn solve<S: l::LayoutScalar>(
     host: &Host<S>,
     bindings: &[l::TextParagraphBinding<u32>],
-    space: l::Size<l::AvailableOf<S>>,
+    space: surgeist_layout::SizingRequestOf<S>,
     dirty: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow = l::LayoutFlowInput::try_new(
@@ -229,15 +229,30 @@ fn solve<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(space).unwrap(),
+        {
+            let sizing_request = space;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         dirty,
     )
 }
 
-fn available<S: l::LayoutScalar>(height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(40.0)),
-        l::AvailableOf::definite(n(height)),
+fn available<S: l::LayoutScalar>(height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(40.0)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 
@@ -446,7 +461,13 @@ fn columns<S: l::LayoutScalar>() {
         let batch = solve(
             &host,
             &[b],
-            l::Size::splat(l::AvailableOf::MAX_CONTENT),
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
             &[],
         )
         .unwrap();

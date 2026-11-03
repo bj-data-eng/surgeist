@@ -172,9 +172,21 @@ fn lane<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::BlockFlow,
         ),
-        Size::new(
-            AvailableOf::definite(S::from_f64(100.0)),
-            AvailableOf::MAX_CONTENT,
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
+            ),
         ),
     );
     let mut packets = Vec::new();

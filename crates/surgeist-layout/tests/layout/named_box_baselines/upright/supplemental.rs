@@ -28,17 +28,20 @@ fn attach<S: l::LayoutScalar>(
     }
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(width)),
-        l::AvailableOf::definite(n(height)),
+fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 
 fn solve<S: l::LayoutScalar>(
     host: &Host<S>,
     bindings: &[l::TextParagraphBinding<u32>],
-    space: l::Size<l::AvailableOf<S>>,
+    space: surgeist_layout::SizingRequestOf<S>,
     changed: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow = l::LayoutFlowInput::try_new(
@@ -52,7 +55,19 @@ fn solve<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(space).unwrap(),
+        {
+            let sizing_request = space;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }
@@ -246,8 +261,8 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
     let fixture = fixture();
     for mode in [l::WritingMode::VerticalRl, l::WritingMode::VerticalLr] {
         for (inline, width, height) in [
-            (l::AvailableOf::MIN_CONTENT, 20.0, 4.0),
-            (l::AvailableOf::MAX_CONTENT, 10.0, 8.0),
+            (surgeist_layout::SizingOperation::MinContent, 20.0, 4.0),
+            (surgeist_layout::SizingOperation::MaxContent, 10.0, 8.0),
         ] {
             let mut input = root(mode, l::Direction::Ltr, central());
             input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
@@ -256,7 +271,10 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
             let batch = solve(
                 &host,
                 std::slice::from_ref(&binding),
-                l::Size::new(l::AvailableOf::MAX_CONTENT, inline),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                ),
                 &[],
             )
             .unwrap();
@@ -289,13 +307,15 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
             let batch = solve(
                 &host,
                 std::slice::from_ref(&binding),
-                l::Size::new(
-                    if finite {
-                        l::AvailableOf::definite(n(40.0))
-                    } else {
-                        l::AvailableOf::MAX_CONTENT
-                    },
-                    l::AvailableOf::definite(n(4.0)),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(
+                        if finite { Some(n(40.0)) } else { None },
+                        Some(n(4.0)),
+                    ),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
                 ),
                 &[],
             )

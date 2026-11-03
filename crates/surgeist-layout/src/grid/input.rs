@@ -9,17 +9,11 @@ use crate::{
 
 pub(super) trait GridOverflowFacts {
     fn computed_overflow(&self) -> ComputedOverflow;
-
-    fn item_is_replaced(&self) -> bool;
 }
 
 impl<T: GridOverflowFacts + ?Sized> GridOverflowFacts for &T {
     fn computed_overflow(&self) -> ComputedOverflow {
         (*self).computed_overflow()
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        (*self).item_is_replaced()
     }
 }
 
@@ -27,19 +21,11 @@ impl<S: LayoutScalar> GridOverflowFacts for NodeInputOf<S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
     }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
-    }
 }
 
 impl<S: LayoutScalar> GridOverflowFacts for GridContainerProjection<'_, S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
     }
 }
 
@@ -48,6 +34,7 @@ impl<S: LayoutScalar> GridOverflowFacts for GridContainerProjection<'_, S> {
 pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) baseline_references: crate::GridBaselineReferences,
     pub(super) item_is_replaced: bool,
     pub(super) item_is_table: bool,
     pub(super) box_sizing: BoxSizing,
@@ -114,6 +101,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            baseline_references: input.grid_baseline_references,
             item_is_replaced: input.item_is_replaced,
             item_is_table: input.item_is_table,
             box_sizing: input.box_sizing,
@@ -376,10 +364,6 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
 impl<'input, S: LayoutScalar> GridOverflowFacts for GridItemProjection<'input, S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
     }
 }
 

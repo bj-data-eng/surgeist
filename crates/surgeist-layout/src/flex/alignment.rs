@@ -680,7 +680,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
 #[cfg(test)]
 mod final_baseline_selection_tests {
     use super::*;
-    use crate::{AvailableOf, FlexDirection, FlexWrap, LengthOf, NodeInputOf};
+    use crate::{FlexDirection, FlexWrap, LengthOf, NodeInputOf};
 
     fn default_flow_axes<S: LayoutScalar>() -> FlowAxes {
         let style = NodeInputOf::<S>::default();
@@ -716,6 +716,7 @@ mod final_baseline_selection_tests {
             flow_axes,
             axes: super::super::FlexAxes::new(flow_axes, flex_direction, FlexWrap::NoWrap),
             node_outer_size: Size::NONE,
+            percentage_parent_size: Size::NONE,
             node_inner_size: Size::NONE,
             min_outer_size: Size::NONE,
             max_outer_size: Size::NONE,
@@ -729,14 +730,29 @@ mod final_baseline_selection_tests {
             settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
             gap: Size::ZERO,
             gap_input: Size::splat(LengthOf::ZERO),
+            gap_percentage_basis: Size::NONE,
             align_items: AlignItems::Stretch,
             authored_align_content: None,
             align_content: AlignContent::Stretch,
             authored_justify_content: None,
             justify_content: AlignContent::FlexStart,
             wraps: false,
-            available: Size::splat(AvailableOf::MAX_CONTENT),
-            available_main: AvailableOf::MAX_CONTENT,
+            sizing_request: crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            positioned_fallback_limits: Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            available_main: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
         }
     }
 

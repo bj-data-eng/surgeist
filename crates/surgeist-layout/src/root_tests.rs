@@ -16,7 +16,12 @@ mod inline_boundary_edges;
 mod measurement;
 #[path = "root_tests/requests_tests.rs"]
 mod requests;
+#[path = "root_tests/root_local_positioned.rs"]
+mod root_local_positioned;
 #[path = "root_tests/rounding_tests.rs"]
 mod rounding;
 #[path = "root_tests/transaction_cache_tests.rs"]
 mod transaction_cache;
+
+#[path = "root_tests/orthogonal_intrinsic_width.rs"]
+mod orthogonal_intrinsic_width;

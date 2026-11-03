@@ -67,38 +67,381 @@ impl TryFrom<usize> for GridSpan {
     }
 }
 
+/// Physical space supplied by the containing boundary, independent of sizing operation.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum AvailableOf<S: LayoutScalar = DefaultScalar> {
-    Definite(S),
-    MinContent,
-    MaxContent,
+pub enum AvailableSpaceOf<S: LayoutScalar = DefaultScalar> {
+    Definite(NonNegativeFiniteOf<S>),
+    Indefinite,
 }
 
-pub type Available = AvailableOf<DefaultScalar>;
+pub type AvailableSpace = AvailableSpaceOf<DefaultScalar>;
 
-impl<S: LayoutScalar> AvailableOf<S> {
-    pub const MIN_CONTENT: Self = Self::MinContent;
-    pub const MAX_CONTENT: Self = Self::MaxContent;
-
+impl<S: LayoutScalar> AvailableSpaceOf<S> {
     #[must_use]
-    pub const fn definite(value: S) -> Self {
-        Self::Definite(value)
-    }
-
-    #[must_use]
-    pub const fn into_option(self) -> Option<S> {
+    pub const fn definite_size(self) -> Option<NonNegativeFiniteOf<S>> {
         match self {
             Self::Definite(value) => Some(value),
-            Self::MinContent | Self::MaxContent => None,
+            Self::Indefinite => None,
         }
     }
 
     #[must_use]
-    pub fn roughly_eq(self, other: Self) -> bool {
+    pub(crate) fn roughly_eq(self, other: Self) -> bool {
         match (self, other) {
-            (Self::Definite(a), Self::Definite(b)) => (a - b).abs() < S::EPSILON,
-            (Self::MinContent, Self::MinContent) | (Self::MaxContent, Self::MaxContent) => true,
+            (Self::Definite(a), Self::Definite(b)) => (a.get() - b.get()).abs() < S::EPSILON,
+            (Self::Indefinite, Self::Indefinite) => true,
             _ => false,
+        }
+    }
+}
+
+/// The requested sizing operation, not a containing dimension or contribution role.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SizingOperation {
+    Normal,
+    MinContent,
+    MaxContent,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AxisSizingRequestOf<S: LayoutScalar = DefaultScalar> {
+    space: AvailableSpaceOf<S>,
+    operation: SizingOperation,
+}
+
+pub type AxisSizingRequest = AxisSizingRequestOf<DefaultScalar>;
+
+impl<S: LayoutScalar> AxisSizingRequestOf<S> {
+    #[must_use]
+    pub const fn new(space: AvailableSpaceOf<S>, operation: SizingOperation) -> Self {
+        Self { space, operation }
+    }
+
+    #[must_use]
+    pub const fn space(self) -> AvailableSpaceOf<S> {
+        self.space
+    }
+
+    #[must_use]
+    pub const fn operation(self) -> SizingOperation {
+        self.operation
+    }
+
+    #[must_use]
+    pub const fn with_space(self, space: AvailableSpaceOf<S>) -> Self {
+        Self { space, ..self }
+    }
+
+    #[must_use]
+    pub const fn with_operation(self, operation: SizingOperation) -> Self {
+        Self { operation, ..self }
+    }
+}
+
+/// A qualified finite candidate, proven absence of a finite bound, or missing authority.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OrthogonalFallbackLimitOf<S: LayoutScalar = DefaultScalar> {
+    Unknown,
+    Unbounded,
+    Finite(NonNegativeFiniteOf<S>),
+}
+
+pub type OrthogonalFallbackLimit = OrthogonalFallbackLimitOf<DefaultScalar>;
+
+impl<S: LayoutScalar> OrthogonalFallbackLimitOf<S> {
+    /// Qualifies the containing block's inner maximum, floored by its inner minimum.
+    /// Inputs are genuinely definite bounds; absence means a proven non-finite bound.
+    #[must_use]
+    pub fn from_containing_bounds(
+        minimum: Option<NonNegativeFiniteOf<S>>,
+        maximum: Option<NonNegativeFiniteOf<S>>,
+    ) -> Self {
+        let Some(mut value) = maximum else {
+            return Self::Unbounded;
+        };
+        if let Some(minimum) = minimum
+            && minimum.get() > value.get()
+        {
+            value = minimum;
+        }
+        Self::Finite(value)
+    }
+
+    /// Qualifies ONE actual scrollport, without retaining any outer scrollport.
+    /// A finite used Auto size is not a definite inner size. Producers must use
+    /// their actual definite/derived phase authority before constructing these inputs.
+    #[must_use]
+    pub fn from_scrollport(
+        definite_inner_size: Option<NonNegativeFiniteOf<S>>,
+        minimum: Option<NonNegativeFiniteOf<S>>,
+        maximum: Option<NonNegativeFiniteOf<S>>,
+    ) -> Self {
+        let Some(mut value) = definite_inner_size.or(maximum) else {
+            return Self::Unbounded;
+        };
+        if let Some(maximum) = maximum
+            && value.get() > maximum.get()
+        {
+            value = maximum;
+        }
+        if let Some(minimum) = minimum
+            && value.get() < minimum.get()
+        {
+            value = minimum;
+        }
+        Self::Finite(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum NearestScrollportOf<S: LayoutScalar = DefaultScalar> {
+    Unknown,
+    Absent,
+    Present(super::Size<OrthogonalFallbackLimitOf<S>>),
+}
+
+pub type NearestScrollport = NearestScrollportOf<DefaultScalar>;
+
+/// An actual newly entered scroll container replaces the WHOLE nearest frame,
+/// including Unknown and Unbounded axes. A non-scroll container preserves it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScrollportFallbackChangeOf<S: LayoutScalar = DefaultScalar> {
+    Preserve,
+    Enter(super::Size<OrthogonalFallbackLimitOf<S>>),
+}
+
+pub type ScrollportFallbackChange = ScrollportFallbackChangeOf<DefaultScalar>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OrthogonalFallbackErrorOf<S: LayoutScalar = DefaultScalar> {
+    MissingInitialContainingBlock { axis: super::PhysicalAxis },
+    MissingContainingBounds { axis: super::PhysicalAxis },
+    MissingNearestScrollport { axis: super::PhysicalAxis },
+    MissingScrollportLimit { axis: super::PhysicalAxis },
+    InvalidContentSpace { axis: super::PhysicalAxis, value: S },
+}
+
+pub type OrthogonalFallbackError = OrthogonalFallbackErrorOf<DefaultScalar>;
+
+impl<S: LayoutScalar> core::fmt::Display for OrthogonalFallbackErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MissingInitialContainingBlock { .. } => {
+                f.write_str("orthogonal fallback needs initial containing-block authority")
+            }
+            Self::MissingContainingBounds { .. } => {
+                f.write_str("orthogonal fallback needs containing-block bound authority")
+            }
+            Self::MissingNearestScrollport { .. } => {
+                f.write_str("orthogonal fallback needs nearest-scrollport authority")
+            }
+            Self::MissingScrollportLimit { .. } => {
+                f.write_str("orthogonal fallback needs the nearest scrollport's axis limit")
+            }
+            Self::InvalidContentSpace { .. } => {
+                f.write_str("orthogonal fallback content-space arithmetic is invalid")
+            }
+        }
+    }
+}
+
+impl<S: LayoutScalar> std::error::Error for OrthogonalFallbackErrorOf<S> {}
+
+/// Original ICB authority, current nearest scrollport, and local containing limits.
+/// No collapsed ancestor minimum is retained or propagated.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OrthogonalFallbackOf<S: LayoutScalar = DefaultScalar> {
+    initial_containing_block: super::Size<Option<NonNegativeFiniteOf<S>>>,
+    nearest_scrollport: NearestScrollportOf<S>,
+    containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+}
+
+pub type OrthogonalFallback = OrthogonalFallbackOf<DefaultScalar>;
+
+impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
+    #[must_use]
+    pub const fn new(
+        initial_containing_block: super::Size<Option<NonNegativeFiniteOf<S>>>,
+        nearest_scrollport: NearestScrollportOf<S>,
+        containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+    ) -> Self {
+        Self {
+            initial_containing_block,
+            nearest_scrollport,
+            containing_limits,
+        }
+    }
+
+    #[must_use]
+    pub const fn initial_containing_block(self) -> super::Size<Option<NonNegativeFiniteOf<S>>> {
+        self.initial_containing_block
+    }
+
+    #[must_use]
+    pub const fn nearest_scrollport(self) -> NearestScrollportOf<S> {
+        self.nearest_scrollport
+    }
+
+    #[must_use]
+    pub const fn containing_limits(self) -> super::Size<OrthogonalFallbackLimitOf<S>> {
+        self.containing_limits
+    }
+
+    #[must_use]
+    pub const fn for_child(
+        self,
+        containing_limits: super::Size<OrthogonalFallbackLimitOf<S>>,
+        scrollport: ScrollportFallbackChangeOf<S>,
+    ) -> Self {
+        let nearest_scrollport = match scrollport {
+            ScrollportFallbackChangeOf::Preserve => self.nearest_scrollport,
+            ScrollportFallbackChangeOf::Enter(limits) => NearestScrollportOf::Present(limits),
+        };
+        Self {
+            containing_limits,
+            nearest_scrollport,
+            ..self
+        }
+    }
+
+    pub fn resolve(
+        self,
+        axis: super::PhysicalAxis,
+    ) -> Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>> {
+        let mut smallest = orthogonal_axis(self.initial_containing_block, axis);
+        let mut missing = smallest
+            .is_none()
+            .then_some(OrthogonalFallbackErrorOf::MissingInitialContainingBlock { axis });
+        let mut consider = |limit, reason| match limit {
+            OrthogonalFallbackLimitOf::Unknown => {
+                if missing.is_none() {
+                    missing = Some(reason);
+                }
+            }
+            OrthogonalFallbackLimitOf::Unbounded => {}
+            OrthogonalFallbackLimitOf::Finite(value) => {
+                if smallest.is_none_or(|old| value.get() < old.get()) {
+                    smallest = Some(value);
+                }
+            }
+        };
+        consider(
+            orthogonal_axis(self.containing_limits, axis),
+            OrthogonalFallbackErrorOf::MissingContainingBounds { axis },
+        );
+        match self.nearest_scrollport {
+            NearestScrollportOf::Unknown => consider(
+                OrthogonalFallbackLimitOf::Unknown,
+                OrthogonalFallbackErrorOf::MissingNearestScrollport { axis },
+            ),
+            NearestScrollportOf::Absent => {}
+            NearestScrollportOf::Present(limits) => consider(
+                orthogonal_axis(limits, axis),
+                OrthogonalFallbackErrorOf::MissingScrollportLimit { axis },
+            ),
+        }
+        // Every candidate is nonnegative. A genuine zero determines the minimum
+        // even when another source has not supplied its authority.
+        if smallest.is_some_and(|value| value.get() == S::ZERO) {
+            return Ok(NonNegativeFiniteOf::ZERO);
+        }
+        if let Some(error) = missing {
+            return Err(error);
+        }
+        Ok(smallest.expect("known ICB authority supplies a finite candidate"))
+    }
+}
+
+fn orthogonal_axis<T>(size: super::Size<T>, axis: super::PhysicalAxis) -> T {
+    match axis {
+        super::PhysicalAxis::Horizontal => size.width,
+        super::PhysicalAxis::Vertical => size.height,
+    }
+}
+
+/// Final opaque content-space projection. It cannot be requalified for descendants.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ContentSizingRequestOf<S: LayoutScalar = DefaultScalar> {
+    axes: super::Size<AxisSizingRequestOf<S>>,
+    orthogonal_fallback: super::Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>>,
+}
+
+pub type ContentSizingRequest = ContentSizingRequestOf<DefaultScalar>;
+
+impl<S: LayoutScalar> ContentSizingRequestOf<S> {
+    pub(crate) const fn new(
+        axes: super::Size<AxisSizingRequestOf<S>>,
+        orthogonal_fallback: super::Size<
+            Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>,
+        >,
+    ) -> Self {
+        Self {
+            axes,
+            orthogonal_fallback,
+        }
+    }
+
+    #[must_use]
+    pub const fn axes(self) -> super::Size<AxisSizingRequestOf<S>> {
+        self.axes
+    }
+
+    #[must_use]
+    pub const fn orthogonal_fallback(
+        self,
+    ) -> super::Size<Result<NonNegativeFiniteOf<S>, OrthogonalFallbackErrorOf<S>>> {
+        self.orthogonal_fallback
+    }
+}
+
+/// Physical axis requests and their independently authenticated recursive fallback context.
+/// Same-box queries may change axes while retaining this context. Child producers
+/// must replace local limits and enter any actual new scroll container through
+/// OrthogonalFallbackOf::for_child; neither percentages nor used Auto sizes imply
+/// a definite fallback fact.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SizingRequestOf<S: LayoutScalar = DefaultScalar> {
+    axes: super::Size<AxisSizingRequestOf<S>>,
+    orthogonal_fallback: OrthogonalFallbackOf<S>,
+}
+
+pub type SizingRequest = SizingRequestOf<DefaultScalar>;
+
+impl<S: LayoutScalar> SizingRequestOf<S> {
+    #[must_use]
+    pub const fn new(
+        axes: super::Size<AxisSizingRequestOf<S>>,
+        orthogonal_fallback: OrthogonalFallbackOf<S>,
+    ) -> Self {
+        Self {
+            axes,
+            orthogonal_fallback,
+        }
+    }
+
+    #[must_use]
+    pub const fn axes(self) -> super::Size<AxisSizingRequestOf<S>> {
+        self.axes
+    }
+
+    #[must_use]
+    pub const fn orthogonal_fallback(self) -> OrthogonalFallbackOf<S> {
+        self.orthogonal_fallback
+    }
+
+    #[must_use]
+    pub const fn with_axes(self, axes: super::Size<AxisSizingRequestOf<S>>) -> Self {
+        Self { axes, ..self }
+    }
+
+    #[must_use]
+    pub const fn with_orthogonal_fallback(
+        self,
+        orthogonal_fallback: OrthogonalFallbackOf<S>,
+    ) -> Self {
+        Self {
+            orthogonal_fallback,
+            ..self
         }
     }
 }
@@ -1686,5 +2029,172 @@ mod value_tests {
                 resolved: f64::INFINITY,
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod orthogonal_fallback_tests {
+    use super::*;
+    use crate::{PhysicalAxis, Size};
+
+    fn qualify<S: LayoutScalar>() {
+        let nn = |v| NonNegativeFiniteOf::new(S::from_f64(v)).unwrap();
+        let finite = |v| OrthogonalFallbackLimitOf::Finite(nn(v));
+        let unbounded = Size::splat(OrthogonalFallbackLimitOf::Unbounded);
+        let original = OrthogonalFallbackOf::new(
+            Size::new(Some(nn(800.0)), Some(nn(900.0))),
+            NearestScrollportOf::Present(Size::new(finite(100.0), finite(120.0))),
+            unbounded,
+        );
+        assert_eq!(original.resolve(PhysicalAxis::Horizontal), Ok(nn(100.0)));
+        assert_eq!(original.resolve(PhysicalAxis::Vertical), Ok(nn(120.0)));
+        let entered = original.for_child(
+            unbounded,
+            ScrollportFallbackChangeOf::Enter(Size::new(
+                OrthogonalFallbackLimitOf::Unbounded,
+                finite(200.0),
+            )),
+        );
+        assert_eq!(entered.resolve(PhysicalAxis::Horizontal), Ok(nn(800.0)));
+        assert_eq!(entered.resolve(PhysicalAxis::Vertical), Ok(nn(200.0)));
+        let opposite = original.for_child(
+            unbounded,
+            ScrollportFallbackChangeOf::Enter(Size::new(
+                finite(200.0),
+                OrthogonalFallbackLimitOf::Unbounded,
+            )),
+        );
+        assert_eq!(opposite.resolve(PhysicalAxis::Horizontal), Ok(nn(200.0)));
+        assert_eq!(opposite.resolve(PhysicalAxis::Vertical), Ok(nn(900.0)));
+        let unknown = original.for_child(
+            unbounded,
+            ScrollportFallbackChangeOf::Enter(Size::new(
+                OrthogonalFallbackLimitOf::Unknown,
+                OrthogonalFallbackLimitOf::Unbounded,
+            )),
+        );
+        assert_eq!(
+            unknown.resolve(PhysicalAxis::Horizontal),
+            Err(OrthogonalFallbackErrorOf::MissingScrollportLimit {
+                axis: PhysicalAxis::Horizontal
+            })
+        );
+        assert_eq!(unknown.resolve(PhysicalAxis::Vertical), Ok(nn(900.0)));
+        let local = original.for_child(
+            Size::new(finite(50.0), finite(60.0)),
+            ScrollportFallbackChangeOf::Preserve,
+        );
+        assert_eq!(local.resolve(PhysicalAxis::Horizontal), Ok(nn(50.0)));
+        let child = local.for_child(unbounded, ScrollportFallbackChangeOf::Preserve);
+        assert_eq!(child.resolve(PhysicalAxis::Horizontal), Ok(nn(100.0)));
+        assert_eq!(
+            child.initial_containing_block(),
+            original.initial_containing_block()
+        );
+
+        assert_eq!(
+            OrthogonalFallbackLimitOf::<S>::from_containing_bounds(Some(nn(50.0)), None),
+            OrthogonalFallbackLimitOf::Unbounded
+        );
+        assert_eq!(
+            OrthogonalFallbackLimitOf::from_containing_bounds(Some(nn(200.0)), Some(nn(100.0))),
+            finite(200.0)
+        );
+        assert_eq!(
+            OrthogonalFallbackLimitOf::from_scrollport(
+                Some(nn(300.0)),
+                Some(nn(50.0)),
+                Some(nn(200.0))
+            ),
+            finite(200.0)
+        );
+        assert_eq!(
+            OrthogonalFallbackLimitOf::from_scrollport(None, Some(nn(50.0)), Some(nn(200.0))),
+            finite(200.0)
+        );
+        assert_eq!(
+            OrthogonalFallbackLimitOf::from_scrollport(
+                Some(nn(30.0)),
+                Some(nn(50.0)),
+                Some(nn(200.0))
+            ),
+            finite(50.0)
+        );
+        assert_eq!(
+            OrthogonalFallbackLimitOf::<S>::from_scrollport(None, Some(nn(50.0)), None),
+            OrthogonalFallbackLimitOf::Unbounded
+        );
+
+        let no_scroll = OrthogonalFallbackOf::new(
+            original.initial_containing_block(),
+            NearestScrollportOf::Absent,
+            unbounded,
+        );
+        let uncapped_scroll =
+            no_scroll.for_child(unbounded, ScrollportFallbackChangeOf::Enter(unbounded));
+        assert_eq!(
+            no_scroll.resolve(PhysicalAxis::Horizontal),
+            uncapped_scroll.resolve(PhysicalAxis::Horizontal)
+        );
+        assert_ne!(no_scroll, uncapped_scroll);
+        let missing = OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Unknown,
+            Size::new(finite(0.0), OrthogonalFallbackLimitOf::Unknown),
+        );
+        assert_eq!(missing.resolve(PhysicalAxis::Horizontal), Ok(nn(0.0)));
+        assert_eq!(
+            missing.resolve(PhysicalAxis::Vertical),
+            Err(OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                axis: PhysicalAxis::Vertical
+            })
+        );
+        let zero_icb = OrthogonalFallbackOf::new(
+            Size::new(Some(nn(0.0)), None),
+            NearestScrollportOf::Unknown,
+            Size::splat(OrthogonalFallbackLimitOf::Unknown),
+        );
+        assert_eq!(zero_icb.resolve(PhysicalAxis::Horizontal), Ok(nn(0.0)));
+        let zero_scroll = OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Present(Size::new(
+                finite(0.0),
+                OrthogonalFallbackLimitOf::Unknown,
+            )),
+            Size::splat(OrthogonalFallbackLimitOf::Unknown),
+        );
+        assert_eq!(zero_scroll.resolve(PhysicalAxis::Horizontal), Ok(nn(0.0)));
+        let missing_nearest = OrthogonalFallbackOf::new(
+            original.initial_containing_block(),
+            NearestScrollportOf::Unknown,
+            unbounded,
+        );
+        assert_eq!(
+            missing_nearest.resolve(PhysicalAxis::Horizontal),
+            Err(OrthogonalFallbackErrorOf::MissingNearestScrollport {
+                axis: PhysicalAxis::Horizontal
+            })
+        );
+        let partial = OrthogonalFallbackOf::new(
+            Size::new(Some(nn(800.0)), None),
+            NearestScrollportOf::Absent,
+            unbounded,
+        );
+        assert_eq!(partial.resolve(PhysicalAxis::Horizontal), Ok(nn(800.0)));
+        assert_eq!(
+            partial.resolve(PhysicalAxis::Vertical),
+            Err(OrthogonalFallbackErrorOf::MissingInitialContainingBlock {
+                axis: PhysicalAxis::Vertical
+            })
+        );
+    }
+
+    #[test]
+    fn qualifies_and_replaces_physical_fallbacks_f32() {
+        qualify::<f32>();
+    }
+    #[test]
+    fn qualifies_and_replaces_physical_fallbacks_f64() {
+        qualify::<f64>();
     }
 }

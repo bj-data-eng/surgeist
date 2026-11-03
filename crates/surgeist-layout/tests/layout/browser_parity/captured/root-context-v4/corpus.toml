@@ -1,0 +1,1035 @@
+schema_version = 3
+
+# One source inventory owns scheduling, expected dispositions, metadata, pairs
+# and counts. Original source/history remains pinned; authored inputs are local.
+
+[[records]]
+source = "html/grid/grid_fit_content_points_argument.html"
+source_sha256 = "9a8e404470f5f0b8afed2c858d2840f4df46a1492f41cb022ce921fcc23c9e01"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "202e335e62bd797c087b073f641650c6c8a9cb7e48cdb7f1bfa75652ea20e5a9"
+content_box_ltr = "559712abf282c99f3a4f6fd8a0b5bd5a8ff026f772860c2479ece60e384a3432"
+border_box_rtl = "a25ad3b02bf411181df28ed13f4d18cdfd5c334474083a7732f1e8e431a43bc3"
+content_box_rtl = "e761edc0be86e8489e428eb28a35d053a2e8feae1f696684c1316da0b781ac66"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_standalone_axis_column_autoflow.html"
+source_sha256 = "377ec9188ae1e024b3293b403d0fe0ffd86e78f4298bef9cdc3b87a78036e823"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "9482a5a6bc0a1b041f3febc6f8ff24998453e68d3eff7ab8ee1908951d0eded2"
+content_box_ltr = "2e19e3600b5a8600e5fd45f5d32adf7f82080154e622517e002a6dbfe53b24d3"
+border_box_rtl = "c7dd0e4680ffedbcf7a22bed891f16ffb1553b81aad6fff2183a5502e9e9d56c"
+content_box_rtl = "d62e1205847826d52c37aaecb623dd9f8338ef26eabb56d03b14b5d0a439d333"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html"
+source_sha256 = "3332d3e2c86878867f3c1db9ef13096386bec1615aa796cbb81c817dfc2a2b9b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "03e127d2a4c3a10b93c55b3e1bd8c87f5d3720db2b4c9cb5df57ac2b5223e004"
+content_box_ltr = "056a7fc328493f10686923251f6ae968dd6528b3b4a786e8137eb23cb557b138"
+border_box_rtl = "d0cf7b79a67fe4480a70226f44f0c008f8555298e02b9297905c83fb35d3711f"
+content_box_rtl = "25fe19dc380ea85bf13a42b25798a64e810914cc15f55ce5c3dee78658c407df"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/fixed-grid.html"
+source_sha256 = "ecbb8c3835468d539659404677b63625af591fe15a0e0a0ce1dccc140c221a94"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/fixed-inline-grid.html"
+source_sha256 = "8bf1c5fdf49eddcfcf0d1e3916b55c278d5209f2c1791f673e8ee6accf8545c0"
+source_kind = "authored"
+[records.relation]
+peer = "fixed-grid"
+world_phase_change = false
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/direction-ltr-cb-rtl-hypothetical.html"
+source_sha256 = "0825dc0e570458710d0a1daf84fe95f258646b24c54c87583015d6b819b608dc"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "ltr"
+hypothetical_direction = "rtl"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/direction-rtl-cb-ltr-hypothetical.html"
+source_sha256 = "dca5c5a8df73c7afaa240a8b47b93d128c883412d8b6ffbac69e80042d941965"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "rtl"
+hypothetical_direction = "ltr"
+root_direction = "rtl"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/collapsed-leading-whitespace.html"
+source_sha256 = "4659086476cc10cdac8b75c5009d120a6a8cbcbebf7486d7aec320994e90fa2f"
+source_kind = "authored"
+[records.relation]
+peer = "fixed-inline-grid"
+world_phase_change = false
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/preserved-leading-whitespace.html"
+source_sha256 = "e8d4898ce6c699e0f6264585e6f95f481ad35d1e34e66c458ada2117ebc615c1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: AuthoredBodyOrHtmlStyle"
+
+[[records]]
+source = "html/qualification/indented-block-flex.html"
+source_sha256 = "65c133cb39029a9252fad238351230ddeefde5ed2fb001fd1b77ffb71c64f898"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/indented-inline-flex.html"
+source_sha256 = "48201c73d84f1b7204287e967e0d6f0e3391994d060b943d9d101c05fdd43f4f"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 40
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/block-translation-0-25.html"
+source_sha256 = "bf94207f58c4559a981acef633c4c2ae9f10a1f960bb61bee07672349da9945d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5
+
+[[records]]
+source = "html/qualification/block-translation-0-75.html"
+source_sha256 = "8c85d6fa06d0dc661fb673107e9a07d66468e59801b8be3b8f2caabf5631ae9d"
+source_kind = "authored"
+[records.relation]
+peer = "block-translation-0-25"
+world_phase_change = true
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5
+
+[[records]]
+source = "html/qualification/preceding-float.html"
+source_sha256 = "4f8a45983266104aff6588c2a2c1402cc1ddbee8928c3f39e4f48459e67fdfaf"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/fixed-descendant.html"
+source_sha256 = "6cd7da788dd97728ec948ac0b467cbce4d3362a0c669317bed67b6e3e0a862cc"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalExternalFrame"
+
+[[records]]
+source = "html/qualification/bottom-inset.html"
+source_sha256 = "8d7f70f308ad25d1e23e9c9d6aa65450bf5b0017218f8a4e344ec7e0cbe5f62a"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: AuthoredInsets"
+
+[[records]]
+source = "html/qualification/remaining-block-size.html"
+source_sha256 = "2eb1e6c4b0302a53159afab53878f8756e800f5eb681eb730678d0c682950eb6"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalBlockSizeDependency"
+
+[[records]]
+source = "html/qualification/unrepresented-variable-width.html"
+source_sha256 = "d8646c0dd9990666294c1f19d671c030b01245271ffbfd19b30f61b290994bda"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/unrepresented-block-flow-variable-width.html"
+source_sha256 = "0ef3b3081dfd004ed20cd33e0e0265d0cb0718c56f30f2b5cabb407ad07b0859"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_child_multiline_no_override_on_secondline.html"
+source_sha256 = "fe5bf7514ef5402c343dea5e5de8dcb22298f0956e487f33f9ed935c75e47822"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "f77fc79691eb6744ccb11e015ce428933a66799ab7f29576d657462b0cc091d1"
+content_box_ltr = "92f72021c4ba70ef5324a4f88a746fae3c1c57cdde8a23fa206a3b1a1741d284"
+border_box_rtl = "9bfb9d29447d232fd8991c90bf07463ac59f708fe871270eb64a52f7e6bb3144"
+content_box_rtl = "bcdab8ecf8db60071eeb9c790074dc99bce4585c01eb39f048b1a599e917ad35"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_child_multiline_override.html"
+source_sha256 = "6ce7b7a9ca2ac614f0f437ab5a615dc88990561748124579cd285350761bd9d1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ee93daa81b41c0f4ecd61e504985b6a8cc241fbe3d00988efb2708b97d1b8d30"
+content_box_ltr = "4d64150c2f1eac802b7c59d6583b73467995822816719c1f6e6a840a6f5bc1ed"
+border_box_rtl = "bbcfcc873b187fab99a7486e68ef975aec0671f9a20f6b44d414a172c3406e19"
+content_box_rtl = "23b94cee15665f92b20ef82f76c74d61433ba8bedaac47fee6f7615f0fba5133"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/absolute_correct_cross_child_size_with_percentage.html"
+source_sha256 = "ef52406bb6e1e11c32fc20f2f0e64c72045bca33278d45a977dc40a17366c7b1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "fac5046aa53e1dd982b57e5fac4518e71cfdc2dad9245f9845e3d3229ea75636"
+content_box_ltr = "5fca0f89e6a967f8e9ff0fabe1fc94fa784b89927d5c7957fc5408c8aa6c445c"
+border_box_rtl = "669436181d8a0d0bfdc71f173117ebaeff7f91daf8b8e30bdd7551ba77f5aa7a"
+content_box_rtl = "10f48e9544e8c90a7ab5d30cef8df0493a980e0e26f41cd58d7f9076e643ffcf"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+
+[[records]]
+source = "html/grid/grid_absolute_layout_within_border_static.html"
+source_sha256 = "9cc3ec5d8fad45b6e022a1b9178cbfad1a01f75c8dc30d9c802057dc1d240b65"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "3b25dd0dfffefcbbfbc7050f6d583045cf68cd2eac32c890ed0678a1ff8e2c26"
+content_box_ltr = "2467da46edc636c44f5483ec8914278686173c289f26ee40964e13a51c970999"
+border_box_rtl = "10184e25f69a7187580866f8118c3d2fbc4311af973df313344af076ae714a10"
+content_box_rtl = "d47f675b923939a5fb8164fa7c21b0dae92e26f8e53fe9fe9b8215061e1ad26b"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_min_content_container_sizing.html"
+source_sha256 = "4bf761c29cb69a3b68046ec6c28938c653ac846805a63df82249d1a31e47131f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "b05264a280d5c9caa46f9bf68e838665cee8029bf7e902df7714550b02fb085c"
+content_box_ltr = "3136d496354d84acd958897e9400a96c50deb8a5b0d29986beac66c79d65528d"
+border_box_rtl = "a8ace12112664cca216f14c92d100adf13bdfc393dc2f27d97981140ba6a23d5"
+content_box_rtl = "76f60e583e079726e688f266e8a350438066ec0190e5b009e1026b4b8700cad2"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_max_content_container_sizing.html"
+source_sha256 = "997009e354f48de29fec1bf88e11c89b9cd4b4d930cca4d33ce4cc0f4a0ab1d3"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ffc45f5653006d25c3d44cfbc30c641d6be2072492b1c027115e70f1cee32ca5"
+content_box_ltr = "4148a9cd4d66e9f428a61950b1d0710ae9cdf4f0d155bfc7f6c0f3893fec80ee"
+border_box_rtl = "8707272e6f03a5395df03e1982ee2b27d6c7125d60ac8dffaba345263056d587"
+content_box_rtl = "722cfc3edc62b30bcd9ee03da07b9a14a28be0940dd0120986a388078d7b6f16"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_overflow_inline_axis_scroll.html"
+source_sha256 = "2afab8f93dd99b1da44923fe29acea27a07c1c149dea7c559c017b4ac411b8eb"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "de398a684db771453eb3e7003299965c2c6216b85f289d46724937bc5debe940"
+content_box_ltr = "25930287a7692be8f6230e438789a6b9c1b6337eb81ff8193576a04f618e7da9"
+border_box_rtl = "0b71773721c2876b3c65dfc54a9f66f8626efc43d3640452c27b0e96b3bfd442"
+content_box_rtl = "62ee29f5c49a894a58bf6e4082dc346e36ae5952ba75bf77a0c784afc9912003"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_sibling_overflow_footer_second_matches_first.html"
+source_sha256 = "74c92a5ac60e37031a7f992ea1748a8ee4dc8ceaeb30b4a8e224e145f169d94a"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "89ec9d904a14c42b01cafbca470afb5c7f81747f09a5ac4d0b165fefdbef065d"
+content_box_ltr = "68c1ae07bd30dc6720ad96e3c782a42aa39d034a2ccdbf81291ce28cb3b415ca"
+border_box_rtl = "44b23e1d709ac95a61de9f5fa59ee091e643c1f1a19a1d95cb21c99b61b44017"
+content_box_rtl = "d498d681d9537e1a6b8b47e8cb5988a7b9becb413808c16fbc2395bd4fb27d8c"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_sibling_overflow_footer_third_matches_first.html"
+source_sha256 = "14445537ec1510bf93684d63b798627811d5d42dd0935e8937dbb188251d243e"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "27346401bd32acdac79b75840ae937ac0ebf6b378302c1b1df37df4268be8c8a"
+content_box_ltr = "be1abd5a8ccdd753cf9af4763200e19cdba3b411b7a35b9bf616cb28b208f47e"
+border_box_rtl = "7c64c928f5cf493f29f961806e3bdcca9d28d5409dcdc879354d870676f26a70"
+content_box_rtl = "de1a154bce2216d5dbca75dfd761a8bfd75e21dca967e6cb5b0f46e29b751b38"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_auto_fit_occupied_track_collapse.html"
+source_sha256 = "07c4c6a4c5d6c312a4a8f6c520a5f064acca6c74cc1dc5423230fb6003958111"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "1b1a1ead1d1a1425aec22bd2aa76a5f2f3821a58f68d1891f255a89425f4858c"
+content_box_ltr = "89622afda1375f4c3682265fa15f3ff884fa74a89af1ad478d01c5b1710d0b36"
+border_box_rtl = "03d7b898325aacdde1408fb462ad81a35c68602d0729b762575052ac7658a568"
+content_box_rtl = "abe74cd0d692e8c96f92048071de0344cec4bf2dc0bdf22e128ab31835e09b7b"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_auto_rows_inner_row1_first.html"
+source_sha256 = "74d1b4f9ca489e4e8ee53b548d49132e7aeaebfed4c8853854e870069773d3a5"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "416bef90e81fc33fe58e53577960113ee2a080f0dc16a7c50d5961357bd67bb1"
+content_box_ltr = "000c0896b2e7a5574a2234b6482586b88bcac3f932068785bb4032840253bdd9"
+border_box_rtl = "8858a13e7bab42ab6431f04a7eccaeecb5a3f9202cd8a9ffa605fdf95dbee3de"
+content_box_rtl = "f1b2585c2fccdbc1d3513cdca0ca8104a5301b88067fee1b9d629ca505700527"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html"
+source_sha256 = "3717eeafc180abb56946253c0b2d13ccc9f1b0c81ed8229a7b483fc81545f075"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "37f812de96ccc541c7fe427278d31f6b2734486394fbcfefb4aea8d51d3313e1"
+content_box_ltr = "c9c9a8ef24dacc396cbf470979d42c69525053b930b5a47a6ba718bf3e619a80"
+border_box_rtl = "0989f284ea78074136bcfe23a7bbcf371fc5629b79cafe07fb4b3ccbb0e85ae2"
+content_box_rtl = "ac9bf1d8e97aa1b9f832ae56d83d8979fed6c6ff45686b356e3d7b5ad26cf5fa"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+atomic_paragraphs = 6
+grid_reference_owners = []
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html"
+source_sha256 = "19c777698f1dd90458ec5550e31b5d885a229eba4a98aed4db14328563569115"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "6e895bd51122f967e866949b00b34d76ef4f3c1f767704c73025cb919066ed0e"
+content_box_ltr = "c1d65c30f38c2e64cda8408c610010c7c6748391c7c9108d788045979b72bdf2"
+border_box_rtl = "369390c027b13593680010c8e7690fbb05209c7b9578d96b564d115e0f134a20"
+content_box_rtl = "63bf16ba19e0bf7309ae06e7171d451f8845d4a24689a95cd21f1efb954af156"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+atomic_paragraphs = 6
+grid_reference_owners = ["/","/0","/0/0"]
+
+[[records]]
+source = "html/qualification/boxless-descendant.html"
+source_sha256 = "bd4ce7bb4585258cb6aecf4903984998c6617a808d2fb7a21611baadfbdeed6d"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalBoxlessObservation"
+
+[[records]]
+source = "html/qualification/unrepresented-font-width.html"
+source_sha256 = "9ca984bdc6cd77463b7712380585e92818387acd35f2e439b23e09027d5af8b9"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/conflicting-inline-width.html"
+source_sha256 = "c34afa173c2c5562285b98bfd35fc1e1a37aba011b682a1d3587f643171e2225"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingSizingDeclarations"
+
+[[records]]
+source = "html/qualification/conflicting-vertical-height.html"
+source_sha256 = "5d27c3b88b02cf1bbdbca7050c0d7c945099b0fdb80cdda60f3861ae1a9890e1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingSizingDeclarations"
+
+[[records]]
+source = "html/qualification/unrepresented-second-gap.html"
+source_sha256 = "e335a8252c512a4dbd936c045bfc7ae224d0552dabe490a42703f45c50ffaded"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/logical-inline-minimum.html"
+source_sha256 = "592572264d0fac1497ecf74ede20bac68792c593c34fe1534c40d3e2c12d53a9"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 10
+
+[[records]]
+source = "html/qualification/logical-inline-maximum.html"
+source_sha256 = "2357eeb46f318261ee0271c41ff6e87b9a808f7b45c3274ea70dc664f91d580b"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 10
+
+[[records]]
+source = "html/qualification/logical-vertical-inline-minimum.html"
+source_sha256 = "0efda7dcdc9bb0b7ec16cc285742dcc756158cbfd6796fac4955ab51161c1b44"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+
+[[records]]
+source = "html/qualification/logical-inline-inset.html"
+source_sha256 = "d4752b760d6929785fad6e98e3166e8f59d43b8c68e539eca7680190a3cd19ca"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 10
+
+[[records]]
+source = "html/qualification/logical-inline-padding.html"
+source_sha256 = "f9536930d9347f55e895101ab47bdf510665b64f9b7b82d2a0772a727e9ebe7a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 10
+
+[[records]]
+source = "html/qualification/indented-inline-flex-text.html"
+source_sha256 = "8845a88751f7c4da1cce34f03582a6928ce6719bbada3246ae0791f02b84eafd"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedInheritedIndent"
+
+[[records]]
+source = "html/qualification/indented-inline-flex-cross-direction.html"
+source_sha256 = "6a36066d3e70978f5d8c125e268b7a5b8d52a18c6e51347a8232ea9cbf5ccaf1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedInheritedIndent"
+
+[[records]]
+source = "html/qualification/static-spacer-with-content.html"
+source_sha256 = "8c8914901ff27931408b6c5679b809155cd8e1fc1807683cced849c088d02a71"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/static-spacer-after-root.html"
+source_sha256 = "c54e7ee257691fbe89c19d2d537eda5de8239a240015e705488ea8e965503eba"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/inline-edge-inset-collision.html"
+source_sha256 = "b423d537db60ce19553f7d8559e4ce6f837f7761263bd6c6bbf5447a9bd2bd67"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingEdgeDeclarations"
+
+[[records]]
+source = "html/qualification/inline-edge-padding-collision.html"
+source_sha256 = "04e39d3b28a6fbf42120221f96e10ad677acd3778123fad83fc81a06f7bc2a83"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingEdgeDeclarations"
+
+[[records]]
+source = "html/qualification/inline-edge-inset-shorthand.html"
+source_sha256 = "a017a56a3c9ba3dd1d86c4f23bd4485bfdc36dcb77b7a2ba63a2fec5671bd11f"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-padding-shorthand.html"
+source_sha256 = "15f41eadfd2b300ee3559473a1085249deebb5ce07f2874199093effaaf6ec6a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-inset-distinct-sides.html"
+source_sha256 = "c7cb646b19dcc38594b9688232bddd1a28fd17e67f51ae3eb3ee57baf3e9cdfb"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-padding-distinct-sides.html"
+source_sha256 = "9b25bee76a6530236b239dd5760d7fe83a36046915dd9e66d6456ec73b94253d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/unrepresented-block-inset.html"
+source_sha256 = "eea9463a3b41cc560d81b0a55d321f6e4a783c94de69e1dd69574dea6d8900ce"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedLogicalBlockEdges"
+
+[[records]]
+source = "html/qualification/unrepresented-block-padding.html"
+source_sha256 = "6a59620e077f9ff72cdbaf6f34aa08c65debd74d57730584ab89c56c59ae50b1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedLogicalBlockEdges"
+
+[[records]]
+source = "html/qualification/atomic-named-foreign-font.html"
+source_sha256 = "110f7993eb31e697301b0650a885a9bb10e947859a3f0226f28a1abf04de5cec"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-font-size.html"
+source_sha256 = "dbaa3b6461f73012b02258431fe950c37f9297d0bf8d78f18ed0b499e406cb12"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-dominant-override.html"
+source_sha256 = "9956631716403a6bc96e18d21491c4cc8ca3732a10c2b9c46b5d4a9decfe672a"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedMetricOverride"
+
+[[records]]
+source = "html/qualification/atomic-named-sideways.html"
+source_sha256 = "347ab3e9932b972d5a103ec2bbff60c39b3c2867ca0f2223a1cb4a4a3d528dd2"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedReferenceContext"
+
+[[records]]
+source = "html/qualification/atomic-named-br-font-size.html"
+source_sha256 = "7bddbee97d93b2d38b6ff6955ef03bf6c8f2ca536b09a6fb11584dca1729f2e5"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: MismatchedOccurrenceReference"
+
+[[records]]
+source = "html/qualification/atomic-named-synthetic-weight.html"
+source_sha256 = "5bbed7ab5f4f683e9d9fe6ed1dc9b6b246808e7b23434de7a971cfe8f6dcb7d5"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedFirstFontMetrics"
+
+[[records]]
+source = "html/qualification/atomic-named-relative-offset.html"
+source_sha256 = "b4a6aed8ca3cc0ef095e69ea8d73f6e28acf59610a97364a5f78685db8f47bbd"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Atomic paragraph metrics: UnsupportedOccurrence"
+
+[[records]]
+source = "html/grid/grid_absolute_layout_within_border.html"
+source_sha256 = "4164b2def608e0c20d030773ff5d3c3dc6ecd88b2f91bb614e28c2b978b28478"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "e64c9d78a11c8f2c0f980fecf751c97cdf23c8b248f9d9e8444be2613654ec4a"
+content_box_ltr = "4785e7f32a4f9ed07b8481ef8f3c7763deaffdc60680aca3de221b58153328b4"
+border_box_rtl = "85dc80ab4da8da832e90f1d8f9bbde0bc168c82adb8e8c93fe1892f195b22089"
+content_box_rtl = "3bcbfff7482606601b1eb8eb184b10b48ac17fa09bab66fccdea0e7f9a7f0072"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_absolute_resolved_insets.html"
+source_sha256 = "b225a7a58230ba8155042b2bc6a8ad352d6e63b3ab336c47c39faf01dca6e1d0"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "a9e5285cf730c06ad4c69d8ec5958f5fed9effa4835b7a912272293d0658cdd3"
+content_box_ltr = "1ef4fb20ba7d065d0509d6b294b48153e78fefd7b74109745b3814c5a0325932"
+border_box_rtl = "04b26b137fb9051aa6f49bc989c40ab5a820b4e7e4868b086b6339a0e4535d5a"
+content_box_rtl = "15c131a425c03d2b2336c8df1f9d5a61b44d4db279ee202e0a0c0cc79979fb75"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_aspect_ratio_overrides_height_of_full_inset.html"
+source_sha256 = "8d159da05c91deddae2cf23ee84f2f5fc0865da5ff15272cf2964d10f22e8096"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "8814c3ea3037fb84d375ebf1df53339b60dda33fde05672c4c7aad418e95ab0c"
+content_box_ltr = "6b2186dba3466bd4c13a9c3056a6ae1378fb615414d2851693c46cf9a54fb947"
+border_box_rtl = "da74c2ed3d3933b26db82146cb46e3f2742799471a24dee532f5fdb595223186"
+content_box_rtl = "30d5e11863f2b44012dfc23cb9fcbb0a5a303852207763371ef490f19443149a"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_fill_height_from_inset.html"
+source_sha256 = "152587aededc64e0b565f56f189b8c6cd4f20c9fe5f10b12e4f0c9f25bf2990b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "c492936f7065b991e1c67441f58253b75db059f68463ebd10b33d45e34a59e09"
+content_box_ltr = "673d461aacf21bba1b8b39a042ef51f0de695c7d2381feeeed43598c7b1fc440"
+border_box_rtl = "4615be1fe5627d5fcf3dee4d22e316e2fc43a8d94ae656f3663d386fbe0ef195"
+content_box_rtl = "9e5ffe1f08521033b0631181fb400d6dc9b83cbd054b4a1441a04cc883171d4e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_width_overrides_inset.html"
+source_sha256 = "329ee2a22a961270908b386a0d93b47f52f8ad0ef67d71e99044fa572c07c551"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "081dc55ac490dbe23dc0a2be0f0af377ccd37d1018cf4852d140aa81654ee22a"
+content_box_ltr = "bc31e0af126c54008b2dc564fa8fbfc8ccf0d7963f1702bc9b00c993d7e2549b"
+border_box_rtl = "ef7c4d37554ba60d1887eea97008ad344a582b2bdcfc56f202574efb80b8b2e1"
+content_box_rtl = "f6c6f2f4a426ab299659cd4c51d3ef71d80fac6b44058844181c54079a7cf699"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid-reference-mixed.html"
+source_sha256 = "1282c7a537228a0bfd0175d1a8b1f8ccccf28ed905fd7b9a637970b6468b7464"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+atomic_paragraphs = 0
+grid_reference_owners = ["/"]
+
+[[records]]
+source = "html/qualification/grid-reference-upright.html"
+source_sha256 = "ba710808ee39439b187bf90cdf86a61dd944e37d6b2f7e205388c10798568861"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-lr"
+root_position = "relative"
+atomic_paragraphs = 0
+grid_reference_owners = ["/"]
+
+[[records]]
+source = "html/qualification/grid-reference-foreign-font.html"
+source_sha256 = "fff24d7d4e3887531310c33105eb1de13b712350eb6ca2c76d7ba67a0d90b3b4"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedFirstFontAuthority"
+
+[[records]]
+source = "html/qualification/grid-reference-dominant-override.html"
+source_sha256 = "12488c0e3d14aed7721ec5d3ea896b3a97dc5b8abcb665a30a43e09902a3b9ac"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedReferenceOverride"
+
+[[records]]
+source = "html/qualification/grid-reference-sideways.html"
+source_sha256 = "41bfa83f3afcf87fd1ac836e801de5546669a276496065bfbc0c97b220c641b9"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedReferenceContext"

@@ -255,7 +255,15 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(15.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(15.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout
@@ -333,7 +341,15 @@ fn future<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout

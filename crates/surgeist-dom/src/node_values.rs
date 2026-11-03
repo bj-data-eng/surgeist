@@ -6,6 +6,11 @@ use surgeist_html::bounded::lexical::{
     HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point,
     is_xml_name_start_code_point,
 };
+use surgeist_html::bounded::values::{
+    HtmlNameIndex as NameIndex, HtmlNameIndexError as IndexError,
+    HtmlNameIndexHasher as NameHasher, HtmlNameIndexLookup as Lookup,
+    HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
+};
 
 use crate::store::source::{
     formation::{self, Formation},
@@ -285,6 +290,27 @@ fn release_scratch(buffer: Vec<u16>, budget: Option<&Formation>) -> Result<(), D
     Ok(())
 }
 
+// Cursor requests served by `parse_attributes` on this thread, for work-growth tests.
+#[cfg(test)]
+thread_local! {
+    static PI_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn release_table(table: Vec<NameSlot>, budget: Option<&Formation>) -> Result<(), DomError> {
+    let payload = Payload {
+        bytes: table
+            .capacity()
+            .checked_mul(size_of::<NameSlot>())
+            .ok_or(DomError::RepresentationExhausted)?,
+        units: 0,
+    };
+    drop(table);
+    if let Some(budget) = budget {
+        budget.release_payload(payload);
+    }
+    Ok(())
+}
+
 fn parse_attributes(
     data: &DocumentString,
     budget: Option<&Formation>,
@@ -296,8 +322,17 @@ fn parse_attributes(
     #[cfg(test)]
     let mut pi_writes = crate::store::CopyObservation::default();
     let mut pairs: Vec<(DocumentString, DocumentString)> = Vec::new();
+    // The index of committed names: a table at most half full of pair numbers plus one, probed from
+    // a randomly keyed hash of the name, so that no input can choose names that collide. It is
+    // reserved when the first name is complete, under the same custody as the other banks.
+    let hasher = NameHasher::new();
+    let mut name_index = NameIndex::new(Cursor::name_index_slots(data.len()));
+    let slots = name_index.slots();
+    let mut table: Vec<NameSlot> = Vec::new();
     while let Some(action) = cursor.action() {
         formation::step(budget, cancelled)?;
+        #[cfg(test)]
+        PI_REQUESTS.with(|requests| requests.set(requests.get() + 1));
         let reply = match action {
             Action::Read(offset) => Reply::Unit(data.code_units().get(offset).copied()),
             Action::Step => Reply::Ack,
@@ -333,6 +368,57 @@ fn parse_attributes(
                 #[cfg(test)]
                 pi_writes.extended::<u16>(len);
                 Reply::Ack
+            }
+            Action::FindName => {
+                if table.is_empty() {
+                    #[cfg(test)]
+                    let observed =
+                        source_observation::before(&name, &value, &pairs, budget.is_some());
+                    formation::reserve(&mut table, slots.get(), budget, cancelled)?;
+                    for _ in 0..slots.get() {
+                        formation::step(budget, cancelled)?;
+                    }
+                    table.resize_with(slots.get(), NameSlot::default);
+                    #[cfg(test)]
+                    source_observation::grew(
+                        observed,
+                        table.capacity() * std::mem::size_of::<NameSlot>(),
+                        0,
+                    );
+                }
+                for _ in 0..name.len() {
+                    formation::step(budget, cancelled)?;
+                }
+                let mut index = NameTable::new(&mut name_index, &mut table)
+                    .map_err(|_| DomError::RepresentationExhausted)?;
+                let lookup = index.find_or_insert(
+                    hasher.hash(&name),
+                    pairs.len(),
+                    &mut (),
+                    |_| formation::step(budget, cancelled),
+                    |_, pair| {
+                        let Some((existing, _)) = pairs.get(pair) else {
+                            return Ok(false);
+                        };
+                        if existing.len() != name.len() {
+                            return Ok(false);
+                        }
+                        for (left, right) in existing.code_units().iter().zip(&name) {
+                            formation::step(budget, cancelled)?;
+                            if left != right {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    },
+                );
+                Reply::Pair(match lookup {
+                    Ok(Lookup::Found(pair)) => Some(pair),
+                    Ok(Lookup::Inserted) => None,
+                    Err(IndexError::Consumer(error)) => return Err(error),
+                    // The table is sized from the data length, which bounds its pairs.
+                    Err(_) => return Err(DomError::RepresentationExhausted),
+                })
             }
             Action::NameLength(index) => Reply::Length(pairs[index].0.len()),
             Action::NameUnit(which, offset) => Reply::Unit(Some(match which {
@@ -414,6 +500,7 @@ fn parse_attributes(
     // Committed strings and the pairs backing stay with the caller's Formation.
     release_scratch(name, budget)?;
     release_scratch(value, budget)?;
+    release_table(table, budget)?;
     Ok(pairs)
 }
 
@@ -602,6 +689,30 @@ mod source_tests {
                 ),
                 Err(DomError::InvalidCharacter)
             ));
+        }
+    }
+    /// XML-stylesheet 20101028 section 3 makes a repeated name an error, so each name is checked
+    /// against the earlier ones; the requests that this takes must grow no faster than the pairs.
+    #[test]
+    fn pseudo_attribute_requests_grow_linearly_with_distinct_names() {
+        let requests: Vec<usize> = [250, 500, 1000, 2000]
+            .into_iter()
+            .map(|pairs| {
+                let names: Vec<String> = (0..pairs).map(|n| format!("p{n}=''")).collect();
+                let data = DocumentString::from(names.join(" "));
+                PI_REQUESTS.with(|requests| requests.set(0));
+                let parsed = parse_attributes(&data, None, &AtomicBool::new(false)).unwrap();
+                assert_eq!(parsed.len(), pairs);
+                PI_REQUESTS.with(std::cell::Cell::get)
+            })
+            .collect();
+        for pair in requests.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "doubling the pairs grew the requests from {} to {}: {requests:?}",
+                pair[0],
+                pair[1]
+            );
         }
     }
     #[test]

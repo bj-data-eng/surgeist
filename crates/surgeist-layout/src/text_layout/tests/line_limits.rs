@@ -15,7 +15,7 @@ fn paragraph(source: &str, indication: &str, overflow: OverflowWrap) -> Prepared
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
     limit: HyphenateLimitLines,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let binding = paragraph.binding(0);
     let mut tree = PublicLayoutTreeOf::<S>::new()
@@ -52,7 +52,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let input = LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MaxContent)).unwrap();
+    let input = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     compute_layout_with_flow(&capture, 0, input).unwrap()
 }
 fn observations<S: LayoutScalar>(
@@ -105,7 +137,12 @@ fn finite_line_limits_suppress_only_automatic_endings_and_keep_manual_empty_cust
         let unbroken = compute::<S>(
             &p,
             HyphenateLimitLines::NoLimit,
-            AvailableOf::definite(S::from_f64(100.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         );
         assert_eq!(observations(&unbroken, &p), [(9, 90.0, false)]);
         for (policy, expected) in [
@@ -133,7 +170,16 @@ fn finite_line_limits_suppress_only_automatic_endings_and_keep_manual_empty_cust
             ),
             (HyphenateLimitLines::Count(0), vec![(9, 90.0, false)]),
         ] {
-            let batch = compute::<S>(&p, policy, AvailableOf::definite(S::from_f64(30.0)));
+            let batch = compute::<S>(
+                &p,
+                policy,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            );
             assert_eq!(observations(&batch, &p), expected);
         }
         for indication in ["A", ""] {
@@ -142,7 +188,12 @@ fn finite_line_limits_suppress_only_automatic_endings_and_keep_manual_empty_cust
             let batch = compute::<S>(
                 &p,
                 HyphenateLimitLines::Count(1),
-                AvailableOf::definite(S::from_f64(30.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             );
             assert_eq!(
                 observations(&batch, &p),
@@ -156,7 +207,12 @@ fn finite_line_limits_suppress_only_automatic_endings_and_keep_manual_empty_cust
             let batch = compute::<S>(
                 &p,
                 HyphenateLimitLines::Count(0),
-                AvailableOf::definite(S::from_f64(30.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             );
             assert_eq!(
                 observations(&batch, &p),
@@ -221,7 +277,12 @@ fn ordinary_literal_and_emergency_endings_reset_the_committed_sequence() {
             let batch = compute::<S>(
                 &p,
                 HyphenateLimitLines::Count(1),
-                AvailableOf::definite(S::from_f64(30.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             );
             assert_eq!(observations(&batch, &p), expected, "{source:?}");
             if overflow != OverflowWrap::Normal {
@@ -258,7 +319,16 @@ fn intrinsic_line_limits_are_static_and_independent_of_actual_query_order() {
                 HyphenateLimitLines::NoLimit,
             ] {
                 let actual = observations(
-                    &compute::<S>(&p, limit, AvailableOf::definite(S::from_f64(30.0))),
+                    &compute::<S>(
+                        &p,
+                        limit,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
                     &p,
                 );
                 for minimum in [false, true, true, false] {
@@ -266,9 +336,15 @@ fn intrinsic_line_limits_are_static_and_independent_of_actual_query_order() {
                         &p,
                         limit,
                         if minimum {
-                            AvailableOf::MinContent
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MinContent,
+                            )
                         } else {
-                            AvailableOf::MaxContent
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MaxContent,
+                            )
                         },
                     );
                     let width = batch
@@ -293,7 +369,16 @@ fn intrinsic_line_limits_are_static_and_independent_of_actual_query_order() {
                 }
                 assert_eq!(
                     observations(
-                        &compute::<S>(&p, limit, AvailableOf::definite(S::from_f64(30.0))),
+                        &compute::<S>(
+                            &p,
+                            limit,
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()
+                                ),
+                                crate::SizingOperation::Normal
+                            )
+                        ),
                         &p
                     ),
                     actual
@@ -318,7 +403,12 @@ fn real_forced_and_source_less_discretionary_endings_use_their_actual_roles() {
         let batch = compute::<S>(
             &forced,
             HyphenateLimitLines::Count(1),
-            AvailableOf::definite(S::from_f64(30.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         );
         assert_eq!(
             observations(&batch, &forced),
@@ -363,7 +453,12 @@ fn real_forced_and_source_less_discretionary_endings_use_their_actual_roles() {
             let batch = compute::<S>(
                 &control,
                 HyphenateLimitLines::Count(1),
-                AvailableOf::definite(S::from_f64(30.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             );
             assert_eq!(
                 observations(&batch, &control),

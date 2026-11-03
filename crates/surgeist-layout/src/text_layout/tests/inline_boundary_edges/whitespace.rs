@@ -125,7 +125,25 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
                 false,
                 Some(width),
                 false,
-                AvailableOf::definite(S::from_f64(width)),
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             let lines = finalized_lines(&batch);
             let [line] = lines.as_slice() else {
@@ -186,7 +204,25 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
                 false,
                 Some(width),
                 false,
-                AvailableOf::definite(S::from_f64(width)),
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             let lines = finalized_lines(&batch);
             let [line] = lines.as_slice() else {
@@ -246,7 +282,25 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
             false,
             Some(100.0),
             false,
-            AvailableOf::definite(S::from_f64(100.0)),
+            crate::SizingRequestOf::new(
+                crate::Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    ),
+                ),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         let lines = finalized_lines(&batch);
         let [line] = lines.as_slice() else {
@@ -297,7 +351,25 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
             false,
             Some(100.0),
             false,
-            AvailableOf::definite(S::from_f64(100.0)),
+            crate::SizingRequestOf::new(
+                crate::Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    ),
+                ),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         let lines = finalized_lines(&batch);
         let [line] = lines.as_slice() else {

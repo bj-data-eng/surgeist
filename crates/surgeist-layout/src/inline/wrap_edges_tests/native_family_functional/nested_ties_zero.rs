@@ -104,7 +104,15 @@ fn nested_leaf<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert!(batch.placed_text().is_empty());
     // Maintained nested-empty recipe at gap0: outerStart3, innerStart3,
     // innerEnd5, outerEnd5. The real atomic follows sixteen pixels of BP.
@@ -176,8 +184,15 @@ fn refused<S: LayoutScalar>(
 ) {
     let error = match LayoutFlowInput::try_new(&f.tree, 0, vec![], wrapping, Vec::new()) {
         Err(error) => error,
-        Ok(flow) => compute_layout_with_flow(&flow, 0, request(n(100.0)))
-            .expect_err("invalid real attachment authority must not publish"),
+        Ok(flow) => compute_layout_with_flow(
+            &flow,
+            0,
+            request(n(100.0), {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .expect_err("invalid real attachment authority must not publish"),
     };
     assert!(
         matches!(error.kind(), crate::LayoutErrorKindOf::InvalidInput(
@@ -220,7 +235,15 @@ fn unrelated_ties<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let prior = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let prior = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Three genuine empty siblings at one physical gap. Explicit order B,A,C
     // differs from source A,B,C; each executes its literal3+5 components once.
     for (node, x, width) in [
@@ -315,7 +338,15 @@ fn zero_atomics<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert!(batch.placed_text().is_empty());
     for (node, x) in [(10, 0.0), (11, 10.0), (12, 23.0), (13, 33.0)] {
         assert_eq!(output(&batch, node).location, Point::new(n(x), S::ZERO));

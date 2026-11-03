@@ -1,9 +1,15 @@
 #[path = "surgeist-layout-generate/adapter.rs"]
 mod adapter;
+#[path = "../layout/browser_parity/atomic_paragraph_metrics.rs"]
+mod atomic_paragraph_metrics;
+#[path = "surgeist-layout-generate/browser_profile.rs"]
+mod browser_profile;
 #[path = "surgeist-layout-generate/cli.rs"]
 mod cli;
 #[path = "surgeist-layout-generate/envelope.rs"]
 mod envelope;
+#[path = "../layout/browser_parity/grid_alignment_reference.rs"]
+mod grid_alignment_reference;
 #[path = "surgeist-layout-generate/measurement.rs"]
 mod measurement;
 #[path = "../layout/browser_parity/pinned_font.rs"]
