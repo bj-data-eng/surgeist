@@ -74,7 +74,7 @@ fn select_records(
                 QualificationMode::Regular => {}
             }
         }
-        let named = declared_atomic_paragraphs(&declaration.records[0]);
+        let named = declared_named_font_counts(&declaration.records[0]);
         match mode {
             QualificationMode::StylesheetCustody if named.is_some() => {
                 return Err(
@@ -102,6 +102,21 @@ fn declared_atomic_paragraphs(record: &Record) -> Option<usize> {
         } if *count > 0 => Some(*count),
         _ => None,
     }
+}
+
+fn declared_named_font_counts(record: &Record) -> Option<(usize, usize)> {
+    let paragraphs = declared_atomic_paragraphs(record).unwrap_or(0);
+    let grids = match &record.expected {
+        ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    grid_reference_owners: Some(owners),
+                    ..
+                },
+        } => owners.len(),
+        _ => 0,
+    };
+    (paragraphs > 0 || grids > 0).then_some((paragraphs, grids))
 }
 
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
@@ -636,15 +651,17 @@ fn prepare_inventory(
     };
     let custody_installation = match mode {
         QualificationMode::StylesheetCustody => {
-            Some("installCustodyProbe('stylesheet', 0);".to_owned())
+            Some("installCustodyProbe('stylesheet', 0, 0);".to_owned())
         }
         QualificationMode::FontCustody => {
             let [record] = records else {
                 return Err("font custody requires one selected declaration".into());
             };
-            let count = declared_atomic_paragraphs(record)
+            let (paragraphs, grids) = declared_named_font_counts(record)
                 .ok_or("font custody requires a declared named-font source")?;
-            Some(format!("installCustodyProbe('font', {count});"))
+            Some(format!(
+                "installCustodyProbe('font', {paragraphs}, {grids});"
+            ))
         }
         QualificationMode::Regular | QualificationMode::NumericDiagnostics => None,
     };
@@ -1424,7 +1441,7 @@ mod numeric_diagnostic_tests {
     fn fixture_golden() -> crate::parity_support::Golden {
         crate::parity_support::Golden::parse(r#"<test name="numeric-transport" measurement-version="4" observation-frame="root-border" use-rounding="false">
 <viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
-<input><div display="block" position="relative" direction="ltr" width="20px" height="10px"><div display="block" width="10px" height="5px"/></div></input>
+<input><div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="block" position="relative" direction="ltr" width="20px" height="10px"><div display="block" width="10px" height="5px"/></div></input>
 <expectations><node x="0" y="0" width="20" height="10"><node x="0" y="0" width="10" height="5"/></node></expectations>
 <diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="20" height="10"/><world-rounded-layout node-path="0.0" x="0" y="0" width="10" height="5"/></diagnostics></test>"#).unwrap()
     }
@@ -1540,7 +1557,7 @@ mod custody_applicability_tests {
             .find(|record| {
                 record.relation.is_none()
                     && matches!(&record.expected, ExpectedDisposition::Generated { .. })
-                    && declared_atomic_paragraphs(record).is_some() == named
+                    && declared_named_font_counts(record).is_some() == named
             })
             .expect("actual declared Generated source for this custody profile")
             .source
@@ -1615,7 +1632,7 @@ mod custody_applicability_tests {
         );
         let mut selected = declaration();
         select_records(&mut selected, Some(&named), QualificationMode::FontCustody).unwrap();
-        assert!(declared_atomic_paragraphs(&selected.records[0]).unwrap() > 0);
+        assert!(declared_named_font_counts(&selected.records[0]).is_some());
         assert_eq!(selected.expected().unwrap().generated(), 4);
         assert_eq!(selected.expected().unwrap().unsupported(), 0);
         for mode in [

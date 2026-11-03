@@ -222,9 +222,9 @@ function qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width) {
 
 // Closed font-wide metric evidence for atomic-only paragraphs. This is not a
 // registered Text font, a Prepared paragraph or a provider-issued identity.
-const ATOMIC_METRIC_FONT_SHA256 = 'e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c';
-let atomicParagraphFontState;
-function atomicMetricFamily(value) { return value.replace(/^['"]|['"]$/g, '').toLowerCase(); }
+const REFERENCE_FONT_SHA256 = 'e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c';
+let namedReferenceFontState;
+function referenceFontFamily(value) { return value.replace(/^['"]|['"]$/g, '').toLowerCase(); }
 function isUnshiftedInlinePosition(style) {
   return ['static', 'relative'].includes(style.position) &&
     (style.position !== 'relative' || ['top', 'right', 'bottom', 'left'].every(edge =>
@@ -243,8 +243,8 @@ function atomicParagraphSource(element) {
       ![order[0], order[2]].every(({node}) => node.nodeType === Node.ELEMENT_NODE && isLoweredAtomicInline(node))) return undefined;
   return order;
 }
-function atomicMetricFace() {
-  const faces = Array.from(document.fonts).filter(face => atomicMetricFamily(face.family) === 'ahem');
+function referenceMetricFace() {
+  const faces = Array.from(document.fonts).filter(face => referenceFontFamily(face.family) === 'ahem');
   if (faces.length !== 1) throw new Error(faces.length ? 'CompetingFontResource' : 'MissingFontResource');
   const face = faces[0];
   if (face.style !== 'normal' || !['normal', '400'].includes(face.weight) ||
@@ -254,40 +254,81 @@ function atomicMetricFace() {
       face.lineGapOverride !== 'normal' || face.sizeAdjust !== '100%') throw new Error('UnsupportedFontResourceSettings');
   return face;
 }
-async function prepareAtomicParagraphMetricsFont() {
+function gridAlignmentSource(element) {
+  if (!hasLayoutReadyInlineFixture(element)) return undefined;
+  const own = getComputedStyle(element);
+  if (!['grid', 'inline-grid'].includes(own.display) ||
+      !['vertical-rl', 'vertical-lr'].includes(own.writingMode)) return undefined;
+  return own;
+}
+function hasClosedReferenceFont(own) {
+  return referenceFontFamily(own.fontFamily) === 'ahem' && own.fontSize === '10px' &&
+    own.fontStyle === 'normal' && own.fontWeight === '400' && ['normal', '100%'].includes(own.fontStretch) &&
+    own.fontFeatureSettings === 'normal' && own.fontVariationSettings === 'normal' &&
+    own.fontVariant === 'normal' && own.fontSizeAdjust === 'none';
+}
+function gridAlignmentReferenceForElement(element) {
+  const own = gridAlignmentSource(element);
+  if (!own) return undefined;
+  const fail = reason => { throw new Error('Grid alignment reference: ' + reason); };
+  if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml' || !['DIV', 'SPAN'].includes(element.tagName)) fail('UnsupportedGridSourceRole');
+  for (let node = element; node; node = node.parentElement) {
+    if (['dominant-baseline', 'alignment-baseline'].some(property => node.style.getPropertyValue(property))) fail('UnsupportedReferenceOverride');
+    if (node.id === 'test-root') break;
+  }
+  if (!['ltr', 'rtl'].includes(own.direction) || !['mixed', 'upright'].includes(own.textOrientation) ||
+      own.dominantBaseline !== 'auto' || !['auto', 'baseline'].includes(own.alignmentBaseline) ||
+      own.textCombineUpright !== 'none') fail('UnsupportedReferenceContext');
+  if (!hasClosedReferenceFont(own)) fail('UnsupportedFirstFontAuthority');
+  try { requireNamedReferenceFont(); } catch (error) { fail(error.message); }
+  return {profile:1, display:own.display, writingMode:own.writingMode, direction:own.direction,
+    textOrientation:own.textOrientation, dominantBaseline:own.dominantBaseline, alignmentBaseline:own.alignmentBaseline,
+    font:{sha256:REFERENCE_FONT_SHA256,family:'ahem',size:10,style:'normal',weight:400,stretch:'normal',loaded:true},reference:'central'};
+}
+function completeGridAlignmentProfile(root) {
+  const owners = [];
+  function visit(node, path) {
+    if (node.gridAlignmentReference) owners.push(path);
+    (node.children || []).forEach((child, index) => visit(child, path === '/' ? '/' + index : path + '/' + index));
+  }
+  visit(root, '/');
+  return {profile:1, owners};
+}
+
+async function prepareNamedReferenceFont() {
   const proof = rootContextCapture;
   if (!proof || proof.reason) return;
   const root = document.getElementById('test-root');
-  if (!root || ![root, ...root.querySelectorAll('*')].some(atomicParagraphSource)) return;
-  if (atomicParagraphFontState?.owner === proof.ownedStyle) {
+  if (!root || ![root, ...root.querySelectorAll('*')].some(element => atomicParagraphSource(element) || gridAlignmentSource(element))) return;
+  if (namedReferenceFontState?.owner === proof.ownedStyle) {
     // Preserve the original load outcome and face. Per-capture checks reject a
     // transient competitor/missing face; repeated setup cannot reload or repair it.
     return;
   }
   const state = { owner: proof.ownedStyle, face: undefined, loaded: false, error: undefined };
-  atomicParagraphFontState = state;
+  namedReferenceFontState = state;
   try {
-    state.face = atomicMetricFace();
+    state.face = referenceMetricFace();
     let loaded;
     try { loaded = await state.face.load(); } catch (_) { throw new Error('FontLoadFailed'); }
     if (loaded !== state.face) throw new Error('ForeignLoadedFontResource');
     await document.fonts.ready;
-    if (state.face.status !== 'loaded' || atomicMetricFace() !== state.face) throw new Error('FontResourceChanged');
+    if (state.face.status !== 'loaded' || referenceMetricFace() !== state.face) throw new Error('FontResourceChanged');
     state.loaded = true;
   } catch (error) { state.error = error.message || 'FontLoadFailed'; }
 }
-function requireAtomicParagraphFont() {
-  const state = atomicParagraphFontState;
+function requireNamedReferenceFont() {
+  const state = namedReferenceFontState;
   if (!state || state.owner !== rootContextCapture?.ownedStyle) throw new Error('MissingLoadedFontAuthority');
   if (state.error) throw new Error(state.error);
   if (!state.loaded || state.face.status !== 'loaded') throw new Error('FontNotLoaded');
-  if (atomicMetricFace() !== state.face) throw new Error('FontResourceChanged');
+  if (referenceMetricFace() !== state.face) throw new Error('FontResourceChanged');
 }
 function atomicParagraphMetricsForElement(element, children) {
   const order = atomicParagraphSource(element);
   if (!order) return undefined;
   const fail = reason => { throw new Error('Atomic paragraph metrics: ' + reason); };
-  try { requireAtomicParagraphFont(); } catch (error) { fail(error.message); }
+  try { requireNamedReferenceFont(); } catch (error) { fail(error.message); }
   const style = getComputedStyle(element);
   for (let node = element; node; node = node.parentElement) {
     if (['line-fit-edge', 'text-box-trim', 'text-box-edge', 'text-fit', 'dominant-baseline', 'alignment-baseline'].some(property => node.style.getPropertyValue(property)) ||
@@ -301,11 +342,7 @@ function atomicParagraphMetricsForElement(element, children) {
       style.verticalAlign !== 'baseline' ||
       style.textCombineUpright !== 'none' || !['normal', 'isolate'].includes(style.unicodeBidi) ||
       style.whiteSpace !== 'normal' || style.textEmphasisStyle !== 'none') fail('UnsupportedReferenceContext');
-  const matchingFont = own => atomicMetricFamily(own.fontFamily) === 'ahem' &&
-    own.fontSize === '10px' && parseCssPx(own.lineHeight) === 0 && own.fontStyle === 'normal' &&
-    own.fontWeight === '400' && ['normal', '100%'].includes(own.fontStretch) &&
-    own.fontFeatureSettings === 'normal' && own.fontVariationSettings === 'normal' &&
-    own.fontVariant === 'normal' && own.fontSizeAdjust === 'none';
+  const matchingFont = own => hasClosedReferenceFont(own) && parseCssPx(own.lineHeight) === 0;
   if (!matchingFont(style) || children.length !== 3) fail('UnsupportedFirstFontMetrics');
   const level = style.direction === 'rtl' ? 1 : 0;
   for (const [index, row] of order.entries()) {
@@ -327,7 +364,7 @@ function atomicParagraphMetricsForElement(element, children) {
   }
   // Actual WOFF2 Ahem1.1: UPEM1000, hhea/OS2 800/-200, no BASE/vhea/MVAR.
   // Used Central at10px is5/5; H0 half-leading is-5/-5. No glyph or rectangle.
-  return { profile: 1, font: { sha256: ATOMIC_METRIC_FONT_SHA256, family: 'ahem', size: 10,
+  return { profile: 1, font: { sha256: REFERENCE_FONT_SHA256, family: 'ahem', size: 10,
       style: 'normal', weight: 400, stretch: 'normal', loaded: true },
     writingMode: style.writingMode, direction: style.direction, textOrientation: style.textOrientation,
     dominantBaseline: 'auto', alignmentBaseline: style.alignmentBaseline, verticalAlign: style.verticalAlign,
@@ -1528,9 +1565,10 @@ function describeElement(e, expectedElement = null) {
   const lineControlParticipation = layoutReadyLineControlParticipation(e, computedStyle);
   const hasTypedInlineText = children.some((child) => ['inline-text', 'prepared-text'].includes(child.layoutInput));
 
-  return {
+  const described = {
     layoutInput: 'box',
     preparedParagraph: preparedCapture?.paragraph,
+    gridAlignmentReference: gridAlignmentReferenceForElement(e),
     atomicParagraphMetrics: !preparedCapture ? atomicParagraphMetricsForElement(e, children) : undefined,
     tagName: e.tagName.toLowerCase(),
     layoutReadyInlineRoot: layoutReadyInlineRoot || undefined,
@@ -1682,6 +1720,8 @@ function describeElement(e, expectedElement = null) {
 
     children,
   };
+  if (e.id === 'test-root') described.gridAlignmentProfile = completeGridAlignmentProfile(described);
+  return described;
 }
 
 window.__surgeistGridTemplateAreaCaptureInstalled = true;

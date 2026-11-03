@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 fn decode_style(style: Value, unsupported: bool) -> Result<DecodedMeasurement, MeasurementError> {
     let mut node = json!({
-        "layoutInput": "box", "useRounding": false,
+        "layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         // Authored codec context, independent of this test's zero observation.
         "viewport": {"rootContext": {
             "kind": "block-flow-auto", "parentInlineExtent": 800, "parentDirection": "ltr",

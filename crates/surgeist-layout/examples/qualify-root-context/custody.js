@@ -1,17 +1,18 @@
 // Invocation-only qualification of actual stylesheet or loaded-font custody.
 // Installation never changes original fixture/helper resources or invents results.
-function installCustodyProbe(mode, expectedParagraphs) {
+function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
   const configure = configureRootContextCapture;
   const measure = getTestData;
-  const prepareFont = prepareAtomicParagraphMetricsFont;
+  const prepareFont = prepareNamedReferenceFont;
   let configuredArguments;
   const label = mode === 'font' ? 'Font custody qualification: ' : 'Stylesheet custody qualification: ';
   function require(condition, message) {
     if (!condition) throw new Error(label + message);
   }
   require(mode === 'font' || mode === 'stylesheet', 'closed custody mode');
-  require(Number.isSafeInteger(expectedParagraphs) &&
-    (mode === 'font' ? expectedParagraphs > 0 : expectedParagraphs === 0), 'declared custody applicability');
+  require(Number.isSafeInteger(expectedParagraphs) && expectedParagraphs >= 0 &&
+    Number.isSafeInteger(expectedGrids) && expectedGrids >= 0 &&
+    (mode === 'font' ? expectedParagraphs > 0 || expectedGrids > 0 : expectedParagraphs === 0 && expectedGrids === 0), 'declared custody applicability');
   configureRootContextCapture = function (...args) {
     configuredArguments = args.slice();
     return configure.apply(this, args);
@@ -35,14 +36,18 @@ function installCustodyProbe(mode, expectedParagraphs) {
       require(value[key]?.layoutInput === 'box', key + ': genuine supported root; got ' +
         (value[key]?.unsupportedReason ?? value[key]?.layoutInput ?? 'missing'));
       require(value[key].viewport?.rootContext, key + ': actual root context');
-      const paragraphs = [];
+      require(value[key].gridAlignmentProfile?.profile === 1 &&
+        value[key].gridAlignmentProfile.owners?.length === expectedGrids, key + ': complete source-owned Grid reference profile');
+      const paragraphs = [], grids = [];
       function collect(node) {
         if (node.atomicParagraphMetrics) paragraphs.push(node.atomicParagraphMetrics);
+        if (node.gridAlignmentReference) grids.push(node.gridAlignmentReference);
         for (const child of node.children || []) collect(child);
       }
       collect(value[key]);
       require(paragraphs.length === expectedParagraphs,
         key + ': declared named paragraph certificates; expected ' + expectedParagraphs + ', got ' + paragraphs.length);
+      require(grids.length === expectedGrids, key + ': declared own Grid references; expected ' + expectedGrids + ', got ' + grids.length);
     }
   }
   function refused(reason) {
@@ -159,17 +164,25 @@ function installCustodyProbe(mode, expectedParagraphs) {
 
   require(typeof prepareFont === 'function', 'actual font-preparation owner');
   let completed;
-  prepareAtomicParagraphMetricsFont = async function (...args) {
+  prepareNamedReferenceFont = async function (...args) {
     completed = undefined;
     await prepareFont.apply(this, args);
     const ctx = context();
-    const state = atomicParagraphFontState;
+    const state = namedReferenceFontState;
+    let firstReference;
+    function firstDemand(node) {
+      for (const child of node.children || []) firstDemand(child);
+      if (!firstReference && node.atomicParagraphMetrics) firstReference = 'Atomic paragraph metrics: ';
+      if (!firstReference && node.gridAlignmentReference) firstReference = 'Grid alignment reference: ';
+    }
+    firstDemand(envelope(ctx.pristine)[keys[0]]);
+    require(firstReference, 'actual source-owned named reference demand');
     const face = state?.face;
     require(state?.owner === ctx.owner && state.loaded && !state.error &&
       face?.status === 'loaded' && document.fonts.has(face), 'actual retained CSS face is loaded');
     function sameFace() {
       sameOwner(ctx);
-      require(atomicParagraphFontState === state && state.face === face && state.loaded && !state.error &&
+      require(namedReferenceFontState === state && state.face === face && state.loaded && !state.error &&
         face.status === 'loaded' && document.fonts.has(face), 'same original loaded face/state without repair');
     }
     async function repeatFont() {
@@ -206,9 +219,9 @@ function installCustodyProbe(mode, expectedParagraphs) {
       document.fonts.add(competitor);
       try {
         require(document.fonts.has(competitor) && document.fonts.has(face), 'both real faces are present');
-        refused('Atomic paragraph metrics: CompetingFontResource');
+        refused(firstReference + 'CompetingFontResource');
         await repeatFont();
-        refused('Atomic paragraph metrics: CompetingFontResource');
+        refused(firstReference + 'CompetingFontResource');
       } finally {
         require(document.fonts.delete(competitor), 'remove only invocation-owned competing face');
       }
@@ -229,7 +242,7 @@ function installCustodyProbe(mode, expectedParagraphs) {
     require(completed, 'real font custody setup completed before measurement');
     const { ctx, state, face } = completed;
     sameOwner(ctx);
-    require(atomicParagraphFontState === state && state.face === face && state.loaded && !state.error &&
+    require(namedReferenceFontState === state && state.face === face && state.loaded && !state.error &&
       face.status === 'loaded' && document.fonts.has(face), 'measurement retains original loaded identity');
     // Return a fresh real capture after cleanup, never the earlier snapshot.
     return actualPristine(ctx);

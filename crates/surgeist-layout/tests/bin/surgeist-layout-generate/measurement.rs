@@ -11,7 +11,7 @@ use root_context::WireViewport;
 
 use serde::Deserialize;
 
-use crate::atomic_paragraph_metrics;
+use crate::{atomic_paragraph_metrics, grid_alignment_reference};
 
 use std::fmt;
 #[cfg(test)]
@@ -167,6 +167,10 @@ struct WireNode {
     prepared_paragraph: Option<prepared_text::Paragraph>,
     #[serde(default, deserialize_with = "present")]
     atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
+    #[serde(default, deserialize_with = "present")]
+    grid_alignment_profile: Option<grid_alignment_reference::Profile>,
+    #[serde(default, deserialize_with = "present")]
+    grid_alignment_reference: Option<grid_alignment_reference::Capture>,
     #[serde(default, deserialize_with = "present")]
     prepared_occurrence: Option<usize>,
     #[serde(default, deserialize_with = "present")]
@@ -467,6 +471,7 @@ pub(super) fn decode(
             )
         })?
         .validate(&context)?;
+    wire.validate_grid_alignment_profile(&context)?;
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
     if root_local_positioned {
         let Observation::Geometry {
@@ -545,7 +550,82 @@ impl WireNode {
                 .find_map(Self::unsupported_reason)
         })
     }
+    fn validate_grid_alignment_profile(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        fn visit(
+            node: &WireNode,
+            path: String,
+            in_region: bool,
+            demanded: &mut Vec<String>,
+            context: &Context<'_>,
+        ) -> Result<(), MeasurementError> {
+            context.compatible(
+                path == "/" || node.grid_alignment_profile.is_none(),
+                "gridAlignmentProfile",
+                "Grid reference profile belongs only to the source root",
+            )?;
+            let in_region = in_region || node.layout_ready_inline_root == Some(true);
+            // This predicate demands complete own typography proof; it does not
+            // derive a baseline name. Raw Style owns its normalized own mode.
+            let needs_reference = in_region
+                && node.layout_input == LayoutInput::Box
+                && node.style.as_ref().is_some_and(|style| {
+                    matches!(style.display.as_deref(), Some("grid" | "inline-grid"))
+                        && matches!(style.writing_mode(), "vertical-lr" | "vertical-rl")
+                });
+            context.compatible(
+                node.grid_alignment_reference.is_some() == needs_reference,
+                "gridAlignmentReference",
+                "Grid record coverage disagrees with actual layout-ready region, own box role or writing mode",
+            )?;
+            if needs_reference {
+                demanded.push(path.clone());
+            }
+            for (index, child) in node.children.iter().flatten().enumerate() {
+                let next = if path == "/" {
+                    format!("/{index}")
+                } else {
+                    format!("{path}/{index}")
+                };
+                visit(child, next, in_region, demanded, &context.child(index))?;
+            }
+            Ok(())
+        }
+        let profile =
+            context.required(self.grid_alignment_profile.as_ref(), "gridAlignmentProfile")?;
+        let mut demanded = Vec::new();
+        visit(self, "/".into(), false, &mut demanded, context)?;
+        profile.validate(&demanded).map_err(|detail| {
+            context.error(
+                "gridAlignmentProfile",
+                MeasurementErrorKind::InvalidValue,
+                detail,
+            )
+        })
+    }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        if let Some(capture) = &self.grid_alignment_reference {
+            capture.validate().map_err(|detail| {
+                context.error(
+                    "gridAlignmentReference",
+                    MeasurementErrorKind::InvalidValue,
+                    detail,
+                )
+            })?;
+            let style = context.required(self.style.as_ref(), "style")?;
+            context.compatible(
+                self.layout_input == LayoutInput::Box
+                    && matches!(self.tag_name.as_deref(), Some("div" | "span"))
+                    && style.display.as_deref() == Some(capture.display.as_str())
+                    && style.writing_mode.as_deref() == Some(capture.writing_mode.as_str())
+                    && style.direction.as_deref() == Some(capture.direction.as_str())
+                    && style.has_reference_font(),
+                "gridAlignmentReference",
+                "Grid reference disagrees with its actual own role/frame/font",
+            )?;
+        }
         if let Some(capture) = &self.atomic_paragraph_metrics {
             if let Err(detail) = capture.validate() {
                 return Err(context.error(
@@ -686,6 +766,8 @@ impl WireNode {
                     && self.naively_rounded_layout.is_none()
                     && self.prepared_paragraph.is_none()
                     && self.atomic_paragraph_metrics.is_none()
+                    && self.grid_alignment_profile.is_none()
+                    && self.grid_alignment_reference.is_none()
                     && self.prepared_occurrence.is_none()
                     && self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
@@ -829,6 +911,26 @@ impl WireNode {
         is_root: bool,
     ) -> Result<Node, MeasurementError> {
         let mut attrs = Vec::new();
+        if let Some(profile) = &self.grid_alignment_profile {
+            let encoded = serde_json::to_string(profile).map_err(|_| {
+                context.error(
+                    "gridAlignmentProfile",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode complete Grid owner profile",
+                )
+            })?;
+            attrs.push(("grid-alignment-profile", encoded));
+        }
+        if let Some(capture) = &self.grid_alignment_reference {
+            let encoded = serde_json::to_string(capture).map_err(|_| {
+                context.error(
+                    "gridAlignmentReference",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode own Grid reference",
+                )
+            })?;
+            attrs.push(("grid-alignment-reference", encoded));
+        }
         if let Some(capture) = &self.atomic_paragraph_metrics {
             let encoded = serde_json::to_string(capture).map_err(|_| {
                 context.error(
@@ -1328,6 +1430,12 @@ impl WireNode {
             viewport.validate(context)?;
         }
         prepare_control_expectations(&writing_mode, &mut children, context)?;
+        if let Some(capture) = &self.grid_alignment_reference {
+            attrs.extend([
+                ("font-family", capture.font.family.clone()),
+                ("font-size", format!("{}px", number(capture.font.size))),
+            ]);
+        }
         if let Some(capture) = &self.atomic_paragraph_metrics {
             // validate_wire bound these exact font facts to the paragraph and
             // all three actual occurrences. Default compression must not erase

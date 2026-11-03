@@ -9,6 +9,8 @@ mod atomic_paragraph_metrics;
 mod browser_profile;
 #[path = "../tests/bin/surgeist-layout-generate/envelope.rs"]
 mod envelope;
+#[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
+mod grid_alignment_reference;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
 mod measurement;
 #[path = "../tests/layout/browser_parity/support.rs"]

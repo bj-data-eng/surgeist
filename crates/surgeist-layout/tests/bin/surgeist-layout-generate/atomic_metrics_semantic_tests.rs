@@ -17,7 +17,7 @@ fn node() -> Value {
     let mut parent_style = style;
     parent_style["display"] = json!("block");
     parent_style["position"] = json!("relative");
-    json!({"layoutInput":"box","tagName":"div","style":parent_style,"atomicParagraphMetrics":certificate(),"useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"children":[first.clone(),br,first],"worldRoundedLayout":{"x":0,"y":0,"width":40,"height":20},"unroundedLayout":{"x":0,"y":0,"width":40,"height":20}})
+    json!({"layoutInput":"box","tagName":"div","style":parent_style,"atomicParagraphMetrics":certificate(),"gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"children":[first.clone(),br,first],"worldRoundedLayout":{"x":0,"y":0,"width":40,"height":20},"unroundedLayout":{"x":0,"y":0,"width":40,"height":20}})
 }
 #[test]
 fn named_atomic_metric_decoder_and_real_reader_keep_explicit_certificate() {
@@ -197,8 +197,8 @@ const document={fonts:faces,styleSheets:[],getElementById(){return root;}};
 "#, TEST_HELPER_SOURCE, r#"
 (async()=>{
   rootContextCapture={ownedStyle:{}};
-  await prepareAtomicParagraphMetricsFont(); requireAtomicParagraphFont();
-  if(atomicParagraphFontState.face!==face || face.status!=='loaded')throw new Error('actual CSS face was not retained');
+  await prepareNamedReferenceFont(); requireNamedReferenceFont();
+  if(namedReferenceFontState.face!==face || face.status!=='loaded')throw new Error('actual CSS face was not retained');
   function described(){return [{atomicInlineParticipation:{bidiLevel:direction==='rtl'?1:0,followingBreak:'prohibited'}},{lineControlParticipation:{kind:'forced-break'},style:{inlineMetrics:{baseline:0,lineHeight:0}}},{atomicInlineParticipation:{bidiLevel:direction==='rtl'?1:0,followingBreak:'prohibited'}}];}
   for(const rawDefault of ['auto','baseline']){own.alignmentBaseline=rawDefault;for(direction of ['ltr','rtl']){const metrics=atomicParagraphMetricsForElement(root,described());if(metrics.alignmentBaseline!==rawDefault||metrics.verticalAlign!=='baseline'||metrics.font.sha256!=='e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c'||metrics.before!==0||metrics.after!==0||metrics.order[2].source!==2||metrics.order[0].bidiLevel!==(direction==='rtl'?1:0))throw new Error('source/reference tuple changed');}}
   function fails(action,expected){let message;try{action();}catch(error){message=error.message;}if(!message?.includes(expected))throw new Error('missing precise refusal '+expected+': '+message);}
@@ -209,13 +209,13 @@ const document={fonts:faces,styleSheets:[],getElementById(){return root;}};
   atomicParagraphMetricsForElement(root,described());
   own.left='1px';own.right='-1px';fails(()=>atomicParagraphMetricsForElement(root,described()),'UnsupportedOccurrence');
   for(const edge of ['top','right','bottom','left'])own[edge]='auto';
-  faces.push(cssFace());fails(requireAtomicParagraphFont,'CompetingFontResource');faces.pop();
-  faces[0]=cssFace();faces[0].status='loaded';fails(requireAtomicParagraphFont,'FontResourceChanged');
-  await prepareAtomicParagraphMetricsFont();fails(requireAtomicParagraphFont,'FontResourceChanged');
-  faces[0]=face;requireAtomicParagraphFont();if(atomicParagraphFontState.face!==face)throw new Error('pristine restore lost original face');
+  faces.push(cssFace());fails(requireNamedReferenceFont,'CompetingFontResource');faces.pop();
+  faces[0]=cssFace();faces[0].status='loaded';fails(requireNamedReferenceFont,'FontResourceChanged');
+  await prepareNamedReferenceFont();fails(requireNamedReferenceFont,'FontResourceChanged');
+  faces[0]=face;requireNamedReferenceFont();if(namedReferenceFontState.face!==face)throw new Error('pristine restore lost original face');
   mode='horizontal-tb'; if(atomicParagraphMetricsForElement(root,described())!==undefined)throw new Error('raw Physical context was promoted');
   mode='vertical-rl'; root.closest=()=>({}); if(atomicParagraphMetricsForElement(root,described())!==undefined)throw new Error('Prepared context was promoted'); root.closest=()=>null;
-  rootContextCapture={ownedStyle:{}};faces.length=0;await prepareAtomicParagraphMetricsFont();fails(requireAtomicParagraphFont,'MissingFontResource');
+  rootContextCapture={ownedStyle:{}};faces.length=0;await prepareNamedReferenceFont();fails(requireNamedReferenceFont,'MissingFontResource');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 "#].concat();
     run_bundled_helper_script("named-atomic-font-custody", script);

@@ -372,7 +372,7 @@ fn helper_setup_expression(
     ]))
     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof prepareAtomicParagraphMetricsFont === 'function') {{ await prepareAtomicParagraphMetricsFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
@@ -412,7 +412,7 @@ mod tests {
             "clientWidth": 10, "clientHeight": 20,
         });
         serde_json::json!({
-            "layoutInput": "box", "tagName": "div", "useRounding": true,
+            "layoutInput": "box", "tagName": "div", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": "block", "boxSizing": "border-box", "writingMode": "horizontal-tb", "direction": "ltr"},
             "unroundedLayout": geometry.clone(),

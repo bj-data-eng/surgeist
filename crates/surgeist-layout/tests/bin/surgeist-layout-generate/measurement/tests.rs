@@ -6,7 +6,7 @@ use super::*;
 use serde_json::json;
 
 fn box_fixture() -> serde_json::Value {
-    json!({"layoutInput":"box","tagName":"div","useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"worldRoundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]})
+    json!({"layoutInput":"box","tagName":"div","gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"worldRoundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]})
 }
 fn decode_fixture(value: &serde_json::Value) -> Result<DecodedMeasurement, MeasurementError> {
     decode(&value.to_string(), "fixture/case", "border-box-ltr")

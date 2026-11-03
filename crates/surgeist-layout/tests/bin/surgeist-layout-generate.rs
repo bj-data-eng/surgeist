@@ -8,6 +8,8 @@ mod browser_profile;
 mod cli;
 #[path = "surgeist-layout-generate/envelope.rs"]
 mod envelope;
+#[path = "../layout/browser_parity/grid_alignment_reference.rs"]
+mod grid_alignment_reference;
 #[path = "surgeist-layout-generate/measurement.rs"]
 mod measurement;
 #[path = "../layout/browser_parity/pinned_font.rs"]

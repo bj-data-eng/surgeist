@@ -1727,11 +1727,13 @@ pub(super) fn test_position(raw: &str) -> Result<Option<String>, MeasurementErro
 mod tests;
 
 impl Style {
-    pub(super) fn has_atomic_metric_font(&self) -> bool {
-        let px = |value: &Option<Dimension>, expected| matches!(value, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(actual)) }) if *actual == expected);
+    pub(super) fn has_reference_font(&self) -> bool {
         self.font_family.as_deref() == Some("ahem")
-            && px(&self.font_size, 10.0)
-            && px(&self.line_height, 0.0)
+            && matches!(&self.font_size, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(size)) }) if *size == 10.0)
+    }
+    pub(super) fn has_atomic_metric_font(&self) -> bool {
+        self.has_reference_font()
+            && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 0.0)
     }
     pub(super) fn has_zero_inline_metrics(&self) -> bool {
         self.inline_metrics

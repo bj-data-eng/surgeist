@@ -5,7 +5,7 @@ use crate::pinned_font;
 use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
-use crate::atomic_paragraph_metrics;
+use crate::{atomic_paragraph_metrics, grid_alignment_reference};
 #[cfg(test)]
 use surgeist_layout::GridSpan;
 use surgeist_layout::{ComputeInput, ComputeOutput, LayoutTree as _};
@@ -101,6 +101,17 @@ impl Golden {
         }
         let name = required_attr(test, "name")?.to_string();
         let root = parse_node(one_element_child(input)?)?;
+        validate_grid_alignment_profile(&root, false)?;
+        if test.descendants().any(|node| {
+            ["grid-alignment-profile", "grid-alignment-reference"]
+                .iter()
+                .any(|name| node.attribute(*name).is_some())
+        }) && test.attribute("measurement-version") != Some("4")
+        {
+            return Err(Error::new(
+                "Grid reference capture requires measurement-version=4",
+            ));
+        }
         validate_fri06_c08r_explicit_input(&root, true)?;
         let expectations = parse_expectation(one_element_child(expectations)?)?;
         let world_rounding_diagnostics =
@@ -234,6 +245,7 @@ fn compare_captured_expectations(
     numeric: &mut NumericComparisonSink,
 ) -> Result<ComparisonResult, Error> {
     let request = root_request(&golden.viewport.root_context)?;
+    validate_grid_alignment_profile(&golden.root, true)?;
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
     validate_capture_analytic_profile(&tree, &golden.viewport.root_context)?;
     let batch = compute_actual_batch(&tree, &golden.name, request)?;
@@ -424,6 +436,7 @@ pub struct Node {
     anonymous_grid_text_wrapper: bool,
     layout_ready_inline_root: bool,
     atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
+    grid_alignment_reference: Option<grid_alignment_reference::Capture>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -702,6 +715,14 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
+    let source_box = xml.has_tag_name("div") || xml.has_tag_name("text");
+    if (xml.attribute("grid-alignment-reference").is_some() && !xml.has_tag_name("div"))
+        || (xml.attribute("grid-alignment-profile").is_some() && !source_box)
+    {
+        return Err(Error::new(
+            "Grid reference authority requires an actual HTML box",
+        ));
+    }
     if xml.has_tag_name("inline-boundary") {
         return parse_inline_boundary_node(xml);
     }
@@ -741,6 +762,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
                 anonymous_grid_text_wrapper: false,
                 layout_ready_inline_root: false,
                 atomic_paragraph_metrics: None,
+                grid_alignment_reference: None,
             });
         }
         if kind != NodeKind::Text || layout_input != "inline-text" {
@@ -897,6 +919,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
     {
         return Err(Error::new("prepared leaf has no containing source capture"));
     }
+    let grid_alignment_reference = parse_grid_alignment_reference(&style)?;
     let atomic_paragraph_metrics = parse_atomic_paragraph_metrics(&style, &mut children)?;
     if atomic_paragraph_metrics.is_some() && prepared.is_some() {
         return Err(Error::new(
@@ -920,7 +943,92 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         anonymous_grid_text_wrapper,
         layout_ready_inline_root,
         atomic_paragraph_metrics,
+        grid_alignment_reference,
     })
+}
+
+fn parse_grid_alignment_reference(
+    style: &StyleAttrs,
+) -> Result<Option<grid_alignment_reference::Capture>, Error> {
+    let Some(raw) = style.get("grid-alignment-reference") else {
+        return Ok(None);
+    };
+    let capture: grid_alignment_reference::Capture = serde_json::from_str(raw)
+        .map_err(|error| Error::new(format!("invalid own Grid reference: {error}")))?;
+    capture.validate().map_err(Error::new)?;
+    if !matches!(style.get("source-tag"), Some("div" | "span"))
+        || style.get("display") != Some(capture.display.as_str())
+        || style.get("writing-mode") != Some(capture.writing_mode.as_str())
+        || style.get("direction") != Some(capture.direction.as_str())
+        || style.get("font-family") != Some(capture.font.family.as_str())
+        || font_size(style)? != Some(10.0)
+    {
+        return Err(Error::new(
+            "Grid reference disagrees with actual own box/frame/font",
+        ));
+    }
+    Ok(Some(capture))
+}
+
+fn validate_grid_alignment_profile(root: &Node, required: bool) -> Result<(), Error> {
+    fn visit(
+        node: &Node,
+        path: String,
+        in_region: bool,
+        qualified: bool,
+        demanded: &mut Vec<String>,
+    ) -> Result<(), Error> {
+        if path != "/" && node.style.get("grid-alignment-profile").is_some() {
+            return Err(Error::new("Grid profile belongs only to source root"));
+        }
+        let in_region = in_region || node.layout_ready_inline_root;
+        if qualified {
+            // The writer keeps vertical modes and horizontal resets explicitly.
+            // Its absent normalized mode is Htb, not inherited parent mode.
+            // Both private div/text roles lower to Box input. A role change
+            // cannot erase demand; Grid records themselves still require div.
+            let needs_reference = in_region
+                && matches!(node.kind, NodeKind::Div | NodeKind::Text)
+                && matches!(node.style.get("display"), Some("grid" | "inline-grid"))
+                && matches!(
+                    parse_writing_mode(node.style.get("writing-mode"))?,
+                    layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl
+                );
+            if node.grid_alignment_reference.is_some() != needs_reference {
+                return Err(Error::new(format!(
+                    "Grid record coverage disagrees with independently derived source demand at {path}"
+                )));
+            }
+            if needs_reference {
+                demanded.push(path.clone());
+            }
+        } else if node.grid_alignment_reference.is_some() {
+            return Err(Error::new("MissingGridAlignmentProfileAuthority"));
+        }
+        for (index, child) in node.children.iter().enumerate() {
+            let next = if path == "/" {
+                format!("/{index}")
+            } else {
+                format!("{path}/{index}")
+            };
+            visit(child, next, in_region, qualified, demanded)?;
+        }
+        Ok(())
+    }
+    let raw = root.style.get("grid-alignment-profile");
+    let mut demanded = Vec::new();
+    visit(root, "/".into(), false, raw.is_some(), &mut demanded)?;
+    let Some(raw) = raw else {
+        // Only the distinct authored-Native entry may have no profile/records.
+        // Region markers do not turn that raw input into named authority.
+        if required {
+            return Err(Error::new("MissingGridAlignmentProfileAuthority"));
+        }
+        return Ok(());
+    };
+    let profile: grid_alignment_reference::Profile = serde_json::from_str(raw)
+        .map_err(|error| Error::new(format!("invalid Grid profile: {error}")))?;
+    profile.validate(&demanded).map_err(Error::new)
 }
 
 fn parse_atomic_paragraph_metrics(
@@ -1070,6 +1178,7 @@ fn parse_inline_boundary_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Erro
         anonymous_grid_text_wrapper: false,
         layout_ready_inline_root: false,
         atomic_paragraph_metrics: None,
+        grid_alignment_reference: None,
     })
 }
 
@@ -1294,6 +1403,7 @@ fn parse_inline_text_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         anonymous_grid_text_wrapper: false,
         layout_ready_inline_root: false,
         atomic_paragraph_metrics: None,
+        grid_alignment_reference: None,
     })
 }
 
@@ -2424,6 +2534,22 @@ impl TestTree {
                 }
             }
         };
+        if let Some(capture) = &node.grid_alignment_reference {
+            let mut input = layout_input
+                .as_box()
+                .ok_or_else(|| Error::new("own Grid reference requires an actual Grid box"))?
+                .clone();
+            let reference = match capture.reference {
+                grid_alignment_reference::Reference::Central => {
+                    layout::GridBaselineReference::Named(layout::BaselineName::Central)
+                }
+            };
+            input.grid_baseline_references = layout::GridBaselineReferences {
+                columns: reference,
+                rows: reference,
+            };
+            layout_input = layout::LayoutInput::box_input(input);
+        }
         if node.atomic_paragraph_metrics.is_some() {
             let mut input = layout_input
                 .as_box()
@@ -12692,7 +12818,7 @@ mod source_root_frame_tests {
     fn rtl_body_root_placement_and_root_border_observation_are_independent() {
         // Authored Native context/geometry, not a browser-capture claim.
         // Parent RTL owns the root origin; the root's own LTR flow owns children.
-        let golden = Golden::parse(r#"<test name="rtl-body-frame" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input><expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations><diagnostics><world-rounded-layout node-path="0" x="700" y="0" width="100" height="20"/><world-rounded-layout node-path="0.0" x="0" y="0" width="20" height="10"/></diagnostics></test>"#).unwrap();
+        let golden = Golden::parse(r#"<test name="rtl-body-frame" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input><expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations><diagnostics><world-rounded-layout node-path="0" x="700" y="0" width="100" height="20"/><world-rounded-layout node-path="0.0" x="0" y="0" width="20" height="10"/></diagnostics></test>"#).unwrap();
         let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let request = root_request(&golden.viewport.root_context).unwrap();
         let batch = layout::compute_layout(&tree, 0, request).unwrap();
@@ -12791,7 +12917,7 @@ mod source_root_frame_tests {
 
     #[test]
     fn only_qualified_static_auto_root_lowers_to_the_native_in_flow_role() {
-        let xml = r#"<test name="authored-static" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="grid" position="static" width="100px" height="20px"/></input><expectations><node/></expectations><diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="100" height="20"/></diagnostics></test>"#;
+        let xml = r#"<test name="authored-static" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="grid" position="static" width="100px" height="20px"/></input><expectations><node/></expectations><diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="100" height="20"/></diagnostics></test>"#;
         let golden = Golden::parse(xml).unwrap();
         let tree =
             TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context)).unwrap();

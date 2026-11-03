@@ -232,6 +232,9 @@ mod error;
 mod flex;
 mod geometry;
 mod grid;
+#[cfg(test)]
+#[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
+mod grid_alignment_reference;
 mod group_alignment;
 mod hyphenation;
 mod inline;

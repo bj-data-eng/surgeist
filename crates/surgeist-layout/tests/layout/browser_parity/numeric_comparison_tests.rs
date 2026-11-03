@@ -5,7 +5,7 @@ fn fixture_xml() -> String {
     format!(
         r#"<test name="numeric-comparison" measurement-version="4" observation-frame="root-border" use-rounding="false">
 <viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
-<input><div display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input>
+<input><div grid-alignment-profile="{{&quot;profile&quot;:1,&quot;owners&quot;:[]}}" display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input>
 <expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations>
 {DIAGNOSTICS}</test>"#
     )
@@ -19,11 +19,25 @@ fn fixture() -> Golden {
 
 fn legacy_fixture() -> Golden {
     let raw = fixture_xml()
-        .replace(" measurement-version=\"4\"", "")
+        .replace(" measurement-version=\"4\"", " measurement-version=\"2\"")
+        .replace(
+            r#" grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}""#,
+            "",
+        )
         .replace(" observation-frame=\"root-border\"", "")
         .replace(DIAGNOSTICS, "");
+    let document = roxmltree::Document::parse(&raw).unwrap();
+    assert_eq!(
+        document.root_element().attribute("measurement-version"),
+        Some("2")
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.attribute("grid-alignment-profile").is_some())
+    );
     Golden::parse(&raw)
-        .expect("historical source/expectations parse without issuing root authority")
+        .expect("historical V2 source/expectations parse without issuing root authority")
 }
 
 #[test]

@@ -14,6 +14,21 @@ pub struct Font {
     pub stretch: String,
     pub loaded: bool,
 }
+impl Font {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.sha256 != FONT_SHA256
+            || self.family != "ahem"
+            || self.size != 10.0
+            || self.style != "normal"
+            || self.weight != 400
+            || self.stretch != "normal"
+            || !self.loaded
+        {
+            return Err("unsupported or missing actual font resource/style authority");
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Reference {
@@ -72,17 +87,10 @@ pub struct Capture {
 }
 impl Capture {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.profile != 1
-            || self.font.sha256 != FONT_SHA256
-            || self.font.family != "ahem"
-            || self.font.size != 10.0
-            || self.font.style != "normal"
-            || self.font.weight != 400
-            || self.font.stretch != "normal"
-            || !self.font.loaded
-        {
-            return Err("unsupported or missing actual font resource/style authority");
+        if self.profile != 1 {
+            return Err("unsupported atomic paragraph metric profile");
         }
+        self.font.validate()?;
         if !["vertical-rl", "vertical-lr"].contains(&self.writing_mode.as_str())
             || !["ltr", "rtl"].contains(&self.direction.as_str())
             || !["mixed", "upright"].contains(&self.text_orientation.as_str())

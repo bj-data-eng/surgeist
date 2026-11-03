@@ -28,6 +28,23 @@ fn generate_xml(name: &str, node: &Value) -> String {
     measured_xml(name, node).expect("canonical supported measurement must validate")
 }
 
+fn xml_input_root<'a, 'input: 'a>(
+    document: &'a roxmltree::Document<'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let input = document
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("input"))
+        .expect("one input collection");
+    let mut roots = input.children().filter(roxmltree::Node::is_element);
+    let root = roots.next().expect("one input root");
+    assert!(
+        roots.next().is_none(),
+        "one input root without metadata siblings"
+    );
+    root
+}
+
 fn input_attrs(node: &Value) -> measurement::Attributes {
     measurement::style_attributes(&node.to_string())
         .expect("canonical style attributes must validate")
@@ -47,7 +64,7 @@ fn track_definition(value: &Value) -> Option<String> {
 
 fn fri08_c05_inputs_synthetic_grid_node() -> Value {
     json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"absolute-root-local","containingWidth":800,"containingHeight":600,"containingDirection":"ltr","hypotheticalDirection":"ltr","hypotheticalDisplay":"grid","hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,"fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"absolute",
             "display": "grid",
@@ -581,7 +598,7 @@ fn fri07_c04_collapse_serializer_rejects_every_noncollapsed_explicit_state() {
         let node = json!({
             "layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","flexItemCollapse": value},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": 1, "height": 1},
@@ -929,7 +946,7 @@ if (JSON.stringify(bands) !== JSON.stringify([
 
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 60},
@@ -1039,6 +1056,7 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
   viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: { display: "block", size: { width: { unit: "px", value: 72 } } },
@@ -1169,6 +1187,7 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: true,
   viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: { display: "block", size: { width: { unit: "px", value: 180 } } },
@@ -1592,7 +1611,7 @@ fn fri06_c08_t1_serializer_gates_control_on_explicit_fact() {
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -1672,7 +1691,7 @@ fn fri06_c08_t1_serializer_rejects_malformed_and_non_br_control_facts() {
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -1777,7 +1796,7 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
         };
         let node = json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative",
                 "display": root_display,
@@ -1859,7 +1878,7 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
 
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -1890,7 +1909,7 @@ fn fri06_c08_recovery_inputs_block_br_validation_and_non_br_controls_stay_narrow
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": "block"},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -2011,6 +2030,7 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
   // Declared synthetic codec context; the 100px root/Range rectangles do
   // not supply its containing extent, Auto block basis, or ICB authority.
@@ -2274,6 +2294,7 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
   viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: {
@@ -2396,7 +2417,7 @@ fn fri06_c08_recovery_inputs_shape_source_rejects_wrong_duplicate_range_br_and_f
 fn fri06_c08_t1_typed_inline_children_replace_legacy_raw_fallback() {
     let typed_parent = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block"},
         "textContent": "duplicate raw fallback",
@@ -2456,7 +2477,7 @@ fn fri06_c08_t1_spill_matrix_preserves_64_legacy_variants() {
         for variant in variants {
             let node = json!({"layoutInput": "box",
                     "tagName": "div",
-                    "useRounding": false,
+                    "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
                     "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
                     "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
                     "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -2666,7 +2687,7 @@ for (const [direction, writingMode, physicalStartEdge, start, advance] of [
 fn fri06_c08_range_rectangle_serializer_emits_only_physical_inline_observations() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -2714,7 +2735,7 @@ fn fri06_c08_range_rectangle_serializer_emits_only_physical_inline_observations(
 fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_lines() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -2777,7 +2798,7 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
 
     let unobserved = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -2936,7 +2957,7 @@ fn fri06_c08_range_rectangle_serializer_rejects_every_ordinary_metric_and_scroll
     for (label, incompatible_state) in incompatible_states {
         let mut node = json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": "block"},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -3046,7 +3067,7 @@ if ("y" in rangeInk || "height" in rangeInk || "baselineX" in rangeInk || "basel
 fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_schema() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -3118,7 +3139,7 @@ fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_sc
 #[test]
 fn xml_generation_preserves_browser_parity_fixture_shape() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block", "direction": "ltr", "size": {"width": {"unit": "px", "value": 50}}},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
@@ -3143,8 +3164,24 @@ fn xml_generation_preserves_browser_parity_fixture_shape() {
 
     assert!(xml.contains("<test name=\"block_basic__border_box_ltr\" measurement-version=\"4\" observation-frame=\"root-border\" use-rounding=\"true\">"));
     assert!(xml.contains("  <viewport root-context=\"block-flow-auto\" parent-inline-extent=\"800px\" parent-direction=\"ltr\" fallback-icb-width=\"800px\" fallback-icb-height=\"600px\" fallback-nearest-scrollport=\"none\" fallback-containing-width-limit=\"unbounded\" fallback-containing-height-limit=\"unbounded\"/>"));
-    assert!(xml.contains("    <div display=\"block\" direction=\"ltr\" width=\"50px\">"));
-    assert!(xml.contains("      <div direction=\"ltr\" height=\"10px\"/>"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("div"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("direction"), Some("ltr"));
+    assert_eq!(root.attribute("width"), Some("50px"));
+    let profile: Value =
+        serde_json::from_str(root.attribute("grid-alignment-profile").unwrap()).unwrap();
+    assert_eq!(profile, json!({"profile":1,"owners":[]}));
+    let children: Vec<_> = root
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(children.len(), 1);
+    assert!(children[0].has_tag_name("div"));
+    assert_eq!(children[0].attribute("direction"), Some("ltr"));
+    assert_eq!(children[0].attribute("height"), Some("10px"));
+    assert_eq!(children[0].attribute("grid-alignment-profile"), None);
     assert!(xml.contains("    <node x=\"0\" y=\"0\" width=\"50\" height=\"20\">"));
     assert!(xml.contains("      <node x=\"0\" y=\"0\" width=\"50\" height=\"10\"/>"));
 }
@@ -3152,7 +3189,7 @@ fn xml_generation_preserves_browser_parity_fixture_shape() {
 #[test]
 fn xml_generation_normalizes_root_expectation_to_origin() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "inline-grid"},
         "worldRoundedLayout": {"x": 7, "y": 4, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
@@ -3182,7 +3219,7 @@ fn xml_generation_normalizes_root_expectation_to_origin() {
 #[test]
 fn xml_generation_marks_qualified_block_flow_root_context() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "grid"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
@@ -3200,7 +3237,7 @@ fn xml_generation_marks_qualified_block_flow_root_context() {
 #[test]
 fn xml_generation_serializes_exact_order_and_parent_axes() {
     let flex_item = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "grid", "order": "0", "writingMode": "horizontal-tb"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
@@ -3227,7 +3264,7 @@ fn xml_generation_serializes_exact_order_and_parent_axes() {
         ]
     });
     let root = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block", "order": "0"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
@@ -3264,7 +3301,7 @@ fn xml_generation_serializes_exact_order_and_parent_axes() {
 fn xml_generation_keeps_grid_text_elements_as_containers() {
     for display in ["grid", "inline-grid", "grid-lanes", "inline-grid-lanes"] {
         let node = json!({"layoutInput": "box",
-            "useRounding": true,
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","display": display, "direction": "ltr"},
             "textContent": "hello",
@@ -3277,18 +3314,20 @@ fn xml_generation_keeps_grid_text_elements_as_containers() {
 
         let xml = generate_xml("grid_text__border_box_ltr", &node);
 
-        assert!(xml.contains(&format!(
-            "    <div display=\"{display}\" direction=\"ltr\">"
-        )));
-        assert!(xml.contains("      hello"));
-        assert!(!xml.contains(&format!("<text display=\"{display}\"")));
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let root = xml_input_root(&document);
+        assert!(root.has_tag_name("div"));
+        assert_eq!(root.attribute("display"), Some(display));
+        assert_eq!(root.attribute("direction"), Some("ltr"));
+        assert_eq!(root.text().map(str::trim), Some("hello"));
+        assert!(!root.descendants().any(|node| node.has_tag_name("text")));
     }
 }
 
 #[test]
 fn xml_generation_preserves_explicit_grid_line_names() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "grid-lanes",
@@ -3317,7 +3356,7 @@ fn xml_generation_preserves_explicit_grid_line_names() {
 #[test]
 fn xml_generation_preserves_calc_lengths() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3340,7 +3379,7 @@ fn xml_generation_preserves_calc_lengths() {
 #[test]
 fn xml_generation_preserves_calc_grid_tracks() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "grid",
@@ -3364,7 +3403,7 @@ fn xml_generation_preserves_calc_grid_tracks() {
 #[test]
 fn xml_generation_preserves_grid_template_areas() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "grid",
@@ -3399,7 +3438,7 @@ fn xml_generation_preserves_grid_template_areas() {
 #[test]
 fn xml_generation_preserves_non_default_font_size() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3415,13 +3454,19 @@ fn xml_generation_preserves_non_default_font_size() {
 
     let xml = generate_xml("font_size__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" font-size=\"12px\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("font-size"), Some("12px"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn xml_generation_preserves_non_default_font_family() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3437,13 +3482,19 @@ fn xml_generation_preserves_non_default_font_family() {
 
     let xml = generate_xml("font_family__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" font-family=\"monospace\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("font-family"), Some("monospace"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn xml_generation_elides_default_ahem_font_size() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3465,7 +3516,7 @@ fn xml_generation_elides_default_ahem_font_size() {
 #[test]
 fn xml_generation_preserves_non_default_line_height() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3481,14 +3532,20 @@ fn xml_generation_preserves_non_default_line_height() {
 
     let xml = generate_xml("line_height__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" line-height=\"0px\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("line-height"), Some("0px"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn br_inline_metrics_xml_generation_serializes_complete_br_metrics() {
     let node = json!({"layoutInput": "box",
         "tagName": "br",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "inline",
@@ -3504,15 +3561,20 @@ fn br_inline_metrics_xml_generation_serializes_complete_br_metrics() {
 
     let xml = generate_xml("br_inline_metrics__border_box_ltr", &node);
 
-    assert!(xml.contains(
-            "    <div source-tag=\"br\" display=\"inline\" inline-baseline=\"21px\" inline-line-height=\"30px\"/>"
-        ));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("div"));
+    assert_eq!(root.attribute("source-tag"), Some("br"));
+    assert_eq!(root.attribute("display"), Some("inline"));
+    assert_eq!(root.attribute("inline-baseline"), Some("21px"));
+    assert_eq!(root.attribute("inline-line-height"), Some("30px"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn br_inline_metrics_xml_generation_does_not_infer_metrics_from_text_styles() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "block",
@@ -3540,7 +3602,7 @@ fn br_inline_metrics_xml_generation_does_not_infer_metrics_from_text_styles() {
 #[test]
 fn xml_generation_preserves_vertical_align_top() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative",
             "display": "inline-grid-lanes",
@@ -4592,7 +4654,7 @@ console.log(JSON.stringify(mutated));
     assert_eq!(helper_areas, json!([["computed", "computed"]]));
 
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"absolute-root-local","containingWidth":800,"containingHeight":600,"containingDirection":"ltr","hypotheticalDirection":"ltr","hypotheticalDisplay":"grid","hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,"fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"absolute",
             "display": "grid",
@@ -4851,7 +4913,7 @@ fn bundled_helper_reports_missing_test_root_as_unsupported() {
 #[test]
 fn xml_generation_applies_root_rounding_policy_to_descendants() {
     let node = json!({"layoutInput": "box",
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","direction": "ltr"},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 200, "height": 42, "scrollWidth": 200, "scrollHeight": 42},
@@ -4903,7 +4965,7 @@ fn layout_xml_attrs_use_f32_compatible_browser_fixture_boundary() {
         (10.0, "10"),
     ] {
         let node = json!({
-            "layoutInput": "box", "useRounding": false,
+            "layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
             "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
             "style": {"position":"relative","size": {"width": {"unit": "px", "value": 55.00000000000001}}},
             "worldRoundedLayout": {"x": 0, "y": 0, "width": width, "height": 10},
@@ -4973,7 +5035,7 @@ fn browser_fixture_document_inserts_head_inside_no_head_html_document() {
 #[test]
 fn xml_generation_is_comment_free() {
     let node = serde_json::json!({"layoutInput": "box",
-        "useRounding": true,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative", "display": "block" },
         "children": [],
@@ -5121,7 +5183,7 @@ fn fri06_c08r_fixture_input_serializer_emits_closed_explicit_forms() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
         "layoutReadyInlineRoot": true,
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": "block", "size": {"width": {"unit": "px", "value": 100}}},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 10},
@@ -5196,7 +5258,7 @@ fn fri06_c08r_fixture_input_root(display: &str, children: Vec<Value>) -> Value {
     json!({"layoutInput": "box",
         "tagName": "div",
         "layoutReadyInlineRoot": true,
-        "useRounding": false,
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
         "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
         "style": {"position":"relative","display": display, "size": {"width": {"unit": "px", "value": 100}}},
         "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
@@ -5755,7 +5817,7 @@ rejectUnusedLayoutReadyInlineBidiLevels(rtlAtomic);
 
 #[test]
 fn malformed_supported_geometry_is_not_silently_serialized_as_zero() {
-    let node = json!({"layoutInput": "box", "useRounding": false, "viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"worldRoundedLayout": {"x":0,"y":0,"width":"invalid","height":1},
+    let node = json!({"layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false, "viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"worldRoundedLayout": {"x":0,"y":0,"width":"invalid","height":1},
         "unroundedLayout":{"x":0,"y":0,"width":"invalid","height":1},"children":[]});
     let error = measured_xml("malformed", &node).unwrap_err();
     assert_eq!(error.kind, MeasurementErrorKind::Decode);
@@ -5822,3 +5884,6 @@ fn v4_local_and_world_channels_refuse_missing_or_contradictory_payloads() {
 
 #[path = "atomic_metrics_semantic_tests.rs"]
 mod atomic_metrics_semantic_tests;
+
+#[path = "grid_reference_semantic_tests.rs"]
+mod grid_reference_semantic_tests;

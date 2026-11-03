@@ -979,3 +979,57 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid-reference-mixed.html"
+source_sha256 = "1282c7a537228a0bfd0175d1a8b1f8ccccf28ed905fd7b9a637970b6468b7464"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+atomic_paragraphs = 0
+grid_reference_owners = ["/"]
+
+[[records]]
+source = "html/qualification/grid-reference-upright.html"
+source_sha256 = "ba710808ee39439b187bf90cdf86a61dd944e37d6b2f7e205388c10798568861"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-lr"
+root_position = "relative"
+atomic_paragraphs = 0
+grid_reference_owners = ["/"]
+
+[[records]]
+source = "html/qualification/grid-reference-foreign-font.html"
+source_sha256 = "fff24d7d4e3887531310c33105eb1de13b712350eb6ca2c76d7ba67a0d90b3b4"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedFirstFontAuthority"
+
+[[records]]
+source = "html/qualification/grid-reference-dominant-override.html"
+source_sha256 = "12488c0e3d14aed7721ec5d3ea896b3a97dc5b8abcb665a30a43e09902a3b9ac"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedReferenceOverride"
+
+[[records]]
+source = "html/qualification/grid-reference-sideways.html"
+source_sha256 = "41bfa83f3afcf87fd1ac836e801de5546669a276496065bfbc0c97b220c641b9"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Grid alignment reference: UnsupportedReferenceContext"

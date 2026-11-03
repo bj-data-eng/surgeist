@@ -215,6 +215,58 @@ capture and full comparison exist. Filtered or finite-example generation does
 not verify the full corpus. Do not alter counts, fonts, HTML, CSS or geometry to
 hide missing source authority.
 
+## Source-qualified Grid alignment reference
+
+Every supported source-qualified V4 root carries required
+`gridAlignmentProfile: { profile: 1, owners: [...] }`. Owners are complete
+source-preorder input paths: root `/`, then actual child indices such as
+`/0/0`. If every Grid owner is horizontal, the owner list is empty even when
+its paragraphs use vertical named metrics. The wire and reader independently
+derive required owner paths from the actual layout-ready-inline region, Box
+Grid role and own vertical writing mode, then require both records and header
+to match. This predicate demands the full typography proof; it does not infer
+a name. Coherent record and list deletion therefore cannot erase source intent.
+No second topology, fixture-name rule or child-metric registry is involved. XML retains the root
+JSON in `grid-alignment-profile`. Missing headers, individual deletions,
+duplicates, wrong scope, or orphan/out-of-order records refuse.
+
+Each demanded actual HTML DIV/SPAN Grid owner separately carries
+`gridAlignmentReference`, retained as `grid-alignment-reference` in XML:
+profile 1; own Grid/InlineGrid display, writing mode and direction; own
+Mixed/Upright text orientation; supported default dominant-baseline `auto`
+and raw non-SVG alignment-baseline `auto`/`baseline`; actual source-bound
+font descriptor/resource; and resolved reference `central`. Every own raw
+role/frame/font operand must agree, with explicit font authority preserved
+through default-compressed attributes. Authored reference overrides, foreign
+fonts, sideways orientation and unsupported authority refuse rather than
+selecting a fallback. Existing enclosing source/root profiles still govern
+which HTML roles can reach this capability.
+
+The source adapter derives the name from that full actual Grid-owner context.
+Pinned Blink 79051446 `grid_item.cc` reads the immediate parent Grid's font
+baseline; `ComputedStyle::GetFontBaseline` resolves the default through actual
+orientation. The [pinned writing-mode text baseline rule](../../../../../references/css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#text-baselines)
+selects Central for the qualified vertical Mixed/Upright context. Writing mode
+alone, descendant paragraph certificates, alignment First/Last roles or target
+coordinates do not establish this choice.
+
+The existing actual loaded CSS FontFace owner is shared. A Grid-only source
+can demand that same preparation; it neither constructs another loader nor
+borrows a paragraph font. Grid name selection issues no line-height, zero-strut,
+BR, glyph or paragraph-metric claim. In particular the Grid's own normal
+line-height remains unchanged, while an actual atomic paragraph separately
+retains its H0 checks. Real loaded-font custody observes both declared named
+consumer counts using the same retained face/load owner.
+
+After independent validation, the reader assigns only the existing local
+`NodeInput.grid_baseline_references` selectors to Named(Central). Inherited
+subgrid axes retain their actual owner; First/Last selection, paragraph
+`inline_baseline_context`, BR metrics and source correspondence do not change.
+Genuinely unrequested authored Native input retains Physical under its explicit
+Native test entry. That entry is distinct from the strict captured comparison,
+which requires the enclosing profile even if every record was deleted. There
+is no old-qualified-capture fallback or reinterpretation of historical XML.
+
 ## Source-qualified atomic-only named metrics
 
 V4 optionally carries `atomicParagraphMetrics`, independently versioned by
@@ -542,6 +594,7 @@ separate semantic value. Explicit empty observations are preserved.
 | `shapeBands` | When present, a nonempty ordered table. Each query has required `bandMinimum` and `bandMaximum`, and optionally `interval: { minimum, maximum }`. Both interval endpoints are required when the interval exists. Flat endpoints and null are invalid. |
 | `inlineBoundary` | A `start` or `end` descriptor. A start has either no metrics or both `baseline` and `lineHeight`; an end has no metrics. Boundaries have no layout observation or child payload. |
 | `replacementInlineExtent` | Present only with `followingBreak: "allowed-with-replacement"`, where it is required. Other break kinds cannot carry replacement data. |
+| Grid reference profile | Every supported source-qualified root requires `gridAlignmentProfile` profile 1 and its complete owner paths, including an explicit empty list. `gridAlignmentReference` is a separate own-Grid typography record, never a paragraph strut. |
 | Layout-ready marker fields | When present, `layoutReadyInlineRoot` and `layoutReadyAnonymousGridTextWrapper` are exactly `true`. Absence means no marker. |
 
 An ordinary box uses geometry observations and may include explicit fragments.
