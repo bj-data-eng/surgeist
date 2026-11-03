@@ -704,6 +704,7 @@ where
     let intrinsic_sizing_content_size = {
         LogicalSizeOf::new(
             intrinsic_sizing_axis_content_size(IntrinsicSizingAxisInput {
+                prepared_available: prepared_available.inline,
                 run_mode: input.run_mode(),
                 style_size: logical_style_size.inline,
                 content_size: content_size.inline,
@@ -713,6 +714,7 @@ where
                 tracks: &column_tracks,
             }),
             intrinsic_sizing_axis_content_size(IntrinsicSizingAxisInput {
+                prepared_available: prepared_available.block,
                 run_mode: input.run_mode(),
                 style_size: logical_style_size.block,
                 content_size: content_size.block,
@@ -868,6 +870,7 @@ fn layout_percent_track_floor<S: LayoutScalar>(
 }
 
 struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = Scalar> {
+    prepared_available: AvailableOf<S>,
     run_mode: RunMode,
     style_size: &'a PreferredSizeOf<S>,
     content_size: S,
@@ -881,6 +884,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
     input: IntrinsicSizingAxisInput<'_, S>,
 ) -> S {
     let IntrinsicSizingAxisInput {
+        prepared_available,
         run_mode,
         style_size,
         content_size,
@@ -889,7 +893,13 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
         available_size,
         tracks,
     } = input;
-    if run_mode == RunMode::ComputeSize || style_size.is_auto() {
+    // The prepared axis includes the actual preferred intrinsic operation
+    // and any genuine initial fixed-size override. External available space
+    // cannot turn that intrinsic operation into a normal percentage floor.
+    if run_mode == RunMode::ComputeSize
+        || style_size.is_auto()
+        || !matches!(prepared_available, AvailableOf::Definite(_))
+    {
         return content_size;
     }
     track_content_size.max(layout_percent_track_floor(
