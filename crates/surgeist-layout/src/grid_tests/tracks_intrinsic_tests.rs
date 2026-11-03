@@ -7799,3 +7799,9 @@ mod native_cyclic_subgrid_gap;
 
 #[path = "tracks_intrinsic/native_thirteen_tracks.rs"]
 mod native_thirteen_tracks;
+
+#[path = "tracks_intrinsic/native_min_fit_content.rs"]
+mod native_min_fit_content;
+
+#[path = "tracks_intrinsic/native_fit_content_caps.rs"]
+mod native_fit_content_caps;
