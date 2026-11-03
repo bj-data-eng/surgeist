@@ -11310,6 +11310,14 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<template><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template>",
         "<div><template shadowrootmode=open><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template></div>",
         "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template></div>",
+        // The same subtree moved twice with a style added to it between the moves,
+        // and two styled subtrees removed one after the other.
+        "<a><b><p><style>1{}</style></b><style>2{}</style></a>x",
+        "<div><template shadowrootmode=open><a><b><p><style>1{}</style></b><style>2{}</style></a>x</template></div>",
+        "<a><p><style>1{}</style></a><a><p><style>2{}</style><style>3{}</style></a>x",
+        "<table><a><p><style>1{}</style></a><b><p><style>2{}</style></b></table>x",
+        "<div><template shadowrootmode=open><a><p><style>1{}</style></a><a><p><style>2{}</style><style>3{}</style></a>x</template></div>",
+        "<div><template shadowrootmode=open><table><a><p><style>1{}</style></a><b><p><style>2{}</style></b></table>x</template></div>",
         // Several styles moved together, with a listed style before and after.
         "<style>a{}</style><b><p><style>b{}</style><style>c{}</style><style>d{}</style></b><style>e{}",
         "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style><style>c{}</style></b><style>d{}</style></template></div><style>e{}",

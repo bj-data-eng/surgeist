@@ -2898,4 +2898,45 @@ mod tests {
         });
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
+
+    /// The order remembered for a subtree being removed is the order of the
+    /// subtree as it was then: a style inserted into the subtree afterwards
+    /// ends it, so a second removal of the same subtree lists the new style.
+    /// No parsed document reaches this, because the removal of the children of a
+    /// moved element always builds another subtree's order in between.
+    #[test]
+    fn a_style_inserted_into_a_removed_subtree_ends_its_remembered_order() {
+        let request = super::super::effects::tests::request(
+            "<body><div><style>1{}</style><style>2{}</style>",
+        );
+        let (mut c, mut session, proof, nodes) = super::super::effects::tests::graph(&request);
+        let find = |name: &str, nth: usize| {
+            nodes
+                .iter()
+                .filter(|(found, _)| found == name)
+                .nth(nth)
+                .map(|(_, node)| node.clone())
+                .expect("a parsed element")
+        };
+        let (div, second) = (find("div", 0), find("style", 1));
+        session.remove(&mut c, &second, Some(&proof)).unwrap();
+        let storage = session.active_mut().unwrap();
+        // The order of the subtree being removed, remembered.
+        let first = storage
+            .style_order(&mut c, div.index, Some(div.index))
+            .unwrap()
+            .expect("the first style");
+        assert_eq!(first.len, 1);
+        session
+            .insert(&mut c, &div, &second, None, Some(&proof))
+            .unwrap();
+        let storage = session.active_mut().unwrap();
+        let listed = storage
+            .style_order(&mut c, div.index, Some(div.index))
+            .unwrap()
+            .expect("both styles");
+        assert_eq!(listed.len, 2);
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
 }
