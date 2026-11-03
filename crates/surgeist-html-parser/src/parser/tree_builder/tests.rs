@@ -11274,10 +11274,11 @@ fn select_option_appends_agree_with_the_full_selectedness_algorithm_over_every_s
 
 #[test]
 fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
-    // Every style trigger on the main tree is compared in test builds with a
-    // walk of the tree, so parsing each document is the check. The documents
-    // insert styles at the end, mid-tree, through foster parenting and the
-    // adoption agency, in templates and foreign content, and with text between.
+    // Every style trigger on a cached tree order is compared in test builds
+    // with a walk of the tree, so parsing each document is the check. The
+    // documents insert styles at the end, mid-tree, through foster parenting
+    // and the adoption agency, in templates, shadow roots and foreign content,
+    // and with text between.
     for body in [
         "<head><style>a{}</style><style>b{}</style><body><style>c{}</style>",
         "<style>a{}</style><!--c--><style>b{}</style>t<style>c{}</style>",
@@ -11297,6 +11298,12 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<form><style>a{}</style></form><form><style>b{}</style><style>c{}</style>",
         "<style>a{}</style><frameset><style>b{}</style></frameset><style>c{}",
         "<style type=text/css media=print title=t nonce=n>a{}</style><style>b{}",
+        "<template><style>a{}</style><style>b{}</style><p><style>c{}</style></p><style>d{}</style></template>",
+        "<div><template shadowrootmode=open><style>a{}</style><style>b{}</style></template></div><style>c{}",
+        "<template><b><style>a{}</style><p>x</b><style>b{}</style></template><style>c{}",
+        "<table><template><style>a{}</style><style>b{}</style></template><style>c{}</style></table>",
+        "<template><style>a{}</style></template><style>b{}</style><template><style>c{}</style><style>d{}</style></template><style>e{}",
+        "<div><template shadowrootmode=open><style>a{}</style></template></div><div><template shadowrootmode=open><style>b{}</style><style>c{}</style></template></div>",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{body}")),

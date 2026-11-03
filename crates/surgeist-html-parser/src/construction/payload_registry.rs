@@ -502,6 +502,12 @@ impl PayloadStorage {
             .ok_or_else(SessionError::registry_row)?
             .set_latest(join, slot)
     }
+    /// Forgets the `join` row of `node`.
+    pub(super) fn clear_join(&mut self, node: usize, join: Join) {
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.clear(join);
+        }
+    }
     /// The registry row now holding a record's merged text.
     pub(super) fn join_text(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {
         let cell = self
@@ -699,6 +705,10 @@ impl PayloadStorage {
             }
         }
         for (node, (cell, joined)) in expected.iter().zip(&self.node_joins).enumerate() {
+            // A style order join names a row the registry cannot derive: the
+            // row that was current when it was written.
+            let mut cell = *cell;
+            *cell.rows.get_mut(Join::StyleOrder) = joined.rows.copy(Join::StyleOrder);
             assert!(
                 cell.rows == joined.rows,
                 "joins of record {node} differ from the registry: {:?} against {:?}",

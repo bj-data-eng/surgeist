@@ -39,9 +39,17 @@ pub(super) struct SessionStorage {
     pub(super) construction: ConstructionOwner,
     pub(super) payloads: PayloadStorage,
     pub(super) failed_text_append: Option<text_append::FailedTextAppend>,
-    /// The registry row listing the document tree's style elements while every
-    /// change to that list since it was built has been applied to it.
-    pub(super) style_order: Option<pending_association::CurrentOrder>,
+    /// A `Join::StyleOrder` row at or after this registry slot is the current
+    /// list of its tree's style elements: every change to that list since the
+    /// row was built has been applied to it. A change that cannot be applied
+    /// raises the floor to the end of the registry, which makes every earlier
+    /// row stale at once.
+    pub(super) style_order_floor: usize,
+    /// The main tree, the tree rooted at record 0, has held no style element
+    /// since the session began and nothing has dropped that knowledge: its
+    /// order is empty without a row, and the first style inserted into it
+    /// starts the row without a walk.
+    pub(super) main_tree_styleless: bool,
     /// The subtree whose insertion or removal last walked each color selection;
     /// see [`meta::MetaBatch`].
     pub(super) meta_batches: meta::MetaDomainTable<Option<meta::MetaBatch>>,
@@ -140,7 +148,8 @@ impl SessionStorage {
             standalone_ineligibility: None,
             construction,
             failed_text_append: None,
-            style_order: Some(pending_association::CurrentOrder::empty_main_tree()),
+            style_order_floor: 0,
+            main_tree_styleless: true,
             meta_batches: meta::MetaDomainTable::filled(None),
             payloads: PayloadStorage {
                 values,
