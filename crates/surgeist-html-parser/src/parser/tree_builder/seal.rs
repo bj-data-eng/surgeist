@@ -113,20 +113,20 @@ impl OrdinaryInitialization {
             .as_ref()
             .map(|failure| failure.source_admitted())
     }
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.as_ref().and_then(|failure| failure.at_stop())
     }
-    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.as_ref().map(|failure| failure.after_cleanup())
     }
-    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure
             .as_ref()
             .map(|failure| failure.retained_usage())
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.failure
             .as_ref()
             .and_then(|failure| failure.diagnostics())
@@ -268,18 +268,18 @@ impl OrdinaryInitializationOwner {
     pub(crate) fn source_admitted(&self) -> Option<bool> {
         self.held.as_ref()?.source_admitted()
     }
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.held.as_ref()?.at_stop()
     }
-    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.held.as_ref()?.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.held.as_ref()?.retained_usage()
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.held.as_ref()?.diagnostics()
     }
     pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
@@ -312,7 +312,7 @@ impl<'request> InitializationAttempt<'request> {
         self.entry.failure()
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.entry.at_stop()
     }
     pub(crate) fn take_driver(
@@ -458,10 +458,10 @@ impl SealedOrdinaryConstruction {
         self.parts.immutable_evidence()
     }
     #[cfg(test)]
-    pub(crate) fn final_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn final_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.parts.final_usage()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.parts.retained_usage()
     }
     /// Actual fallible disposal remains explicit. A live borrowed/owned native
@@ -485,7 +485,7 @@ impl OwnedOrdinaryFailure {
     pub(crate) fn release_csp_storage(
         &mut self,
         storage: crate::meta_csp::Storage,
-    ) -> Result<(), super::super::control::ParseStop> {
+    ) -> Result<(), super::super::control::HtmlParseStop> {
         self.failure.release_csp_storage(storage)
     }
     pub(super) fn original_request(&self) -> &DocumentRequestParts {
@@ -543,21 +543,21 @@ impl OwnedOrdinaryFailure {
     pub(crate) fn source(&self) -> &crate::HtmlSource {
         self.request.source()
     }
-    pub(crate) fn stop(&self) -> crate::parser::control::ParseStop {
+    pub(crate) fn stop(&self) -> crate::parser::control::HtmlParseStop {
         self.failure.stop()
     }
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.at_stop()
     }
-    pub(crate) fn after_cleanup(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn after_cleanup(&self) -> &crate::parser::control::HtmlParseUsage {
         self.failure.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.failure.retained_usage()
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.failure.diagnostics()
     }
     #[cfg(test)]
@@ -647,7 +647,7 @@ mod tests {
         }
         owner
     }
-    fn no_retained_storage(usage: &crate::parser::control::ParseUsage) {
+    fn no_retained_storage(usage: &crate::parser::control::HtmlParseUsage) {
         for resource in crate::settings::RESOURCES {
             if resource.storage() && resource != HtmlParseResource::ManagedNodes {
                 assert_eq!(usage.resource(resource).current, 0, "{resource:?}");
@@ -708,7 +708,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::Cancelled
+                crate::parser::control::HtmlParseStop::Cancelled
             ))
         );
         assert_eq!(owner.source_admitted(), Some(false));
@@ -731,7 +731,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     limit: 0,
                     current: 0,
@@ -742,7 +742,7 @@ mod tests {
         assert_eq!(owner.source_admitted(), Some(false));
         let first = owner.at_stop().unwrap().clone();
         assert_eq!(
-            first.work(crate::parser::control::WorkCategory::RecordVisit),
+            first.work(crate::parser::control::HtmlParseWorkCategory::RecordVisit),
             0
         );
         assert_eq!(first.largest_atomic_layout, 0);
@@ -774,24 +774,24 @@ mod tests {
             ));
             let first = owner.at_stop().unwrap().clone();
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::RecordVisit),
+                first.work(crate::parser::control::HtmlParseWorkCategory::RecordVisit),
                 1
             );
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::CopyByte),
+                first.work(crate::parser::control::HtmlParseWorkCategory::CopyByte),
                 0
             );
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
             assert_eq!(owner.source_admitted(), Some(text.is_empty()));
             let expected = if text.is_empty() {
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AtomicLayoutBytes,
                     limit: 0,
                     current: 0,
                     requested_delta: initialization_bootstrap_layout().0 as u64,
                 }
             } else {
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::SourceUnits,
                     limit: 0,
                     current: 0,
@@ -825,7 +825,7 @@ mod tests {
             assert_eq!(
                 owner.failure(),
                 Some(super::super::entry::InitializationFailure::Stopped(
-                    crate::parser::control::ParseStop::LimitExceeded {
+                    crate::parser::control::HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         limit: cap,
                         current: 1 + copied,
@@ -836,11 +836,11 @@ mod tests {
             assert_eq!(owner.source_admitted(), Some(true));
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 1);
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::CopyByte),
+                first.work(crate::parser::control::HtmlParseWorkCategory::CopyByte),
                 copied
             );
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::RecordWrite),
+                first.work(crate::parser::control::HtmlParseWorkCategory::RecordWrite),
                 0
             );
             assert_eq!(first.largest_atomic_layout, bytes as u64);
@@ -867,7 +867,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     limit: 2,
                     current: 2,
@@ -911,7 +911,7 @@ mod tests {
             assert!(matches!(
                 attempt.take_driver(),
                 Err(StandaloneError::Stop(
-                    crate::parser::control::ParseStop::Cancelled
+                    crate::parser::control::HtmlParseStop::Cancelled
                 ))
             ));
             first = attempt.at_stop().unwrap().clone();
@@ -1080,7 +1080,7 @@ mod tests {
                         assert!(matches!(
                             attempt.failure(),
                             Some(super::super::entry::InitializationFailure::Stopped(
-                                crate::parser::control::ParseStop::LimitExceeded {
+                                crate::parser::control::HtmlParseStop::LimitExceeded {
                                     resource: HtmlParseResource::WorkCredits,
                                     ..
                                 }
@@ -1107,17 +1107,17 @@ mod tests {
             }
         }
     }
-    fn owner_failure_stop(first: &crate::parser::control::ParseUsage) -> u64 {
-        use crate::parser::control::WorkCategory;
+    fn owner_failure_stop(first: &crate::parser::control::HtmlParseUsage) -> u64 {
+        use crate::parser::control::HtmlParseWorkCategory;
         [
-            WorkCategory::InputUnitRead,
-            WorkCategory::InspectByte,
-            WorkCategory::CopyByte,
-            WorkCategory::StateStep,
-            WorkCategory::RecordVisit,
-            WorkCategory::RecordWrite,
-            WorkCategory::ReserveByte,
-            WorkCategory::ProviderCall,
+            HtmlParseWorkCategory::InputUnitRead,
+            HtmlParseWorkCategory::InspectByte,
+            HtmlParseWorkCategory::CopyByte,
+            HtmlParseWorkCategory::StateStep,
+            HtmlParseWorkCategory::RecordVisit,
+            HtmlParseWorkCategory::RecordWrite,
+            HtmlParseWorkCategory::ReserveByte,
+            HtmlParseWorkCategory::ProviderCall,
         ]
         .into_iter()
         .map(|category| first.work(category))
@@ -1133,7 +1133,7 @@ mod tests {
             .current;
         let bytes = std::mem::size_of::<SealedOrdinaryConstruction>()
             + std::mem::size_of::<DocumentRequestParts>()
-            + std::mem::size_of::<crate::parser::control::ParseUsage>();
+            + std::mem::size_of::<crate::parser::control::HtmlParseUsage>();
         measured.release().unwrap();
         let mut request = Some(HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><p>A&amp;B"),
@@ -1152,7 +1152,7 @@ mod tests {
         assert!(matches!(
             SealedOrdinaryConstruction::take(&mut request, &mut parts),
             Err(StandaloneError::Stop(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     requested_delta: 7,
                     ..
@@ -1381,7 +1381,10 @@ mod tests {
         let mut owned = OwnedOrdinaryFailure::take(&mut request, &mut failure).unwrap();
         assert!(request.is_none() && failure.is_none());
         assert_eq!(owned.source().identity(), &identity);
-        assert_eq!(owned.stop(), crate::parser::control::ParseStop::Cancelled);
+        assert_eq!(
+            owned.stop(),
+            crate::parser::control::HtmlParseStop::Cancelled
+        );
         assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
         assert_eq!(owned.retained_usage(), &retained);

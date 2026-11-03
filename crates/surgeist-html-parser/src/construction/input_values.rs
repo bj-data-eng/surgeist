@@ -9,7 +9,7 @@ pub(crate) fn input_tag_state(
     control.require_document_string(tag.name.value.allocation(), tag.name.value.text())?;
     tag.attributes.require_disposal_owner(control)?;
     for attribute in tag.attributes.as_slice() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
             let value = attribute.value.value.text();
             control.require_document_string(attribute.value.value.allocation(), value)?;
@@ -26,16 +26,18 @@ pub(super) fn input_type_state(
     let mut cursor = crate::HtmlInputTypeCursor::new(Some(value));
     while let Some(work) = cursor.required_work() {
         match work {
-            crate::HtmlInputRuleWork::ReadField => control.charge(WorkCategory::RecordVisit, 1)?,
+            crate::HtmlInputRuleWork::ReadField => {
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?
+            }
             crate::HtmlInputRuleWork::ReadValueLengths => {
-                control.charge(WorkCategory::RecordVisit, 2)?
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?
             }
             crate::HtmlInputRuleWork::CompareAsciiUnit => {
-                control.charge(WorkCategory::InspectByte, 3)?
+                control.charge(HtmlParseWorkCategory::InspectByte, 3)?
             }
             crate::HtmlInputRuleWork::CompareValueUnits
             | crate::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge(WorkCategory::InspectByte, 2)?
+                control.charge(HtmlParseWorkCategory::InspectByte, 2)?
             }
         }
         cursor.advance();
@@ -51,7 +53,7 @@ pub(super) fn validate_initial_input_origins(
     let mut policy =
         crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::StripCrLf);
     for attribute in tag.attributes.as_slice() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(control, Some(attribute.name.value.text()), "type")? {
             policy = input_type_state(control, attribute.value.value.text())?.sanitization();
         }
@@ -61,7 +63,7 @@ pub(super) fn validate_initial_input_origins(
         let text = &attribute.value;
         let mut covered = 0;
         for origin in text.origins.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.require_source_range(&origin.source)?;
             if origin.start != covered
                 || origin.end <= origin.start
@@ -78,7 +80,7 @@ pub(super) fn validate_initial_input_origins(
                 };
                 let mut omitted = 0usize;
                 for &unit in units {
-                    control.charge(WorkCategory::InspectByte, 2)?;
+                    control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                     if !policy.retain_unit(unit) {
                         // At most one per unit of the range being counted.
                         omitted = omitted.saturating_add(1);
@@ -104,7 +106,7 @@ pub(super) fn find_input_state(
     node: usize,
 ) -> Result<(usize, InputState), SessionError> {
     for payload in &payloads.values {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::Input {
             node: Some(owner),
             raw,
@@ -115,7 +117,7 @@ pub(super) fn find_input_state(
             && *owner == node
         {
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64,
             )?;
             return Ok((*raw, *state));
@@ -135,7 +137,7 @@ pub(super) fn find_input_sources<'a>(
         return Ok(None);
     }
     for payload in &payloads.values {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::InputSource {
             node: Some(owner),
             token,
@@ -144,7 +146,7 @@ pub(super) fn find_input_sources<'a>(
             && *owner == node
         {
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<(&crate::HtmlSourceRange, &crate::HtmlSourceRange)>() as u64,
             )?;
             return Ok(Some((token, value)));
@@ -161,7 +163,7 @@ pub(super) fn append_input_content(
     destination: &mut Utf16Buffer,
     absent_fallback: &[u16],
 ) -> Result<(), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let HtmlNodeKind::Element(element) = records
         .node_at(node)
         .ok_or(SessionError::ForeignNode)?
@@ -170,7 +172,7 @@ pub(super) fn append_input_content(
         return Err(SessionError::InputMetadataUnavailable);
     };
     for attribute in element.attributes().as_slice() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), "value")?
         {
@@ -234,7 +236,7 @@ pub(super) fn copy_selected_input_value(
     policy: crate::HtmlInputSanitization,
     mode: crate::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value, allocation, ..
     }) = payloads.values.get(slot)
@@ -276,7 +278,7 @@ fn copy_whole_generated_input_value(
             payload_write::<Option<crate::HtmlInputRetainedRange>>(c, 1)?;
             range = next_input_range(c, &mut cursor)?;
         }
-        c.charge(WorkCategory::InspectByte, 2)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if range.is_some_and(|range| range.start() <= position && position < range.end())
             && cursor.retain_unit(unit)
         {
@@ -326,9 +328,9 @@ fn next_input_range(
     while let Some(work) = cursor.required_work() {
         match work {
             crate::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge(WorkCategory::InspectByte, 2)?
+                control.charge(HtmlParseWorkCategory::InspectByte, 2)?
             }
-            _ => control.charge(WorkCategory::RecordVisit, 1)?,
+            _ => control.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
         }
         payload_write::<crate::HtmlInputSanitizationCursor<'_>>(control, 1)?;
         payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
@@ -348,7 +350,7 @@ fn copy_input_value_core(
     mut selection: Option<crate::HtmlInputSanitizationCursor<'_>>,
     generated_mode: crate::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value,
         origins,
@@ -374,7 +376,7 @@ fn copy_input_value_core(
             let mut cursor = provenance::GroupOriginCursor::new(evidence, origins, control)?;
             let read = (|| {
                 while let Some(origin) = cursor.next(evidence, control)? {
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     control.require_source_range(&origin.source)?;
                     if origin.start != covered
                         || origin.end <= origin.start
@@ -388,7 +390,7 @@ fn copy_input_value_core(
                     };
                     let mut omitted = 0usize;
                     for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
-                        control.charge(WorkCategory::InspectByte, 2)?;
+                        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                         let keep = if let Some(cursor) = &mut selection {
                             while range.is_some_and(|range| range.end() <= position) {
                                 payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
@@ -413,7 +415,7 @@ fn copy_input_value_core(
                         let mut transformed = false;
                         if matches!(policy, crate::HtmlInputSanitization::Temporal(_)) {
                             for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
-                                control.charge(WorkCategory::InspectByte, 2)?;
+                                control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                                 let replacement = selection
                                     .as_ref()
                                     .and_then(|cursor| cursor.replacement_unit(position));
@@ -423,15 +425,15 @@ fn copy_input_value_core(
                         } else {
                             buffer.extend_units(origin_units, control)?;
                         }
-                        control.charge(WorkCategory::ProviderCall, 1)?;
-                        payload_write::<TextOrigin>(control, 1)?;
+                        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                        payload_write::<HtmlParseTextOrigin>(control, 1)?;
                         copied.try_push(
                             control,
-                            TextOrigin {
+                            HtmlParseTextOrigin {
                                 start,
                                 end: buffer.len(),
                                 source: origin.source.clone(),
-                                kind: if transformed { crate::parser::tokenizer::token::OriginKind::InputValueNormalization } else { origin.kind },
+                                kind: if transformed { crate::parser::tokenizer::token::HtmlParseOriginKind::InputValueNormalization } else { origin.kind },
                             },
                         )?;
                     }

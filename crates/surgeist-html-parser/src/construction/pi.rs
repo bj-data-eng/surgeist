@@ -11,7 +11,7 @@ pub(super) struct PseudoAttribute {
 
 struct PendingField {
     buffer: Utf16Buffer,
-    maps: OwnedVec<TextOrigin>,
+    maps: OwnedVec<HtmlParseTextOrigin>,
 }
 impl PendingField {
     fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
@@ -32,7 +32,7 @@ impl PendingField {
 }
 impl SessionStorage {
     fn raw_value(&self, c: &mut ParseControl, slot: usize) -> Result<DocumentString, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let RetainedPayload::String {
             value, allocation, ..
         } = self.payloads.row(c, slot)?
@@ -40,7 +40,7 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         };
         c.require_document_string(allocation, value)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<DocumentString>(c, 1)?;
         Ok(value.clone())
     }
@@ -82,11 +82,12 @@ impl SessionStorage {
         map: usize,
     ) -> Result<(), SessionError> {
         use surgeist_html::bounded::{
-            HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
+            HtmlPiPseudoAttributeAction as Action,
+            HtmlPiPseudoAttributeCursor as HtmlParsePendingAssociationCursor,
             HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
             HtmlPiPseudoAttributeReply as Reply,
         };
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
             .construction
             .node_at(node)
@@ -95,15 +96,15 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let mut cursor = Cursor::new(pi.data().len());
+        let mut cursor = HtmlParsePendingAssociationCursor::new(pi.data().len());
         let mut name: Option<PendingField> = None;
         let mut value: Option<PendingField> = None;
         let result = (|| {
             while let Some(action) = cursor.action() {
-                payload_write::<Cursor>(c, 1)?;
+                payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
                 let reply = match action {
                     Action::Read(offset) => {
-                        c.charge(WorkCategory::RecordVisit, 2)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                         let HtmlNodeKind::ProcessingInstruction(pi) = &self
                             .construction
                             .node_at(node)
@@ -114,7 +115,7 @@ impl SessionStorage {
                         };
                         let unit = match pi.data().code_units().get(offset) {
                             Some(&unit) => {
-                                c.charge(WorkCategory::InspectByte, 2)?;
+                                c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                                 Some(unit)
                             }
                             None if offset == pi.data().len() => None,
@@ -160,7 +161,7 @@ impl SessionStorage {
                         Reply::Ack
                     }
                     Action::NameLength(index) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let RetainedPayload::PiAttributes { values, .. } =
                             self.payloads.row(c, map)?
                         else {
@@ -176,7 +177,7 @@ impl SessionStorage {
                         )
                     }
                     Action::NameUnit(which, offset) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let units = match which {
                             Name::Current => name
                                 .as_ref()
@@ -200,7 +201,7 @@ impl SessionStorage {
                         let Some(&unit) = units.get(offset) else {
                             return Err(SessionError::WrongToken);
                         };
-                        c.charge(WorkCategory::InspectByte, 2)?;
+                        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                         Reply::Unit(Some(unit))
                     }
                     Action::Commit => {
@@ -327,7 +328,7 @@ impl SessionStorage {
     }
 
     fn pop_pi_pair(&mut self, c: &mut ParseControl, map: usize) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<[StringLocation; 2]>(c, 2)?;
         let RetainedPayload::PiAttributes { values, .. } = self.payloads.row_mut(c, map)? else {
             return Err(SessionError::WrongToken);
@@ -356,7 +357,7 @@ impl SessionStorage {
         name: &str,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::PiAttributes {
                 node: Some(bound),
                 values,
@@ -368,7 +369,7 @@ impl SessionStorage {
                     return Err(SessionError::ProcessingInstructionMapUnavailable);
                 }
                 for pair in values.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if exact_ascii(c, Some(&pair.name), name)? {
                         return Ok(Some(&pair.value));
                     }
@@ -390,8 +391,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = &storage.view;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -403,7 +404,7 @@ impl FrozenArena {
             return Err(SessionError::WrongToken);
         }
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::PiAttributes {
                 node: Some(bound),
                 values,
@@ -415,7 +416,7 @@ impl FrozenArena {
                     return Err(SessionError::ProcessingInstructionMapUnavailable);
                 }
                 for pair in values.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if exact_string_equal(c, &pair.name, name)? {
                         return Ok(Some(&pair.value));
                     }

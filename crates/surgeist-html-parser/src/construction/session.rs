@@ -29,7 +29,7 @@ impl ParserArenaSession {
     ) -> Result<Option<ParserNode>, SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if matches!(
             storage
                 .construction
@@ -75,7 +75,7 @@ impl ParserArenaSession {
     ) -> Result<Option<ParserNode>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(control, node)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         storage
             .construction
             .node_at(index)
@@ -91,7 +91,7 @@ impl ParserArenaSession {
     ) -> Result<Option<&'a QualifiedName>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(control, node)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(
             match &storage
                 .construction
@@ -117,7 +117,7 @@ impl ParserArenaSession {
         let storage = self.active()?;
         let element = storage.index(control, element)?;
         let target = storage.index(control, target_parent)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = storage
             .construction
             .node_at(element)
@@ -137,7 +137,7 @@ impl ParserArenaSession {
             Some(HtmlTemplateContentsKind::Owned) => record.template_contents(),
             _ => None,
         };
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let shallow = record.child_count() == 0
             && record.shadow_root().is_none()
             && contents.is_none_or(|contents| {
@@ -153,7 +153,7 @@ impl ParserArenaSession {
             let mut ancestor = Some(target);
             for _ in 0..storage.construction.storage(control)?.len() {
                 let Some(index) = ancestor else { break };
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if index == element {
                     return Ok(Some(
                         ElementInsertionIgnored::HostIncludingInclusiveAncestor,
@@ -166,7 +166,7 @@ impl ParserArenaSession {
                 ancestor = if let Some(owner) = &record.fragment_owner() {
                     let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
                         owner;
-                    control.charge(WorkCategory::ProviderCall, 1)?;
+                    control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let owner_position = storage
                         .construction
                         .storage(control)?
@@ -182,7 +182,7 @@ impl ParserArenaSession {
                 return Err(SessionError::Cycle);
             }
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if matches!(
             storage
                 .construction
@@ -198,7 +198,7 @@ impl ParserArenaSession {
                 .child_count()
             {
                 // One actual child-index read and one referenced kind read.
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 let child = storage
                     .construction
                     .node_at(target)
@@ -233,7 +233,7 @@ impl ParserArenaSession {
             return Ok(None);
         }
         for payload in &storage.payloads.values {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(payload, RetainedPayload::String { location: StringLocation::ElementName(owner), .. } if *owner == index)
             {
                 return Ok(contents);
@@ -317,7 +317,7 @@ impl ParserArenaSession {
                 storage.svg_state_at(c, index)?;
                 let capability = capability.ok_or_else(|| {
                     SessionError::Stop(
-                        c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+                        c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance),
                     )
                 })?;
                 capability.validate_session(c, self)?;
@@ -334,7 +334,7 @@ impl ParserArenaSession {
                     }
                     let capability = capability.ok_or_else(|| {
                         SessionError::Stop(
-                            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+                            c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance),
                         )
                     })?;
                     capability.validate_session(c, self)?;
@@ -387,7 +387,9 @@ impl ParserArenaSession {
         let index = storage.index(c, node)?;
         if storage.html_local(c, index, "option")? {
             let capability = capability.ok_or_else(|| {
-                SessionError::Stop(c.stop_unsupported_standalone(StandaloneUnsupported::Provenance))
+                SessionError::Stop(
+                    c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance),
+                )
             })?;
             capability.validate_session(c, self)?;
             storage.select_metadata(c, index)?;
@@ -411,8 +413,8 @@ impl ParserArenaSession {
         if self.active()?.evidence.is_some() {
             payload_write::<Option<ParseEvidence>>(control, 2)?;
         }
-        control.charge(WorkCategory::RecordVisit, 2)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let root_position = fragment_root.unwrap_or(0);
         let root = self
             .active()?
@@ -489,7 +491,7 @@ impl ParserArenaSession {
             ConstructionView::Active(storage.construction.storage(control)?),
             control,
         )?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if storage
             .evidence
             .as_ref()

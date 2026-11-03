@@ -25,7 +25,7 @@ impl SessionStorage {
                     Reply::ParserDocumentSaved(saved_document.is_some())
                 }
                 Action::ReadAsyncPresence => {
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(index)
@@ -43,14 +43,14 @@ impl SessionStorage {
                 }
                 Action::ReadChildTextEmpty => {
                     let mut empty = true;
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let children = self
                         .construction
                         .node_at(index)
                         .ok_or_else(|| latch_registry_row(control))?
                         .child_count();
                     for position in 0..children {
-                        control.charge(WorkCategory::RecordVisit, 3)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                         let child = self
                             .construction
                             .node_at(index)
@@ -72,7 +72,7 @@ impl SessionStorage {
                     }
                     // Preserve the original element read after source-text
                     // inspection, including when nonempty text skips src lookup.
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if !matches!(
                         self.construction
                             .node_at(index)
@@ -102,7 +102,7 @@ impl SessionStorage {
                     let mut connected = false;
                     for _ in 0..self.construction.storage(control)?.len() {
                         let Some(current) = ancestor else { break };
-                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let record = self
                             .construction
                             .node_at(current)
@@ -124,7 +124,7 @@ impl SessionStorage {
                     Reply::Connected(connected)
                 }
                 Action::ClassifyType => {
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(index)

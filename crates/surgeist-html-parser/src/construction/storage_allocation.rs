@@ -13,10 +13,10 @@ impl SessionStorage {
         self.require(control)?;
         // Actual preexisting input permanently leaves the closed producer
         // inventory. Admission precedes the monotone provenance transition.
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.standalone_ineligibility.is_none() {
-            payload_write::<Option<StandaloneUnsupported>>(control, 1)?;
-            self.standalone_ineligibility = Some(StandaloneUnsupported::Provenance);
+            payload_write::<Option<HtmlParseUnsupportedState>>(control, 1)?;
+            self.standalone_ineligibility = Some(HtmlParseUnsupportedState::Provenance);
         }
         let name = element.name();
         let template = exact_ascii(
@@ -27,7 +27,7 @@ impl SessionStorage {
         let mut units = name_units(control, name)?;
         let attributes = element.attributes().len();
         for index in 0..attributes {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let attribute = &element.attributes().as_slice()[index];
             let Some(next) = units
                 .checked_add(name_units(control, attribute.name())?)
@@ -70,7 +70,7 @@ impl SessionStorage {
         attributes: usize,
         units: usize,
     ) -> Result<ParserNode, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let document = matches!(
             self.construction
                 .node_at(0)
@@ -135,12 +135,15 @@ impl SessionStorage {
         )?;
         control.admit_atomic_layout(mem::size_of::<NodeJoins>())?;
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             count.saturating_mul(mem::size_of::<NodeJoins>()) as u64,
         )?;
-        control.charge(WorkCategory::RecordWrite, entries)?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, entries)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<ParserNode>() as u64,
+        )?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let Some(handle) = self.construction.apply(control, command, &requests)? else {
             return Err(latch_owner_refusal(control));
         };
@@ -240,8 +243,11 @@ impl SessionStorage {
             };
             control.reserve_vector_geometric(slots, allocation, 1)?;
             control.admit_atomic_layout(mem::size_of::<usize>())?;
-            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-            control.charge(WorkCategory::RecordWrite, 1)?;
+            control.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         }
         if let Some(list) = list {
             let Some(KindSlots { slots, allocation }) =
@@ -251,15 +257,18 @@ impl SessionStorage {
             };
             control.reserve_vector_geometric(slots, allocation, 1)?;
             control.admit_atomic_layout(mem::size_of::<usize>())?;
-            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-            control.charge(WorkCategory::RecordWrite, 1)?;
+            control.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         }
         control.admit_atomic_layout(mem::size_of::<RetainedPayload>())?;
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<RetainedPayload>() as u64,
         )?;
-        control.charge(WorkCategory::RecordWrite, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         let entries = 1u64
             .saturating_add(u64::from(list.is_some()))
             .saturating_add(u64::from(explicit_form));
@@ -442,7 +451,7 @@ impl SessionStorage {
                     })),
                 )
                 .map_err(|_| latch_registry_row(control))?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let mut remaining = count;
             while let Some(attribute) = attributes.try_pop(control)? {
                 let (local, local_ticket) = match self.register_text(control, attribute.name) {
@@ -558,7 +567,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         tag: &mut Tag,
     ) -> Result<(), SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if tag.kind != TagKind::Start {
             return Err(SessionError::WrongToken);
         }
@@ -581,12 +590,12 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         name: FrozenUtf16,
-        origins: Option<OwnedVec<TextOrigin>>,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
         attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
     ) -> Result<ParserNode, SessionError> {
         let preparation = (|| {
             let template = exact_ascii(control, Some(name.text()), "template")?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let document = matches!(
                 self.construction
                     .node_at(0)
@@ -600,7 +609,7 @@ impl SessionStorage {
             if ordinary_document {
                 let mut is_value = None;
                 for attribute in attributes.as_slice() {
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if exact_ascii(control, Some(attribute.name.value.text()), "is")? {
                         is_value = Some(&attribute.value);
                         break;
@@ -637,7 +646,7 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         name: FrozenUtf16,
-        origins: Option<OwnedVec<TextOrigin>>,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
         mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,
         prepared: Option<template::PreparedDocuments>,
     ) -> Result<ParserNode, SessionError> {
@@ -647,13 +656,13 @@ impl SessionStorage {
             // the same admitted exact buffer as token-created units.
             let namespace = literal_string(control, b"http://www.w3.org/1999/xhtml")?;
             let (namespace, namespace_ticket) = self.register_string(control, namespace, None)?;
-            control.charge(WorkCategory::RecordVisit, 2)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let mut units = name
                 .len()
                 .checked_add(namespace.len())
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
             let admission = match self.prepare_payload_slot(control) {
                 Ok(admission) => admission,
@@ -687,7 +696,7 @@ impl SessionStorage {
                 };
                 last_name_slot.get_or_insert(local_ticket);
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 units = units
                     .checked_add(local.len())
                     .and_then(|sum| sum.checked_add(value.len()))
@@ -703,8 +712,11 @@ impl SessionStorage {
                     return Err(latch_registry_row(control));
                 };
                 control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
-                control.charge(WorkCategory::CopyByte, mem::size_of::<Attribute>() as u64)?;
-                control.charge(WorkCategory::RecordWrite, 3)?;
+                control.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<Attribute>() as u64,
+                )?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
                 let position = attributes.len();
                 values.push(Attribute::new(
@@ -788,9 +800,9 @@ impl SessionStorage {
                 shared,
                 element: None,
             });
-            control.charge(WorkCategory::ProviderCall, 1)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
@@ -803,7 +815,7 @@ impl SessionStorage {
             let template = exact_ascii(control, Some(&name), "template")?;
             let link_flags =
                 exact_ascii(control, Some(&name), "link")?.then(crate::HtmlLinkFlags::fresh);
-            control.charge(WorkCategory::RecordWrite, 6)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
             let node = self.allocate_prepared_owned(
                 control,
                 bounded::HtmlConstructionCommand::CreateElement {

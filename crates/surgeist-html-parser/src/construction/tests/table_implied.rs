@@ -116,7 +116,7 @@ fn table_implied_names_have_exact_managed_unit_caps_and_reclaim_partial_backing(
                 );
             } else {
                 assert!(
-                    matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedUtf16Units, limit, .. })) if limit == cap)
+                    matches!(result, Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedUtf16Units, limit, .. })) if limit == cap)
                 );
                 assert_eq!(
                     session.active().unwrap().construction.test_storage().len(),
@@ -159,17 +159,20 @@ fn table_document_mode_reads_actual_root_and_has_independent_finite_cost() {
     ] {
         let mut c = control();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Document(mode)).unwrap();
-        let visits = c.usage().work(WorkCategory::RecordVisit);
-        let copies = c.usage().work(WorkCategory::CopyByte);
-        let writes = c.usage().work(WorkCategory::RecordWrite);
+        let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+        let copies = c.usage().work(HtmlParseWorkCategory::CopyByte);
+        let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         assert_eq!(session.document_mode(&mut c), Ok(mode));
         // Form readiness plus seven intrinsic-owner reads including Radio and Range + root discriminant, then the mode copy.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 9);
         assert_eq!(
-            c.usage().work(WorkCategory::CopyByte) - copies,
+            c.usage().work(HtmlParseWorkCategory::RecordVisit) - visits,
+            9
+        );
+        assert_eq!(
+            c.usage().work(HtmlParseWorkCategory::CopyByte) - copies,
             mem::size_of::<HtmlDocumentMode>() as u64
         );
-        assert_eq!(c.usage().work(WorkCategory::RecordWrite), writes);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordWrite), writes);
         session
             .set_document_mode(&mut c, HtmlDocumentMode::LimitedQuirks)
             .unwrap();
@@ -203,8 +206,8 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let mut foreign = control();
-    let wrong = SessionError::Stop(ParseStop::InternalInvariant(
-        crate::parser::control::Invariant::ForeignControl,
+    let wrong = SessionError::Stop(HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::ForeignControl,
     ));
     assert_eq!(
         session
@@ -224,11 +227,11 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
     cancellation.cancel();
     assert_eq!(
         session.allocate_implicit_tr(&mut c, None).unwrap_err(),
-        SessionError::Stop(ParseStop::Cancelled)
+        SessionError::Stop(HtmlParseStop::Cancelled)
     );
     assert_eq!(
         session.document_mode(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(
         session.active().unwrap().construction.test_storage().len(),
@@ -236,7 +239,7 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     // Independent getter envelope: nine actual reads (including Radio and Range readiness) and fixed mode copy.
     let complete = 9 + mem::size_of::<HtmlDocumentMode>() as u64;
     for remaining in [complete, complete - 1] {
@@ -245,12 +248,12 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::Quirks)).unwrap();
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, unused - remaining)
+        c.charge(HtmlParseWorkCategory::StateStep, unused - remaining)
             .unwrap();
         let result = session.document_mode(&mut c);
         if remaining == complete {
             assert_eq!(result, Ok(HtmlDocumentMode::Quirks));
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             let stop = c.stop().unwrap();
             assert_eq!(result, Err(SessionError::Stop(stop)));

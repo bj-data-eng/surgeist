@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
         "<!--a"
             .encode_utf16()
@@ -12,7 +12,7 @@ fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() 
     ));
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -83,11 +83,11 @@ fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() 
 }
 #[test]
 fn missing_doctype_fields_lower_to_managed_empty_strings_and_detached_nodes_survive_guard() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<!DOCTYPE><!DOCTYPE html>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -149,7 +149,7 @@ fn source_implied_html_owns_literal_backing_and_real_empty_attributes_at_exact_u
         if cap == 31 {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedUtf16Units,
                     ..
                 }))
@@ -229,7 +229,7 @@ fn doctype_partial_work_failures_keep_real_field_owners_reclaimable() {
         let mut input = make(&mut c);
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             limits().work_credits() - used - remaining,
         )
         .unwrap();
@@ -255,7 +255,9 @@ fn doctype_partial_work_failures_keep_real_field_owners_reclaimable() {
 }
 #[test]
 fn mixed_whitespace_split_preserves_utf16_and_each_exact_origin_after_newline_preprocessing() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::OriginKind};
+    use crate::parser::tokenizer::{
+        states::HtmlTokenizerState, tests::LexerFixture, token::HtmlParseOriginKind,
+    };
     let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
         "<a v='"
             .encode_utf16()
@@ -265,7 +267,7 @@ fn mixed_whitespace_split_preserves_utf16_and_each_exact_origin_after_newline_pr
     ));
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (value, tag_name, attribute_name) = lexical_attribute_text(&mut tokenizer, &mut c);
     tag_name.release(&mut c).unwrap();
     attribute_name.release(&mut c).unwrap();
@@ -287,7 +289,7 @@ fn mixed_whitespace_split_preserves_utf16_and_each_exact_origin_after_newline_pr
             origin.source.end(),
             origin.kind
         ),
-        (2, 3, 8, 10, OriginKind::Newline)
+        (2, 3, 8, 10, HtmlParseOriginKind::Newline)
     );
     let ranges = input
         .as_ref()
@@ -308,7 +310,7 @@ fn mixed_whitespace_split_preserves_utf16_and_each_exact_origin_after_newline_pr
 }
 #[test]
 fn failed_mixed_split_preserves_original_payload_capacity_and_source_origins() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<a v=' A'>");
     // Tag name + attribute name + two value units + tokenizer's real last
     // start-tag name occupy five units. Prefix fits at six; suffix does not.
@@ -321,7 +323,7 @@ fn failed_mixed_split_preserves_original_payload_capacity_and_source_origins() {
         HtmlParseCancellation::new(),
     );
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (value, tag_name, attribute_name) = lexical_attribute_text(&mut tokenizer, &mut c);
     let mut input = Some(value);
     let capacity = c
@@ -330,7 +332,7 @@ fn failed_mixed_split_preserves_original_payload_capacity_and_source_origins() {
         .current;
     assert!(matches!(
         split_leading_ascii_whitespace(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::BufferedUtf16Units,
             ..
         }))
@@ -404,14 +406,19 @@ fn lexical_disposal_rejects_terminal_foreign_and_alias_owners_and_reclaims_once(
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
-    foreign.charge(WorkCategory::StateStep, remaining).unwrap();
-    foreign.charge(WorkCategory::RecordVisit, 1).unwrap_err();
+    foreign
+        .charge(HtmlParseWorkCategory::StateStep, remaining)
+        .unwrap();
+    foreign
+        .charge(HtmlParseWorkCategory::RecordVisit, 1)
+        .unwrap_err();
     assert!(release_token_kind(&mut input, &mut foreign).is_err());
     assert!(input.is_some());
     let remaining =
         limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, remaining).unwrap();
-    c.charge(WorkCategory::RecordVisit, 1).unwrap_err();
+    c.charge(HtmlParseWorkCategory::StateStep, remaining)
+        .unwrap();
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1).unwrap_err();
     assert_eq!(
         release_token_kind(&mut input, &mut c),
         Err(SessionError::AliasedPayload)
@@ -451,7 +458,8 @@ fn newly_latched_disposal_work_or_cancel_keeps_input_for_terminal_retry() {
         } else {
             let remaining = limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, remaining).unwrap();
+            c.charge(HtmlParseWorkCategory::StateStep, remaining)
+                .unwrap();
         }
         assert!(release_token_kind(&mut input, &mut c).is_err());
         assert!(input.is_some());
@@ -488,7 +496,7 @@ fn late_lexical_attribute_disposal_stop_consumes_and_reclaims_the_original_paylo
     let mut input = Some(TokenKind::Tag(owned_tag(&mut c, "a", &[("x", &[0xd800])])));
     assert!(matches!(
         release_token_kind(&mut input, &mut c),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 1,
             ..

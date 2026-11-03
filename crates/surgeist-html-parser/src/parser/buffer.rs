@@ -2,7 +2,9 @@
 //! the execution's accounting owner, never a second text or allocation model.
 
 use super::{
-    control::{DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, WorkCategory},
+    control::{
+        DocumentStringAllocation, HtmlParseStop, HtmlParseWorkCategory, OwnedVec, ParseControl,
+    },
     input::CodePoint,
 };
 use crate::DocumentString;
@@ -16,8 +18,8 @@ pub(crate) struct Utf16Buffer {
 }
 
 impl Utf16Buffer {
-    pub(crate) fn new(control: &mut ParseControl) -> Result<Self, ParseStop> {
-        control.charge(WorkCategory::RecordWrite, 1)?;
+    pub(crate) fn new(control: &mut ParseControl) -> Result<Self, HtmlParseStop> {
+        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         let mut units = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
         units.require_owner(control)?;
         Ok(Self { units })
@@ -25,7 +27,10 @@ impl Utf16Buffer {
 
     /// Preflight actual destination ownership without copying or mutating units.
     #[cfg(test)]
-    pub(crate) fn require_owner(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn require_owner(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
         self.units.require_owner(control)
     }
 
@@ -42,7 +47,7 @@ impl Utf16Buffer {
         &mut self,
         control: &mut ParseControl,
         additional: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.units.reserve_geometric(control, additional)
     }
 
@@ -54,7 +59,7 @@ impl Utf16Buffer {
         &mut self,
         unit: u16,
         control: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.units.try_push(control, unit)
     }
 
@@ -62,9 +67,12 @@ impl Utf16Buffer {
         &mut self,
         code_point: CodePoint,
         control: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.units.require_owner(control)?;
-        control.charge(WorkCategory::InspectByte, size_of::<CodePoint>() as u64)?;
+        control.charge(
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<CodePoint>() as u64,
+        )?;
         let value = code_point.value();
         let Some(value) = value.checked_sub(0x10000) else {
             // A basic-plane value is one unit.
@@ -81,17 +89,17 @@ impl Utf16Buffer {
         &mut self,
         units: &[u16],
         control: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.units.try_extend_from_slice(control, units)
     }
 
-    pub(crate) fn clear(&mut self, control: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn clear(&mut self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.units.require_owner(control)?;
-        control.charge(WorkCategory::RecordWrite, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         self.units.clear(control)
     }
 
-    pub(crate) fn release(self, control: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.units.release(control)
     }
 
@@ -99,12 +107,18 @@ impl Utf16Buffer {
     /// The controller accounts the known fixed Vec payload submitted to Arc;
     /// Arc's opaque header/allocator metadata and infallible setup are explicit
     /// standard-library limitations, not recoverable allocation-failure claims.
-    pub(crate) fn freeze(mut self, control: &mut ParseControl) -> Result<FrozenUtf16, ParseStop> {
+    pub(crate) fn freeze(
+        mut self,
+        control: &mut ParseControl,
+    ) -> Result<FrozenUtf16, HtmlParseStop> {
         if let Err(stop) = self.units.require_owner(control) {
             self.units.release(control)?;
             return Err(stop);
         }
-        if let Err(stop) = control.charge(WorkCategory::CopyByte, size_of::<Vec<u16>>() as u64) {
+        if let Err(stop) = control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            size_of::<Vec<u16>>() as u64,
+        ) {
             self.units.release(control)?;
             return Err(stop);
         }
@@ -134,7 +148,7 @@ impl FrozenUtf16 {
         (self.text, self.allocation)
     }
 
-    pub(crate) fn release(self, control: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let (text, allocation) = self.into_parts();
         drop(text);
         control.release_document_string(allocation)
@@ -226,7 +240,7 @@ mod tests {
         let stop = buffer.reserve_units(&mut c, 4).unwrap_err();
         assert!(matches!(
             stop,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 ..
             }
@@ -246,10 +260,13 @@ mod tests {
         let mut c = ParseControl::new(limits(), token.clone());
         let mut buffer = Utf16Buffer::new(&mut c).unwrap();
         token.cancel();
-        assert_eq!(buffer.reserve_units(&mut c, 4), Err(ParseStop::Cancelled));
+        assert_eq!(
+            buffer.reserve_units(&mut c, 4),
+            Err(HtmlParseStop::Cancelled)
+        );
         assert_eq!(buffer.capacity(), 0);
         buffer.release(&mut c).unwrap();
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedCapacityBytes)
@@ -308,7 +325,7 @@ mod tests {
         buffer.push_unit(0xFEFF, &mut control).unwrap();
         assert_eq!(buffer.len(), 7);
         let pointer = buffer.units().as_ptr();
-        let before = control.usage().work(WorkCategory::CopyByte);
+        let before = control.usage().work(HtmlParseWorkCategory::CopyByte);
         let frozen = buffer.freeze(&mut control).unwrap();
         assert_eq!(
             frozen.text().code_units(),
@@ -316,7 +333,7 @@ mod tests {
         );
         assert_eq!(frozen.text().code_units().as_ptr(), pointer);
         assert_eq!(
-            control.usage().work(WorkCategory::CopyByte) - before,
+            control.usage().work(HtmlParseWorkCategory::CopyByte) - before,
             size_of::<Vec<u16>>() as u64
         );
         assert_eq!(
@@ -364,7 +381,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             stop,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::BufferedUtf16Units,
                 limit: 2,
                 current: 1,
@@ -459,11 +476,11 @@ mod tests {
         cancellation.cancel();
         assert_eq!(
             buffer.extend_units(&[0xDC00], &mut control),
-            Err(ParseStop::Cancelled)
+            Err(HtmlParseStop::Cancelled)
         );
         assert_eq!(buffer.units(), [0xD800]);
         buffer.release(&mut control).unwrap();
-        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(control.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             control
                 .usage()
@@ -486,7 +503,7 @@ mod tests {
         buffer.push_unit(0xD800, &mut control).unwrap();
         assert!(matches!(
             buffer.freeze(&mut control),
-            Err(ParseStop::LimitExceeded {
+            Err(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AtomicLayoutBytes,
                 ..
             })

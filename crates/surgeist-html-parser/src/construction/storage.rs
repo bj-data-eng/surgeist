@@ -34,7 +34,7 @@ pub(super) struct SessionStorage {
     )>,
     #[cfg(test)]
     pub(super) cancel_after_range_ingress: Option<range::RangeIngressCancellation>,
-    pub(super) standalone_ineligibility: Option<StandaloneUnsupported>,
+    pub(super) standalone_ineligibility: Option<HtmlParseUnsupportedState>,
     pub(super) construction: ConstructionOwner,
     pub(super) payloads: PayloadStorage,
     pub(super) failed_text_append: Option<text_append::FailedTextAppend>,
@@ -217,10 +217,10 @@ impl SessionStorage {
 
     pub(super) fn require(&self, control: &mut ParseControl) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.effects.form.is_some() {
             return Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         self.effects.require_idle(control)?;
@@ -241,9 +241,12 @@ impl SessionStorage {
         index: usize,
     ) -> Result<ParserNode, SessionError> {
         control.require_identity(&self.control)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<ParserNode>() as u64,
+        )?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let view = self
             .construction
             .node_at(index)
@@ -262,7 +265,7 @@ impl SessionStorage {
         node: &ParserNode,
     ) -> Result<usize, SessionError> {
         self.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         self.construction
             .storage(control)?
             .position(&node.handle)

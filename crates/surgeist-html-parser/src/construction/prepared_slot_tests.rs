@@ -86,7 +86,7 @@ fn stopped(failure: &HtmlParseFailure) -> Box<Stopped> {
 /// vectors hold exactly the length they were filled to. Anything beyond that
 /// baseline is a leak, including capacity bytes while diagnostics are kept.
 fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
-    use crate::construction::evidence::{DiagnosticLocation, DiagnosticRecord};
+    use crate::construction::evidence::{HtmlParseDiagnostic, HtmlParseDiagnosticLocation};
     if stop.cleanup_refused {
         retained.push(format!("{label}: cleanup refused"));
     }
@@ -100,8 +100,8 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
         // See the payload check below.
         HtmlParseResource::DiagnosticPayloadUnits => 0,
         HtmlParseResource::ManagedCapacityBytes | HtmlParseResource::PeakTransientBytes => {
-            (stop.kept_records * std::mem::size_of::<DiagnosticRecord>()
-                + stop.kept_locations * std::mem::size_of::<DiagnosticLocation>())
+            (stop.kept_records * std::mem::size_of::<HtmlParseDiagnostic>()
+                + stop.kept_locations * std::mem::size_of::<HtmlParseDiagnosticLocation>())
                 as u64
         }
         _ => 0,

@@ -25,8 +25,8 @@ fn controlled_attribute_validation_preserves_parser_admission_and_refused_backin
             Ok(attributes) => {
                 assert_eq!(credits, 34);
                 assert_eq!(attributes.as_slice().as_ptr(), backing.as_ptr());
-                assert_eq!(control.usage().work(WorkCategory::RecordVisit), 6);
-                assert_eq!(control.usage().work(WorkCategory::InspectByte), 28);
+                assert_eq!(control.usage().work(HtmlParseWorkCategory::RecordVisit), 6);
+                assert_eq!(control.usage().work(HtmlParseWorkCategory::InspectByte), 28);
             }
             Err((error, recovered)) => {
                 assert!(credits < 34);
@@ -38,9 +38,9 @@ fn controlled_attribute_validation_preserves_parser_admission_and_refused_backin
                 assert_eq!(control.stop(), stop);
             }
         }
-        assert_eq!(control.usage().work(WorkCategory::CopyByte), 0);
-        assert_eq!(control.usage().work(WorkCategory::ReserveByte), 0);
-        assert_eq!(control.usage().work(WorkCategory::ProviderCall), 0);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::CopyByte), 0);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::ReserveByte), 0);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::ProviderCall), 0);
         assert_eq!(control.usage().actual_capacity_bytes, 0);
         assert_eq!(Arc::strong_count(&backing), 1);
     }
@@ -64,19 +64,19 @@ fn controlled_attribute_validation_keeps_cancellation_and_first_duplicate_order(
         assert!(Arc::ptr_eq(&recovered, &backing));
         if credits == 7 {
             assert_eq!(error, SessionError::Stop(control.stop().unwrap()));
-            assert_eq!(control.usage().work(WorkCategory::InspectByte), 0);
+            assert_eq!(control.usage().work(HtmlParseWorkCategory::InspectByte), 0);
         } else {
             assert_eq!(error, SessionError::DuplicateAttribute);
             assert!(control.stop().is_none());
-            assert_eq!(control.usage().work(WorkCategory::InspectByte), 4);
+            assert_eq!(control.usage().work(HtmlParseWorkCategory::InspectByte), 4);
         }
     }
     let cancellation = HtmlParseCancellation::new();
     cancellation.cancel();
     let mut control = ParseControl::new(limits(), cancellation);
     let (error, recovered) = validate_parser_attributes(backing.clone(), &mut control).unwrap_err();
-    assert_eq!(error, SessionError::Stop(ParseStop::Cancelled));
+    assert_eq!(error, SessionError::Stop(HtmlParseStop::Cancelled));
     assert!(Arc::ptr_eq(&recovered, &backing));
-    assert_eq!(control.usage().work(WorkCategory::RecordVisit), 0);
-    assert_eq!(control.usage().work(WorkCategory::InspectByte), 0);
+    assert_eq!(control.usage().work(HtmlParseWorkCategory::RecordVisit), 0);
+    assert_eq!(control.usage().work(HtmlParseWorkCategory::InspectByte), 0);
 }

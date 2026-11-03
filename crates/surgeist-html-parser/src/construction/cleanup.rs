@@ -7,7 +7,7 @@ use super::*;
 /// is allowed; this does not resume execution or refund any work/high-water.
 pub(super) fn cleanup_charge(
     control: &mut ParseControl,
-    category: WorkCategory,
+    category: HtmlParseWorkCategory,
     units: u64,
 ) -> Result<(), SessionError> {
     if control.stop().is_none() {
@@ -118,8 +118,8 @@ pub(super) fn payload_write<T>(
     writes: u64,
 ) -> Result<(), SessionError> {
     control.admit_atomic_layout(mem::size_of::<T>())?;
-    control.charge(WorkCategory::CopyByte, mem::size_of::<T>() as u64)?;
-    control.charge(WorkCategory::RecordWrite, writes)?;
+    control.charge(HtmlParseWorkCategory::CopyByte, mem::size_of::<T>() as u64)?;
+    control.charge(HtmlParseWorkCategory::RecordWrite, writes)?;
     Ok(())
 }
 
@@ -127,7 +127,7 @@ pub(super) fn take_payload<T>(
     input: &mut Option<T>,
     control: &mut ParseControl,
 ) -> Result<T, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if input.is_none() {
         return Err(SessionError::Consumed);
     }

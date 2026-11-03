@@ -16,11 +16,14 @@ impl SessionStorage {
         control: &mut ParseControl,
         slot: usize,
     ) -> Result<usize, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::InputMetadataUnavailable);
         };
-        control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<usize>() as u64,
+        )?;
         Ok(*raw)
     }
     pub(super) fn read_input_state(
@@ -28,8 +31,11 @@ impl SessionStorage {
         control: &mut ParseControl,
         slot: usize,
     ) -> Result<InputState, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<InputState>() as u64,
+        )?;
         let Some(RetainedPayload::Input { state, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::InputMetadataUnavailable);
         };
@@ -91,7 +97,7 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<usize, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -114,11 +120,11 @@ impl SessionStorage {
             self.payloads
                 .attribute_value_candidate(node, attributes.len(), position)
         {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::String { value: stored, .. }) =
                 self.payloads.values.get(candidate)
             {
-                control.charge(WorkCategory::ProviderCall, 1)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if Arc::ptr_eq(value.shared_code_units(), stored.shared_code_units()) {
                     #[cfg(test)]
                     assert_eq!(
@@ -131,12 +137,12 @@ impl SessionStorage {
             }
         }
         for (slot, payload) in self.payloads.values.iter().enumerate() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {
                 value: candidate, ..
             } = payload
             {
-                control.charge(WorkCategory::ProviderCall, 1)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if Arc::ptr_eq(value.shared_code_units(), candidate.shared_code_units()) {
                     return Ok(slot);
                 }
@@ -213,7 +219,7 @@ impl SessionStorage {
         initialization: InputAttributeInitialization,
     ) -> Result<(), SessionError> {
         let (container, position) = attribute;
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let named = element_attribute(&self.construction, control, node, position)?;
         let name = named.name().local_name();
         let value_attr = exact_ascii(control, Some(name), "value")?;
@@ -327,17 +333,17 @@ impl SessionStorage {
             }
             self.write_input_state(control, slot, next)?;
             let raw = self.input_raw_slot(control, slot)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let current_len = textarea_raw(&self.payloads, control, raw)?.len();
             let mut change =
                 crate::HtmlInputTypeChange::new(state.flags.input_type(), next_kind, current_len);
             while let Some(effect) = change.next_effect() {
                 if effect == crate::HtmlInputTypeEffect::SetContentValueFromCurrent {
                     let mut value_position = None;
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
                     for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
-                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
                             value_position = Some(index);
                             break;
@@ -381,11 +387,11 @@ impl SessionStorage {
                 }
                 if effect == crate::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty {
                     let mut source = None;
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
                     for (position, attribute) in element.attributes().as_slice().iter().enumerate()
                     {
-                        control.charge(WorkCategory::RecordVisit, 2)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                         if attribute.name().namespace().uri().is_none()
                             && exact_ascii(control, Some(attribute.name().local_name()), "value")?
                         {
@@ -477,7 +483,7 @@ impl SessionStorage {
             )?
         };
         let (value, value_slot) = self.register_field_copy(control, value)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -522,8 +528,8 @@ impl SessionStorage {
             copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), control, raw)?;
         let (value, new_slot) = self.register_field_copy(control, text)?;
         (|| {
-            control.charge(WorkCategory::RecordVisit, 2)?;
-            control.charge(WorkCategory::ProviderCall, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<QualifiedName>(control, 1)?;
             let attribute = element_attribute(&self.construction, control, node, position)?;
             payload_write::<Attribute>(control, 1)?;
@@ -536,7 +542,7 @@ impl SessionStorage {
             next_state.value_rewritten_during_creation = true;
             payload_write::<InputState>(control, 1)?;
             payload_write::<[Option<AttributeStorage>; 2]>(control, 2)?;
-            control.charge(WorkCategory::ProviderCall, 2)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
             payload_write::<OrderedAttributes>(control, 1)?;
             let result = self.replace_attribute_storage(
                 control,
@@ -586,10 +592,10 @@ impl SessionStorage {
         self.write_input_state(control, slot, state)?;
         let mut checked = false;
         let mut value = None;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let element = element_record(&self.construction, control, node)?;
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attribute.name().local_name()), "checked")? {
                 checked = true;
             }

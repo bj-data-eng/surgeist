@@ -9,15 +9,15 @@ use super::{
             StoppedFragmentConstruction,
         },
     },
-    head::{HeadBoundary, HeadStep},
-    report::ImmutableParseReport,
+    head::{HeadStep, HtmlParseConstructionBoundary},
+    report::HtmlParseReport,
     seal::{OrdinaryInitialization, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
     terminal::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
 };
 use crate::construction::{
-    SessionClass, SessionError, evidence::DiagnosticEvidenceView, session_class,
+    SessionClass, SessionError, evidence::HtmlParseDiagnostics, session_class,
 };
-use crate::parser::control::{ParseStop, ParseUsage, StandaloneUnsupported};
+use crate::parser::control::{HtmlParseStop, HtmlParseUnsupportedState, HtmlParseUsage};
 use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlSource};
 
 /// A terminal reason is separate from recoverable syntax diagnostics.
@@ -25,10 +25,10 @@ use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits,
 pub enum HtmlParseFailureReason {
     CspProtocol(surgeist_html::HtmlCspProtocolError),
     CspProcessing,
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     UnsupportedDocumentInitialization,
     UnsupportedExecutionProfile,
-    UnsupportedConstruction(HeadBoundary),
+    UnsupportedConstruction(HtmlParseConstructionBoundary),
     MissingContextFact(crate::HtmlCaptureFact),
     UnsupportedContextReactions,
     Engine(HtmlParseEngineCondition),
@@ -94,7 +94,7 @@ impl HtmlParseFailure {
     pub(crate) fn return_csp_storage(
         &mut self,
         storage: ReturnableCspStorage,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         // A claim for nonzero storage exists only for an ordinary failure, and
         // the owner variant never changes after construction.
         if let FailureStorage::Ordinary(owner) = &mut self.storage
@@ -165,7 +165,7 @@ impl HtmlParseFailure {
     }
     /// The stop the reason names, for a failure that reports a cleanup or an
     /// ownership condition and so holds no stopped prefix.
-    fn stop_of_refused_cleanup(&self) -> Option<ParseStop> {
+    fn stop_of_refused_cleanup(&self) -> Option<HtmlParseStop> {
         match (self.cleanup_error, self.reason) {
             (Some(_), HtmlParseFailureReason::Stop(stop)) => Some(stop),
             _ => None,
@@ -173,7 +173,7 @@ impl HtmlParseFailure {
     }
     /// The original execution stop, including an unsupported construction's
     /// canonical terminal stop. Pre-execution rejection has no invented stop.
-    pub fn first_stop(&self) -> Option<ParseStop> {
+    pub fn first_stop(&self) -> Option<HtmlParseStop> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => match o.failure() {
                 Some(super::entry::InitializationFailure::Stopped(stop)) => Some(stop),
@@ -219,7 +219,7 @@ impl HtmlParseFailure {
     }
     /// Usage of the actual retained terminal evidence owner. This does not
     /// relabel the first-stop or completed cleanup snapshots.
-    pub fn retained_usage(&self) -> Option<&ParseUsage> {
+    pub fn retained_usage(&self) -> Option<&HtmlParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.retained_usage(),
             FailureStorage::Ordinary(o) => Some(o.retained_usage()),
@@ -323,7 +323,7 @@ impl HtmlParseFailure {
             _ => None,
         }
     }
-    pub fn at_stop(&self) -> Option<&ParseUsage> {
+    pub fn at_stop(&self) -> Option<&HtmlParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.at_stop(),
             FailureStorage::Ordinary(o) => o.at_stop(),
@@ -333,7 +333,7 @@ impl HtmlParseFailure {
             FailureStorage::FragmentFrozen(o) => o.parts.at_stop(),
         }
     }
-    pub fn after_cleanup(&self) -> Option<&ParseUsage> {
+    pub fn after_cleanup(&self) -> Option<&HtmlParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.after_cleanup(),
             FailureStorage::Ordinary(o) => Some(o.after_cleanup()),
@@ -343,7 +343,7 @@ impl HtmlParseFailure {
             FailureStorage::FragmentFrozen(o) => o.parts.after_cleanup(),
         }
     }
-    pub fn diagnostics(&self) -> Option<DiagnosticEvidenceView<'_>> {
+    pub fn diagnostics(&self) -> Option<HtmlParseDiagnostics<'_>> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.diagnostics(),
             FailureStorage::Ordinary(o) => o.diagnostics(),
@@ -394,10 +394,10 @@ fn session_reason(e: SessionError) -> HtmlParseFailureReason {
 /// The reason for a stop: the two Meta CSP stops have reasons of their own, so
 /// one stop is one reason whether the service raised it or the controller
 /// latched it.
-fn stop_reason(stop: ParseStop) -> HtmlParseFailureReason {
+fn stop_reason(stop: HtmlParseStop) -> HtmlParseFailureReason {
     match stop {
-        ParseStop::CspProcessing => HtmlParseFailureReason::CspProcessing,
-        ParseStop::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
+        HtmlParseStop::CspProcessing => HtmlParseFailureReason::CspProcessing,
+        HtmlParseStop::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
         other => HtmlParseFailureReason::Stop(other),
     }
 }
@@ -411,7 +411,7 @@ fn cause_reason(cause: StopCause, lost: HtmlParseEngineCondition) -> HtmlParseFa
         StopCause::LostOwner => HtmlParseFailureReason::Engine(lost),
         StopCause::Session(error) => session_reason(error),
         StopCause::Unsupported(state) => {
-            HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(state))
+            HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(state))
         }
     }
 }
@@ -556,7 +556,9 @@ fn ordinary_attempt(
             Ok(HeadStep::Complete) => break,
             Ok(HeadStep::Boundary(b)) => {
                 reason = Some(HtmlParseFailureReason::UnsupportedConstruction(b));
-                cause = Some(StopCause::Unsupported(StandaloneUnsupported::Provenance));
+                cause = Some(StopCause::Unsupported(
+                    HtmlParseUnsupportedState::Provenance,
+                ));
                 break;
             }
             Err(e) => {
@@ -601,7 +603,7 @@ pub(crate) fn document(
     request: HtmlDocumentParseRequest,
     service: Option<&mut dyn crate::meta_csp::Service>,
     fixed: usize,
-) -> Result<ImmutableParseReport, HtmlParseFailure> {
+) -> Result<HtmlParseReport, HtmlParseFailure> {
     let initial_base = request.initial_policy_base();
     let mut owner = OrdinaryInitialization::new(request);
     let parts = match ordinary_attempt(&mut owner, service, fixed, initial_base) {
@@ -625,7 +627,7 @@ pub(crate) fn document(
             return Err(detach_frozen_ordinary(owner, reason, parts));
         }
     };
-    match ImmutableParseReport::publish_document(sealed) {
+    match HtmlParseReport::publish_document(sealed) {
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
@@ -752,7 +754,9 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
             }
             Ok(HeadStep::Complete) => break None,
             Ok(HeadStep::Boundary(b)) => {
-                cause = Some(StopCause::Unsupported(StandaloneUnsupported::Provenance));
+                cause = Some(StopCause::Unsupported(
+                    HtmlParseUnsupportedState::Provenance,
+                ));
                 break Some(HtmlParseFailureReason::UnsupportedConstruction(b));
             }
             Err(e) => {
@@ -798,7 +802,7 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
 )]
 pub(crate) fn fragment(
     request: HtmlFragmentParseRequest,
-) -> Result<ImmutableParseReport, HtmlParseFailure> {
+) -> Result<HtmlParseReport, HtmlParseFailure> {
     let mut owner = FragmentInitialization::new(request);
     let parts = match fragment_attempt(&mut owner) {
         FragmentAttempt::Ready(parts) => parts,
@@ -821,7 +825,7 @@ pub(crate) fn fragment(
             return Err(detach_frozen_fragment(owner, reason, parts));
         }
     };
-    match ImmutableParseReport::publish_fragment(sealed) {
+    match HtmlParseReport::publish_fragment(sealed) {
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
@@ -905,7 +909,7 @@ impl InitializationTarget {
     pub(super) fn admit(
         self,
         c: &mut crate::parser::control::ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         match self {
             #[cfg(test)]
             Self::Native => Ok(()),
@@ -937,7 +941,7 @@ mod tests {
         };
         parts
             .control
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance);
         (owner, parts)
     }
 
@@ -948,7 +952,7 @@ mod tests {
         parts.control.take_stopped_source_binding().unwrap();
         let failure = detach_frozen_ordinary(
             owner,
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             parts,
         );
         assert_eq!(
@@ -963,7 +967,7 @@ mod tests {
         parts.control.refuse_next_construction_retire();
         let failure = detach_frozen_ordinary(
             owner,
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             parts,
         );
         assert_eq!(
@@ -996,7 +1000,7 @@ mod tests {
         );
         assert_eq!(
             failed.reason(),
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
         );
         assert_eq!(failed.retained_usage().cloned(), retained);
     }
@@ -1020,7 +1024,7 @@ mod tests {
         drop(driver);
         let owned = OwnedOrdinaryFailure::take(&mut Some(request), &mut Some(detached)).unwrap();
         HtmlParseFailure {
-            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            reason: HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             storage: FailureStorage::Ordinary(owned),
             cleanup_error: None,
         }
@@ -1058,7 +1062,7 @@ mod tests {
         assert_eq!(failed.cleanup_error(), None);
         assert_eq!(
             failed.reason(),
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
         );
     }
 
@@ -1089,13 +1093,13 @@ mod tests {
             super::super::tests::limits(100),
         );
         let failed = HtmlParseFailure {
-            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            reason: HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             storage: FailureStorage::OrdinaryInitialization(OrdinaryInitialization::new(request)),
             cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
         };
         // The carrier holds no stopped prefix, but execution ran and was
         // stopped: the stop the reason names is the first one.
-        assert_eq!(failed.first_stop(), Some(ParseStop::Cancelled));
+        assert_eq!(failed.first_stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(failed.source_admitted(), None);
         assert_eq!(
             failed.cleanup_error(),
@@ -1164,7 +1168,7 @@ mod tests {
         .parse()
         .unwrap_err();
         assert!(
-            matches!(failed.reason(),HtmlParseFailureReason::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::AtomicLayoutBytes,requested_delta,..}) if requested_delta==bytes as u64)
+            matches!(failed.reason(),HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded{resource:HtmlParseResource::AtomicLayoutBytes,requested_delta,..}) if requested_delta==bytes as u64)
         );
         assert_eq!(failed.source_admitted(), Some(true));
         assert_eq!(failed.source().as_utf8(), Some(literal));
@@ -1192,7 +1196,7 @@ mod tests {
         .parse()
         .unwrap_err();
         assert!(
-            matches!(exact.reason(),HtmlParseFailureReason::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::AtomicLayoutBytes,requested_delta,..}) if requested_delta==next as u64)
+            matches!(exact.reason(),HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded{resource:HtmlParseResource::AtomicLayoutBytes,requested_delta,..}) if requested_delta==next as u64)
         );
         assert_eq!(
             exact
@@ -1239,8 +1243,8 @@ mod tests {
             }
         }
         // The completion stage's own error is the same completion state.
-        let completion = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
-            StandaloneUnsupported::Completion,
+        let completion = HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(
+            HtmlParseUnsupportedState::Completion,
         ));
         assert_eq!(
             ordinary_reason(&StandaloneError::Head(HeadError::IncompleteCompletion)),
@@ -1303,7 +1307,8 @@ mod tests {
     #[test]
     fn a_stage_state_the_environment_does_not_support_reports_it_as_its_reason() {
         for (error, state) in super::super::outcome_tests::stage_states() {
-            let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(state));
+            let reason =
+                HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(state));
             assert_eq!(
                 ordinary_reason(&StandaloneError::Head(error())),
                 reason,
@@ -1321,8 +1326,8 @@ mod tests {
     /// may reach is the unsupported state its stop names, in both drivers.
     #[test]
     fn a_structure_error_reports_the_unsupported_nesting_state_as_its_reason() {
-        let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
-            StandaloneUnsupported::InvalidNesting,
+        let reason = HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(
+            HtmlParseUnsupportedState::InvalidNesting,
         ));
         for (name, error) in super::super::outcome_tests::structure_errors() {
             assert_eq!(
@@ -1358,11 +1363,11 @@ mod tests {
     fn a_meta_csp_stop_has_the_same_reason_as_the_error_that_names_it() {
         let protocol = crate::construction::csp_protocol_error();
         assert_eq!(
-            session_reason(SessionError::Stop(ParseStop::CspProcessing)),
+            session_reason(SessionError::Stop(HtmlParseStop::CspProcessing)),
             session_reason(SessionError::CspService)
         );
         assert_eq!(
-            session_reason(SessionError::Stop(ParseStop::CspProtocol(protocol))),
+            session_reason(SessionError::Stop(HtmlParseStop::CspProtocol(protocol))),
             session_reason(SessionError::CspProtocol(protocol))
         );
     }

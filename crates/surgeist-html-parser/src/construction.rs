@@ -26,12 +26,13 @@ use crate::keyed::{Table, slots};
 #[cfg(test)]
 use crate::parser::control::WalkSite;
 use crate::parser::control::{
-    ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
-    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
+    ControlIdentity, DocumentStringAllocation, FinalReleaseError, HtmlParseStop,
+    HtmlParseUnsupportedState, HtmlParseWorkCategory, OwnedVec, ParseControl, SharedAllocation,
+    VectorCapacity,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
-    tokenizer::token::{Doctype, Tag, TagKind, Text, TextOrigin, TokenKind},
+    tokenizer::token::{Doctype, HtmlParseTextOrigin, Tag, TagKind, Text, TokenKind},
 };
 use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
 use std::num::NonZeroU32;
@@ -105,13 +106,13 @@ mod text_append;
 #[cfg(test)]
 pub(crate) mod text_append_tests;
 mod tree_root;
-pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
+pub use completion::{HtmlParseCompletion, HtmlParseDocumentState, HtmlParseReadiness};
 use effects::ConstructionEffects;
 pub(crate) use foreign::ForeignNamespace;
 #[cfg(test)]
 pub(crate) use native_view::NativeView;
 use select::SelectMetadata;
-pub use svg::SvgScriptOrigin;
+pub use svg::HtmlParseSvgScriptOrigin;
 pub(crate) use svg::SvgScriptState;
 pub(crate) use template::{CreationContext, CreationLocation};
 #[cfg(test)]
@@ -176,10 +177,10 @@ mod payload_registry;
 mod session_error;
 mod string_storage;
 use node_joins::{Join, NodeJoins, cell_slot, joined_cell};
-pub use payload_registry::{FormAssociationEvidence, OutputDefaultValueOverride};
 pub(crate) use payload_registry::{
     FormAssociationState, InputState, OutputState, ScriptMetadata, TextareaState,
 };
+pub use payload_registry::{HtmlParseFormEvidence, HtmlParseOutputOverride};
 use payload_registry::{
     KindList, KindSlots, PayloadStorage, PreparedSlot, RetainedPayload, element_attribute,
     element_record, row_list,
@@ -237,7 +238,7 @@ fn lowercase_token_name(
     name: &DocumentString,
 ) -> Result<(), SessionError> {
     for &unit in name.code_units() {
-        control.charge(WorkCategory::InspectByte, 2)?;
+        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if matches!(unit, 0x41..=0x5a) {
             return Err(SessionError::WrongToken);
         }
@@ -250,13 +251,13 @@ fn exact_ascii(
     value: Option<&DocumentString>,
     expected: &str,
 ) -> Result<bool, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(value) = value else { return Ok(false) };
     if value.len() != expected.len() {
         return Ok(false);
     }
     for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        control.charge(WorkCategory::InspectByte, 3)?;
+        control.charge(HtmlParseWorkCategory::InspectByte, 3)?;
         if unit != u16::from(byte) {
             return Ok(false);
         }

@@ -4,7 +4,7 @@
 //! a Disabled label or an empty task queue. No public parse report is produced.
 
 use super::*;
-use crate::construction::ConstructionReadiness;
+use crate::construction::HtmlParseReadiness;
 use head::{HeadError, HeadState, HeadStep};
 use prologue::Payload;
 
@@ -33,7 +33,7 @@ impl HeadState<'_> {
     }
     pub(super) fn begin_end(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         self.qualify_end_script(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if self.end.is_some()
             || !matches!(
                 self.pending.as_ref().map(|p| &p.payload),
@@ -57,10 +57,10 @@ impl HeadState<'_> {
     /// retain their own actual bounded control admissions; no bulk stack clear.
     pub(super) fn end_step(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
         self.qualify_end_script(c)?;
-        c.charge(WorkCategory::StateStep, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             size_of::<Option<EndPhase>>() as u64,
         )?;
         let phase = self.end.ok_or(HeadError::IncompleteCompletion)?;
@@ -73,11 +73,11 @@ impl HeadState<'_> {
                 self.before
                     .kernel
                     .session
-                    .update_standalone_readiness(c, ConstructionReadiness::Interactive)?;
+                    .update_standalone_readiness(c, HtmlParseReadiness::Interactive)?;
                 self.set_end(EndPhase::PopOpen, c)?;
             }
             EndPhase::PopOpen => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self.before.kernel.stack()?.len() == 0 {
                     self.set_end(EndPhase::DeferredScriptsAbsent, c)?;
                 } else {
@@ -146,7 +146,7 @@ impl HeadState<'_> {
                 self.before
                     .kernel
                     .session
-                    .update_standalone_readiness(c, ConstructionReadiness::Complete)?;
+                    .update_standalone_readiness(c, HtmlParseReadiness::Complete)?;
                 self.set_end(EndPhase::NullBrowsingContextTail, c)?;
             }
             EndPhase::NullBrowsingContextTail => {
@@ -155,7 +155,7 @@ impl HeadState<'_> {
             }
             EndPhase::VerifyComplete => {
                 self.closed_end_producers(c)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if self.before.kernel.stack()?.len() != 0
                     || !matches!(
                         self.pending.as_ref().map(|p| &p.payload),
@@ -206,7 +206,7 @@ impl HeadState<'_> {
     }
     pub(super) fn qualify_completed(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         self.qualify_end_script(c)?;
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if self.end != Some(EndPhase::Done)
             || self.pending.is_some()
             || self.before.kernel.stack()?.len() != 0

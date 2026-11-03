@@ -197,11 +197,11 @@ fn checkbox_exact_work_and_one_short_preserve_original_stop_and_dispose_all_pref
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
                 total
             );
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -249,7 +249,7 @@ fn checkbox_reset_cancellation_retains_completed_value_before_association_and_cl
                 &capability
             )
             .err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(input.is_none());
     let storage = session.active().unwrap();
@@ -301,15 +301,15 @@ fn checkbox_reset_cancellation_retains_completed_value_before_association_and_cl
         })
         .unwrap();
     assert!(!association.parser_inserted);
-    assert_eq!(association.evidence, FormAssociationEvidence::Created);
+    assert_eq!(association.evidence, HtmlParseFormEvidence::Created);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
@@ -427,8 +427,8 @@ fn checkbox_original_sources_reject_foreign_or_incomplete_token_before_take() {
         if case != 0 {
             assert_eq!(
                 error,
-                SessionError::Stop(ParseStop::InternalInvariant(
-                    crate::parser::control::Invariant::ForeignSource
+                SessionError::Stop(HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::ForeignSource
                 ))
             );
         } else {
@@ -507,7 +507,7 @@ fn checkbox_original_ranges_charge_two_entries_before_transfer_and_cleanup_termi
             .unwrap_err();
         assert!(matches!(
             error,
-            SessionError::Stop(ParseStop::LimitExceeded {
+            SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceMapEntries,
                 ..
             })
@@ -589,7 +589,7 @@ fn checkbox_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner_r
             match case {
                 0 => SessionError::AliasedPayload,
                 1 => SessionError::ForeignNode,
-                _ => SessionError::Stop(ParseStop::Cancelled),
+                _ => SessionError::Stop(HtmlParseStop::Cancelled),
             }
         );
         assert!(input.is_some());
@@ -676,11 +676,11 @@ fn checkbox_clone_partial_work_and_cancellation_keep_original_owner_and_first_st
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
                 total
             );
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -733,13 +733,13 @@ fn checkbox_clone_partial_work_and_cancellation_keep_original_owner_and_first_st
             .unwrap()
             .clone_node(&mut c, node.index, DocumentRef::Owned(0))
             .err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let usage = c.usage().clone();
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         usage.resource(HtmlParseResource::WorkCredits).current
@@ -807,7 +807,7 @@ fn checkbox_on_fallback_exact_two_unit_admission_preserves_an_existing_output_pr
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::BufferedUtf16Units,
                         ..
                     }))
@@ -1172,8 +1172,8 @@ fn checkbox_native_getter_foreign_destination_is_first_stop_and_preserves_foreig
     buffer.push_unit(81, &mut foreign).unwrap();
     assert!(matches!(
         session.append_input_value(&mut c, &node, &mut buffer),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert_eq!(buffer.units(), [81]);
@@ -1465,7 +1465,7 @@ fn default_button_input_alias_foreign_parent_and_cancel_preserve_incoming_token(
                 match case {
                     0 => SessionError::AliasedPayload,
                     1 => SessionError::ForeignNode,
-                    _ => SessionError::Stop(ParseStop::Cancelled),
+                    _ => SessionError::Stop(HtmlParseStop::Cancelled),
                 }
             );
             assert!(input.is_some());
@@ -1555,11 +1555,11 @@ fn default_button_input_exact_work_and_stopped_prefixes_keep_tickets_and_first_s
                     c.usage().resource(HtmlParseResource::WorkCredits).current,
                     total
                 );
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -1626,7 +1626,7 @@ fn default_button_input_two_preserved_raw_copies_have_exact_and_one_short_unit_c
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedUtf16Units,
                         ..
                     }))
@@ -1813,11 +1813,11 @@ fn text_input_exact_work_and_one_short_preserve_original_stop_and_dispose_all_pr
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
                 total
             );
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -1865,7 +1865,7 @@ fn text_input_reset_cancellation_retains_completed_value_before_association_and_
                 &capability
             )
             .err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(input.is_none());
     let storage = session.active().unwrap();
@@ -1917,15 +1917,15 @@ fn text_input_reset_cancellation_retains_completed_value_before_association_and_
         })
         .unwrap();
     assert!(!association.parser_inserted);
-    assert_eq!(association.evidence, FormAssociationEvidence::Created);
+    assert_eq!(association.evidence, HtmlParseFormEvidence::Created);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
@@ -2043,7 +2043,7 @@ fn text_input_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner
             match case {
                 0 => SessionError::AliasedPayload,
                 1 => SessionError::ForeignNode,
-                _ => SessionError::Stop(ParseStop::Cancelled),
+                _ => SessionError::Stop(HtmlParseStop::Cancelled),
             }
         );
         assert!(input.is_some());
@@ -2278,7 +2278,7 @@ fn hidden_input_sanitization_preserves_exact_utf16_origin_groups_and_original_ev
             .observed_origins(origins, &mut c)
             .unwrap()
             .iter()
-            .all(|o| o.kind != crate::parser::tokenizer::token::OriginKind::RecoverySyntax)
+            .all(|o| o.kind != crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax)
     );
     let originals = session
         .active()
@@ -2366,9 +2366,11 @@ fn hidden_input_foreign_proof_alias_and_generic_keep_independent_color_admission
                     &token_source,
                     &capability
                 ),
-                Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-                    StandaloneUnsupported::Provenance
-                )))
+                Err(SessionError::Stop(
+                    HtmlParseStop::UnsupportedStandaloneState(
+                        HtmlParseUnsupportedState::Provenance
+                    )
+                ))
             ));
             assert!(input.is_some());
             other.release(&mut c).unwrap();
@@ -2493,7 +2495,7 @@ fn hidden_input_every_stopped_writeback_tail_retains_alias_valid_owners_and_firs
                 &token_source,
                 &capability
             ),
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }))
@@ -2608,7 +2610,7 @@ fn hidden_input_raw_rewrite_coexistence_exact_104_units_and_one_short_reclaims_e
 }
 #[test]
 fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let request = crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8(
             "<html><head></head><form><input value='A&#13;B' type=hidden checked>",
@@ -2617,7 +2619,8 @@ fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
     );
     let (mut c, mut session, capability, lexer, parent, mut input, token_source) =
         input_owner(&request);
-    let mut form_lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut form_lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut form = Some(next_fixture_tag(
         &mut form_lexer,
         &mut c,
@@ -2647,7 +2650,7 @@ fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
             &token_source,
             &capability
         ),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     assert!(input.is_none());
     let storage = session.active().unwrap();
@@ -2674,7 +2677,7 @@ fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
     assert!(state.flags.checkedness() && state.value_rewritten_during_creation);
     assert_eq!(
         textarea_raw(&storage.payloads, &mut c, raw).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let RetainedPayload::String { value, .. } = &storage.payloads.values[raw] else {
         unreachable!()
@@ -2694,7 +2697,7 @@ fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
         .unwrap();
     assert_eq!(association.owner, None);
     assert!(!association.parser_inserted);
-    assert_eq!(association.evidence, FormAssociationEvidence::Created);
+    assert_eq!(association.evidence, HtmlParseFormEvidence::Created);
     assert!(
         storage
             .construction
@@ -2706,7 +2709,7 @@ fn hidden_input_cancel_after_real_reset_precedes_parser_association() {
     );
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -2738,8 +2741,8 @@ fn hidden_input_value_getters_qualify_destination_and_refuse_imported_and_cancel
     buffer.push_unit(81, &mut foreign).unwrap();
     assert!(matches!(
         session.append_input_default_value(&mut c, &node, &mut buffer),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert_eq!(buffer.units(), [81]);
@@ -2806,8 +2809,8 @@ fn hidden_input_original_sources_reject_foreign_or_incomplete_token_before_take(
         if case != 0 {
             assert_eq!(
                 error,
-                SessionError::Stop(ParseStop::InternalInvariant(
-                    crate::parser::control::Invariant::ForeignSource
+                SessionError::Stop(HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::ForeignSource
                 ))
             );
         } else {
@@ -2886,7 +2889,7 @@ fn hidden_input_original_ranges_charge_two_entries_before_transfer_and_cleanup_t
             .unwrap_err();
         assert!(matches!(
             error,
-            SessionError::Stop(ParseStop::LimitExceeded {
+            SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceMapEntries,
                 ..
             })

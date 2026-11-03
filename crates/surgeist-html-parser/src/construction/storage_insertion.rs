@@ -56,14 +56,14 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         self.container(control, parent)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
             .check_detachment()
             .map_err(|error| construction_owner::construction_error(control, error))?;
         if let Some(before) = before {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.construction
                 .node_at(before)
                 .ok_or(SessionError::ForeignNode)?
@@ -103,7 +103,7 @@ impl SessionStorage {
         }
         let reroot = self.begin_reroot(control, node, Some(parent))?;
         control.charge(
-            WorkCategory::ProviderCall,
+            HtmlParseWorkCategory::ProviderCall,
             if before.is_some() { 3 } else { 2 },
         )?;
         let node_handle = self
@@ -148,7 +148,7 @@ impl SessionStorage {
                         // Source semantics stay between the original depth and
                         // edge checks, before any actual scratch-bank provider.
                         control.observe_tree_depth(usage.depth() as u64)?;
-                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let Some(view) = action.storage_view() else {
                             return Err(latch_owner_refusal(control));
                         };
@@ -175,7 +175,7 @@ impl SessionStorage {
                             before_edges,
                             |control| {
                                 if revoke_standalone {
-                                    payload_write::<Option<StandaloneUnsupported>>(control, 1)?;
+                                    payload_write::<Option<HtmlParseUnsupportedState>>(control, 1)?;
                                 }
                                 if form_effects.is_some() {
                                     payload_write::<Option<FormEffects>>(control, 1)?;
@@ -210,7 +210,7 @@ impl SessionStorage {
             self.effects.form = form_effects;
         }
         if revoke_standalone {
-            self.standalone_ineligibility = Some(StandaloneUnsupported::ScriptDocument);
+            self.standalone_ineligibility = Some(HtmlParseUnsupportedState::ScriptDocument);
         }
         self.nonce_inserted_tree(control, node)?;
         Ok(())
@@ -232,7 +232,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -251,7 +251,7 @@ impl SessionStorage {
         if form_effects.is_some() {
             payload_write::<Option<FormEffects>>(control, 1)?;
         }
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let handle = self
             .construction
             .node_at(node)

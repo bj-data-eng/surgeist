@@ -7,9 +7,9 @@ pub(super) fn script_attribute<'a>(
     element: &'a HtmlElement,
     local: &str,
 ) -> Result<Option<&'a DocumentString>, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     for attribute in element.attributes().as_slice() {
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), local)?
         {
@@ -25,10 +25,10 @@ pub(super) fn script_type_charge(
 ) -> Result<(), SessionError> {
     match work {
         crate::bounded::HtmlScriptTypeWork::RecordVisit(units) => {
-            control.charge(WorkCategory::RecordVisit, units)?
+            control.charge(HtmlParseWorkCategory::RecordVisit, units)?
         }
         crate::bounded::HtmlScriptTypeWork::InspectByte(units) => {
-            control.charge(WorkCategory::InspectByte, units)?
+            control.charge(HtmlParseWorkCategory::InspectByte, units)?
         }
     }
     Ok(())

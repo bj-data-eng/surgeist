@@ -9,7 +9,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if let Some(reason) = storage.standalone_ineligibility {
             return Err(control.stop_unsupported_standalone(reason).into());
         }
@@ -22,7 +22,7 @@ impl ParserArenaSession {
             HtmlNodeKind::Document(_)
         ) {
             return Err(control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(())
@@ -36,7 +36,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         c.require_identity(&storage.control)?;
-        c.charge(WorkCategory::RecordVisit, 4)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
         if let Some(reason) = storage.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
@@ -56,7 +56,7 @@ impl ParserArenaSession {
             )
         {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(())
@@ -77,7 +77,7 @@ impl ParserArenaSession {
         tag.attributes.require_disposal_owner(control)?;
         check_text_source(control, &tag.name)?;
         for attribute in tag.attributes.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             check_disposal_text(control, &attribute.name)?;
             check_disposal_text(control, &attribute.value)?;
             control.require_source_range(&attribute.source)?;
@@ -98,7 +98,7 @@ impl ParserArenaSession {
         self.active()?.node_document_ref(control, parent.index)?;
         let storage = self.active_mut()?;
         storage.document_slot(control, 0)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let inert = storage
             .fragment
             .as_ref()

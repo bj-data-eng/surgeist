@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origins() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     for implied in [false, true] {
         let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
             "<html id=old><html id=ignored x:id=p a='"
@@ -13,7 +13,7 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
         ));
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -103,7 +103,7 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
 }
 
 fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpanObservation {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // A real lexer produces every field and original source association.
     // Sixteen short attributes fit the existing finite fixture capacities.
     let attributes = (0..16).map(|i| format!(" a{i:02}=v")).collect::<String>();
@@ -115,7 +115,7 @@ fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpa
     let source = crate::HtmlSource::utf8(input);
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("actual first tag")
@@ -196,9 +196,9 @@ fn prepare_real_merge<'source>(
     PreparedAttributeMerge,
     crate::parser::tokenizer::tests::LexerFixture<'source>,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     c.admit_source(source).unwrap();
-    let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
+    let mut tokenizer = LexerFixture::new(source, HtmlTokenizerState::Data, None, c).unwrap();
     let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
     let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, c) else {
         panic!("actual first tag")
@@ -368,7 +368,7 @@ fn every_bounded_slot_work_cut_preserves_literal_prefix_backings_and_cleanup() {
         };
         assert!(matches!(
             refused,
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }))
@@ -452,7 +452,7 @@ fn exact_and_one_short_rebind_work_preserve_redirect_and_terminal_cleanup() {
         if short {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -571,7 +571,7 @@ fn cancellation_between_real_slot_and_rebind_operations_retains_exact_owner_stat
                 true,
             )
         };
-        assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             work
@@ -583,11 +583,11 @@ fn cancellation_between_real_slot_and_rebind_operations_retains_exact_owner_stat
 
 #[test]
 fn merge_rejects_external_alias_and_foreign_origin_before_consuming_input() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
         panic!("tag")
@@ -647,8 +647,8 @@ fn merge_rejects_external_alias_and_foreign_origin_before_consuming_input() {
     );
     assert!(matches!(
         session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignSource
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignSource
         )))
     ));
     assert!(incoming.is_some());
@@ -680,7 +680,7 @@ fn imported_attribute_backing_is_explicitly_unavailable_and_retained() {
 
 #[test]
 fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<html id=old><html a=one z=two>");
     let mut c = ParseControl::new(
         limits()
@@ -691,7 +691,7 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
         crate::HtmlParseCancellation::new(),
     );
     c.admit_source(&source).unwrap();
-    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
         panic!("tag")
@@ -703,7 +703,7 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
     let mut input = Some(second);
     assert!(matches!(
         session.add_attributes_if_missing(&mut c, &root, &mut input),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedAttributes,
             ..
         }))
@@ -759,13 +759,13 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
 
 #[test]
 fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     for cancel in [false, true] {
         let source = crate::HtmlSource::utf8("<html a=x>");
         let cancellation = crate::HtmlParseCancellation::new();
         let mut c = ParseControl::new(limits(), cancellation.clone());
         c.admit_source(&source).unwrap();
-        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let root = session.allocate_implicit_html(&mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut t, &mut c) else {
@@ -776,15 +776,15 @@ fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
             cancellation.cancel();
             assert_eq!(
                 session.add_attributes_if_missing(&mut c, &root, &mut input),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             );
         } else {
             let mut foreign = control();
             foreign.admit_source(&source).unwrap();
             assert!(matches!(
                 session.add_attributes_if_missing(&mut foreign, &root, &mut input),
-                Err(SessionError::Stop(ParseStop::InternalInvariant(
-                    crate::parser::control::Invariant::ForeignControl
+                Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::ForeignControl
                 )))
             ));
         }
@@ -810,7 +810,7 @@ fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
 
 #[test]
 fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_storage() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<html id=old><html a=one b=two>");
     let run = |cap: Option<u64>| {
         let selected = match cap {
@@ -819,7 +819,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
         };
         let mut c = ParseControl::new(selected, crate::HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
             panic!("tag")
@@ -884,7 +884,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
         match result {
             Err(error) => assert!(matches!(
                 error,
-                SessionError::Stop(ParseStop::LimitExceeded {
+                SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 })

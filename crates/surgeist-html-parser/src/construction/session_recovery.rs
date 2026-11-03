@@ -15,7 +15,7 @@ impl ParserArenaSession {
         self.active()?.require(control)?;
         control.require_source(source)?;
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if tag.kind != TagKind::Start {
             return Err(SessionError::WrongToken);
         }
@@ -38,7 +38,7 @@ impl ParserArenaSession {
         let mut start = None;
         let mut end = None;
         for origin in tag.name.origins.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.require_source_range(&origin.source)?;
             if origin.start != covered
                 || origin.end <= origin.start
@@ -56,7 +56,7 @@ impl ParserArenaSession {
         }
         let start = start.ok_or(SessionError::OriginSplitUnavailable)?;
         let end = end.ok_or(SessionError::OriginSplitUnavailable)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<crate::HtmlSourceRange>(control, 1)?;
         // HtmlSource::range reads each interior UTF8 endpoint once. Pre-admit
         // both reads together immediately before that bounded native helper.
@@ -65,7 +65,7 @@ impl ParserArenaSession {
                 .into_iter()
                 .filter(|&endpoint| endpoint != 0 && endpoint != source.len())
                 .count() as u64;
-            control.charge(WorkCategory::InputUnitRead, reads)?;
+            control.charge(HtmlParseWorkCategory::InputUnitRead, reads)?;
         }
         let range = source
             .range(start, end)
@@ -75,11 +75,11 @@ impl ParserArenaSession {
         let prepared = (|| {
             origins.try_push(
                 control,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: 0,
                     end: 3,
                     source: range,
-                    kind: crate::parser::tokenizer::token::OriginKind::RecoverySyntax,
+                    kind: crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax,
                 },
             )?;
             payload_write::<Text>(control, 1)
@@ -103,7 +103,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         self.active()?.require(control)?;
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if tag.kind != TagKind::End {
             return Err(SessionError::WrongToken);
         }
@@ -192,7 +192,7 @@ impl ParserArenaSession {
         let prepared = storage.prepare_document_allocation(control, document, false)?;
         let text = take_payload(input, control)?;
         let (value, ticket) = storage.register_text(control, text)?;
-        control.charge(WorkCategory::RecordWrite, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         let node = storage.allocate_prepared_owned(
             control,
             creation_command(HtmlNodeKind::Comment(value)),
@@ -230,7 +230,7 @@ impl ParserArenaSession {
             }
         };
         let (data, data_ticket) = storage.register_text(control, data)?;
-        control.charge(WorkCategory::RecordWrite, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
         // Recovered PI data is exact storage, not checked native authoring input.
         let node = storage.allocate_prepared_owned(
             control,
@@ -294,7 +294,7 @@ impl ParserArenaSession {
                     let empty = literal_string(control, b"")?;
                     storage.register_string(control, empty, None)?
                 };
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 units = units.checked_add(value.0.len()).ok_or_else(|| {
                     control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                 })?;
@@ -305,7 +305,7 @@ impl ParserArenaSession {
             let [Some((name, a)), Some((public_id, b)), Some((system_id, d))] = registered else {
                 return Err(latch_registry_row(control));
             };
-            control.charge(WorkCategory::RecordWrite, 4)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 4)?;
             // HTML's DOM creation step lowers missing token fields to empty
             // strings. Native authored Option data keeps its separate meaning.
             let node = storage.allocate(
@@ -337,7 +337,7 @@ impl ParserArenaSession {
     ) -> Result<bool, SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if !matches!(
             storage
                 .construction
@@ -354,7 +354,7 @@ impl ParserArenaSession {
             .ok_or_else(|| latch_registry_row(control))?
             .child_count()
         {
-            control.charge(WorkCategory::RecordVisit, 2)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let child = storage
                 .construction
                 .node_at(0)
@@ -381,7 +381,7 @@ impl ParserArenaSession {
     ) -> Result<HtmlDocumentMode, SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Document(mode) = &storage
             .construction
             .node_at(0)
@@ -391,7 +391,7 @@ impl ParserArenaSession {
             return Err(SessionError::NotDocument);
         };
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<HtmlDocumentMode>() as u64,
         )?;
         Ok(*mode)
@@ -403,7 +403,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         storage.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if !matches!(
             storage
                 .construction
@@ -415,7 +415,7 @@ impl ParserArenaSession {
             return Err(SessionError::NotDocument);
         }
         payload_write::<HtmlDocumentMode>(control, 1)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let Some(document) = storage.construction.node_at(0).map(|root| root.handle()) else {
             return Err(latch_registry_row(control));
         };
@@ -444,7 +444,7 @@ impl ParserArenaSession {
         {
             let capability = capability.ok_or_else(|| {
                 SessionError::Stop(
-                    control.stop_unsupported_standalone(StandaloneUnsupported::Provenance),
+                    control.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance),
                 )
             })?;
             capability.validate_session(control, self)?;

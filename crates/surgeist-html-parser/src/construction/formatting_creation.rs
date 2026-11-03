@@ -28,15 +28,15 @@ pub(super) fn check_formatting_text(
 ) -> Result<(), SessionError> {
     control.require_document_string(text.value.allocation(), text.value.text())?;
     text.origins.require_disposal_owner(control)?;
-    control.charge(WorkCategory::ProviderCall, 1)?;
+    control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
     if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
         return Err(SessionError::AliasedPayload);
     }
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let len = text.value.text().len();
     let mut covered = 0;
     for origin in text.origins.as_slice() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         control.require_source_range(&origin.source)?;
         if origin.start != covered
             || origin.end <= origin.start
@@ -59,7 +59,7 @@ pub(super) fn check_formatting_tag(
     tag: &Tag,
     source: &crate::HtmlSourceRange,
 ) -> Result<(), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if tag.kind != TagKind::Start {
         return Err(SessionError::WrongToken);
     }
@@ -67,7 +67,7 @@ pub(super) fn check_formatting_tag(
     lowercase_token_name(control, tag.name.value.text())?;
     tag.attributes.require_disposal_owner(control)?;
     for (index, attribute) in tag.attributes.as_slice().iter().enumerate() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         check_formatting_text(control, &attribute.name, source)?;
         check_formatting_text(control, &attribute.value, source)?;
         lowercase_token_name(control, attribute.name.value.text())?;
@@ -78,7 +78,7 @@ pub(super) fn check_formatting_tag(
         // Pair matching for Noah relies on actual unique parsed names, not the
         // token's duplicate-recovery flag or an untrusted counter substitute.
         for earlier in tag.attributes.as_slice().iter().take(index) {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_string_equal(
                 control,
                 earlier.name.value.text(),
@@ -102,12 +102,12 @@ pub(super) fn copy_formatting_text(
         // lossy conversion, lexical scan or implicit Arc alias is introduced.
         value.extend_units(text.value.text().code_units(), control)?;
         for origin in text.origins.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            control.charge(WorkCategory::ProviderCall, 1)?;
-            payload_write::<TextOrigin>(control, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            payload_write::<HtmlParseTextOrigin>(control, 1)?;
             origins.try_push(
                 control,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: origin.start,
                     end: origin.end,
                     source: origin.source.clone(),
@@ -139,7 +139,7 @@ pub(super) fn copy_formatting_tag(
     let mut attributes = OwnedVec::new(HtmlParseResource::TokenAttributes)?;
     let copied = (|| {
         for original in tag.attributes.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let name = copy_formatting_text(control, &original.name)?;
             let value = match copy_formatting_text(control, &original.value) {
                 Ok(value) => value,
@@ -149,7 +149,7 @@ pub(super) fn copy_formatting_tag(
                 }
             };
             let admission = (|| {
-                control.charge(WorkCategory::ProviderCall, 1)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 payload_write::<crate::parser::tokenizer::token::Attribute>(control, 1)
             })();
             if let Err(error) = admission {
@@ -171,7 +171,7 @@ pub(super) fn copy_formatting_tag(
                 return Err(stop.into());
             }
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<Tag>(control, 1)
     })();
     if let Err(error) = copied {
@@ -192,14 +192,14 @@ pub(super) fn release_formatting_tag(
     input: &mut Option<Tag>,
     control: &mut ParseControl,
 ) -> Result<(), SessionError> {
-    cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+    cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(tag) = input.as_ref() else {
         return Ok(());
     };
     check_disposal_text(control, &tag.name)?;
     tag.attributes.require_disposal_owner(control)?;
     for attribute in tag.attributes.as_slice() {
-        cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+        cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
         check_disposal_text(control, &attribute.name)?;
         check_disposal_text(control, &attribute.value)?;
     }
@@ -253,9 +253,9 @@ impl ParserArenaSession {
             return Err(SessionError::WrongToken);
         }
         // Every fallible admission precedes the original token take.
-        control.charge(WorkCategory::ProviderCall, 2)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         payload_write::<FormattingCreation>(control, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let arena = self
             .active()?
             .construction
@@ -288,7 +288,7 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(control)?;
         control.require_identity(&creation.control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         storage
             .construction
             .storage(control)?
@@ -318,7 +318,7 @@ impl ParserArenaSession {
             .associated_document_parent(control, parent)?
         {
             return Err(control
-                .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::ScriptDocument)
                 .into());
         }
         let storage = self.active()?;
@@ -329,7 +329,7 @@ impl ParserArenaSession {
                 .prepare_document_allocation(control, Some(document), false)?;
         let mut is_value = None;
         for attr in tag.attributes.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attr.name.value.text()), "is")? {
                 is_value = Some(&attr.value);
                 break;
@@ -399,15 +399,15 @@ impl ParserArenaSession {
         if !exact_string_equal(control, left.name.value.text(), right.name.value.text())? {
             return Ok(false);
         }
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if left.attributes.len() != right.attributes.len() {
             return Ok(false);
         }
         for left_attribute in left.attributes.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let mut found = false;
             for right_attribute in right.attributes.as_slice() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_string_equal(
                     control,
                     left_attribute.name.value.text(),
@@ -450,7 +450,7 @@ impl ParserArenaSession {
             return Err(SessionError::Cycle);
         }
         // Check the whole transfer before an earlier sibling can commit.
-        control.charge(WorkCategory::ProviderCall, 2)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         let source_handle = storage
             .construction
             .node_at(source)
@@ -472,7 +472,7 @@ impl ParserArenaSession {
         loop {
             let storage = self.active()?;
             storage.require(control)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if storage
                 .construction
                 .node_at(source)
@@ -482,8 +482,11 @@ impl ParserArenaSession {
             {
                 return Ok(());
             }
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            control.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
             let index = storage
                 .construction
                 .node_at(source)

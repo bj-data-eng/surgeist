@@ -40,7 +40,7 @@ impl Case {
     /// IDs and scratch vectors die inside these helpers; only this bank escapes.
     fn check(
         self,
-        report: &ImmutableParseReport,
+        report: &HtmlParseReport,
         mode: ValueSharingMode,
     ) -> Arc<Vec<surgeist_html::Attribute>> {
         match self {
@@ -49,7 +49,7 @@ impl Case {
         }
     }
 
-    fn hold_bank(self, report: &ImmutableParseReport) -> Arc<Vec<surgeist_html::Attribute>> {
+    fn hold_bank(self, report: &HtmlParseReport) -> Arc<Vec<surgeist_html::Attribute>> {
         let ids = elements(
             report,
             match self {

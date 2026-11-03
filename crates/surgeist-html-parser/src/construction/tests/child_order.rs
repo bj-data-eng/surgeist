@@ -7,8 +7,11 @@ fn start_test_insert(
     node: &ParserNode,
     before: Option<&ParserNode>,
 ) -> construction_owner::PendingConstruction {
-    c.charge(WorkCategory::ProviderCall, 2 + u64::from(before.is_some()))
-        .unwrap();
+    c.charge(
+        HtmlParseWorkCategory::ProviderCall,
+        2 + u64::from(before.is_some()),
+    )
+    .unwrap();
     owner
         .start(
             c,
@@ -37,13 +40,13 @@ fn roomy_limits() -> HtmlParseLimits {
 
 /// Work a child-order change charged, by category; provider calls and
 /// reservations are capacity growth, which depends on the order's spare room.
-const ORDER_MEASURED: [WorkCategory; 6] = [
-    WorkCategory::InputUnitRead,
-    WorkCategory::InspectByte,
-    WorkCategory::CopyByte,
-    WorkCategory::StateStep,
-    WorkCategory::RecordVisit,
-    WorkCategory::RecordWrite,
+const ORDER_MEASURED: [HtmlParseWorkCategory; 6] = [
+    HtmlParseWorkCategory::InputUnitRead,
+    HtmlParseWorkCategory::InspectByte,
+    HtmlParseWorkCategory::CopyByte,
+    HtmlParseWorkCategory::StateStep,
+    HtmlParseWorkCategory::RecordVisit,
+    HtmlParseWorkCategory::RecordWrite,
 ];
 
 #[test]
@@ -184,16 +187,24 @@ fn changes_at_the_front_of_an_order_charge_for_the_entries_they_shift() {
         };
         // Counts leave spare room in both orders, so no growth is charged.
         let (narrow, wide) = (measure(20), measure(40));
-        let grown = |category: WorkCategory| {
+        let grown = |category: HtmlParseWorkCategory| {
             let index = ORDER_MEASURED
                 .iter()
                 .position(|candidate| *candidate == category)
                 .unwrap();
             wide[index] - narrow[index]
         };
-        assert_eq!(grown(WorkCategory::RecordVisit), 4 * 20, "case {case}");
-        assert_eq!(grown(WorkCategory::RecordWrite), 20, "case {case}");
-        assert_eq!(grown(WorkCategory::CopyByte), 20 * word, "case {case}");
+        assert_eq!(
+            grown(HtmlParseWorkCategory::RecordVisit),
+            4 * 20,
+            "case {case}"
+        );
+        assert_eq!(grown(HtmlParseWorkCategory::RecordWrite), 20, "case {case}");
+        assert_eq!(
+            grown(HtmlParseWorkCategory::CopyByte),
+            20 * word,
+            "case {case}"
+        );
     }
 }
 
@@ -278,14 +289,14 @@ fn append_element_text_pairs(
     lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
     pairs: usize,
 ) -> [u64; 7] {
-    const MEASURED: [WorkCategory; 7] = [
-        WorkCategory::InputUnitRead,
-        WorkCategory::InspectByte,
-        WorkCategory::CopyByte,
-        WorkCategory::StateStep,
-        WorkCategory::RecordVisit,
-        WorkCategory::RecordWrite,
-        WorkCategory::ProviderCall,
+    const MEASURED: [HtmlParseWorkCategory; 7] = [
+        HtmlParseWorkCategory::InputUnitRead,
+        HtmlParseWorkCategory::InspectByte,
+        HtmlParseWorkCategory::CopyByte,
+        HtmlParseWorkCategory::StateStep,
+        HtmlParseWorkCategory::RecordVisit,
+        HtmlParseWorkCategory::RecordWrite,
+        HtmlParseWorkCategory::ProviderCall,
     ];
     let before = MEASURED.map(|category| c.usage().work(category));
     for _ in 0..pairs {
@@ -322,9 +333,9 @@ fn append_reserve_bytes(count: usize) -> u64 {
         let child = session
             .allocate_element(&mut c, element(Namespace::none(), "x"))
             .unwrap();
-        let before = c.usage().work(WorkCategory::ReserveByte);
+        let before = c.usage().work(HtmlParseWorkCategory::ReserveByte);
         session.insert(&mut c, &root, &child, None, None).unwrap();
-        reserved += c.usage().work(WorkCategory::ReserveByte) - before;
+        reserved += c.usage().work(HtmlParseWorkCategory::ReserveByte) - before;
     }
     session.release(&mut c).unwrap();
     reserved
@@ -409,19 +420,19 @@ fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_
             // Leave one credit too few for the commit's described writes.
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 work_limit - before - (copied_bytes as u64 - 1),
             )
             .unwrap();
-            let copied = c.usage().work(WorkCategory::CopyByte);
+            let copied = c.usage().work(HtmlParseWorkCategory::CopyByte);
             assert!(
-                matches!(owner.perform_action(&mut c, action, &[], edges), Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, requested_delta, .. })) if requested_delta == copied_bytes as u64)
+                matches!(owner.perform_action(&mut c, action, &[], edges), Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, requested_delta, .. })) if requested_delta == copied_bytes as u64)
             );
             break copied;
         }
         assert!(!owner.perform_action(&mut c, action, &[], edges).unwrap());
     };
-    assert_eq!(c.usage().work(WorkCategory::CopyByte), copied);
+    assert_eq!(c.usage().work(HtmlParseWorkCategory::CopyByte), copied);
     // The order was grown for the push before the stop; nothing was written.
     let capacity_at_stop = c.usage().actual_capacity_bytes;
     let first = c.stop();
@@ -620,7 +631,7 @@ fn growing_a_parents_order_for_a_move_stops_at_the_capacity_limit_with_the_order
     let (error, root_order) = order_scenario(short).expect_err("one byte short");
     assert!(matches!(
         error,
-        SessionError::Stop(ParseStop::LimitExceeded {
+        SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedCapacityBytes,
             ..
         })

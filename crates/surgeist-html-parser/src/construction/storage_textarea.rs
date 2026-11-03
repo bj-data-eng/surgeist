@@ -24,7 +24,7 @@ impl SessionStorage {
             return Ok(());
         };
         let old = textarea_raw(&self.payloads, control, state.raw)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if Arc::strong_count(old.shared_code_units()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
@@ -45,14 +45,14 @@ impl SessionStorage {
         let mut group = None;
         let mut units = 0usize;
         let copied = (|| {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for position in 0..self
                 .construction
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(control))?
                 .child_count()
             {
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 let child = self
                     .construction
                     .node_at(node)

@@ -205,14 +205,15 @@ fn radio_work_cuts_retain_progress_first_stop_and_reclaim_every_owned_field() {
         let (mut c, mut session, _, a, b) = radio_pair(&request);
         let limit = c.usage().resource(HtmlParseResource::WorkCredits).current + work - short;
         let remaining = request.limits().work_credits() - limit;
-        c.charge(WorkCategory::StateStep, remaining).unwrap();
+        c.charge(HtmlParseWorkCategory::StateStep, remaining)
+            .unwrap();
         let result = session.set_input_checked(&mut c, &a, true);
         if short == 0 {
             result.unwrap();
             assert!(session.active().unwrap().payloads.values.iter().any(|p|
                 matches!(p,RetainedPayload::Input {node:Some(n),state,..} if *n==a.index && state.flags.checkedness())));
             assert!(session.active().unwrap().effects.radio.is_none());
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             assert!(matches!(result, Err(SessionError::Stop(_))));
             let stop = c.stop();
@@ -263,7 +264,7 @@ fn radio_cancelled_and_foreign_checked_setters_preserve_actual_state_and_owner()
     request.cancellation().cancel();
     assert_eq!(
         session.set_input_checked(&mut c, &a, true),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(session.active().unwrap().payloads.values.iter().any(|p|
         matches!(p,RetainedPayload::Input {node:Some(n),state,..} if *n==a.index && *state==before)));
@@ -510,7 +511,7 @@ fn radio_committed_peer_cancellation_retains_real_progress_and_canonical_first_s
     session.active_mut().unwrap().cancel_after_radio_peer = Some(request.cancellation().clone());
     assert_eq!(
         session.set_input_checked(&mut c, &a, true),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert!(storage.effects.radio.is_some());
@@ -530,12 +531,12 @@ fn radio_committed_peer_cancellation_retains_real_progress_and_canonical_first_s
     assert!(!peer.flags.checkedness());
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let usage = c.usage().resource(HtmlParseResource::WorkCredits);
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), usage);
 }
 #[test]
@@ -595,7 +596,7 @@ fn radio_matching_imported_peer_requires_actual_canonical_state_but_unrelated_na
             let stop = c.stop().unwrap();
             assert_eq!(
                 stop,
-                ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+                HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
             );
             assert_eq!(result, Err(SessionError::Stop(stop)));
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -669,14 +670,14 @@ fn radio_name_setter_work_boundaries_keep_original_or_committed_registry_owner_a
             .as_ptr();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - admitted)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
             .unwrap();
         let result = session.set_input_attribute(&mut c, &a, &mut attr, &proof);
         if admitted == work {
             result.unwrap();
             assert!(session.active().unwrap().payloads.values.iter().any(|p|matches!(p,
                 RetainedPayload::Input {node:Some(n),state,..} if *n==b.index && !state.flags.checkedness())));
-            c.charge(WorkCategory::StateStep, 1).unwrap_err();
+            c.charge(HtmlParseWorkCategory::StateStep, 1).unwrap_err();
         } else {
             assert!(matches!(result, Err(SessionError::Stop(_))));
             let first = c.stop().unwrap();

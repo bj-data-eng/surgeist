@@ -61,7 +61,7 @@ impl SessionStorage {
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
     ) -> Result<ManagedEffect, SessionError> {
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<ManagedEffect>(c, 1)?;
         Ok(match family {
             ManagedFamily::Dialog => ManagedEffect::Dialog,
@@ -70,7 +70,7 @@ impl SessionStorage {
             ManagedFamily::Base => ManagedEffect::BaseTarget,
             ManagedFamily::Link => {
                 let flags = if local == "disabled" && old.is_some() && new.is_none() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let view = self
                         .construction
                         .node_at(node)
@@ -141,14 +141,14 @@ impl SessionStorage {
             ManagedEffect::BaseHref => self.base_change(c, node, None, true),
             ManagedEffect::BaseTarget => Ok(()),
             ManagedEffect::LinkFlags(flags) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(flags) = flags {
                     payload_write::<crate::HtmlLinkFlags>(c, 1)?;
                     let view = self
                         .construction
                         .node_at(node)
                         .ok_or(SessionError::ForeignNode)?;
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let element = view.handle();
                     self.construction.apply(
                         c,
@@ -177,7 +177,7 @@ impl SessionStorage {
                 };
                 let mut position = None;
                 for (i, a) in element.attributes().iter().enumerate() {
-                    c.charge(WorkCategory::RecordVisit, 2)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                     if a.name().namespace().uri().is_none()
                         && exact_ascii(c, Some(a.name().local_name()), "type")?
                     {
@@ -301,7 +301,7 @@ impl SessionStorage {
         self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))
             .map_err(|_| latch_registry_row(c))?;
         self.edit_attributes(c, node, container, stage, 1, false)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let start = element_record(&self.construction, c, node)?
             .attributes()
             .len();
@@ -337,7 +337,7 @@ impl SessionStorage {
             payload_write::<[StringLocation; 6]>(c, 6)?;
             let mut old_slots = [None; 4];
             for (slot, payload) in self.payloads.values.iter().enumerate() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let RetainedPayload::String { location, .. } = payload {
                     let which = match *location {
                         StringLocation::AttributeName(o, p) if o == container && p == position => {
@@ -369,7 +369,7 @@ impl SessionStorage {
             }
             payload_write::<Option<AttributeStorage>>(c, 2)?;
             payload_write::<OrderedAttributes>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 2)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
             let old = self.replace_attribute_storage(
                 c,
                 node,
@@ -411,7 +411,7 @@ impl SessionStorage {
         self.payloads
             .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -422,7 +422,7 @@ impl SessionStorage {
         };
         let mut selected = None;
         for (index, attr) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
             {
@@ -467,7 +467,7 @@ impl SessionStorage {
         // Historical destinations stay at the original slot. Retire their
         // original groups before any location is rebound, preserving the cause.
         for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.row(c, slot)?, RetainedPayload::String { location: StringLocation::AttributeName(owner, position) | StringLocation::AttributeValue(owner, position) | StringLocation::AttributeNamespace(owner, position) | StringLocation::AttributePrefix(owner, position), .. } if *owner == container && *position == index)
             {
                 self.retire_field_group(c, slot)?;
@@ -481,7 +481,7 @@ impl SessionStorage {
         }
         self.edit_removing_attribute(c, node, container, None)?;
         for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             payload_write::<StringLocation>(c, 1)?;
             payload_write::<usize>(c, 1)?;
             if let Some(RetainedPayload::String { location, .. }) =
@@ -557,7 +557,7 @@ impl SessionStorage {
             self.record_association(
                 c,
                 node,
-                pending_association::OccurrenceKind::StyleOwnerAttributes,
+                pending_association::HtmlParseAssociationOccurrenceKind::StyleOwnerAttributes,
                 None,
                 None,
                 false,
@@ -672,7 +672,7 @@ impl ParserArenaSession {
             unreachable!()
         };
         for (index, old) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if old.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(old.name().local_name()), local)?
             {

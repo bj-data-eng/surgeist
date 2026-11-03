@@ -96,7 +96,7 @@ pub(super) enum RetainedPayload {
     },
     StandaloneDocumentCompletion {
         node: usize,
-        state: StandaloneDocumentState,
+        state: HtmlParseDocumentState,
     },
     PiAttributes {
         node: Option<usize>,
@@ -122,7 +122,7 @@ pub(super) enum RetainedPayload {
     MetaMissing {
         document: usize,
         subject: usize,
-        kind: meta::MetaMissingKind,
+        kind: meta::HtmlParseMetaMissingKind,
         cause: Option<provenance::ConstructionCauseRef>,
     },
     Template {
@@ -234,13 +234,13 @@ pub(crate) struct TextareaState {
 /// Nonnull setters/general form reset have no producer in this checkpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-pub enum OutputDefaultValueOverride {
+pub enum HtmlParseOutputOverride {
     Null,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OutputState {
-    pub(crate) default_value_override: OutputDefaultValueOverride,
+    pub(crate) default_value_override: HtmlParseOutputOverride,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -259,11 +259,11 @@ pub(crate) struct FormAssociationState {
     pub(crate) kind: HtmlNativeFormAssociationKind,
     pub(super) owner: Option<usize>,
     pub(crate) parser_inserted: bool,
-    pub(crate) evidence: FormAssociationEvidence,
+    pub(crate) evidence: HtmlParseFormEvidence,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FormAssociationEvidence {
+pub enum HtmlParseFormEvidence {
     Created,
     ParserAssociated,
     Reset,
@@ -420,7 +420,7 @@ impl PayloadStorage {
         node: usize,
         join: Join,
     ) -> Result<Option<usize>, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
     }
     /// Forgets the join of the row at `slot`, for a test that leaves the row
@@ -473,7 +473,7 @@ impl PayloadStorage {
         let Some(slot) = self.joined(control, node, join)? else {
             return Ok(Some(0));
         };
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self
             .values
             .get(slot)
@@ -731,7 +731,7 @@ impl PayloadStorage {
         first: usize,
     ) -> Result<(), SessionError> {
         for index in first..self.values.len() {
-            cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+            cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
             let payload = self
                 .values
                 .get(index)
@@ -747,7 +747,7 @@ impl PayloadStorage {
                         control.require_document_string_for_disposal(allocation, value)?;
                     }
                     let stored = location.value(records, &self.values, index, control)?;
-                    cleanup_charge(control, WorkCategory::ProviderCall, 2)?;
+                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 2)?;
                     let expected = if let Some(stored) = stored {
                         if !Arc::ptr_eq(stored.shared_code_units(), value.shared_code_units()) {
                             return Err(SessionError::AliasedPayload);
@@ -777,8 +777,8 @@ impl PayloadStorage {
                     },
                 )) => {
                     let expected = if let Some(index) = element {
-                        cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
-                        cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
+                        cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
+                        cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
                         let Some(HtmlNodeKind::Element(record)) =
                             records.node_at(*index).map(|node| node.kind())
                         else {
@@ -794,7 +794,7 @@ impl PayloadStorage {
                     } else {
                         1
                     };
-                    cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
+                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
                     if !shared.finalized()
                         && Arc::strong_count(values.shared_attributes()) != expected
                     {
@@ -806,7 +806,7 @@ impl PayloadStorage {
                     shared,
                     ..
                 })) => {
-                    cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
+                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
                     if !shared.finalized() && Arc::strong_count(backing) != 1 {
                         return Err(SessionError::AliasedPayload);
                     }

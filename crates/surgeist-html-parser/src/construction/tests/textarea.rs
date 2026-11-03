@@ -21,10 +21,10 @@ fn textarea_owner_cancellable<'a>(
     ParserNode,
     crate::parser::tokenizer::tests::LexerFixture<'a>,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let mut c = ParseControl::new(caps, cancellation);
     c.admit_source(source).unwrap();
-    let mut tokenizer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -383,7 +383,7 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
     assert_eq!(result, Err(SessionError::Stop(first)));
     assert!(matches!(
         first,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
             ..
         }
@@ -409,7 +409,7 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
 
 #[test]
 fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // One creation attempt under an auxiliary cap. Returns whether it
     // succeeded, whether the lexical tag was taken, the entries held before
     // the attempt and, for a success, the entries it needed.
@@ -421,7 +421,8 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         }
         let mut c = ParseControl::new(builder.finish().unwrap(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -491,7 +492,7 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         assert!(
             matches!(
                 stop,
-                Some(ParseStop::LimitExceeded {
+                Some(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     limit,
                     ..
@@ -518,12 +519,12 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
 
 #[test]
 fn textarea_initial_reset_precedes_parser_association_commit_and_stop_owns_every_slot() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><textarea>");
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -575,7 +576,7 @@ fn textarea_initial_reset_precedes_parser_association_commit_and_stop_owns_every
     };
     assert_eq!(value.code_units(), []);
     assert!(storage.payloads.values.iter().any(|entry|matches!(entry,
-        RetainedPayload::FormAssociation{node:None,state} if state.kind==HtmlNativeFormAssociationKind::Textarea && state.owner.is_none() && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
+        RetainedPayload::FormAssociation{node:None,state} if state.kind==HtmlNativeFormAssociationKind::Textarea && state.owner.is_none() && !state.parser_inserted && state.evidence==HtmlParseFormEvidence::Created
     )));
     let first = c.stop().unwrap();
     assert!(matches!(session.freeze(&mut c),Err(SessionError::Stop(stop)) if stop==first));

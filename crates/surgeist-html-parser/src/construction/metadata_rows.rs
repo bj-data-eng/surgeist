@@ -7,7 +7,7 @@ pub(super) fn find_textarea_state(
     control: &mut ParseControl,
     node: usize,
 ) -> Result<Option<(usize, TextareaState)>, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let fields = payloads
         .node_joins
         .get(node)
@@ -15,7 +15,7 @@ pub(super) fn find_textarea_state(
     let Some(slot) = fields.textarea() else {
         return Ok(None);
     };
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::Textarea {
         node: Some(owner),
         state,
@@ -27,7 +27,7 @@ pub(super) fn find_textarea_state(
         return Err(SessionError::WrongToken);
     }
     control.charge(
-        WorkCategory::CopyByte,
+        HtmlParseWorkCategory::CopyByte,
         mem::size_of::<TextareaState>() as u64,
     )?;
     Ok(Some((slot, *state)))
@@ -38,7 +38,7 @@ pub(super) fn admitted_input_string<'a>(
     c: &mut ParseControl,
     slot: usize,
 ) -> Result<&'a DocumentString, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value, allocation, ..
     }) = payloads.values.get(slot)
@@ -54,7 +54,7 @@ pub(super) fn textarea_raw<'a>(
     control: &mut ParseControl,
     raw: usize,
 ) -> Result<&'a DocumentString, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value,
         allocation,
@@ -74,13 +74,13 @@ pub(super) fn find_form_association_state(
     node: usize,
 ) -> Result<Option<(usize, FormAssociationState)>, SessionError> {
     if let Some(slot) = payloads.joined(control, node, Join::FormAssociation)? {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(RetainedPayload::FormAssociation { node: owner, state }) =
             payloads.values.get(slot)
             && *owner == Some(node)
         {
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<FormAssociationState>() as u64,
             )?;
             return Ok(Some((slot, *state)));
@@ -95,7 +95,7 @@ pub(super) fn set_form_association_state(
     slot: usize,
     state: FormAssociationState,
 ) -> Result<(), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     payload_write::<FormAssociationState>(control, 1)?;
     let Some(RetainedPayload::FormAssociation { state: current, .. }) =
         storage.payloads.values.get_mut(slot)
@@ -112,7 +112,7 @@ pub(super) fn script_metadata(
     node: usize,
 ) -> Result<(usize, ScriptMetadata), SessionError> {
     if let Some(position) = payloads.joined(control, node, Join::Script)? {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(RetainedPayload::Script {
             node: owner,
             metadata,
@@ -120,7 +120,7 @@ pub(super) fn script_metadata(
             && *owner == Some(node)
         {
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<ScriptMetadata>() as u64,
             )?;
             metadata.admit_clone(control)?;
@@ -136,7 +136,7 @@ pub(super) fn set_script_metadata(
     slot: usize,
     value: &ScriptMetadata,
 ) -> Result<(), SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     payload_write::<ScriptMetadata>(control, 1)?;
     let RetainedPayload::Script { metadata, .. } = storage
         .payloads

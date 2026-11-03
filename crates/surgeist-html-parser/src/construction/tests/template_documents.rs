@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes_all_owners() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // The ordinary root already exists. Creation needs one actual inert
     // Document, the template Element and its hosted Fragment: three more.
     for cap in [3, 4] {
@@ -16,7 +16,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
             panic!("actual template")
         };
@@ -49,7 +49,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
             };
             assert!(matches!(
                 first,
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedNodes,
                     limit: 3,
                     requested_delta: 3,
@@ -86,7 +86,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
 
 #[test]
 fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_cap_boundaries() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Root record/self-document/cache facts =3 plus its append index =4.
     // Fresh template adds three native records, five document/template facts,
     // name/namespace/attribute owners, two nonce slots, three append indices
@@ -108,7 +108,7 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
             panic!("actual template")
         };
@@ -145,7 +145,7 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
                 panic!("actual initialized slot cap")
             };
             assert!(
-                matches!(first, ParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
+                matches!(first, HtmlParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
             );
             assert_eq!(input.is_some(), cap == 14);
             assert_eq!(
@@ -170,7 +170,7 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
 #[test]
 fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_reclaims_stopped_pair()
 {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Original marker target6 and data name='A'8 remain native-owned;
     // the independently decoded name4/value1 add5 managed units.
     for cap in [18, 19] {
@@ -187,7 +187,7 @@ fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_recl
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::ProcessingInstruction { target, data } = lexical_kind(&mut lexer, &mut c)
         else {
             panic!("real PI")
@@ -223,7 +223,7 @@ fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_recl
             };
             assert!(matches!(
                 first,
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedUtf16Units,
                     current: 18,
                     requested_delta: 1,
@@ -279,7 +279,7 @@ fn template_cross_document_cancel_retains_completed_removal_before_any_adoption_
     session.active_mut().unwrap().cancel_after_removal = Some(request.cancellation().clone());
     assert_eq!(
         session.insert(&mut c, &contents, &div, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert_eq!(
@@ -323,12 +323,12 @@ fn template_cross_document_cancel_retains_completed_removal_before_any_adoption_
     assert!(storage.payloads.values.iter().any(|p|matches!(p,RetainedPayload::Script{node:Some(node),metadata:retained} if *node==script.index && *retained==metadata)));
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
@@ -336,7 +336,7 @@ fn template_cross_document_cancel_retains_completed_removal_before_any_adoption_
 }
 #[test]
 fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map_tickets_owned() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Sweep each credit in this finite operation, rather than deriving a
     // success total from it. Independent witnesses require an installed
     // original PI, a partially decoded map, and the complete literal map.
@@ -353,7 +353,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::ProcessingInstruction { target, data } = lexical_kind(&mut lexer, &mut c)
         else {
             panic!("real lexical PI")
@@ -361,7 +361,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
         let mut input = Some((target, data));
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             limits().work_credits() - used - remaining,
         )
         .unwrap();
@@ -412,7 +412,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
             Err(SessionError::Stop(first)) => {
                 assert!(matches!(
                     first,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }
@@ -458,7 +458,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
 }
 #[test]
 fn shared_pi_map_literal_xml_closure_keeps_native_fields_and_reclaims_real_owners() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let cases: &[(&str, &[(&str, &str)])] = &[
         ("name='X'", &[("name", "X")]),
         ("name = \"&#88;\" x='ok' ", &[("name", "X"), ("x", "ok")]),
@@ -491,7 +491,7 @@ fn shared_pi_map_literal_xml_closure_keeps_native_fields_and_reclaims_real_owner
         c.admit_source(&source).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         session.initialize_parse_evidence(&mut c, &source).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::ProcessingInstruction { target, data: raw } =
             lexical_kind(&mut lexer, &mut c)
         else {

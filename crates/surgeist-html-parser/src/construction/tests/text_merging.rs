@@ -79,12 +79,12 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
         let mut work = 0;
         for unit in [0xdc00, 0, 0xd800, 0x63] {
             let mut input = Some(owned_text(&mut c, &[unit]));
-            let before = c.usage().work(WorkCategory::CopyByte);
+            let before = c.usage().work(HtmlParseWorkCategory::CopyByte);
             let next = session
                 .insert_text(&mut c, &root, None, &mut input, None)
                 .unwrap()
                 .unwrap();
-            work += c.usage().work(WorkCategory::CopyByte) - before;
+            work += c.usage().work(HtmlParseWorkCategory::CopyByte) - before;
             assert!(input.is_none());
             assert_eq!(next._node.index, first._node.index);
             assert_eq!(next._offset, expected.len());
@@ -145,11 +145,11 @@ fn text_append_current_ticket_lookup_is_independent_of_unrelated_payloads() {
         }
         let text = text.unwrap();
         let storage = session.active().unwrap();
-        let before = c.usage().work(WorkCategory::RecordVisit);
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         let slot = storage
             .field_slot(&mut c, StringLocation::Text(text.index))
             .unwrap();
-        let work = c.usage().work(WorkCategory::RecordVisit) - before;
+        let work = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         let RetainedPayload::String {
             value,
             location: StringLocation::Text(owner),
@@ -206,12 +206,12 @@ fn text_append_callback_lookup_does_not_scan_unrelated_payloads() {
             assert!(input.is_none());
         }
         let mut input = Some(owned_text(&mut c, &[0xdc00]));
-        let before = c.usage().work(WorkCategory::RecordVisit);
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         let next = session
             .insert_text(&mut c, &root, None, &mut input, None)
             .unwrap()
             .unwrap();
-        let work = c.usage().work(WorkCategory::RecordVisit) - before;
+        let work = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         assert!(input.is_none());
         assert_eq!(next._node.index, text.index);
         assert_eq!(next._offset, 2);

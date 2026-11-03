@@ -76,7 +76,7 @@ fn output_reads_actual_descendants_after_merge_move_and_freeze_without_raw_cache
             .output_state(&mut c, &output)
             .unwrap()
             .default_value_override,
-        OutputDefaultValueOverride::Null
+        HtmlParseOutputOverride::Null
     );
     let mut current = Utf16Buffer::new(&mut c).unwrap();
     session
@@ -116,7 +116,7 @@ fn output_reads_actual_descendants_after_merge_move_and_freeze_without_raw_cache
             .output_state(&mut c, &id)
             .unwrap()
             .default_value_override,
-        OutputDefaultValueOverride::Null
+        HtmlParseOutputOverride::Null
     );
     value.release(&mut c).unwrap();
     frozen.release(&mut c).unwrap();
@@ -181,7 +181,7 @@ fn output_observation_exact_40_unit_cap_or_sticky_20_unit_owned_prefix() {
             assert_eq!(result, Err(SessionError::Stop(stop)));
             assert_eq!(
                 stop,
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::BufferedUtf16Units,
                     limit: 39,
                     current: 20,
@@ -247,7 +247,7 @@ fn output_observations_reject_foreign_destination_and_unavailable_or_foreign_nod
             .output_state(&mut c, &output)
             .unwrap()
             .default_value_override,
-        OutputDefaultValueOverride::Null
+        HtmlParseOutputOverride::Null
     );
     buffer.release(&mut c).unwrap();
     second.release(&mut c).unwrap();
@@ -257,7 +257,7 @@ fn output_observations_reject_foreign_destination_and_unavailable_or_foreign_nod
 
 #[test]
 fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Three existing native records own three append-index entries.
     for cap in [22, 23] {
         let source = crate::HtmlSource::utf8("<output>");
@@ -270,7 +270,7 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -300,7 +300,7 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
                 None,
                 crate::construction::CreationContext::Ordinary
             ),
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
                 ..
             }))
@@ -332,21 +332,21 @@ fn output_cancellation_preserves_owned_scratch_and_blocks_metadata_freeze_withou
     cancellation.cancel();
     assert_eq!(
         session.append_output_value(&mut c, &output, &mut buffer),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(buffer.units(), [81]);
     assert_eq!(
         session.output_state(&mut c, &output),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(matches!(
         session.freeze(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     buffer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
@@ -356,12 +356,12 @@ fn output_cancellation_preserves_owned_scratch_and_blocks_metadata_freeze_withou
 
 #[test]
 fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retains_both_slots() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><output>");
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -390,7 +390,7 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
             Some(&form),
             crate::construction::CreationContext::Ordinary
         ),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     assert!(tag.is_none());
     let storage = session.active().unwrap();
@@ -408,7 +408,7 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
         .unwrap();
     assert_eq!(
         output_slot.1.default_value_override,
-        OutputDefaultValueOverride::Null
+        HtmlParseOutputOverride::Null
     );
     assert!(
         storage
@@ -430,11 +430,11 @@ fn output_initial_empty_reset_precedes_parser_association_and_cancellation_retai
     assert!(storage.payloads.values.iter().any(|p| matches!(p,
         RetainedPayload::FormAssociation{node:None,state}
         if state.kind==HtmlNativeFormAssociationKind::Output && state.owner.is_none()
-           && !state.parser_inserted && state.evidence==FormAssociationEvidence::Created
+           && !state.parser_inserted && state.evidence==HtmlParseFormEvidence::Created
     )));
     assert!(matches!(
         session.freeze(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     lexer.release(&mut c).unwrap();
@@ -464,7 +464,7 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         // Copies are one finite state byte plus one UTF16 unit =3.
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         let maximum = limits().work_credits();
-        c.charge(WorkCategory::StateStep, maximum - used - remaining)
+        c.charge(HtmlParseWorkCategory::StateStep, maximum - used - remaining)
             .unwrap();
         let before = c.usage().clone();
         let result = session.append_output_value(&mut c, &output, &mut destination);
@@ -472,27 +472,32 @@ fn output_single_text_read_has_exact_physical_work_and_one_short_terminal_cleanu
         if remaining == 25 {
             result.unwrap();
             assert_eq!(
-                c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
+                c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                    - before.work(HtmlParseWorkCategory::RecordVisit),
                 22
             );
             assert_eq!(
-                c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
+                c.usage().work(HtmlParseWorkCategory::CopyByte)
+                    - before.work(HtmlParseWorkCategory::CopyByte),
                 3
             );
             assert_eq!(
-                c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
+                c.usage().work(HtmlParseWorkCategory::InspectByte)
+                    - before.work(HtmlParseWorkCategory::InspectByte),
                 0
             );
             assert_eq!(
-                c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
+                c.usage().work(HtmlParseWorkCategory::RecordWrite)
+                    - before.work(HtmlParseWorkCategory::RecordWrite),
                 0
             );
             assert_eq!(
-                c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
+                c.usage().work(HtmlParseWorkCategory::StateStep)
+                    - before.work(HtmlParseWorkCategory::StateStep),
                 0
             );
             assert!(c.stop().is_none());
-            c.charge(WorkCategory::StateStep, 1).unwrap_err(); // terminal cleanup uses no useful work.
+            c.charge(HtmlParseWorkCategory::StateStep, 1).unwrap_err(); // terminal cleanup uses no useful work.
         } else {
             assert_eq!(result, Err(SessionError::Stop(c.stop().unwrap())));
         }

@@ -194,7 +194,7 @@ impl SessionStorage {
                 fragment,
                 stage: TargetStage::Replace,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(target)
@@ -215,7 +215,7 @@ impl SessionStorage {
                         }),
                     );
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(target)
@@ -251,7 +251,7 @@ impl SessionStorage {
                 fragment,
                 cursor,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if cursor
                     == self
                         .construction
@@ -261,7 +261,7 @@ impl SessionStorage {
                 {
                     return self.write_current_effect(c, None);
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(option)
@@ -313,7 +313,7 @@ impl SessionStorage {
             let Some(ancestor) = next else {
                 return Ok(false);
             };
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if ancestor == select {
                 return Ok(false);
             }
@@ -550,7 +550,7 @@ impl SessionStorage {
         self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
         self.selectedness_setting(c, node, None)?;
         // Fresh parser-created select has no children at syntax3537 reset.
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self
             .construction
             .node_at(node)
@@ -568,7 +568,7 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -622,7 +622,7 @@ impl SessionStorage {
         slot: usize,
         value: SelectMetadata,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<SelectMetadata>(c, 1)?;
         let Some(RetainedPayload::SelectFamily { state, .. }) = self.payloads.values.get_mut(slot)
         else {
@@ -733,7 +733,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
         for &unit in value.code_units() {
-            c.charge(WorkCategory::InspectByte, 2)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
             payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
             if !scanner.feed(unit) {
                 break;
@@ -750,7 +750,7 @@ impl SessionStorage {
             .get(prefix.start()..prefix.end())
             .ok_or_else(|| latch_registry_row(c))?;
         for &unit in digits {
-            c.charge(WorkCategory::InspectByte, 2)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
             if prefix.is_negative() && unit != b'0' as u16 {
                 return Ok(fallback);
             }
@@ -1219,7 +1219,7 @@ fn retained_select_metadata(
     node: usize,
 ) -> Result<(usize, SelectMetadata), SessionError> {
     if let Some(slot) = payloads.joined(c, node, Join::SelectFamily)? {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(RetainedPayload::SelectFamily {
             node: Some(owner),
             state,
@@ -1227,7 +1227,7 @@ fn retained_select_metadata(
             && *owner == node
         {
             c.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<SelectMetadata>() as u64,
             )?;
             return Ok((slot, *state));
@@ -1246,8 +1246,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = &storage.view;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?

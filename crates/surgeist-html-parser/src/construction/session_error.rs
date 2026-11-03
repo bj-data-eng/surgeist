@@ -7,7 +7,7 @@ pub(crate) enum SessionError {
     NonceMetadataUnavailable,
     CspService,
     CspProtocol(surgeist_html::HtmlCspProtocolError),
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     ForeignNode,
     RootMove,
     AssociationMove,
@@ -55,14 +55,14 @@ pub(crate) enum ElementInsertionIgnored {
 impl SessionError {
     /// An impossible registry state with no controller in reach.
     pub(crate) fn registry_row() -> Self {
-        Self::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::RegistryRow,
+        Self::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
         ))
     }
 }
 
-impl From<ParseStop> for SessionError {
-    fn from(value: ParseStop) -> Self {
+impl From<HtmlParseStop> for SessionError {
+    fn from(value: HtmlParseStop) -> Self {
         Self::Stop(value)
     }
 }
@@ -72,19 +72,24 @@ impl From<ParseStop> for SessionError {
 /// first stop.
 pub(super) fn latch_owner_refusal(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(
-        control.fail_invariant(crate::parser::control::Invariant::ConstructionOwnerRefusal),
+        control
+            .fail_invariant(crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal),
     )
 }
 
 /// A work plan that counts less than was already charged for it: no row is
 /// missing, the plan and the charge disagree.
 pub(super) fn plan_below_charge(control: &mut ParseControl) -> SessionError {
-    SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch))
+    SessionError::Stop(
+        control.fail_invariant(crate::parser::control::HtmlParseInvariant::CapacityMismatch),
+    )
 }
 
 /// An impossible registry state, latched as the controller's first stop.
 pub(super) fn latch_registry_row(control: &mut ParseControl) -> SessionError {
-    SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
+    SessionError::Stop(
+        control.fail_invariant(crate::parser::control::HtmlParseInvariant::RegistryRow),
+    )
 }
 
 /// How a parse ends on a session error that no earlier stop has settled.
@@ -93,21 +98,21 @@ pub(crate) enum SessionClass {
     /// The error is an outcome of the document, of the facts the caller
     /// supplied or of a service. The parse ends as this stop, whichever driver
     /// and stage met the error, and the failure's reason names the same state.
-    Outcome(ParseStop),
+    Outcome(HtmlParseStop),
     /// The error names a fault of the parser's own, met where it cannot be a
     /// document outcome. The parse ends as the invariant of its kind.
-    Fault(crate::parser::control::Invariant),
+    Fault(crate::parser::control::HtmlParseInvariant),
 }
 
 impl SessionClass {
     /// An outcome that ends the parse as an unsupported state of the closed
     /// standalone environment.
-    pub(crate) const fn unsupported(state: StandaloneUnsupported) -> Self {
-        Self::Outcome(ParseStop::UnsupportedStandaloneState(state))
+    pub(crate) const fn unsupported(state: HtmlParseUnsupportedState) -> Self {
+        Self::Outcome(HtmlParseStop::UnsupportedStandaloneState(state))
     }
     /// Latches the stop for this class on `control`, unless an earlier stop is
     /// already the first. Returns the first stop either way.
-    pub(crate) fn latch(self, control: &mut ParseControl) -> ParseStop {
+    pub(crate) fn latch(self, control: &mut ParseControl) -> HtmlParseStop {
         match self {
             Self::Outcome(stop) => control.stop_outcome(stop),
             Self::Fault(invariant) => control.fail_invariant(invariant),
@@ -153,25 +158,31 @@ impl SessionClass {
 ///   supplies are `AssociatedFacts`. A raise site that would read caller
 ///   input must not return a fault variant.
 pub(crate) fn session_class(error: &SessionError) -> SessionClass {
-    use crate::parser::control::Invariant;
+    use crate::parser::control::HtmlParseInvariant;
     match error {
         SessionError::Stop(stop) => SessionClass::Outcome(*stop),
-        SessionError::CspService => SessionClass::Outcome(ParseStop::CspProcessing),
+        SessionError::CspService => SessionClass::Outcome(HtmlParseStop::CspProcessing),
         SessionError::CspProtocol(protocol) => {
-            SessionClass::Outcome(ParseStop::CspProtocol(*protocol))
+            SessionClass::Outcome(HtmlParseStop::CspProtocol(*protocol))
         }
-        SessionError::AssociatedFacts => SessionClass::Outcome(ParseStop::InvalidAssociatedFacts),
+        SessionError::AssociatedFacts => {
+            SessionClass::Outcome(HtmlParseStop::InvalidAssociatedFacts)
+        }
         SessionError::ScriptMetadataUnavailable | SessionError::SvgScriptMetadataUnavailable => {
-            SessionClass::unsupported(StandaloneUnsupported::ScriptDocument)
+            SessionClass::unsupported(HtmlParseUnsupportedState::ScriptDocument)
         }
         SessionError::CompletionMetadataUnavailable | SessionError::CompletionIncomplete => {
-            SessionClass::unsupported(StandaloneUnsupported::Completion)
+            SessionClass::unsupported(HtmlParseUnsupportedState::Completion)
         }
         SessionError::ContextFactUnavailable(_) | SessionError::ContextReactionUnavailable => {
-            SessionClass::unsupported(StandaloneUnsupported::Provenance)
+            SessionClass::unsupported(HtmlParseUnsupportedState::Provenance)
         }
-        SessionError::PendingIntrinsicWork => SessionClass::Fault(Invariant::PendingFormEffects),
-        SessionError::AliasedPayload => SessionClass::Fault(Invariant::SharedAllocationAliased),
+        SessionError::PendingIntrinsicWork => {
+            SessionClass::Fault(HtmlParseInvariant::PendingFormEffects)
+        }
+        SessionError::AliasedPayload => {
+            SessionClass::Fault(HtmlParseInvariant::SharedAllocationAliased)
+        }
         SessionError::RootMove
         | SessionError::AssociationMove
         | SessionError::NotContainer
@@ -179,7 +190,7 @@ pub(crate) fn session_class(error: &SessionError) -> SessionClass {
         | SessionError::WrongSibling
         | SessionError::Cycle
         | SessionError::DuplicateAttribute => {
-            SessionClass::Fault(Invariant::ConstructionOwnerRefusal)
+            SessionClass::Fault(HtmlParseInvariant::ConstructionOwnerRefusal)
         }
         SessionError::NonceMetadataUnavailable
         | SessionError::ForeignNode
@@ -199,7 +210,7 @@ pub(crate) fn session_class(error: &SessionError) -> SessionClass {
         | SessionError::TemplateMetadataUnavailable
         | SessionError::ProcessingInstructionMapUnavailable
         | SessionError::ContextUnavailable
-        | SessionError::CapturedDocument => SessionClass::Fault(Invariant::RegistryRow),
+        | SessionError::CapturedDocument => SessionClass::Fault(HtmlParseInvariant::RegistryRow),
     }
 }
 
@@ -208,7 +219,7 @@ pub(crate) fn session_class(error: &SessionError) -> SessionClass {
 /// unchanged.
 pub(super) fn session_fault_invariant(
     error: &SessionError,
-) -> Option<crate::parser::control::Invariant> {
+) -> Option<crate::parser::control::HtmlParseInvariant> {
     match session_class(error) {
         SessionClass::Fault(invariant) => Some(invariant),
         SessionClass::Outcome(_) => None,
@@ -263,7 +274,7 @@ pub(super) fn latch_creation_fault(
     control: &mut ParseControl,
     error: SessionError,
 ) -> SessionError {
-    use crate::parser::control::Invariant;
+    use crate::parser::control::HtmlParseInvariant;
     if let Some(invariant) = session_fault_invariant(&error) {
         return SessionError::Stop(control.fail_invariant(invariant));
     }
@@ -271,9 +282,9 @@ pub(super) fn latch_creation_fault(
         SessionError::ScriptMetadataUnavailable
         | SessionError::SvgScriptMetadataUnavailable
         | SessionError::CompletionMetadataUnavailable
-        | SessionError::CompletionIncomplete => {
-            SessionError::Stop(control.fail_invariant(Invariant::IncompleteFormAssociationCreation))
-        }
+        | SessionError::CompletionIncomplete => SessionError::Stop(
+            control.fail_invariant(HtmlParseInvariant::IncompleteFormAssociationCreation),
+        ),
         other => other,
     }
 }

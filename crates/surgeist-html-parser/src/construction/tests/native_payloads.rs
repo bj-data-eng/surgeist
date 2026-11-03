@@ -16,16 +16,17 @@ fn newly_latched_work_or_cancellation_disposes_all_retained_attribute_fields() {
         } else {
             let remaining = limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, remaining).unwrap();
+            c.charge(HtmlParseWorkCategory::StateStep, remaining)
+                .unwrap();
         }
         let work = c.usage().resource(HtmlParseResource::WorkCredits);
         let error = release_token_attributes(attributes, &mut c).unwrap_err();
         if cancelled {
-            assert_eq!(error, SessionError::Stop(ParseStop::Cancelled));
+            assert_eq!(error, SessionError::Stop(HtmlParseStop::Cancelled));
         } else {
             assert!(matches!(
                 error,
-                SessionError::Stop(ParseStop::LimitExceeded {
+                SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 })
@@ -69,7 +70,7 @@ fn final_empty_attribute_cleanup_work_stop_releases_the_actual_lexical_capacity_
     let mut input = Some(owned_tag(&mut c, "div", &[("x", &[0x61])]));
     assert!(matches!(
         session.allocate_html_tag(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 1,
             ..
@@ -128,13 +129,16 @@ fn active_cleanup_work_stop_retains_native_storage_for_terminal_disposal() {
         .unwrap()
         .unwrap();
     let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, limits().work_credits() - used - 2)
-        .unwrap();
+    c.charge(
+        HtmlParseWorkCategory::StateStep,
+        limits().work_credits() - used - 2,
+    )
+    .unwrap();
     // One registry visit + one actual native slot visit fit. The two Arc
     // metadata provider inspections must be admitted before either executes.
     assert!(matches!(
         session.release(&mut c),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 2,
             ..
@@ -168,7 +172,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
     let baseline = root_capacity
         + mem::size_of::<u16>()
         + mem::size_of::<Vec<u16>>()
-        + mem::size_of::<TextOrigin>();
+        + mem::size_of::<HtmlParseTextOrigin>();
     let cap = baseline + mem::size_of::<RetainedPayload>() - 1;
     let caps = limits()
         .into_builder()
@@ -182,7 +186,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
     assert_eq!(c.usage().actual_capacity_bytes, baseline as u64);
     assert!(matches!(
         session.insert_text(&mut c, &root, None, &mut input, None),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedCapacityBytes,
             ..
         }))
@@ -211,7 +215,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
     let mut input = Some(owned_text(&mut c, &[0x61]));
     assert!(matches!(
         session.insert_text(&mut c, &root, None, &mut input, None),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
             limit: 2,
             current: 2,
@@ -254,14 +258,14 @@ fn isolated_token_name_units_are_stored_without_utf8_conversion_or_name_restrict
 #[test]
 fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_native_element() {
     use crate::parser::tokenizer::{
-        states::State,
+        states::HtmlTokenizerState,
         tests::LexerFixture,
         token::{Event, TokenKind},
     };
     let source = crate::HtmlSource::utf8("<DiV Z=x z=y A:B='&#x1F600;'>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
     let mut inserted = None;
@@ -340,7 +344,7 @@ fn managed_attribute_slot_cap_and_container_alias_preserve_actual_cleanup_owner(
     let mut input = Some(owned_tag(&mut c, "div", &[("a", &[0x61]), ("b", &[0x62])]));
     assert!(matches!(
         session.allocate_html_tag(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedAttributes,
             limit: 1,
             current: 1,
@@ -409,7 +413,7 @@ fn merged_copy_capacity_failure_retains_old_native_text_and_sticky_cleanup() {
     let mut b = Some(owned_text(&mut c, &[0x62]));
     assert!(matches!(
         session.insert_text(&mut c, &root, None, &mut b, None),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedUtf16Units,
             limit: 3,
             current: 2,

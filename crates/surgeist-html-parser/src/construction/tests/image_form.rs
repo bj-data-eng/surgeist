@@ -2,11 +2,11 @@ use super::*;
 
 #[test]
 fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><img form=other><form><img>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -32,7 +32,7 @@ fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner()
             .image_form_state(&mut c, &other_image)
             .unwrap()
             .evidence,
-        FormAssociationEvidence::Reset
+        HtmlParseFormEvidence::Reset
     );
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -40,11 +40,11 @@ fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner()
 }
 #[test]
 fn image_remove_then_reinsert_resets_historical_owner_to_actual_nearest_form() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><form><img>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let first = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
     let second = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
@@ -64,11 +64,11 @@ fn image_remove_then_reinsert_resets_historical_owner_to_actual_nearest_form() {
 }
 #[test]
 fn image_subtree_move_keeps_owner_when_form_and_image_share_removed_tree() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><img><div>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -88,11 +88,11 @@ fn image_subtree_move_keeps_owner_when_form_and_image_share_removed_tree() {
 }
 #[test]
 fn image_same_parent_reorder_and_adoption_child_transfer_apply_real_resets() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><form><img><img>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let a = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
     let b = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
@@ -127,11 +127,11 @@ fn image_same_parent_reorder_and_adoption_child_transfer_apply_real_resets() {
 }
 #[test]
 fn image_frozen_metadata_resolves_actual_native_identity_and_unavailable_is_not_null() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><img><img>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -186,11 +186,11 @@ fn image_frozen_metadata_resolves_actual_native_identity_and_unavailable_is_not_
 }
 #[test]
 fn image_creation_rejects_wrong_arena_alias_and_foreign_lexical_owner_before_take() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<img><img>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let mut other =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
@@ -235,8 +235,13 @@ fn image_creation_rejects_wrong_arena_alias_and_foreign_lexical_owner_before_tak
     release_formatting_tag(&mut input, &mut c).unwrap();
     let mut foreign_control = control();
     foreign_control.admit_source(&source).unwrap();
-    let mut foreign_tokenizer =
-        LexerFixture::new(&source, State::Data, None, &mut foreign_control).unwrap();
+    let mut foreign_tokenizer = LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut foreign_control,
+    )
+    .unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut foreign_tokenizer, &mut foreign_control) else {
         panic!("img")
     };
@@ -249,8 +254,8 @@ fn image_creation_rejects_wrong_arena_alias_and_foreign_lexical_owner_before_tak
             None,
             crate::construction::CreationContext::Ordinary
         ),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert!(input.is_some());
@@ -266,10 +271,10 @@ fn image_creation_rejects_wrong_arena_alias_and_foreign_lexical_owner_before_tak
 fn image_move_fixture(
     c: &mut ParseControl,
 ) -> (ParserArenaSession, ParserNode, ParserNode, ParserNode) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><form><img>");
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, c).unwrap();
     let (mut session, body) = form_session(c);
     let old = form_creation(&mut session, &mut tokenizer, c, &body, None);
     let new = form_creation(&mut session, &mut tokenizer, c, &body, None);
@@ -322,7 +327,7 @@ fn image_effect_work_exact_and_one_short_keep_real_completed_or_unfreezable_owne
         let before_nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, unused - remaining)
+        c.charge(HtmlParseWorkCategory::StateStep, unused - remaining)
             .unwrap();
         let result = session.insert(&mut c, &target, &image, None, None);
         if remaining == work {
@@ -333,12 +338,12 @@ fn image_effect_work_exact_and_one_short_keep_real_completed_or_unfreezable_owne
             assert!(!state.parser_inserted);
             // Exhausted successful work budget: request one actual credit
             // to latch terminal disposal without pretending cleanup is free.
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         } else {
             let stop = c.stop().unwrap();
             assert!(matches!(
                 stop,
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }
@@ -404,7 +409,7 @@ fn image_effect_work_exact_and_one_short_keep_real_completed_or_unfreezable_owne
 }
 #[test]
 fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<img>");
     let mut c = ParseControl::new(
         limits()
@@ -415,7 +420,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         HtmlParseCancellation::new(),
     );
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -523,7 +528,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         .collect();
     assert_eq!(
         result.err(),
-        Some(SessionError::Stop(ParseStop::LimitExceeded {
+        Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
             limit: 22,
             current: 22,
@@ -560,11 +565,11 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
 }
 #[test]
 fn image_creation_original_rejections_precede_any_metadata_slot_or_capacity() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("</img><img x=one><img x=two>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let payloads = session.active().unwrap().payloads.values.len();
     let capacity = session.active().unwrap().payloads.values.capacity();
@@ -667,11 +672,12 @@ fn image_creation_original_rejections_precede_any_metadata_slot_or_capacity() {
 }
 #[test]
 fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_cleanup() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<img>");
     let mut measured = control();
     measured.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut measured).unwrap();
+    let mut lexer =
+        LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut measured).unwrap();
     let (mut session, body) = form_session(&mut measured);
     let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut measured) else {
         panic!("actual img")
@@ -703,7 +709,7 @@ fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_clea
     storage_zero(&measured);
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let TokenKind::Tag(tag) = lexical_kind(&mut lexer, &mut c) else {
         panic!("actual img")
@@ -713,7 +719,7 @@ fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_clea
         limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
     // The final binding has a real last RecordWrite credit after its visit,
     // layout admission and Option<usize> copy. Deny only that final write.
-    c.charge(WorkCategory::StateStep, unused - (complete - 1))
+    c.charge(HtmlParseWorkCategory::StateStep, unused - (complete - 1))
         .unwrap();
     let error = session
         .allocate_html_tag_for_creation(
@@ -728,7 +734,7 @@ fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_clea
     assert_eq!(error, SessionError::Stop(stop));
     assert!(matches!(
         stop,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 1,
             ..
@@ -800,7 +806,7 @@ fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_clea
 }
 #[test]
 fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // The completed prefix plus exactly one retained standalone Image row is
     // the measured total. Its empty request Vec owns bytes but no auxiliary
     // entries. One entry short independently rejects the NEW Image row
@@ -810,7 +816,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
         let source = crate::HtmlSource::utf8("<img>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let prefix = c
             .usage()
@@ -848,7 +855,8 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         // Root plus html/body: 3 records/tickets, 6 fields, 4 document facts and 4 nonce slots.
         assert_eq!(
@@ -894,7 +902,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
         } else if cap == needed - 1 {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     limit,
                     current,
@@ -925,7 +933,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     limit,
                     ..
@@ -989,22 +997,22 @@ fn image_move_rejections_and_cancel_preserve_links_facts_and_first_reason() {
     cancellation.cancel();
     assert_eq!(
         session.insert(&mut c, &target, &image, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(retained_image_state(&session, &image), before);
     assert!(session.active().unwrap().effects.form.is_none());
     assert_eq!(
         session.image_form_owner(&mut c, &image).unwrap_err(),
-        SessionError::Stop(ParseStop::Cancelled)
+        SessionError::Stop(HtmlParseStop::Cancelled)
     );
     assert_eq!(
         session.remove(&mut c, &old, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     other.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
@@ -1016,7 +1024,7 @@ fn image_real_cancellation_between_removal_and_insertion_preserves_completed_rem
     let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
     assert_eq!(
         session.insert(&mut c, &target, &image, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert_eq!(
@@ -1055,23 +1063,23 @@ fn image_real_cancellation_between_removal_and_insertion_preserves_completed_rem
     let state = retained_image_state(&session, &image);
     assert_eq!(state.owner, None);
     assert!(!state.parser_inserted);
-    assert_eq!(state.evidence, FormAssociationEvidence::Reset);
+    assert_eq!(state.evidence, HtmlParseFormEvidence::Reset);
     assert_eq!(
         session.image_form_state(&mut c, &image),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(
         session.insert(&mut c, &old, &image, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
@@ -1120,7 +1128,7 @@ fn image_removal_clears_parser_flag_before_ancestor_work_can_stop() {
         assert!(effects.insert);
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, unused - allowance)
+        c.charge(HtmlParseWorkCategory::StateStep, unused - allowance)
             .unwrap();
         let result = session
             .active_mut()
@@ -1138,7 +1146,7 @@ fn image_removal_clears_parser_flag_before_ancestor_work_can_stop() {
         assert_eq!(error, SessionError::Stop(stop));
         assert!(matches!(
             stop,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }
@@ -1164,7 +1172,7 @@ fn image_removal_clears_parser_flag_before_ancestor_work_can_stop() {
             Some(old.index),
             "later clear-owner step has not run"
         );
-        assert_eq!(retained.evidence, FormAssociationEvidence::Reset);
+        assert_eq!(retained.evidence, HtmlParseFormEvidence::Reset);
         assert_eq!(
             session.active().unwrap().effects.form.unwrap().stage,
             FormEffectStage::Removal
@@ -1181,7 +1189,7 @@ fn image_removal_clears_parser_flag_before_ancestor_work_can_stop() {
 
 #[test]
 fn image_self_reference_insertion_runs_removal_before_insertion_with_unchanged_links() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     for subtree in [false, true] {
         let source = crate::HtmlSource::utf8(if subtree {
             "<form><div><img>"
@@ -1190,7 +1198,8 @@ fn image_self_reference_insertion_runs_removal_before_insertion_with_unchanged_l
         });
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (mut session, body) = form_session(&mut c);
         let form = form_creation(&mut session, &mut tokenizer, &mut c, &body, None);
         session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -1238,6 +1247,6 @@ fn image_self_reference_insertion_runs_removal_before_insertion_with_unchanged_l
         // adoption still removes the actual root before inserting it again.
         assert!(!result.parser_inserted);
         assert_eq!(result.owner, None);
-        assert_eq!(result.evidence, FormAssociationEvidence::Reset);
+        assert_eq!(result.evidence, HtmlParseFormEvidence::Reset);
     }
 }

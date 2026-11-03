@@ -206,8 +206,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = &storage.view;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -223,8 +223,8 @@ impl FrozenArena {
     ) -> Result<Option<(&'a crate::HtmlSourceRange, &'a crate::HtmlSourceRange)>, SessionError>
     {
         self.input_state(control, node)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let arena = &self.storage.as_ref().ok_or(SessionError::Consumed)?.view;
         find_input_sources(
             &self
@@ -249,8 +249,8 @@ impl FrozenArena {
         destination.require_owner(control)?;
         self.input_state(control, node)?;
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let arena = &storage.view;
         let raw = find_input_state(
             &storage.payloads,
@@ -323,8 +323,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = &storage.view;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -370,8 +370,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = &storage.view;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -427,8 +427,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
         let arena = &storage.view;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -457,12 +457,15 @@ impl FrozenArena {
         };
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let arena = &storage.view;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if owner >= arena.len() {
             return Err(SessionError::ForeignNode);
         }
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<HtmlNodeId>() as u64)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<HtmlNodeId>() as u64,
+        )?;
         Ok(Some(
             arena
                 .node_at(owner)
@@ -479,8 +482,8 @@ impl FrozenArena {
     ) -> Result<ScriptMetadata, SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         control.require_identity(&storage.control)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = storage
             .view
             .position(&node.handle)

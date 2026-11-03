@@ -6,10 +6,10 @@
 use super::effects::tests::{graph, named, request};
 use super::tests::{body_lexical_value, control, fresh_script_owner, lexical_kind, storage_zero};
 use super::*;
-use crate::parser::control::Invariant;
+use crate::parser::control::HtmlParseInvariant;
 
-fn registry_row() -> ParseStop {
-    ParseStop::InternalInvariant(Invariant::RegistryRow)
+fn registry_row() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow)
 }
 
 /// The exact typed error, latched as the controller's first stop.
@@ -233,10 +233,11 @@ fn releasing_a_frozen_arena_without_its_publication_lease_keeps_the_owner() {
 
 #[test]
 fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attributes() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let request = request("<div a=1 b=2>");
     let (mut c, mut session, _proof) = fresh_script_owner(&request);
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(mut tag) = lexical_kind(&mut lexer, &mut c) else {
         panic!("start tag")
     };
@@ -248,7 +249,7 @@ fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attribut
         .unwrap();
     // Validation refuses, and the release of the shared attributes refuses too.
     c.refuse_next_shared_release();
-    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
     let result = session.allocate_html_tag(&mut c, &mut Some(tag));
     assert_eq!(result.err(), Some(SessionError::Stop(aliased)));
     assert_eq!(c.stop(), Some(aliased));
@@ -502,7 +503,7 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation()
             .shared_code_units(),
     );
     let result = session.parser_stack_removed(&mut c, &textarea, None);
-    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
     assert_eq!(result.err(), Some(SessionError::Stop(aliased)));
     assert_eq!(c.stop(), Some(aliased));
     drop(held);
@@ -517,9 +518,9 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation()
 /// without a stop.
 #[test]
 fn effect_work_errors_map_to_their_precise_invariant() {
-    let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
-    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
-    let refusal = ParseStop::InternalInvariant(Invariant::ConstructionOwnerRefusal);
+    let pending = HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects);
+    let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
+    let refusal = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ConstructionOwnerRefusal);
     for (error, expected) in [
         (SessionError::PendingIntrinsicWork, pending),
         (SessionError::AliasedPayload, aliased),
@@ -559,7 +560,7 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
         SessionError::CspProtocol(csp_protocol_error()),
         // A stop is already latched by whoever raised it; mapping adds none.
-        SessionError::Stop(ParseStop::Cancelled),
+        SessionError::Stop(HtmlParseStop::Cancelled),
     ] {
         let mut c = control();
         assert_eq!(latch_effect_fault(&mut c, error), error, "{error:?}");
@@ -578,9 +579,10 @@ fn effect_work_errors_map_to_their_precise_invariant() {
 /// construction tests.
 #[test]
 fn creation_errors_map_to_the_fault_they_report() {
-    let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
-    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
-    let incomplete = ParseStop::InternalInvariant(Invariant::IncompleteFormAssociationCreation);
+    let pending = HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects);
+    let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
+    let incomplete =
+        HtmlParseStop::InternalInvariant(HtmlParseInvariant::IncompleteFormAssociationCreation);
     for (error, expected) in [
         (SessionError::PendingIntrinsicWork, pending),
         (SessionError::AliasedPayload, aliased),
@@ -611,7 +613,7 @@ fn creation_errors_map_to_the_fault_they_report() {
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::BrowsingContextConnection),
         SessionError::ContextReactionUnavailable,
-        SessionError::Stop(ParseStop::Cancelled),
+        SessionError::Stop(HtmlParseStop::Cancelled),
     ] {
         let mut c = control();
         assert_eq!(latch_creation_fault(&mut c, error), error, "{error:?}");
@@ -624,8 +626,8 @@ fn creation_errors_map_to_the_fault_they_report() {
 /// stop: an outcome keeps its own reason, a fault is the stop it latched.
 #[test]
 fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
-    let provenance = ParseStop::UnsupportedStandaloneState(
-        crate::parser::control::StandaloneUnsupported::Provenance,
+    let provenance = HtmlParseStop::UnsupportedStandaloneState(
+        crate::parser::control::HtmlParseUnsupportedState::Provenance,
     );
     let fact = SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::Parent);
     let mut c = control();
@@ -634,7 +636,7 @@ fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
 
     // A different stop that is already the first one is what the error
     // reports, for a fault and for an outcome alike.
-    let earlier = ParseStop::InvalidAssociatedFacts;
+    let earlier = HtmlParseStop::InvalidAssociatedFacts;
     for error in [fact, SessionError::WrongToken, SessionError::CspService] {
         let mut c = control();
         c.stop_invalid_associated_facts();
@@ -647,7 +649,7 @@ fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
     }
     // The error's own stop is the first one: the outcome keeps its reason.
     let mut c = control();
-    c.stop_unsupported_standalone(crate::parser::control::StandaloneUnsupported::Provenance);
+    c.stop_unsupported_standalone(crate::parser::control::HtmlParseUnsupportedState::Provenance);
     assert_eq!(end_session_on(&mut c, fact), fact);
 
     for (fault, invariant) in [
@@ -655,7 +657,7 @@ fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
         (SessionError::ContextUnavailable, registry_row()),
         (
             SessionError::PendingIntrinsicWork,
-            ParseStop::InternalInvariant(Invariant::PendingFormEffects),
+            HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects),
         ),
     ] {
         let mut c = control();

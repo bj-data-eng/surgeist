@@ -101,7 +101,7 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
                 );
             }
             Err(SessionError::Stop(
-                stop @ ParseStop::LimitExceeded {
+                stop @ HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 },
@@ -123,7 +123,7 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
                         .resource(HtmlParseResource::ManagedUtf16Units)
                         .current;
                 let work = c.usage().resource(HtmlParseResource::WorkCredits);
-                assert_eq!(c.charge(WorkCategory::StateStep, 1), Err(stop));
+                assert_eq!(c.charge(HtmlParseWorkCategory::StateStep, 1), Err(stop));
                 assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
                 assert_eq!(c.first_stop_usage(), Some(&first));
             }
@@ -178,7 +178,7 @@ fn cancellation_after_real_tail_chunk_keeps_old_text_and_actual_growth_and_first
         session
             .insert_text(&mut c, &root, None, &mut input, None)
             .err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(input.is_none());
     assert_eq!(native_text(&session, &node), [65, 66]);
@@ -256,7 +256,9 @@ fn external_weak_preservation_and_detached_append_keep_current_ticket_and_histor
 
 #[test]
 fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy_and_lookup_work() {
-    use crate::parser::tokenizer::{Tokenizer, TokenizerPull, states::State, token::Event};
+    use crate::parser::tokenizer::{
+        Tokenizer, TokenizerPull, states::HtmlTokenizerState, token::Event,
+    };
     for repetitions in [8usize, 16, 32, 64, 128] {
         for utf16 in [false, true] {
             let source = if utf16 {
@@ -303,9 +305,9 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                 session.initialize_parse_evidence(&mut c, &source).unwrap();
                 let root = session.root(&mut c).unwrap();
                 let mut lexer = if progressive {
-                    Tokenizer::progressive(&source, State::Data, None, &mut c).unwrap()
+                    Tokenizer::progressive(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
                 } else {
-                    Tokenizer::new(&source, State::Data, None, &mut c).unwrap()
+                    Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
                 };
                 let cuts: Vec<_> = if !progressive {
                     vec![source.len()]
@@ -360,17 +362,19 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                             TokenizerPull::Event(Event::Token(event)) => {
                                 match event.into_token(&mut c).unwrap().kind {
                                     TokenKind::Text(text) => {
-                                        let before_copy = c.usage().work(WorkCategory::CopyByte);
+                                        let before_copy =
+                                            c.usage().work(HtmlParseWorkCategory::CopyByte);
                                         let before_visits =
-                                            c.usage().work(WorkCategory::RecordVisit);
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
                                         let inserted = session
                                             .insert_text(&mut c, &root, None, &mut Some(text), None)
                                             .unwrap()
                                             .unwrap();
-                                        copies +=
-                                            c.usage().work(WorkCategory::CopyByte) - before_copy;
-                                        visits += c.usage().work(WorkCategory::RecordVisit)
-                                            - before_visits;
+                                        copies += c.usage().work(HtmlParseWorkCategory::CopyByte)
+                                            - before_copy;
+                                        visits +=
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                                                - before_visits;
                                         if let Some(old) = &node {
                                             assert_eq!(inserted._node.index, old.index);
                                         }
@@ -395,12 +399,14 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                                         }
                                         old_capacity = capacity;
                                         old_address = address;
-                                        let before = c.usage().work(WorkCategory::RecordVisit);
+                                        let before =
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
                                         storage
                                             .field_slot(&mut c, StringLocation::Text(node.index))
                                             .unwrap();
                                         lookup_visits +=
-                                            c.usage().work(WorkCategory::RecordVisit) - before;
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                                                - before;
                                     }
                                     TokenKind::Eof => {}
                                     _ => panic!("text-only source"),
@@ -511,7 +517,7 @@ fn text_append_preserving_copy_has_exact_managed_boundary_and_retains_failed_buf
         } else {
             assert_eq!(
                 result.err(),
-                Some(SessionError::Stop(ParseStop::LimitExceeded {
+                Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedUtf16Units,
                     limit: 3,
                     current: 2,
@@ -582,8 +588,9 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
     let stop = c
         .prepare_text_append_reserve(&allocation, before, before.initialized_len() - 1)
         .unwrap_err();
-    let mismatch =
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch);
+    let mismatch = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::CapacityMismatch,
+    );
     assert_eq!(stop, mismatch);
     assert_eq!(c.stop(), Some(mismatch));
     let (owner, ..) = operation.take().unwrap().abort().into_parts();
@@ -608,12 +615,12 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
 // through crate-private access or a controller hook, asserts the exact typed
 // error and that the stop is latched first, and that the session's own release
 // drains every resource afterwards.
-fn capacity_mismatch() -> ParseStop {
-    ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch)
+fn capacity_mismatch() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::CapacityMismatch)
 }
 
-fn registry_row() -> ParseStop {
-    ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+fn registry_row() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
 }
 
 #[test]
@@ -672,7 +679,7 @@ fn a_stopped_append_releases_its_buffer_when_the_terminal_owner_is_already_taken
         Some(text_append::FailedTextAppend::held(value, allocation));
     let mut next = Some(owned_text(&mut c, &[66]));
     let result = session.insert_text(&mut c, &root, None, &mut next, None);
-    let limit = ParseStop::LimitExceeded {
+    let limit = HtmlParseStop::LimitExceeded {
         resource: HtmlParseResource::ManagedUtf16Units,
         limit: 3,
         current: 2,
@@ -741,7 +748,7 @@ fn a_failed_backing_initialization_keeps_the_stop_and_releases_the_prepared_tick
     let mut next = Some(owned_text(&mut c, &[67]));
     c.fail_next_text_append_backing();
     let result = session.insert_text(&mut c, &root, None, &mut next, None);
-    let failed = ParseStop::AllocationFailed {
+    let failed = HtmlParseStop::AllocationFailed {
         resource: HtmlParseResource::ManagedCapacityBytes,
         layout_bytes: 0,
     };

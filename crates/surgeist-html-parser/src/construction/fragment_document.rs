@@ -21,14 +21,14 @@ use history::FrozenHistory;
 /// `document()` retains the real ordinary html child. Captured context/target
 /// Documents and independently created inert owners retain separate identities.
 /// All readers are fixed borrowed observations after bounded qualification.
-pub struct FragmentParserDocument<'a> {
+pub struct HtmlParseFragmentParserDocument<'a> {
     source: &'a crate::HtmlSource,
     fragment: &'a FragmentContextStorage,
     document: HtmlNode<'a>,
     mode: HtmlDocumentMode,
-    completion: StandaloneDocumentState,
+    completion: HtmlParseDocumentState,
 }
-impl<'a> FragmentParserDocument<'a> {
+impl<'a> HtmlParseFragmentParserDocument<'a> {
     /// The Document, its mode and its completion are read once, here, so the
     /// readers cannot fail. The fault if the report holds no fragment context,
     /// or no longer holds the Document or the completion row it was
@@ -36,25 +36,25 @@ impl<'a> FragmentParserDocument<'a> {
     pub(super) fn new(
         history: &'a FrozenHistory,
         source: &'a crate::HtmlSource,
-    ) -> Result<Self, read::UnresolvedReference> {
-        let fault = |kind| read::UnresolvedReference::new(kind);
+    ) -> Result<Self, read::HtmlParseUnresolvedReference> {
+        let fault = |kind| read::HtmlParseUnresolvedReference::new(kind);
         let storage = history.storage();
         let fragment = storage
             .fragment
             .as_ref()
-            .ok_or(fault(read::UnresolvedKind::Fragment))?;
+            .ok_or(fault(read::HtmlParseUnresolvedKind::Fragment))?;
         let document = storage
             .view
             .node_at(0)
-            .ok_or(fault(read::UnresolvedKind::Node))?
+            .ok_or(fault(read::HtmlParseUnresolvedKind::Node))?
             .as_node();
         let HtmlNodeKind::Document(mode) = document.kind() else {
-            return Err(fault(read::UnresolvedKind::Node));
+            return Err(fault(read::HtmlParseUnresolvedKind::Node));
         };
         let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
             storage.payloads.values.get(fragment.completion)
         else {
-            return Err(fault(read::UnresolvedKind::Fact));
+            return Err(fault(read::HtmlParseUnresolvedKind::Fact));
         };
         Ok(Self {
             source,
@@ -76,10 +76,10 @@ impl<'a> FragmentParserDocument<'a> {
     pub fn mode(&self) -> HtmlDocumentMode {
         self.mode
     }
-    pub fn completion(&self) -> StandaloneDocumentState {
+    pub fn completion(&self) -> HtmlParseDocumentState {
         self.completion
     }
-    pub fn origin(&self) -> &'a context::FragmentParserOrigin {
+    pub fn origin(&self) -> &'a context::HtmlParseOpaqueOrigin {
         &self.fragment.origin
     }
 }
@@ -89,18 +89,18 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
         .fragment
         .as_ref()
         .ok_or(SessionError::ContextUnavailable)?;
-    c.charge(WorkCategory::RecordVisit, 4)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
     c.charge(
-        WorkCategory::InspectByte,
-        mem::size_of::<StandaloneDocumentState>() as u64,
+        HtmlParseWorkCategory::InspectByte,
+        mem::size_of::<HtmlParseDocumentState>() as u64,
     )?;
     let Some(RetainedPayload::StandaloneDocumentCompletion { node: 0, state }) =
         storage.payloads.values.get(fragment.completion)
     else {
         return Err(SessionError::CompletionMetadataUnavailable);
     };
-    if state.completion != ConstructionCompletion::Complete
-        || state.readiness != ConstructionReadiness::Complete
+    if state.completion != HtmlParseCompletion::Complete
+        || state.readiness != HtmlParseReadiness::Complete
         || !state.ready_for_post_load_tasks
     {
         return Err(SessionError::CompletionIncomplete);
@@ -112,7 +112,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     {
         return Err(SessionError::ContextUnavailable);
     }
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let root = document
         .child_at(0)
         .ok_or(SessionError::ContextUnavailable)?;

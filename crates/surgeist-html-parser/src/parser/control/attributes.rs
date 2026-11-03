@@ -12,16 +12,28 @@ impl ParseControl {
     pub(crate) fn observe_construction_attribute_append(&mut self) {
         self.observe_attribute_append(1);
     }
-    pub(crate) fn cleanup_auxiliary_entries(&mut self, entries: u64) -> Result<(), ParseStop> {
+    pub(crate) fn cleanup_auxiliary_entries(&mut self, entries: u64) -> Result<(), HtmlParseStop> {
         self.cleanup_storage(HtmlParseResource::AuxiliaryEntries, entries, 0)
     }
-    pub(crate) fn admit_attribute_work(&mut self, work: Work) -> Result<(), ParseStop> {
+    pub(crate) fn admit_attribute_work(&mut self, work: Work) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::RecordVisit, work.record_visits as u64),
-            (WorkCategory::ProviderCall, work.provider_calls as u64),
-            (WorkCategory::InspectByte, work.inspected_bytes as u64),
-            (WorkCategory::CopyByte, work.copied_bytes as u64),
-            (WorkCategory::RecordWrite, work.record_writes as u64),
+            (
+                HtmlParseWorkCategory::RecordVisit,
+                work.record_visits as u64,
+            ),
+            (
+                HtmlParseWorkCategory::ProviderCall,
+                work.provider_calls as u64,
+            ),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                work.inspected_bytes as u64,
+            ),
+            (HtmlParseWorkCategory::CopyByte, work.copied_bytes as u64),
+            (
+                HtmlParseWorkCategory::RecordWrite,
+                work.record_writes as u64,
+            ),
         ])?;
         if work.atomic_layout_bytes != 0 {
             self.admit_atomic_layout(work.atomic_layout_bytes)?;
@@ -39,7 +51,7 @@ impl ParseControl {
         values: &Arc<Vec<crate::Attribute>>,
         shared: &SharedAllocation<Vec<crate::Attribute>>,
         vector: &VectorCapacity<crate::Attribute>,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.prepare_attribute_edit(values, shared, vector)
     }
     pub(crate) fn suspend_attribute_weak(
@@ -61,16 +73,20 @@ impl ParseControl {
         &mut self,
         values: &Vec<crate::Attribute>,
         allocation: &VectorCapacity<crate::Attribute>,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordVisit, 2),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordVisit, 2),
         ])?;
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ));
         }
         if values.capacity() != allocation.capacity || values.is_empty() {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         Ok(())
     }
@@ -79,14 +95,18 @@ impl ParseControl {
         before: Capacity,
         minimum: usize,
         vector: &VectorCapacity<crate::Attribute>,
-    ) -> Result<usize, ParseStop> {
+    ) -> Result<usize, HtmlParseStop> {
         self.checkpoint()?;
-        self.charge(WorkCategory::RecordVisit, 2)?;
+        self.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if !Arc::ptr_eq(&vector.owner, &self.identity) {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ));
         }
         if vector.capacity != before.capacity {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         let Some(new) = minimum
             .checked_mul(size_of::<crate::Attribute>())
@@ -101,9 +121,9 @@ impl ParseControl {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         self.charge_many(&[
-            (WorkCategory::ReserveByte, overlap_bytes as u64),
-            (WorkCategory::RecordWrite, 1),
-            (WorkCategory::CopyByte, size_of::<usize>() as u64),
+            (HtmlParseWorkCategory::ReserveByte, overlap_bytes as u64),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64),
         ])?;
         self.preflight_construction_capacity(old as u64, new as u64)?;
         Ok(new)
@@ -113,7 +133,7 @@ impl ParseControl {
         after: Capacity,
         vector: &mut VectorCapacity<crate::Attribute>,
         expected: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let (Some(old), Some(actual)) = (
             vector.capacity.checked_mul(size_of::<crate::Attribute>()),
             after.capacity.checked_mul(size_of::<crate::Attribute>()),
@@ -140,7 +160,7 @@ impl ParseControl {
         self.set(HtmlParseResource::PeakTransientBytes, overlap);
         self.set(HtmlParseResource::PeakTransientBytes, total);
         if actual > expected {
-            return self.fail(ParseStop::LimitExceeded {
+            return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: expected as u64,
                 current: old as u64,

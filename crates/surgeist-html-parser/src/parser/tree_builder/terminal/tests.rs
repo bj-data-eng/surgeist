@@ -1,16 +1,16 @@
 use super::super::end::EndPhase;
 use super::super::head::HeadStep;
 use super::*;
-use crate::construction::ConstructionCompletion;
-use crate::construction::ConstructionReadiness;
+use crate::construction::HtmlParseCompletion;
+use crate::construction::HtmlParseReadiness;
 use crate::construction::native_view::{NativeFragmentOwner, NativeKind, NativeString, NativeView};
 use crate::{DocumentString, HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
 
 #[test]
 fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields() {
     use crate::construction::provenance::{
-        AssociationRelation, LexicalDisposition, LexicalKind, LexicalRole, NativeDestination,
-        OmissionKind,
+        HtmlParseAssociationRelation, HtmlParseLexicalDisposition, HtmlParseLexicalKind,
+        HtmlParseLexicalRole, HtmlParseOmissionKind, NativeDestination,
     };
     let source = HtmlSource::utf8(
         " \r\n<!doctype html><HTML A='x&NotEqualTilde;' a=discard empty=\"\"><body><textarea>\nX</textarea>\0</bogus></body></html>",
@@ -35,25 +35,25 @@ fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields
                 occurrence,
                 part: None,
             } => {
-                assert_eq!(row.relation, AssociationRelation::LexicalEnvelope);
+                assert_eq!(row.relation, HtmlParseAssociationRelation::LexicalEnvelope);
                 let occurrence = view.lexical_occurrence(occurrence).unwrap();
                 let raw = request.source().text(&occurrence.source).unwrap();
                 if raw == DocumentString::from("a=discard") {
-                    assert_eq!(occurrence.kind, LexicalKind::Attribute);
+                    assert_eq!(occurrence.kind, HtmlParseLexicalKind::Attribute);
                     assert_eq!(
                         occurrence.disposition,
-                        LexicalDisposition::DuplicateAttribute
+                        HtmlParseLexicalDisposition::DuplicateAttribute
                     );
                     assert_eq!(
                         view.lexical_occurrence(occurrence.parent.unwrap())
                             .unwrap()
                             .kind,
-                        LexicalKind::StartTag
+                        HtmlParseLexicalKind::StartTag
                     );
                     duplicate = true;
                 }
                 if raw == DocumentString::from("</bogus>") {
-                    assert_eq!(occurrence.disposition, LexicalDisposition::Ignored);
+                    assert_eq!(occurrence.disposition, HtmlParseLexicalDisposition::Ignored);
                     ignored = true;
                 }
             }
@@ -63,12 +63,14 @@ fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields
                 let part = view.lexical_part(part).unwrap();
                 if matches!(
                     part.role,
-                    LexicalRole::OpeningQuote(_) | LexicalRole::ClosingQuote(_)
+                    HtmlParseLexicalRole::OpeningQuote(_) | HtmlParseLexicalRole::ClosingQuote(_)
                 ) {
                     quotes += 1;
                 }
                 if part.kind
-                    == Some(crate::parser::tokenizer::token::OriginKind::CharacterReference)
+                    == Some(
+                        crate::parser::tokenizer::token::HtmlParseOriginKind::CharacterReference,
+                    )
                 {
                     assert_eq!(
                         request.source().text(&part.source).unwrap(),
@@ -79,29 +81,29 @@ fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields
                 }
             }
             NativeDestination::Cause(index) => {
-                assert_eq!(row.relation, AssociationRelation::Cause);
+                assert_eq!(row.relation, HtmlParseAssociationRelation::Cause);
                 assert_eq!(index, row.cause);
                 view.cause(index).unwrap();
             }
             NativeDestination::Omission(index) => {
-                assert_eq!(row.relation, AssociationRelation::Omission);
+                assert_eq!(row.relation, HtmlParseAssociationRelation::Omission);
                 let omission = view.omission(index).unwrap();
                 match omission.kind {
-                    OmissionKind::LeadingWhitespace => {
+                    HtmlParseOmissionKind::LeadingWhitespace => {
                         assert!(matches!(
                             omission.rule,
-                            crate::construction::provenance::ParserRule::Prologue(_)
+                            crate::construction::provenance::HtmlParserRule::Prologue(_)
                         ));
                         leading = true;
                     }
-                    OmissionKind::InitialLf => {
+                    HtmlParseOmissionKind::InitialLf => {
                         assert_eq!(
                             request.source().text(&omission.source).unwrap(),
                             DocumentString::from("\n")
                         );
                         initial_lf = true;
                     }
-                    OmissionKind::NullInBody => {
+                    HtmlParseOmissionKind::NullInBody => {
                         assert_eq!(
                             request.source().text(&omission.source).unwrap(),
                             DocumentString::from_utf16(vec![0])
@@ -142,7 +144,7 @@ fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields
         match eof.advance() {
             crate::construction::provenance::reverse::ReverseStep::Match(row) => {
                 if matches!(row.destination, NativeDestination::LexicalEnd) {
-                    assert_eq!(row.relation, AssociationRelation::LexicalAnchor);
+                    assert_eq!(row.relation, HtmlParseAssociationRelation::LexicalAnchor);
                     assert_eq!(row.source.as_ref().unwrap().start(), request.source().len());
                     assert_eq!(row.source.as_ref().unwrap().end(), request.source().len());
                     anchor += 1;
@@ -164,7 +166,7 @@ fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields
 #[test]
 fn completed_lexical_already_present_attributes_and_retired_history_keep_exact_origins() {
     use crate::construction::provenance::{
-        AssociationRelation as R, LexicalDisposition as D, NativeDestination as N,
+        HtmlParseAssociationRelation as R, HtmlParseLexicalDisposition as D, NativeDestination as N,
     };
     let source = HtmlSource::utf8(
         "<!doctype html><html a=first><body>x&amp;y<html A=discard b=kept><p id=p>A<b>B</b>C</p></body></html>",
@@ -233,12 +235,14 @@ fn a_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_c
         completed.stop_for_public_failure(if lost {
             super::super::StopCause::LostOwner
         } else {
-            super::super::StopCause::Unsupported(StandaloneUnsupported::Provenance)
+            super::super::StopCause::Unsupported(HtmlParseUnsupportedState::Provenance)
         });
         let expected = if lost {
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
+            HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::TreeBuilderState,
+            )
         } else {
-            ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+            HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
         };
         assert_eq!(
             completed.driver.as_ref().unwrap().control.stop(),
@@ -300,7 +304,7 @@ fn frozen_parts_end_borrow_and_retain_same_source_native_identity_and_completion
     );
     assert_eq!(
         parts.document_state().completion,
-        ConstructionCompletion::Complete
+        HtmlParseCompletion::Complete
     );
     assert!(parts.final_usage().actual_capacity_bytes > 0);
     assert!(
@@ -413,8 +417,8 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
         let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
         assert_eq!(
             record.kind,
-            crate::construction::evidence::DiagnosticKind::Tree(
-                super::super::head::HeadCondition::NullInBody
+            crate::construction::evidence::HtmlParseDiagnosticKind::Tree(
+                super::super::head::HtmlTreeDiagnostic::NullInBody
             )
         );
         assert_eq!(location.source, source.range(25, 26).unwrap());
@@ -423,7 +427,7 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
     request.cancellation().cancel();
     assert!(matches!(
         parts.document(),
-        Err(StandaloneError::Stop(ParseStop::Cancelled))
+        Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
     ));
     let first = parts.at_stop().unwrap().clone();
     let work = parts
@@ -498,8 +502,8 @@ fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once()
     let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
     assert_eq!(
         record.kind,
-        crate::construction::evidence::DiagnosticKind::Tree(
-            super::super::head::HeadCondition::NullInBody
+        crate::construction::evidence::HtmlParseDiagnosticKind::Tree(
+            super::super::head::HtmlTreeDiagnostic::NullInBody
         )
     );
     assert_eq!(location.source, request.source().range(4, 5).unwrap());
@@ -592,7 +596,7 @@ fn frozen_parts_cancellation_after_transfer_keeps_safe_evidence_and_first_snapsh
     request.cancellation().cancel();
     assert!(matches!(
         parts.document(),
-        Err(StandaloneError::Stop(ParseStop::Cancelled))
+        Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
     ));
     let first = parts.at_stop().unwrap().clone();
     let pointer = parts.diagnostics().unwrap().records_pointer();
@@ -615,7 +619,7 @@ fn frozen_parts_actual_after_share_cancellation_keeps_both_owners_for_terminal_r
     completed.cancel_after_freeze = Some(request.cancellation().clone());
     assert!(matches!(
         completed.freeze_parts(),
-        Err(StandaloneError::Stop(ParseStop::Cancelled))
+        Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
     ));
     assert!(completed.frozen.is_some());
     assert!(completed.driver.is_some());
@@ -696,7 +700,7 @@ fn frozen_parts_exact_work_and_one_short_plus_bounded_cuts_preserve_actual_owner
         driver
             .control
             .charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 request.limits().work_credits() - used - allowance,
             )
             .unwrap();
@@ -721,7 +725,7 @@ fn frozen_parts_exact_work_and_one_short_plus_bounded_cuts_preserve_actual_owner
                 assert!(
                     matches!(
                         driver.control.stop(),
-                        Some(ParseStop::LimitExceeded {
+                        Some(HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::WorkCredits,
                             ..
                         })
@@ -828,7 +832,7 @@ fn frozen_parts_stopped_evidence_foreign_owner_refusal_preserves_actual_store() 
     );
     foreign.admit_source(request.source()).unwrap();
     foreign.stop_unsupported_standalone(
-        super::super::super::control::StandaloneUnsupported::Completion,
+        super::super::super::control::HtmlParseUnsupportedState::Completion,
     );
     let before = foreign.usage().clone();
     assert!(
@@ -848,8 +852,8 @@ fn frozen_parts_stopped_evidence_foreign_owner_refusal_preserves_actual_store() 
 
 #[test]
 fn completed_native_field_projection_retains_atomic_merged_origins_and_later_trigger() {
-    use crate::construction::provenance::ConstructionOperation;
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::construction::provenance::HtmlParseConstructionOperation;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     let source = HtmlSource::utf8("<p>A🙂\r\n&NotEqualTilde;");
     let request =
         HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
@@ -882,7 +886,7 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
     for index in 0..rows.len() {
         if rows.node_for(index, &root).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, ConstructionOperation::Request);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Request);
             assert!(cause.source.is_none());
             assert!(cause.captured.is_none());
             assert!(cause.original_node.is_none());
@@ -891,7 +895,7 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
         if rows.text_for(index, &text).unwrap() {
             let reference = rows.cause_reference(index).unwrap().unwrap();
             let cause = rows.cause(&reference).unwrap();
-            assert_eq!(cause.operation, ConstructionOperation::Merge);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
             assert!(cause.original.is_some());
             assert!(cause.incoming.is_some());
             assert!(cause.trigger.is_some());
@@ -916,7 +920,10 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
             rows.release_materialized_group(&mut Some(historical))
                 .unwrap();
             let retired = rows.cause_at(retirement).unwrap().unwrap();
-            assert_eq!(retired.operation, ConstructionOperation::Retirement);
+            assert_eq!(
+                retired.operation,
+                HtmlParseConstructionOperation::Retirement
+            );
             assert_eq!(retired.original, Some(original));
             assert!(matches!(
                 retired.retired_destination,
@@ -925,7 +932,7 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
             assert!(retired.source.is_none());
             assert_eq!(retired.trigger, Some(trigger));
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
-            assert_eq!(trigger.operation, ConstructionOperation::Token);
+            assert_eq!(trigger.operation, HtmlParseConstructionOperation::Token);
             assert_eq!(trigger.source, Some(source.range(10, 25).unwrap()));
             let (row, _) = rows.row(index).unwrap().unwrap();
             observed.push((row.start, row.end, row.source.clone(), row.kind));
@@ -938,31 +945,31 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
                 0,
                 1,
                 Some(source.range(3, 4).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
             (
                 1,
                 3,
                 Some(source.range(4, 8).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
             (
                 3,
                 4,
                 Some(source.range(8, 10).unwrap()),
-                Some(OriginKind::Newline)
+                Some(HtmlParseOriginKind::Newline)
             ),
             (
                 4,
                 5,
                 Some(source.range(10, 25).unwrap()),
-                Some(OriginKind::CharacterReference)
+                Some(HtmlParseOriginKind::CharacterReference)
             ),
             (
                 5,
                 6,
                 Some(source.range(10, 25).unwrap()),
-                Some(OriginKind::CharacterReference)
+                Some(HtmlParseOriginKind::CharacterReference)
             ),
         ]
     );
@@ -984,42 +991,42 @@ fn units(view: &mut NativeView<'_>, text: NativeString<'_>) -> Vec<u16> {
 }
 #[test]
 fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relations() {
-    use crate::construction::provenance::{ConstructionOperation, RawFieldKind};
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::construction::provenance::{HtmlParseConstructionOperation, HtmlParseRawField};
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     for (input, local, kind, expected, expected_maps) in [
         (
             "<textarea>A🙂\r\n&NotEqualTilde;</textarea>",
             "textarea",
-            RawFieldKind::Textarea,
+            HtmlParseRawField::Textarea,
             vec![65, 0xd83d, 0xde42, 10, 0x2242, 0x338],
             vec![
-                (0, 1, 10, 11, OriginKind::Literal),
-                (1, 3, 11, 13, OriginKind::Literal),
-                (3, 4, 13, 15, OriginKind::Newline),
-                (4, 5, 15, 30, OriginKind::CharacterReference),
-                (5, 6, 15, 30, OriginKind::CharacterReference),
+                (0, 1, 10, 11, HtmlParseOriginKind::Literal),
+                (1, 3, 11, 13, HtmlParseOriginKind::Literal),
+                (3, 4, 13, 15, HtmlParseOriginKind::Newline),
+                (4, 5, 15, 30, HtmlParseOriginKind::CharacterReference),
+                (5, 6, 15, 30, HtmlParseOriginKind::CharacterReference),
             ],
         ),
         (
             "<input value='A&#13;B&#10;C' type=hidden>",
             "input",
-            RawFieldKind::Input,
+            HtmlParseRawField::Input,
             vec![65, 66, 67],
             vec![
-                (0, 1, 14, 15, OriginKind::Literal),
-                (1, 2, 20, 21, OriginKind::Literal),
-                (2, 3, 26, 27, OriginKind::Literal),
+                (0, 1, 14, 15, HtmlParseOriginKind::Literal),
+                (1, 2, 20, 21, HtmlParseOriginKind::Literal),
+                (2, 3, 26, 27, HtmlParseOriginKind::Literal),
             ],
         ),
         (
             "<input value='A&#13;B&#10;C' type=password>",
             "input",
-            RawFieldKind::Input,
+            HtmlParseRawField::Input,
             vec![65, 66, 67],
             vec![
-                (0, 1, 14, 15, OriginKind::Literal),
-                (1, 2, 20, 21, OriginKind::Literal),
-                (2, 3, 26, 27, OriginKind::Literal),
+                (0, 1, 14, 15, HtmlParseOriginKind::Literal),
+                (1, 2, 20, 21, HtmlParseOriginKind::Literal),
+                (2, 3, 26, 27, HtmlParseOriginKind::Literal),
             ],
         ),
     ] {
@@ -1049,21 +1056,21 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
                 .kernel
                 .session;
             match kind {
-                RawFieldKind::Nonce => assert_eq!(
+                HtmlParseRawField::Nonce => assert_eq!(
                     session
                         .cryptographic_nonce(&mut driver.control, &node)
                         .unwrap()
                         .code_units(),
                     expected
                 ),
-                RawFieldKind::Textarea => assert_eq!(
+                HtmlParseRawField::Textarea => assert_eq!(
                     session
                         .textarea_raw_value(&mut driver.control, &node)
                         .unwrap()
                         .code_units(),
                     expected
                 ),
-                RawFieldKind::Input => {
+                HtmlParseRawField::Input => {
                     let mut raw =
                         crate::parser::buffer::Utf16Buffer::new(&mut driver.control).unwrap();
                     session
@@ -1079,7 +1086,7 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
         for index in 0..rows.len() {
             if rows.raw_for(index, &node, kind).unwrap() {
                 let (row, cause) = rows.row(index).unwrap().unwrap();
-                assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
                 assert!(cause.original.is_some());
                 assert!(cause.trigger.is_some());
                 actual.push((
@@ -1098,7 +1105,7 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
 }
 #[test]
 fn completed_formatting_reconstruction_distinguishes_original_creation_and_later_trigger() {
-    use crate::construction::provenance::ConstructionOperation;
+    use crate::construction::provenance::HtmlParseConstructionOperation;
     let source = HtmlSource::utf8("<p><b>A</p>B");
     let request =
         HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
@@ -1134,7 +1141,7 @@ fn completed_formatting_reconstruction_distinguishes_original_creation_and_later
     for index in 0..rows.len() {
         if rows.node_for(index, &replay).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, ConstructionOperation::Replay);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
             assert_eq!(cause.intended_parent, intended);
             let (original, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
             assert_eq!(
@@ -1154,8 +1161,8 @@ fn completed_formatting_reconstruction_distinguishes_original_creation_and_later
 }
 #[test]
 fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text() {
-    use crate::construction::provenance::{ConstructionOperation, NativeDestination};
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::construction::provenance::{HtmlParseConstructionOperation, NativeDestination};
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     let source = HtmlSource::utf8("<b>1<p>2</b>3</p>");
     let request =
         HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
@@ -1210,7 +1217,7 @@ fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text
                 unreachable!()
             };
             assert_ne!(Some(node), original_index);
-            assert_eq!(cause.operation, ConstructionOperation::Replay);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
             assert_eq!(cause.intended_parent, intended);
             let (creation, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
             assert_eq!(
@@ -1235,7 +1242,7 @@ fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text
             0,
             1,
             Some(source.range(7, 8).unwrap()),
-            Some(OriginKind::Literal)
+            Some(HtmlParseOriginKind::Literal)
         )]
     );
     drop((original, replay, parent, moved));
@@ -1301,7 +1308,7 @@ fn native_projection_exact_and_one_short_admission_retains_only_safe_failed_diag
                 assert!(owner.prepare_native_associations().is_err());
                 let stop = owner.driver.as_ref().unwrap().control.stop().unwrap();
                 assert!(
-                    matches!(stop, ParseStop::LimitExceeded { resource: stopped, .. } if stopped == resource)
+                    matches!(stop, HtmlParseStop::LimitExceeded { resource: stopped, .. } if stopped == resource)
                 );
                 assert!(owner.native_associations().is_err());
                 assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
@@ -1388,7 +1395,7 @@ fn native_projection_cancel_and_alias_refusal_preserve_the_whole_owner_and_first
     request.cancellation().cancel();
     assert!(owner.native_associations().is_err());
     let stop = owner.driver.as_ref().unwrap().control.stop().unwrap();
-    assert_eq!(stop, ParseStop::Cancelled);
+    assert_eq!(stop, HtmlParseStop::Cancelled);
     assert!(owner.native_view().is_err());
     assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
     let mut input = owner.driver.take();
@@ -1399,7 +1406,7 @@ fn native_projection_cancel_and_alias_refusal_preserve_the_whole_owner_and_first
 }
 #[test]
 fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduling_trigger() {
-    use crate::construction::provenance::{ConstructionOperation, NativeDestination};
+    use crate::construction::provenance::{HtmlParseConstructionOperation, NativeDestination};
     let input = "<select><button><selectedcontent></selectedcontent></button><option selected>A</option></select>";
     let source = HtmlSource::utf8(input);
     let request =
@@ -1440,7 +1447,7 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
     for index in 0..rows.len() {
         if rows.node_for(index, &copy).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, ConstructionOperation::Copy);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
             assert_eq!(cause.original_node, original_identity);
             let trigger = cause.trigger.unwrap();
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
@@ -1453,7 +1460,7 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
         }
         if rows.text_for(index, &copy).unwrap() {
             let (row, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, ConstructionOperation::Copy);
+            assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
             assert!(cause.original.is_some());
             let start = input.find(">A<").unwrap() + 1;
             assert_eq!(row.source, Some(source.range(start, start + 1).unwrap()));
@@ -1469,9 +1476,9 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
 fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() {
     use crate::construction::{
         StringLocation,
-        provenance::{ConstructionOperation, NativeDestination},
+        provenance::{HtmlParseConstructionOperation, NativeDestination},
     };
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     let input = "<template><svg><lineargradient></lineargradient></svg></template><image><br></br>";
     let source = HtmlSource::utf8(input);
     let request =
@@ -1526,7 +1533,10 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
                 for (position, id) in identities.iter().enumerate() {
                     if Some(node) == *id {
                         if position == 0 {
-                            assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                            assert_eq!(
+                                cause.operation,
+                                HtmlParseConstructionOperation::Replacement
+                            );
                             assert!(cause.original.is_some());
                         }
                         names[position].push((row.start, row.end, row.source.clone(), row.kind));
@@ -1549,7 +1559,7 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
                 offset,
                 offset + 1,
                 Some(source.range(16 + offset, 17 + offset).unwrap()),
-                Some(OriginKind::RecoverySyntax),
+                Some(HtmlParseOriginKind::RecoverySyntax),
             )
         })
         .collect::<Vec<_>>();
@@ -1560,7 +1570,7 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
             0,
             3,
             Some(source.range(66, 71).unwrap()),
-            Some(OriginKind::RecoverySyntax)
+            Some(HtmlParseOriginKind::RecoverySyntax)
         )]
     );
     assert_eq!(
@@ -1570,13 +1580,13 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
                 0,
                 1,
                 Some(source.range(78, 79).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
             (
                 1,
                 2,
                 Some(source.range(79, 80).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             )
         ]
     );
@@ -1586,9 +1596,9 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
 }
 #[test]
 fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigger() {
-    use crate::construction::provenance::{ConstructionOperation, ParserRule};
-    use crate::parser::tokenizer::token::OriginKind;
-    use crate::parser::tree_builder::head::InsertionMode;
+    use crate::construction::provenance::{HtmlParseConstructionOperation, HtmlParserRule};
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
+    use crate::parser::tree_builder::head::HtmlInsertionMode;
     let source = HtmlSource::utf8("<table>AB<tr><td>Z</td></tr></table>");
     let request =
         HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
@@ -1614,24 +1624,24 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
             continue;
         }
         let (row, cause) = rows.row(index).unwrap().unwrap();
-        assert_eq!(cause.operation, ConstructionOperation::Merge);
+        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
         let groups = [cause.original.unwrap(), cause.incoming.unwrap()];
         observed.push((row.start, row.end, row.source.clone(), row.kind));
         for (group, expected) in groups.into_iter().zip([(7, 8), (8, 9)]) {
             let group = rows.group(group).unwrap().unwrap();
             let replay = group.cause;
             let replay = rows.cause_at(replay).unwrap().unwrap();
-            assert_eq!(replay.operation, ConstructionOperation::Replay);
+            assert_eq!(replay.operation, HtmlParseConstructionOperation::Replay);
             let (original, trigger) = (replay.original_cause.unwrap(), replay.trigger.unwrap());
             let original = rows.cause_at(original).unwrap().unwrap();
-            assert_eq!(original.operation, ConstructionOperation::Token);
+            assert_eq!(original.operation, HtmlParseConstructionOperation::Token);
             assert_eq!(
                 original.source,
                 Some(source.range(expected.0, expected.1).unwrap())
             );
             assert_eq!(
                 original.rule,
-                Some(ParserRule::Tree(InsertionMode::InTableText))
+                Some(HtmlParserRule::Tree(HtmlInsertionMode::InTableText))
             );
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
             assert_eq!(trigger.source, Some(source.range(9, 13).unwrap()));
@@ -1644,13 +1654,13 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
                 0,
                 1,
                 Some(source.range(7, 8).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
             (
                 1,
                 2,
                 Some(source.range(8, 9).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
         ]
     );
@@ -1661,9 +1671,9 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
 fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_groups() {
     use crate::construction::{
         StringLocation,
-        provenance::{ConstructionOperation, NativeDestination},
+        provenance::{HtmlParseConstructionOperation, NativeDestination},
     };
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     let source = HtmlSource::utf8("<body><?marker name='x&amp;y'?>");
     let request =
         HtmlDocumentParseRequest::offline(source.clone(), super::super::tests::limits(100));
@@ -1693,12 +1703,12 @@ fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_grou
         let (row, cause) = rows.row(index).unwrap().unwrap();
         match row.destination {
             NativeDestination::Field(StringLocation::PiName(_, 0)) => {
-                assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
                 assert!(cause.original.is_some());
                 names += 1;
             }
             NativeDestination::Field(StringLocation::PiValue(_, 0)) => {
-                assert_eq!(cause.operation, ConstructionOperation::Replacement);
+                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
                 assert!(cause.original.is_some());
                 assert!(cause.trigger.is_some());
                 values.push((row.start, row.end, row.source.clone(), row.kind));
@@ -1714,19 +1724,19 @@ fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_grou
                 0,
                 1,
                 Some(source.range(21, 22).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
             (
                 1,
                 2,
                 Some(source.range(22, 27).unwrap()),
-                Some(OriginKind::RecoverySyntax)
+                Some(HtmlParseOriginKind::RecoverySyntax)
             ),
             (
                 2,
                 3,
                 Some(source.range(27, 28).unwrap()),
-                Some(OriginKind::Literal)
+                Some(HtmlParseOriginKind::Literal)
             ),
         ]
     );
@@ -1874,7 +1884,7 @@ fn completed_native_view_retains_exact_payloads_and_template_backlinks() {
     }
     assert_eq!(
         owner.document_state().unwrap().completion,
-        crate::construction::ConstructionCompletion::Complete
+        crate::construction::HtmlParseCompletion::Complete
     );
     owner.release().unwrap();
     assert!(matches!(
@@ -1941,7 +1951,7 @@ fn completed_native_view_rejects_foreign_nodes_and_cancel_without_mutation() {
         request.cancellation().cancel();
         assert!(matches!(
             view.child_count(&root),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         assert_eq!(
             view.usage()
@@ -2022,15 +2032,17 @@ fn completed_native_view_rejects_a_string_from_the_other_control() {
             panic!("element")
         };
         let mut view = first.native_view().unwrap();
-        let reads = view.usage().work(WorkCategory::InspectByte);
+        let reads = view.usage().work(HtmlParseWorkCategory::InspectByte);
         let Err(SessionError::Stop(first_stop)) = view.unit(&name.local, 0) else {
             panic!("foreign control")
         };
         assert!(matches!(
             first_stop,
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+            HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignControl
+            )
         ));
-        assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
+        assert_eq!(view.usage().work(HtmlParseWorkCategory::InspectByte), reads);
         assert!(matches!(view.root(), Err(SessionError::Stop(stop)) if stop == first_stop));
         assert_eq!(other.unit(&name.local, 0).unwrap(), Some(104));
     }
@@ -2069,7 +2081,7 @@ fn completed_native_lender_one_short_retains_whole_owner_for_cleanup() {
     driver
         .control
         .charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             request.limits().work_credits() - used - cost + 1,
         )
         .unwrap();
@@ -2079,7 +2091,7 @@ fn completed_native_lender_one_short_retains_whole_owner_for_cleanup() {
     let stop = driver.control.stop().unwrap();
     assert!(matches!(
         stop,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         }
@@ -2106,7 +2118,7 @@ fn to_phase(driver: &mut StandaloneDocumentDriver<'_>, expected: EndPhase) {
     }
     panic!("actual end phase {expected:?} was not reached");
 }
-fn state(driver: &mut StandaloneDocumentDriver<'_>) -> StandaloneDocumentState {
+fn state(driver: &mut StandaloneDocumentDriver<'_>) -> HtmlParseDocumentState {
     let (c, session, _) = driver.standalone_parts().unwrap();
     session.standalone_document_state(c).unwrap()
 }
@@ -2130,11 +2142,13 @@ fn cleanup(driver: &mut StandaloneDocumentDriver<'_>) {
 #[test]
 fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
     use crate::construction::evidence::{
-        DiagnosticContext as C, DiagnosticKind as K, DiagnosticSeverity,
+        HtmlParseDiagnosticContext as C, HtmlParseDiagnosticKind as K, HtmlParseDiagnosticSeverity,
     };
-    use crate::parser::tokenizer::token::{DiagnosticCode as L, DiagnosticPhase};
-    use head::{HeadCondition as T, InsertionMode as M};
-    use prologue::{PrologueCondition as P, PrologueMode};
+    use crate::parser::tokenizer::token::{
+        HtmlTokenizerDiagnostic as L, HtmlTokenizerDiagnosticPhase,
+    };
+    use head::{HtmlInsertionMode as M, HtmlTreeDiagnostic as T};
+    use prologue::{HtmlPrologueDiagnostic as P, HtmlPrologueMode};
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<table>A<!--\0-->\0</table>"),
         super::super::tests::limits(100),
@@ -2163,7 +2177,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
     let expected = [
         (
             K::Prologue(P::MissingDoctype),
-            C::Prologue(PrologueMode::Initial),
+            C::Prologue(HtmlPrologueMode::Initial),
             0,
             7,
             "the-initial-insertion-mode",
@@ -2171,8 +2185,8 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
         (
             K::Tokenizer(L::UnexpectedNullCharacter),
             C::Tokenizer {
-                phase: DiagnosticPhase::Tokenizer,
-                state: crate::parser::tokenizer::states::State::Comment,
+                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                state: crate::parser::tokenizer::states::HtmlTokenizerState::Comment,
             },
             12,
             13,
@@ -2195,8 +2209,8 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
         (
             K::Tokenizer(L::UnexpectedNullCharacter),
             C::Tokenizer {
-                phase: DiagnosticPhase::Tokenizer,
-                state: crate::parser::tokenizer::states::State::Data,
+                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                state: crate::parser::tokenizer::states::HtmlTokenizerState::Data,
             },
             16,
             17,
@@ -2215,27 +2229,29 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
         let (record, source) = evidence.retained_record(index).unwrap().unwrap();
         assert_eq!(
             (record.kind, record.context, record.severity),
-            (kind, context, DiagnosticSeverity::Recoverable)
+            (kind, context, HtmlParseDiagnosticSeverity::Recoverable)
         );
         assert_eq!((source.start(), source.end()), (start, end));
         assert_eq!(source.source(), request.source().identity());
         assert_eq!(record.rule.anchor, anchor);
-        use crate::construction::evidence::{DiagnosticLocationRole as R, DiagnosticToken};
+        use crate::construction::evidence::{
+            HtmlParseDiagnosticLocationRole as R, HtmlParseTokenFamily,
+        };
         assert_eq!(
             source.role,
             match index {
                 0 => R::TokenEnvelope,
                 1 | 4 => R::InputFrontier,
                 2 | 3 => R::BufferedTableCharacter,
-                _ => R::TextOrigin,
+                _ => R::HtmlParseTextOrigin,
             }
         );
         assert_eq!(
             source.token,
             match index {
-                0 => Some(DiagnosticToken::Tag),
+                0 => Some(HtmlParseTokenFamily::Tag),
                 1 | 4 => None,
-                _ => Some(DiagnosticToken::Text),
+                _ => Some(HtmlParseTokenFamily::Text),
             }
         );
         assert!(!record.rule.branch.is_empty());
@@ -2375,7 +2391,7 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     let stop = driver.control.stop().unwrap();
     assert!(matches!(
         stop,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::Diagnostics,
             ..
         }
@@ -2437,8 +2453,8 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
-        crate::construction::evidence::DiagnosticKind::Prologue(
-            prologue::PrologueCondition::MissingDoctype
+        crate::construction::evidence::HtmlParseDiagnosticKind::Prologue(
+            prologue::HtmlPrologueDiagnostic::MissingDoctype
         )
     );
     assert_eq!((source.start(), source.end()), (0, 7));
@@ -2469,7 +2485,7 @@ fn cancellation_at_final_completion_retains_prior_diagnostics_without_useful_cle
     let mut input = Some(driver);
     assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
     let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
-    assert_eq!(failed.stop(), ParseStop::Cancelled);
+    assert_eq!(failed.stop(), HtmlParseStop::Cancelled);
     assert_eq!(
         failed.at_stop().resource(HtmlParseResource::WorkCredits),
         failed
@@ -2491,10 +2507,10 @@ fn interactive_precedes_all_pops_and_postload_precedes_complete_continuation() {
     to_phase(&mut driver, EndPhase::InsertionPoint);
     assert_eq!(
         state(&mut driver),
-        StandaloneDocumentState {
-            readiness: ConstructionReadiness::Complete,
+        HtmlParseDocumentState {
+            readiness: HtmlParseReadiness::Complete,
             ready_for_post_load_tasks: false,
-            completion: ConstructionCompletion::Parsing
+            completion: HtmlParseCompletion::Parsing
         }
     );
     let open = driver
@@ -2512,7 +2528,7 @@ fn interactive_precedes_all_pops_and_postload_precedes_complete_continuation() {
     to_phase(&mut driver, EndPhase::PopOpen);
     assert_eq!(
         state(&mut driver).readiness,
-        ConstructionReadiness::Interactive
+        HtmlParseReadiness::Interactive
     );
     assert_eq!(
         driver
@@ -2548,42 +2564,45 @@ fn interactive_precedes_all_pops_and_postload_precedes_complete_continuation() {
     to_phase(&mut driver, EndPhase::PostLoadMilestone);
     assert_eq!(
         state(&mut driver).readiness,
-        ConstructionReadiness::Interactive
+        HtmlParseReadiness::Interactive
     );
     assert!(!state(&mut driver).ready_for_post_load_tasks);
     driver.step().unwrap();
     assert_eq!(phase(&driver), Some(EndPhase::CompleteReadiness));
     assert_eq!(
         state(&mut driver),
-        StandaloneDocumentState {
-            readiness: ConstructionReadiness::Interactive,
+        HtmlParseDocumentState {
+            readiness: HtmlParseReadiness::Interactive,
             ready_for_post_load_tasks: true,
-            completion: ConstructionCompletion::Parsing
+            completion: HtmlParseCompletion::Parsing
         }
     );
     driver.step().unwrap();
-    assert_eq!(
-        state(&mut driver).readiness,
-        ConstructionReadiness::Complete
-    );
-    assert_eq!(
-        state(&mut driver).completion,
-        ConstructionCompletion::Parsing
-    );
+    assert_eq!(state(&mut driver).readiness, HtmlParseReadiness::Complete);
+    assert_eq!(state(&mut driver).completion, HtmlParseCompletion::Parsing);
     finish(&mut driver);
-    assert_eq!(
-        state(&mut driver).completion,
-        ConstructionCompletion::Complete
-    );
-    let input_reads = driver.control.usage().work(WorkCategory::InputUnitRead);
-    let writes = driver.control.usage().work(WorkCategory::RecordWrite);
+    assert_eq!(state(&mut driver).completion, HtmlParseCompletion::Complete);
+    let input_reads = driver
+        .control
+        .usage()
+        .work(HtmlParseWorkCategory::InputUnitRead);
+    let writes = driver
+        .control
+        .usage()
+        .work(HtmlParseWorkCategory::RecordWrite);
     assert_eq!(driver.step().unwrap(), HeadStep::Complete);
     assert_eq!(
-        driver.control.usage().work(WorkCategory::InputUnitRead),
+        driver
+            .control
+            .usage()
+            .work(HtmlParseWorkCategory::InputUnitRead),
         input_reads
     );
     assert_eq!(
-        driver.control.usage().work(WorkCategory::RecordWrite),
+        driver
+            .control
+            .usage()
+            .work(HtmlParseWorkCategory::RecordWrite),
         writes
     );
     cleanup(&mut driver);
@@ -2595,30 +2614,44 @@ fn both_spin_checkpoints_run_when_empty_and_do_not_write_readiness_early() {
         HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), super::super::tests::limits(100));
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     to_phase(&mut driver, EndPhase::DomContentLoadedDisposition);
-    let writes = driver.control.usage().work(WorkCategory::RecordWrite);
+    let writes = driver
+        .control
+        .usage()
+        .work(HtmlParseWorkCategory::RecordWrite);
     driver.step().unwrap();
     assert_eq!(phase(&driver), Some(EndPhase::ScriptsCheckpoint));
     // Step6's eliminated external task has only its actual cursor write.
     assert_eq!(
-        driver.control.usage().work(WorkCategory::RecordWrite) - writes,
+        driver
+            .control
+            .usage()
+            .work(HtmlParseWorkCategory::RecordWrite)
+            - writes,
         1
     );
     for next in [
         EndPhase::LoadBlockersCheckpoint,
         EndPhase::RetainCompleteContinuation,
     ] {
-        let writes = driver.control.usage().work(WorkCategory::RecordWrite);
+        let writes = driver
+            .control
+            .usage()
+            .work(HtmlParseWorkCategory::RecordWrite);
         driver.step().unwrap();
         assert_eq!(phase(&driver), Some(next));
         // Actual FIFO entry/exit plus retained triggering-cause reference,
         // restored cause and final phase write: five fixed owned writes.
         assert_eq!(
-            driver.control.usage().work(WorkCategory::RecordWrite) - writes,
+            driver
+                .control
+                .usage()
+                .work(HtmlParseWorkCategory::RecordWrite)
+                - writes,
             5
         );
         assert_eq!(
             state(&mut driver).readiness,
-            ConstructionReadiness::Interactive
+            HtmlParseReadiness::Interactive
         );
         assert!(!state(&mut driver).ready_for_post_load_tasks);
     }
@@ -2718,14 +2751,14 @@ fn every_end_phase_cancellation_preserves_state_and_has_zero_useful_cleanup() {
         request.cancellation().cancel();
         assert!(matches!(
             driver.step(),
-            Err(StandaloneError::Stop(ParseStop::Cancelled))
+            Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
         ));
         assert_eq!(phase(&driver), Some(target));
         let mut input = Some(driver);
         assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
         let driver = input.as_mut().unwrap();
         assert_eq!(phase(driver), Some(target));
-        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             driver
                 .control
@@ -2735,7 +2768,7 @@ fn every_end_phase_cancellation_preserves_state_and_has_zero_useful_cleanup() {
             work
         );
         cleanup(driver);
-        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             driver
                 .control
@@ -2783,7 +2816,7 @@ fn exact_one_short_end_phase_work_keeps_first_stop_and_reclaims_all_real_owners(
             driver
                 .control
                 .charge(
-                    WorkCategory::StateStep,
+                    HtmlParseWorkCategory::StateStep,
                     request.limits().work_credits() - used - allowance,
                 )
                 .unwrap();
@@ -2791,15 +2824,21 @@ fn exact_one_short_end_phase_work_keeps_first_stop_and_reclaims_all_real_owners(
             let first = driver.control.stop().unwrap();
             assert!(matches!(
                 first,
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }
             ));
-            let reads = driver.control.usage().work(WorkCategory::InputUnitRead);
+            let reads = driver
+                .control
+                .usage()
+                .work(HtmlParseWorkCategory::InputUnitRead);
             assert!(matches!(driver.step(), Err(StandaloneError::Stop(stop)) if stop == first));
             assert_eq!(
-                driver.control.usage().work(WorkCategory::InputUnitRead),
+                driver
+                    .control
+                    .usage()
+                    .work(HtmlParseWorkCategory::InputUnitRead),
                 reads
             );
             let work = driver
@@ -2859,9 +2898,9 @@ fn completed_owner_retains_actual_evidence_and_same_control_usage_without_clones
             >= usage.resource(HtmlParseResource::WorkCredits).current
     );
     let actual = completed.document_state().unwrap();
-    assert_eq!(actual.readiness, ConstructionReadiness::Complete);
+    assert_eq!(actual.readiness, HtmlParseReadiness::Complete);
     assert!(actual.ready_for_post_load_tasks);
-    assert_eq!(actual.completion, ConstructionCompletion::Complete);
+    assert_eq!(actual.completion, HtmlParseCompletion::Complete);
     let retained = completed
         .driver
         .as_ref()
@@ -2974,7 +3013,7 @@ fn completed_take_exact_one_short_preflight_retains_terminal_owner() {
     driver
         .control
         .charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             request.limits().work_credits() - used - cost + 1,
         )
         .unwrap();
@@ -2984,7 +3023,7 @@ fn completed_take_exact_one_short_preflight_retains_terminal_owner() {
     let first = driver.control.stop().unwrap();
     assert!(matches!(
         first,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         }
@@ -3029,11 +3068,11 @@ fn completed_release_alias_and_cancel_keep_real_borrowed_owner_until_cleanup() {
     request.cancellation().cancel();
     assert!(matches!(
         completed.document_state(),
-        Err(StandaloneError::Stop(ParseStop::Cancelled))
+        Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
     ));
     assert_eq!(
         completed.driver.as_ref().unwrap().control.stop(),
-        Some(ParseStop::Cancelled)
+        Some(HtmlParseStop::Cancelled)
     );
     completed.release().unwrap();
     assert!(completed.driver.is_none());
@@ -3083,7 +3122,7 @@ fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup()
     let first = driver.control.stop().unwrap();
     assert!(matches!(
         first,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::Diagnostics,
             limit: 1,
             current: 1,
@@ -3125,8 +3164,8 @@ fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup()
     let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
-        crate::construction::evidence::DiagnosticKind::Prologue(
-            prologue::PrologueCondition::MissingDoctype
+        crate::construction::evidence::HtmlParseDiagnosticKind::Prologue(
+            prologue::HtmlPrologueDiagnostic::MissingDoctype
         )
     );
     assert_eq!((source.start(), source.end()), (0, 3));

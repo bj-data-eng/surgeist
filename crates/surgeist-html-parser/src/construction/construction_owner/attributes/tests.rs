@@ -1,5 +1,5 @@
 use super::*;
-use crate::parser::control::{Invariant, ParseStop};
+use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 fn control() -> ParseControl {
     ParseControl::new(
         crate::construction::tests::limits(),
@@ -125,7 +125,7 @@ fn reserve_refusal_retains_contents_actual_capacity_and_original_weak_ticket() {
     c.test_limit(HtmlParseResource::ManagedCapacityBytes, before);
     assert!(matches!(
         fixture.slot(&mut c, 0, &mut None),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedCapacityBytes,
             ..
         }))
@@ -149,8 +149,8 @@ fn external_strong_or_weak_alias_refuses_before_reserve_and_preserves_tickets() 
         let alias = weak.then(|| Arc::downgrade(fixture.backing()));
         assert!(matches!(
             fixture.slot(&mut c, 0, &mut None),
-            Err(SessionError::Stop(ParseStop::InternalInvariant(
-                Invariant::SharedAllocationAliased
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::SharedAllocationAliased
             )))
         ));
         drop(strong);
@@ -200,11 +200,13 @@ fn checked_replacement_moves_real_slot_without_reserve_and_counts_new_comparison
     // Different local lengths reject the only other pair at its length header;
     // no UTF16 unit is inspected, no allocator is called.
     assert_eq!(
-        c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
+        c.usage().work(HtmlParseWorkCategory::InspectByte)
+            - before.work(HtmlParseWorkCategory::InspectByte),
         0
     );
     assert_eq!(
-        c.usage().work(WorkCategory::ReserveByte) - before.work(WorkCategory::ReserveByte),
+        c.usage().work(HtmlParseWorkCategory::ReserveByte)
+            - before.work(HtmlParseWorkCategory::ReserveByte),
         0
     );
     assert_eq!(Arc::weak_count(fixture.backing()), 1);
@@ -225,7 +227,7 @@ fn one_short_actual_replacement_layout_preserves_input_and_installed_backing() {
         if short {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AtomicLayoutBytes,
                     ..
                 }))
@@ -310,7 +312,7 @@ fn checked_initial_append_inspects_exact_quadratic_current_prefix_pairs() {
     for count in [1usize, 2, 4, 8] {
         let mut c = control();
         let mut fixture = Fixture::new(&mut c, &[], count);
-        let before = c.usage().work(WorkCategory::InspectByte);
+        let before = c.usage().work(HtmlParseWorkCategory::InspectByte);
         for index in 0..count {
             let (mut incoming, mut ticket) = c.new_vector().unwrap();
             c.reserve_vector(&mut incoming, &mut ticket, 1).unwrap();
@@ -322,7 +324,7 @@ fn checked_initial_append_inspects_exact_quadratic_current_prefix_pairs() {
         // differing digit: two UTF16 pairs (8 bytes), once per prior slot.
         let pairs = count * (count - 1) / 2;
         assert_eq!(
-            c.usage().work(WorkCategory::InspectByte) - before,
+            c.usage().work(HtmlParseWorkCategory::InspectByte) - before,
             8 * pairs as u64
         );
         assert_eq!(fixture.owner.test_storage().usage().attributes(), count);

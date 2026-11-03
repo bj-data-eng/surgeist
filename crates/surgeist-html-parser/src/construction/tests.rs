@@ -47,10 +47,10 @@ fn output_owner_cancellable<'a>(
     ParserNode,
     crate::parser::tokenizer::tests::LexerFixture<'a>,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let mut c = ParseControl::new(caps, cancellation);
     c.admit_source(source).unwrap();
-    let mut tokenizer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -86,9 +86,9 @@ use crate::{Attribute, HtmlParseResource};
 use crate::{HtmlParseCancellation, HtmlParseLimits};
 
 pub(super) fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     c.admit_source(source).unwrap();
-    let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
+    let mut tokenizer = LexerFixture::new(source, HtmlTokenizerState::Data, None, c).unwrap();
     let (value, tag, attribute) = lexical_attribute_text(&mut tokenizer, c);
     tag.release(c).unwrap();
     attribute.release(c).unwrap();
@@ -138,9 +138,10 @@ pub(super) fn input_owner<'a>(
     Option<Tag>,
     crate::HtmlSourceRange,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let (mut c, session, capability) = fresh_script_owner(request);
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (tag, source) = loop {
         match lexer.next(&mut c, false).unwrap().unwrap() {
             crate::parser::tokenizer::token::Event::Token(event) => {
@@ -209,9 +210,10 @@ fn fresh_script<'a>(
     crate::parser::tree_builder::ConstructionCapability<'a>,
     ParserNode,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let (mut c, mut session, capability) = fresh_script_owner(request);
-    let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut incoming = loop {
         let kind = lexical_kind(&mut tokenizer, &mut c);
         if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
@@ -283,8 +285,8 @@ fn actual_template_and_div(
     c: &mut ParseControl,
     session: &mut ParserArenaSession,
 ) -> (ParserNode, ParserNode) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-    let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
+    let mut tokenizer = LexerFixture::new(source, HtmlTokenizerState::Data, None, c).unwrap();
     let template = next_fixture_tag(
         &mut tokenizer,
         c,
@@ -415,11 +417,11 @@ pub(super) fn owned_text(c: &mut ParseControl, units: &[u16]) -> Text {
     origins
         .try_push(
             c,
-            TextOrigin {
+            HtmlParseTextOrigin {
                 start: 0,
                 end: units.len(),
                 source: source.range(0, units.len()).unwrap(),
-                kind: crate::parser::tokenizer::token::OriginKind::Literal,
+                kind: crate::parser::tokenizer::token::HtmlParseOriginKind::Literal,
             },
         )
         .unwrap();
@@ -489,14 +491,14 @@ pub(super) fn limit_stop_of<T>(
     result: &Result<T, SessionError>,
     resource: HtmlParseResource,
     limit: u64,
-) -> ParseStop {
+) -> HtmlParseStop {
     let Err(SessionError::Stop(stop)) = result else {
         panic!(
             "expected a {resource:?} limit stop, got {:?}",
             result.as_ref().err()
         );
     };
-    let ParseStop::LimitExceeded {
+    let HtmlParseStop::LimitExceeded {
         resource: stopped,
         limit: stopped_limit,
         current,
@@ -517,7 +519,7 @@ pub(super) fn limit_stop_of<T>(
 pub(super) fn assert_freeze_reports_first_stop(
     session: &mut ParserArenaSession,
     c: &mut ParseControl,
-    first: ParseStop,
+    first: HtmlParseStop,
 ) {
     assert_eq!(c.stop(), Some(first), "the control latched the first stop");
     assert_eq!(

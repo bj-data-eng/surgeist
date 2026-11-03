@@ -39,7 +39,7 @@ impl PublishedEvidence {
         self.0.retained_cause(reference)
     }
     /// The committed diagnostics.
-    pub(crate) fn diagnostics(&self) -> evidence::DiagnosticEvidenceView<'_> {
+    pub(crate) fn diagnostics(&self) -> evidence::HtmlParseDiagnostics<'_> {
         self.0.diagnostics()
     }
     fn history<'a>(&'a self, source: &'a crate::HtmlSource) -> HistoryData<'a> {
@@ -71,7 +71,7 @@ impl ParserArenaSession {
             c,
         )?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
         let data = evidence.history_data()?;
         qualify(&storage.payloads, &data, c)?;
@@ -83,9 +83,9 @@ impl ParserArenaSession {
 }
 
 fn header(c: &mut ParseControl) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     c.charge(
-        WorkCategory::InspectByte,
+        HtmlParseWorkCategory::InspectByte,
         mem::size_of::<OriginGroup>() as u64,
     )?;
     Ok(())
@@ -97,7 +97,7 @@ fn source_range(
     range: &crate::HtmlSourceRange,
 ) -> Result<(), SessionError> {
     c.charge(
-        WorkCategory::InspectByte,
+        HtmlParseWorkCategory::InspectByte,
         mem::size_of::<crate::HtmlSourceRange>() as u64,
     )?;
     c.require_source_range(range)?;
@@ -116,9 +116,9 @@ fn qualify(
 ) -> Result<(), SessionError> {
     c.require_source(data.source)?;
     for (index, cause) in data.causes.iter().enumerate() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<ConstructionCause>() as u64,
         )?;
         if let Some(range) = &cause.source {
@@ -138,7 +138,7 @@ fn qualify(
             return Err(SessionError::WrongToken);
         }
         if let Some(range) = cause.computation {
-            if cause.operation != provenance::ConstructionOperation::Replacement {
+            if cause.operation != provenance::HtmlParseConstructionOperation::Replacement {
                 return Err(SessionError::WrongToken);
             }
             provenance::validate_input_computation(c, range, data.groups, index)?;
@@ -159,7 +159,7 @@ fn qualify(
         }
         if let Some(range) = group_cause.computation {
             for edge in range.edges() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if edge.is_some_and(|edge| edge.group >= index) {
                     return Err(SessionError::WrongToken);
                 }
@@ -180,7 +180,7 @@ fn qualify(
                     LeafValue::Empty if group.units == 0 => {}
                     LeafValue::Empty => return Err(SessionError::WrongToken),
                     LeafValue::Payload(slot) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let Some(RetainedPayload::String {
                             value, allocation, ..
                         }) = payloads.values.get(slot)
@@ -194,10 +194,10 @@ fn qualify(
                     }
                 }
                 for origin in origins {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     c.charge(
-                        WorkCategory::InspectByte,
-                        mem::size_of::<TextOrigin>() as u64,
+                        HtmlParseWorkCategory::InspectByte,
+                        mem::size_of::<HtmlParseTextOrigin>() as u64,
                     )?;
                     if origin.start >= origin.end || origin.end > group.units {
                         return Err(SessionError::WrongToken);
@@ -378,7 +378,7 @@ impl<'a> PreparedHistory<'a> {
             .check_aliases(ConstructionView::Frozen(&storage.view), c)?;
         storage.effects.require_freezable(c)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
         let data = evidence.history_data()?;
         // The existing active freeze and this retained frozen transfer share
@@ -403,7 +403,7 @@ impl<'a> PreparedHistory<'a> {
 /// A group reference is a borrowed, same-evidence qualification, never a payload
 /// slot or a caller assertion about the identity of another report.
 #[derive(Clone, Copy)]
-pub struct HistoryGroup<'a> {
+pub struct HtmlParseOriginGroup<'a> {
     evidence: &'a PublishedEvidence,
     index: usize,
 }
@@ -413,17 +413,17 @@ pub(crate) struct HistoryView<'a> {
     data: HistoryData<'a>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HistoryReadError {
+pub enum HtmlParseHistoryError {
     ForeignOwner,
     InsufficientScratch {
         required: usize,
         supplied: usize,
     },
     /// The report's history holds a reference its own tables cannot resolve.
-    Unresolved(read::UnresolvedReference),
+    Unresolved(read::HtmlParseUnresolvedReference),
 }
 
-impl std::fmt::Display for HistoryReadError {
+impl std::fmt::Display for HtmlParseHistoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ForeignOwner => f.write_str("the group belongs to another report"),
@@ -437,7 +437,7 @@ impl std::fmt::Display for HistoryReadError {
         }
     }
 }
-impl std::error::Error for HistoryReadError {
+impl std::error::Error for HtmlParseHistoryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Unresolved(fault) => Some(fault),
@@ -450,32 +450,32 @@ pub(crate) struct HistoryHeader<'a> {
     pub(crate) units: usize,
     pub(crate) cause: &'a ConstructionCause,
     pub(crate) retirement: Option<&'a ConstructionCause>,
-    pub(crate) body: HistoryBody<'a>,
+    pub(crate) body: HtmlParseHistoryBody<'a>,
 }
-pub enum HistoryBody<'a> {
-    Leaf(HistoryLeaf<'a>),
+pub enum HtmlParseHistoryBody<'a> {
+    Leaf(HtmlParseHistoryLeaf<'a>),
     Alias {
-        original: HistoryGroup<'a>,
+        original: HtmlParseOriginGroup<'a>,
     },
     Concat {
-        original: HistoryGroup<'a>,
-        incoming: HistoryGroup<'a>,
+        original: HtmlParseOriginGroup<'a>,
+        incoming: HtmlParseOriginGroup<'a>,
         offset: usize,
     },
 }
 /// Exact retained units and original atoms, with an independently accumulated
 /// logical offset. The original range/backing is borrowed, never cloned/rebased.
-pub struct HistoryLeaf<'a> {
+pub struct HtmlParseHistoryLeaf<'a> {
     units: &'a [u16],
-    origins: &'a [TextOrigin],
+    origins: &'a [HtmlParseTextOrigin],
     offset: usize,
 }
-pub struct HistoryOrigin<'a> {
-    pub(crate) original: &'a TextOrigin,
+pub struct HtmlParseHistoryOrigin<'a> {
+    pub(crate) original: &'a HtmlParseTextOrigin,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
-impl<'a> HistoryLeaf<'a> {
+impl<'a> HtmlParseHistoryLeaf<'a> {
     pub fn units(&self) -> &'a [u16] {
         self.units
     }
@@ -485,12 +485,12 @@ impl<'a> HistoryLeaf<'a> {
     pub fn offset(&self) -> usize {
         self.offset
     }
-    pub fn origins(&self) -> &'a [TextOrigin] {
+    pub fn origins(&self) -> &'a [HtmlParseTextOrigin] {
         self.origins
     }
-    pub fn origin(&self, index: usize) -> Option<HistoryOrigin<'a>> {
+    pub fn origin(&self, index: usize) -> Option<HtmlParseHistoryOrigin<'a>> {
         let original = self.origins.get(index)?;
-        Some(HistoryOrigin {
+        Some(HtmlParseHistoryOrigin {
             original,
             // The offset and the atom's end lie within the group's units.
             start: self.offset.saturating_add(original.start),
@@ -507,15 +507,15 @@ impl<'a> HistoryView<'a> {
     pub(crate) fn len(&self) -> usize {
         self.data.groups.len()
     }
-    pub(crate) fn group(&self, index: usize) -> Option<HistoryGroup<'a>> {
-        (index < self.len()).then_some(HistoryGroup {
+    pub(crate) fn group(&self, index: usize) -> Option<HtmlParseOriginGroup<'a>> {
+        (index < self.len()).then_some(HtmlParseOriginGroup {
             evidence: self.evidence,
             index,
         })
     }
-    fn require(&self, group: HistoryGroup<'_>) -> Result<usize, HistoryReadError> {
+    fn require(&self, group: HtmlParseOriginGroup<'_>) -> Result<usize, HtmlParseHistoryError> {
         if !std::ptr::eq(self.evidence, group.evidence) {
-            return Err(HistoryReadError::ForeignOwner);
+            return Err(HtmlParseHistoryError::ForeignOwner);
         }
         Ok(group.index)
     }
@@ -525,25 +525,25 @@ impl<'a> HistoryView<'a> {
         &self,
         (start, length, value): (usize, usize, LeafValue),
         offset: usize,
-    ) -> Result<HistoryLeaf<'a>, read::UnresolvedReference> {
+    ) -> Result<HtmlParseHistoryLeaf<'a>, read::HtmlParseUnresolvedReference> {
         let units = match value {
             LeafValue::Empty => &[],
             LeafValue::Payload(slot) => {
                 let Some(RetainedPayload::String { value, .. }) =
                     self.storage.payloads.values.get(slot)
                 else {
-                    return Err(unresolved(read::UnresolvedKind::Fact));
+                    return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
                 };
                 value.code_units()
             }
             // A pending leaf cannot freeze into a history.
-            LeafValue::Pending => return Err(unresolved(read::UnresolvedKind::Fact)),
+            LeafValue::Pending => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         };
         let origins = start
             .checked_add(length)
             .and_then(|end| self.data.origins.get(start..end))
-            .ok_or_else(|| unresolved(read::UnresolvedKind::Group))?;
-        Ok(HistoryLeaf {
+            .ok_or_else(|| unresolved(read::HtmlParseUnresolvedKind::Group))?;
+        Ok(HtmlParseHistoryLeaf {
             units,
             origins,
             offset,
@@ -551,15 +551,15 @@ impl<'a> HistoryView<'a> {
     }
     pub(crate) fn header(
         &self,
-        group: HistoryGroup<'_>,
-    ) -> Result<HistoryHeader<'a>, HistoryReadError> {
+        group: HtmlParseOriginGroup<'_>,
+    ) -> Result<HistoryHeader<'a>, HtmlParseHistoryError> {
         let index = self.require(group)?;
         let group = self
             .data
             .groups
             .get(index)
-            .ok_or_else(|| unresolved_history(read::UnresolvedKind::Group))?;
-        let reference = |index| HistoryGroup {
+            .ok_or_else(|| unresolved_history(read::HtmlParseUnresolvedKind::Group))?;
+        let reference = |index| HtmlParseOriginGroup {
             evidence: self.evidence,
             index,
         };
@@ -568,18 +568,18 @@ impl<'a> HistoryView<'a> {
                 start,
                 length,
                 value,
-            } => HistoryBody::Leaf(
+            } => HtmlParseHistoryBody::Leaf(
                 self.leaf((start, length, value), 0)
-                    .map_err(HistoryReadError::Unresolved)?,
+                    .map_err(HtmlParseHistoryError::Unresolved)?,
             ),
-            GroupBody::Alias { original } => HistoryBody::Alias {
+            GroupBody::Alias { original } => HtmlParseHistoryBody::Alias {
                 original: reference(original),
             },
             GroupBody::Concat {
                 original,
                 incoming,
                 offset,
-            } => HistoryBody::Concat {
+            } => HtmlParseHistoryBody::Concat {
                 original: reference(original),
                 incoming: reference(incoming),
                 offset,
@@ -589,7 +589,7 @@ impl<'a> HistoryView<'a> {
             self.data
                 .causes
                 .get(index)
-                .ok_or_else(|| unresolved_history(read::UnresolvedKind::Cause))
+                .ok_or_else(|| unresolved_history(read::HtmlParseUnresolvedKind::Cause))
         };
         Ok(HistoryHeader {
             units: group.units,
@@ -600,29 +600,29 @@ impl<'a> HistoryView<'a> {
     }
     pub(crate) fn cursor<'s>(
         &'s self,
-        group: HistoryGroup<'_>,
-        scratch: &'s mut [HistoryFrame],
+        group: HtmlParseOriginGroup<'_>,
+        scratch: &'s mut [HtmlParseHistoryFrame],
         cancellation: Option<&'s crate::HtmlParseCancellation>,
-    ) -> Result<HistoryCursor<'a, 's>, HistoryReadError> {
+    ) -> Result<HtmlParseHistoryCursor<'a, 's>, HtmlParseHistoryError> {
         let index = self.require(group)?;
         // Strict backward headers bound the pending DFS stack by index+1 even
         // for a shared DAG. Setup neither scans the graph nor clears scratch.
         let required = index.saturating_add(1);
         if scratch.len() < required {
-            return Err(HistoryReadError::InsufficientScratch {
+            return Err(HtmlParseHistoryError::InsufficientScratch {
                 required,
                 supplied: scratch.len(),
             });
         }
         // `required` is at least one, so the scratch has a first frame.
         let Some(first) = scratch.first_mut() else {
-            return Err(HistoryReadError::InsufficientScratch {
+            return Err(HtmlParseHistoryError::InsufficientScratch {
                 required,
                 supplied: 0,
             });
         };
-        *first = HistoryFrame { index, offset: 0 };
-        Ok(HistoryCursor {
+        *first = HtmlParseHistoryFrame { index, offset: 0 };
+        Ok(HtmlParseHistoryCursor {
             view: self,
             scratch,
             length: 1,
@@ -636,42 +636,42 @@ impl<'a> HistoryView<'a> {
 /// Private fields prevent caller-written traversal authority. Scratch may hold
 /// stale frames: only the cursor's initialized prefix is ever read.
 #[derive(Clone, Copy, Default)]
-pub struct HistoryFrame {
+pub struct HtmlParseHistoryFrame {
     index: usize,
     offset: usize,
 }
-pub struct HistoryCursor<'a, 's> {
+pub struct HtmlParseHistoryCursor<'a, 's> {
     view: &'s HistoryView<'a>,
-    scratch: &'s mut [HistoryFrame],
+    scratch: &'s mut [HtmlParseHistoryFrame],
     length: usize,
     cancellation: Option<&'s crate::HtmlParseCancellation>,
     cancelled: bool,
-    fault: Option<read::UnresolvedReference>,
+    fault: Option<read::HtmlParseUnresolvedReference>,
 }
-fn unresolved(kind: read::UnresolvedKind) -> read::UnresolvedReference {
-    read::UnresolvedReference::new(kind)
+fn unresolved(kind: read::HtmlParseUnresolvedKind) -> read::HtmlParseUnresolvedReference {
+    read::HtmlParseUnresolvedReference::new(kind)
 }
-fn unresolved_history(kind: read::UnresolvedKind) -> HistoryReadError {
-    HistoryReadError::Unresolved(unresolved(kind))
+fn unresolved_history(kind: read::HtmlParseUnresolvedKind) -> HtmlParseHistoryError {
+    HtmlParseHistoryError::Unresolved(unresolved(kind))
 }
-pub enum HistoryStep<'a> {
+pub enum HtmlParseHistoryStep<'a> {
     Progress,
-    Leaf(HistoryLeaf<'a>),
+    Leaf(HtmlParseHistoryLeaf<'a>),
     Complete,
     Cancelled,
     /// The history holds a reference its own tables cannot resolve. The cursor
     /// stays faulted, so a caller that continues is told again.
-    Fault(read::UnresolvedReference),
+    Fault(read::HtmlParseUnresolvedReference),
 }
-impl<'a> HistoryCursor<'a, '_> {
+impl<'a> HtmlParseHistoryCursor<'a, '_> {
     /// The fault, latched: a cursor that met one reports it from then on.
-    fn fail(&mut self, kind: read::UnresolvedKind) -> HistoryStep<'a> {
+    fn fail(&mut self, kind: read::HtmlParseUnresolvedKind) -> HtmlParseHistoryStep<'a> {
         let fault = *self.fault.get_or_insert_with(|| unresolved(kind));
-        HistoryStep::Fault(fault)
+        HtmlParseHistoryStep::Fault(fault)
     }
-    pub fn advance(&mut self) -> HistoryStep<'a> {
+    pub fn advance(&mut self) -> HtmlParseHistoryStep<'a> {
         if let Some(fault) = self.fault {
-            return HistoryStep::Fault(fault);
+            return HtmlParseHistoryStep::Fault(fault);
         }
         if self.cancelled
             || self
@@ -679,17 +679,17 @@ impl<'a> HistoryCursor<'a, '_> {
                 .is_some_and(|signal| signal.is_cancelled())
         {
             self.cancelled = true;
-            return HistoryStep::Cancelled;
+            return HtmlParseHistoryStep::Cancelled;
         }
         let Some(top) = self.length.checked_sub(1) else {
-            return HistoryStep::Complete;
+            return HtmlParseHistoryStep::Complete;
         };
         self.length = top;
         let Some(frame) = self.scratch.get(top).copied() else {
-            return self.fail(read::UnresolvedKind::Group);
+            return self.fail(read::HtmlParseUnresolvedKind::Group);
         };
         let Some(group) = self.view.data.groups.get(frame.index) else {
-            return self.fail(read::UnresolvedKind::Group);
+            return self.fail(read::HtmlParseUnresolvedKind::Group);
         };
         match group.body {
             GroupBody::Leaf {
@@ -697,20 +697,20 @@ impl<'a> HistoryCursor<'a, '_> {
                 length,
                 value,
             } => match self.view.leaf((start, length, value), frame.offset) {
-                Ok(leaf) => HistoryStep::Leaf(leaf),
+                Ok(leaf) => HtmlParseHistoryStep::Leaf(leaf),
                 Err(fault) => self.fail(fault.kind()),
             },
             GroupBody::Alias { original } => {
                 let Some(slot) = self.scratch.get_mut(top) else {
-                    return self.fail(read::UnresolvedKind::Group);
+                    return self.fail(read::HtmlParseUnresolvedKind::Group);
                 };
-                *slot = HistoryFrame {
+                *slot = HtmlParseHistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
                 // The stack is bounded by the scratch the cursor was given.
                 self.length = top.saturating_add(1);
-                HistoryStep::Progress
+                HtmlParseHistoryStep::Progress
             }
             GroupBody::Concat {
                 original,
@@ -718,11 +718,11 @@ impl<'a> HistoryCursor<'a, '_> {
                 offset,
             } => {
                 // The offset and the left part lie within the group's units.
-                let right = HistoryFrame {
+                let right = HtmlParseHistoryFrame {
                     index: incoming,
                     offset: frame.offset.saturating_add(offset),
                 };
-                let left = HistoryFrame {
+                let left = HtmlParseHistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
@@ -730,19 +730,19 @@ impl<'a> HistoryCursor<'a, '_> {
                 // cursor was given, so a graph that outgrows it is not one.
                 let Some([first, second]) = self.scratch.get_mut(top..=top.saturating_add(1))
                 else {
-                    return self.fail(read::UnresolvedKind::Group);
+                    return self.fail(read::HtmlParseUnresolvedKind::Group);
                 };
                 *first = right;
                 *second = left;
                 self.length = top.saturating_add(2);
-                HistoryStep::Progress
+                HtmlParseHistoryStep::Progress
             }
         }
     }
 }
 
-impl HistoryOrigin<'_> {
-    pub fn original(&self) -> &TextOrigin {
+impl HtmlParseHistoryOrigin<'_> {
+    pub fn original(&self) -> &HtmlParseTextOrigin {
         self.original
     }
     pub fn start(&self) -> usize {
@@ -757,19 +757,21 @@ impl FrozenHistory {
     pub(super) fn native_node(
         &self,
         index: usize,
-    ) -> Result<HtmlNode<'_>, read::UnresolvedReference> {
+    ) -> Result<HtmlNode<'_>, read::HtmlParseUnresolvedReference> {
         self.storage
             .view
             .node_at(index)
             .map(|node| node.as_node())
-            .ok_or(read::UnresolvedReference::new(read::UnresolvedKind::Node))
+            .ok_or(read::HtmlParseUnresolvedReference::new(
+                read::HtmlParseUnresolvedKind::Node,
+            ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
 
     fn limits() -> HtmlParseLimits {
@@ -791,7 +793,7 @@ mod tests {
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         session.initialize_parse_evidence(&mut c, source).unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut node = None;
         loop {
             let event = lexer
@@ -858,7 +860,9 @@ mod tests {
 
     #[test]
     fn immutable_history_borrows_retired_utf16_leaf_units_and_exact_rebased_origins() {
-        use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal, Newline};
+        use crate::parser::tokenizer::token::HtmlParseOriginKind::{
+            CharacterReference, Literal, Newline,
+        };
         let source = crate::HtmlSource::utf8("A🙂\r\n&NotEqualTilde;");
         let (mut c, mut session, group) = projected(&source);
         let pointers: Vec<_> = session
@@ -884,7 +888,7 @@ mod tests {
                 panic!("native text")
             };
             assert_eq!(text.code_units(), [65, 0xd83d, 0xde42, 10, 0x2242, 0x0338]);
-            let mut scratch = vec![HistoryFrame::default(); view.len()];
+            let mut scratch = vec![HtmlParseHistoryFrame::default(); view.len()];
             let mut cursor = view
                 .cursor(view.group(group).unwrap(), &mut scratch, None)
                 .unwrap();
@@ -893,9 +897,9 @@ mod tests {
             let mut actions = 0;
             loop {
                 match cursor.advance() {
-                    HistoryStep::Fault(fault) => panic!("{fault}"),
-                    HistoryStep::Progress => actions += 1,
-                    HistoryStep::Leaf(leaf) => {
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
+                    HtmlParseHistoryStep::Progress => actions += 1,
+                    HtmlParseHistoryStep::Leaf(leaf) => {
                         actions += 1;
                         assert!(
                             pointers.contains(&leaf.units().as_ptr()),
@@ -916,8 +920,8 @@ mod tests {
                         }
                         assert!(leaf.origin(leaf.origins().len()).is_none());
                     }
-                    HistoryStep::Complete => break,
-                    HistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Complete => break,
+                    HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
                 }
             }
             assert_eq!(output, [65, 0xd83d, 0xde42, 10, 0x2242, 0x0338]);
@@ -1083,16 +1087,16 @@ mod tests {
             let other = foreign.view();
             assert_eq!(
                 view.header(other.group(foreign_group).unwrap()).err(),
-                Some(HistoryReadError::ForeignOwner)
+                Some(HtmlParseHistoryError::ForeignOwner)
             );
-            let mut scratch = [HistoryFrame {
+            let mut scratch = [HtmlParseHistoryFrame {
                 index: usize::MAX,
                 offset: 99,
             }; 2];
             assert_eq!(
                 view.cursor(view.group(group).unwrap(), &mut scratch, None)
                     .err(),
-                Some(HistoryReadError::InsufficientScratch {
+                Some(HtmlParseHistoryError::InsufficientScratch {
                     required: 3,
                     supplied: 2
                 })
@@ -1102,7 +1106,7 @@ mod tests {
                     .iter()
                     .all(|frame| frame.index == usize::MAX && frame.offset == 99)
             );
-            let mut scratch = [HistoryFrame {
+            let mut scratch = [HtmlParseHistoryFrame {
                 index: usize::MAX,
                 offset: 99,
             }; 5];
@@ -1138,7 +1142,7 @@ mod tests {
         old_cancel.cancel();
         {
             let view = owner.view();
-            let mut scratch = [HistoryFrame::default(); 3];
+            let mut scratch = [HtmlParseHistoryFrame::default(); 3];
             let query_cancel = HtmlParseCancellation::new();
             let mut cursor = view
                 .cursor(
@@ -1147,21 +1151,21 @@ mod tests {
                     Some(&query_cancel),
                 )
                 .unwrap();
-            assert!(matches!(cursor.advance(), HistoryStep::Progress));
+            assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Progress));
             query_cancel.cancel();
-            assert!(matches!(cursor.advance(), HistoryStep::Cancelled));
-            assert!(matches!(cursor.advance(), HistoryStep::Cancelled));
+            assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Cancelled));
+            assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Cancelled));
             let mut cursor = view
                 .cursor(view.group(group).unwrap(), &mut scratch, None)
                 .unwrap();
-            assert!(matches!(cursor.advance(), HistoryStep::Progress));
+            assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Progress));
             assert!(
-                matches!(cursor.advance(), HistoryStep::Leaf(leaf) if leaf.units()==[65] && leaf.offset()==0)
+                matches!(cursor.advance(), HtmlParseHistoryStep::Leaf(leaf) if leaf.units()==[65] && leaf.offset()==0)
             );
             assert!(
-                matches!(cursor.advance(), HistoryStep::Leaf(leaf) if leaf.units()==[66] && leaf.offset()==1)
+                matches!(cursor.advance(), HtmlParseHistoryStep::Leaf(leaf) if leaf.units()==[66] && leaf.offset()==1)
             );
-            assert!(matches!(cursor.advance(), HistoryStep::Complete));
+            assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Complete));
         }
         assert_eq!(c.usage(), &before);
         owner.release(&mut c).unwrap();
@@ -1214,15 +1218,15 @@ mod tests {
             assert_eq!(header.units, 128);
             assert_eq!(
                 header.cause.operation,
-                provenance::ConstructionOperation::Copy
+                provenance::HtmlParseConstructionOperation::Copy
             );
             assert!(header.retirement.is_none());
-            let HistoryBody::Alias { original } = header.body else {
+            let HtmlParseHistoryBody::Alias { original } = header.body else {
                 panic!("copy alias")
             };
             assert_eq!(view.header(original).unwrap().units, 128);
             let header = view.header(view.group(original_index).unwrap()).unwrap();
-            let HistoryBody::Concat {
+            let HtmlParseHistoryBody::Concat {
                 original,
                 incoming,
                 offset,
@@ -1233,7 +1237,7 @@ mod tests {
             assert_eq!(offset, 1);
             for (group, expected) in [(original, 65), (incoming, 66)] {
                 let header = view.header(group).unwrap();
-                let HistoryBody::Leaf(leaf) = header.body else {
+                let HtmlParseHistoryBody::Leaf(leaf) = header.body else {
                     panic!("literal leaf")
                 };
                 assert_eq!(leaf.units(), [expected]);
@@ -1244,13 +1248,13 @@ mod tests {
             let header = view.header(view.group(empty_index).unwrap()).unwrap();
             assert_eq!(
                 header.cause.operation,
-                provenance::ConstructionOperation::SourceIndependent
+                provenance::HtmlParseConstructionOperation::SourceIndependent
             );
-            let HistoryBody::Leaf(empty) = header.body else {
+            let HtmlParseHistoryBody::Leaf(empty) = header.body else {
                 panic!("zero-unit defining leaf")
             };
             assert!(empty.units().is_empty() && empty.origins().is_empty());
-            let mut scratch = vec![HistoryFrame::default(); view.len()];
+            let mut scratch = vec![HtmlParseHistoryFrame::default(); view.len()];
             let mut cursor = view
                 .cursor(view.group(final_index).unwrap(), &mut scratch, None)
                 .unwrap();
@@ -1258,9 +1262,9 @@ mod tests {
             let mut leaves = 0;
             loop {
                 match cursor.advance() {
-                    HistoryStep::Fault(fault) => panic!("{fault}"),
-                    HistoryStep::Progress => progress += 1,
-                    HistoryStep::Leaf(leaf) => {
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
+                    HtmlParseHistoryStep::Progress => progress += 1,
+                    HtmlParseHistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), leaves);
                         assert_eq!(leaf.units(), [if leaves % 2 == 0 { 65 } else { 66 }]);
                         let origin = leaf.origin(0).unwrap();
@@ -1268,8 +1272,8 @@ mod tests {
                         assert_eq!(origin.original.source.start(), leaves % 2);
                         leaves += 1;
                     }
-                    HistoryStep::Complete => break,
-                    HistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Complete => break,
+                    HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
                 }
             }
             // 128 leaves have 127 binary headers, plus exactly four aliases.
@@ -1302,12 +1306,12 @@ mod tests {
             let visits = causes + 5 + 4 + 2 + ranges;
             let inspect = causes * mem::size_of::<ConstructionCause>() as u64
                 + 5 * mem::size_of::<OriginGroup>() as u64
-                + 2 * mem::size_of::<TextOrigin>() as u64
+                + 2 * mem::size_of::<HtmlParseTextOrigin>() as u64
                 + ranges * mem::size_of::<crate::HtmlSourceRange>() as u64;
             let exact = visits + inspect + ranges;
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 limits().work_credits() - used - exact + u64::from(short),
             )
             .unwrap();
@@ -1317,7 +1321,7 @@ mod tests {
                 let first = c.stop().unwrap();
                 assert!(matches!(
                     first,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }
@@ -1334,27 +1338,27 @@ mod tests {
             } else {
                 outcome.unwrap();
                 assert_eq!(
-                    c.usage().work(WorkCategory::RecordVisit)
-                        - before.work(WorkCategory::RecordVisit),
+                    c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                        - before.work(HtmlParseWorkCategory::RecordVisit),
                     visits
                 );
                 assert_eq!(
-                    c.usage().work(WorkCategory::InspectByte)
-                        - before.work(WorkCategory::InspectByte),
+                    c.usage().work(HtmlParseWorkCategory::InspectByte)
+                        - before.work(HtmlParseWorkCategory::InspectByte),
                     inspect
                 );
                 assert_eq!(
-                    c.usage().work(WorkCategory::ProviderCall)
-                        - before.work(WorkCategory::ProviderCall),
+                    c.usage().work(HtmlParseWorkCategory::ProviderCall)
+                        - before.work(HtmlParseWorkCategory::ProviderCall),
                     ranges
                 );
                 assert_eq!(
-                    c.usage().work(WorkCategory::CopyByte),
-                    before.work(WorkCategory::CopyByte)
+                    c.usage().work(HtmlParseWorkCategory::CopyByte),
+                    before.work(HtmlParseWorkCategory::CopyByte)
                 );
                 assert_eq!(
-                    c.usage().work(WorkCategory::RecordWrite),
-                    before.work(WorkCategory::RecordWrite)
+                    c.usage().work(HtmlParseWorkCategory::RecordWrite),
+                    before.work(HtmlParseWorkCategory::RecordWrite)
                 );
                 // Cleanup may newly latch exhaustion; the borrowed active owner
                 // is retained for the ordinary terminal disposal retry.
@@ -1407,7 +1411,7 @@ mod tests {
         signal.cancel();
         assert!(matches!(
             session.freeze_history(&mut c),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         assert!(session.active().is_ok());
         session.release(&mut c).unwrap();
@@ -1418,8 +1422,8 @@ mod tests {
         foreign.admit_source(&source).unwrap();
         assert!(matches!(
             session.freeze_history(&mut foreign),
-            Err(SessionError::Stop(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::ForeignControl
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignControl
             )))
         ));
         assert!(session.active().is_ok() && c.stop().is_none());
@@ -1437,7 +1441,7 @@ mod tests {
                 .unwrap();
         session.initialize_parse_evidence(&mut c, &source).unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let Event::Token(event) = lexer
             .next_in(
                 &mut c,
@@ -1543,22 +1547,22 @@ mod tests {
             let view = owner.view();
             let group = view.group(old_group).unwrap();
             assert_eq!(view.header(group).unwrap().units, 2);
-            let mut scratch = vec![HistoryFrame::default(); old_group + 1];
+            let mut scratch = vec![HtmlParseHistoryFrame::default(); old_group + 1];
             let mut cursor = view.cursor(group, &mut scratch, None).unwrap();
             let mut units = Vec::new();
             loop {
                 match cursor.advance() {
-                    HistoryStep::Fault(fault) => panic!("{fault}"),
-                    HistoryStep::Leaf(leaf) => {
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
+                    HtmlParseHistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), units.len());
                         for origin in leaf.origins() {
                             assert!(origin.source.start() >= 10 && origin.source.end() <= 12);
                         }
                         units.extend_from_slice(leaf.units());
                     }
-                    HistoryStep::Progress => {}
-                    HistoryStep::Complete => break,
-                    HistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Progress => {}
+                    HtmlParseHistoryStep::Complete => break,
+                    HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
                 }
             }
             assert_eq!(units, [65, 66]);
@@ -1569,7 +1573,7 @@ mod tests {
 
     #[test]
     fn immutable_history_formatting_replay_lends_distinct_backings_and_original_entity_atoms() {
-        use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal};
+        use crate::parser::tokenizer::token::HtmlParseOriginKind::{CharacterReference, Literal};
         let source = crate::HtmlSource::utf8("<b a='X&amp;Y'>");
         let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
@@ -1582,7 +1586,7 @@ mod tests {
         session.insert(&mut c, &root, &html, None, None).unwrap();
         let body = session.allocate_implicit_body(&mut c, None).unwrap();
         session.insert(&mut c, &html, &body, None, None).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let Event::Token(event) = lexer
             .next_in(
                 &mut c,
@@ -1641,7 +1645,7 @@ mod tests {
             let mut pointers = Vec::new();
             for index in 0..view.len() {
                 let header = view.header(view.group(index).unwrap()).unwrap();
-                let HistoryBody::Leaf(leaf) = header.body else {
+                let HtmlParseHistoryBody::Leaf(leaf) = header.body else {
                     continue;
                 };
                 if leaf.units() != [88, 38, 89] {
@@ -1688,7 +1692,7 @@ mod tests {
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         session.initialize_parse_evidence(&mut c, &source).unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let Event::Token(event) = lexer
             .next_in(
                 &mut c,
@@ -1760,10 +1764,12 @@ mod tests {
             let mut saw_namespace = false;
             for index in 0..view.len() {
                 let header = view.header(view.group(index).unwrap()).unwrap();
-                let HistoryBody::Leaf(leaf) = header.body else {
+                let HtmlParseHistoryBody::Leaf(leaf) = header.body else {
                     continue;
                 };
-                if header.cause.operation == provenance::ConstructionOperation::SourceIndependent {
+                if header.cause.operation
+                    == provenance::HtmlParseConstructionOperation::SourceIndependent
+                {
                     assert!(header.cause.source.is_none() && header.cause.captured.is_none());
                     assert!(leaf.origins().is_empty());
                     if leaf.units() == [112] {
@@ -1853,7 +1859,8 @@ mod tests {
         let slot = slot.unwrap();
         let pointer = namespace.uri().unwrap().code_units().as_ptr();
         drop(namespace);
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let event = lexer
             .next_in(
                 &mut c,
@@ -1886,7 +1893,7 @@ mod tests {
                 &captured.target_document,
                 request.context().target_document()
             );
-            let HistoryBody::Leaf(leaf) = header.body else {
+            let HtmlParseHistoryBody::Leaf(leaf) = header.body else {
                 panic!("captured namespace leaf")
             };
             assert_eq!(leaf.units().as_ptr(), pointer);

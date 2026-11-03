@@ -2,11 +2,11 @@ use super::*;
 
 #[test]
 fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_empty_attrs() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("</BR x=kept x=ignored>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("tag")
     };
@@ -60,12 +60,12 @@ fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_
 }
 #[test]
 fn end_br_alias_foreign_and_cancel_reject_before_discarding_any_actual_field() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("</br x=kept>");
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("tag")
     };
@@ -89,15 +89,15 @@ fn end_br_alias_foreign_and_cancel_reject_before_discarding_any_actual_field() {
     foreign.admit_source(&source).unwrap();
     assert!(matches!(
         session.recover_br_end_tag(&mut foreign, &mut input),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert_eq!(input.as_ref().unwrap().attributes.len(), 1);
     cancellation.cancel();
     assert_eq!(
         session.recover_br_end_tag(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(input.as_ref().unwrap().kind, TagKind::End);
     assert_eq!(input.as_ref().unwrap().attributes.len(), 1);
@@ -105,11 +105,11 @@ fn end_br_alias_foreign_and_cancel_reject_before_discarding_any_actual_field() {
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 #[test]
 fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start_reprocessing() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("</br x=one y=two>");
     let mut required = None;
     for remaining in [
@@ -122,7 +122,8 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
     ] {
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -139,7 +140,7 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
         if let Some(remaining) = remaining {
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 limits().work_credits() - used - remaining,
             )
             .unwrap();
@@ -167,7 +168,7 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -218,11 +219,11 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
 }
 #[test]
 fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<body a=x>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("tag")
     };
@@ -262,7 +263,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
         .unwrap();
     assert_eq!(
         session.active().unwrap().standalone_ineligibility,
-        Some(StandaloneUnsupported::Provenance)
+        Some(HtmlParseUnsupportedState::Provenance)
     );
     assert_eq!(
         session.add_body_attributes_if_missing(&mut c, &imported, &mut input),
@@ -285,7 +286,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
         .unwrap();
     assert_eq!(
         session.active().unwrap().standalone_ineligibility,
-        Some(StandaloneUnsupported::Provenance)
+        Some(HtmlParseUnsupportedState::Provenance)
     );
     assert!(input.is_none());
     tokenizer.release(&mut c).unwrap();
@@ -294,7 +295,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
 }
 #[test]
 fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_payloads() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<body id=old><body a=one b=two>");
     for cap in [2, 3] {
         let mut c = ParseControl::new(
@@ -306,7 +307,8 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -345,7 +347,7 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedAttributes,
                     ..
                 }))
@@ -376,9 +378,12 @@ fn body_partition_wide_alternation_classifies_each_actual_unit_once() {
         HtmlParseCancellation::new(),
     );
     let mut input = Some(body_lexical_value(&source, &mut c));
-    let reads = c.usage().work(WorkCategory::InspectByte);
+    let reads = c.usage().work(HtmlParseWorkCategory::InspectByte);
     let mut runs = partition_body_text(&mut c, &mut input).unwrap();
-    assert_eq!(c.usage().work(WorkCategory::InspectByte) - reads, 1024);
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::InspectByte) - reads,
+        1024
+    );
     for index in 0..512 {
         let run = runs.take_next(&mut c).unwrap().unwrap();
         assert_eq!(
@@ -425,9 +430,10 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 .unwrap(),
             HtmlParseCancellation::new(),
         );
-        use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+        use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (value, tag, attribute) = lexical_attribute_text(&mut tokenizer, &mut c);
         tag.release(&mut c).unwrap();
         attribute.release(&mut c).unwrap();
@@ -509,13 +515,13 @@ fn body_runs_last_cleanup_stop_reclaims_all_storage_and_exposes_completed_owners
     let mut runs = partition_body_text(&mut c, &mut input).unwrap();
     let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
     c.charge(
-        WorkCategory::StateStep,
+        HtmlParseWorkCategory::StateStep,
         limits().work_credits() - used - release_work + 1,
     )
     .unwrap();
     assert!(matches!(
         runs.release(&mut c),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         }))
@@ -556,7 +562,7 @@ fn first_lf_work_and_unit_stops_keep_original_input_and_release_every_staged_own
         let capacity = c.usage().actual_capacity_bytes;
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             limits().work_credits() - used - remaining,
         )
         .unwrap();
@@ -592,7 +598,7 @@ fn first_lf_work_and_unit_stops_keep_original_input_and_release_every_staged_own
     let mut input = Some(body_lexical_value(&source, &mut c));
     assert!(matches!(
         split_first_lf(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::BufferedUtf16Units,
             ..
         }))
@@ -606,11 +612,13 @@ fn first_lf_work_and_unit_stops_keep_original_input_and_release_every_staged_own
 }
 #[test]
 fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::OriginKind};
+    use crate::parser::tokenizer::{
+        states::HtmlTokenizerState, tests::LexerFixture, token::HtmlParseOriginKind,
+    };
     let source = crate::HtmlSource::utf8("<ImAgE id=x />");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("tag")
     };
@@ -624,11 +632,14 @@ fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
     let self_closing = input.as_ref().unwrap().self_closing;
     let duplicate = input.as_ref().unwrap().had_duplicate_attributes;
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let reads = c.usage().work(WorkCategory::InputUnitRead);
+    let reads = c.usage().work(HtmlParseWorkCategory::InputUnitRead);
     session
         .recover_image_tag(&mut c, &source, &mut input)
         .unwrap();
-    assert_eq!(c.usage().work(WorkCategory::InputUnitRead) - reads, 2);
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::InputUnitRead) - reads,
+        2
+    );
     let tag = input.as_ref().unwrap();
     assert_eq!(tag.name.value.text().code_units(), [105, 109, 103]);
     assert_eq!(
@@ -653,7 +664,7 @@ fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
             origin.source.end(),
             origin.kind
         ),
-        (0, 3, 1, 6, OriginKind::RecoverySyntax)
+        (0, 3, 1, 6, HtmlParseOriginKind::RecoverySyntax)
     );
     let node = session.allocate_html_tag(&mut c, &mut input).unwrap();
     assert!(input.is_none());
@@ -668,7 +679,7 @@ fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
 }
 #[test]
 fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<image id=x>");
     // Actual incoming image(5), id(2), x(1), and tokenizer last-start(5)
     // occupy thirteen units; the replacement requires three more live.
@@ -682,7 +693,8 @@ fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit()
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -714,7 +726,7 @@ fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit()
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::BufferedUtf16Units,
                     ..
                 }))
@@ -747,12 +759,12 @@ fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit()
 }
 #[test]
 fn image_alias_foreign_and_cancellation_leave_actual_name_and_attributes_in_input() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<image id=x>");
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("tag")
     };
@@ -776,26 +788,26 @@ fn image_alias_foreign_and_cancellation_leave_actual_name_and_attributes_in_inpu
     foreign.admit_source(&source).unwrap();
     assert!(matches!(
         session.recover_image_tag(&mut foreign, &source, &mut input),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert!(session.active().unwrap().standalone_ineligibility.is_none());
     cancellation.cancel();
     assert_eq!(
         session.recover_image_tag(&mut c, &source, &mut input),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(input.as_ref().unwrap().attributes.len(), 1);
     release_token_kind(&mut input.take().map(TokenKind::Tag), &mut c).unwrap();
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 #[test]
 fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<image id=x>");
     let mut required = None;
     for remaining in [
@@ -808,7 +820,8 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
     ] {
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
@@ -833,7 +846,7 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
         });
         if let Some(remaining) = remaining {
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 limits().work_credits() - before - remaining,
             )
             .unwrap();
@@ -852,7 +865,7 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -887,7 +900,7 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
 }
 #[test]
 fn body_runs_keep_exact_utf16_kinds_order_and_newline_reference_origins() {
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     let source = crate::HtmlSource::utf16(DocumentString::from_utf16(
         "<a v='A \r\n&#x20;"
             .encode_utf16()
@@ -898,11 +911,11 @@ fn body_runs_keep_exact_utf16_kinds_order_and_newline_reference_origins() {
     let mut c = control();
     let mut input = Some(body_lexical_value(&source, &mut c));
     let len = input.as_ref().unwrap().value.text().len();
-    let reads = c.usage().work(WorkCategory::InspectByte);
+    let reads = c.usage().work(HtmlParseWorkCategory::InspectByte);
     let mut runs = partition_body_text(&mut c, &mut input).unwrap();
     assert!(input.is_none());
     assert_eq!(
-        c.usage().work(WorkCategory::InspectByte) - reads,
+        c.usage().work(HtmlParseWorkCategory::InspectByte) - reads,
         2 * len as u64
     );
     let expected = [
@@ -932,7 +945,7 @@ fn body_runs_keep_exact_utf16_kinds_order_and_newline_reference_origins() {
                     origins[1].source.end(),
                     origins[1].kind
                 ),
-                (1, 2, 8, 10, OriginKind::Newline)
+                (1, 2, 8, 10, HtmlParseOriginKind::Newline)
             );
             assert_eq!(
                 (
@@ -942,7 +955,7 @@ fn body_runs_keep_exact_utf16_kinds_order_and_newline_reference_origins() {
                     origins[2].source.end(),
                     origins[2].kind
                 ),
-                (2, 3, 10, 16, OriginKind::CharacterReference)
+                (2, 3, 10, 16, HtmlParseOriginKind::CharacterReference)
             );
         }
         run.text.release(&mut c).unwrap();
@@ -953,11 +966,11 @@ fn body_runs_keep_exact_utf16_kinds_order_and_newline_reference_origins() {
 }
 #[test]
 fn body_null_run_retains_the_actual_data_null_source() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("\0");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Text(text) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("text")
     };
@@ -1006,7 +1019,7 @@ fn body_partition_full_coexisting_units_exact_and_one_short_preserve_input_on_fa
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::BufferedUtf16Units,
                     ..
                 }))
@@ -1044,15 +1057,15 @@ fn body_partition_alias_foreign_and_cancel_preflight_preserve_original_owner() {
     foreign.admit_source(&source).unwrap();
     assert!(matches!(
         partition_body_text(&mut foreign, &mut input),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert!(input.is_some());
     cancellation.cancel();
     assert!(matches!(
         partition_body_text(&mut c, &mut input),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     assert_eq!(
         input.as_ref().unwrap().value.text().code_units(),
@@ -1060,7 +1073,7 @@ fn body_partition_alias_foreign_and_cancel_preflight_preserve_original_owner() {
     );
     release_token_kind(&mut input.take().map(TokenKind::Text), &mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 #[test]
 fn body_partition_work_boundaries_cleanup_all_staged_real_owners() {
@@ -1086,7 +1099,7 @@ fn body_partition_work_boundaries_cleanup_all_staged_real_owners() {
         let bytes = c.usage().actual_capacity_bytes;
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             limits().work_credits() - used - remaining,
         )
         .unwrap();
@@ -1130,19 +1143,19 @@ fn body_runs_partial_take_cancel_and_alias_disposal_retain_actual_slots() {
     cancellation.cancel();
     assert!(matches!(
         runs.take_next(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     first.text.release(&mut c).unwrap();
     runs.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 #[test]
 fn first_lf_retains_crlf_and_character_reference_sources_and_exact_suffix() {
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     for (literal, end, kind) in [
-        ("\r\nA B", 8, OriginKind::Newline),
-        ("&#10;A B", 11, OriginKind::CharacterReference),
+        ("\r\nA B", 8, HtmlParseOriginKind::Newline),
+        ("&#10;A B", 11, HtmlParseOriginKind::CharacterReference),
     ] {
         let source = crate::HtmlSource::utf8(format!("<a v='{literal}'>"));
         let mut c = control();
@@ -1190,13 +1203,13 @@ fn first_lf_retains_crlf_and_character_reference_sources_and_exact_suffix() {
 }
 #[test]
 fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     for implied in [false, true] {
         let source =
             crate::HtmlSource::utf8("<body id=old><body id=ignored x:id=p a=one a=last z=end>");
         let mut c = control();
         c.admit_source(&source).unwrap();
-        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
             panic!("tag")

@@ -2,18 +2,18 @@
 //! they never certify execution or reset an unknown current value.
 use super::*;
 use crate::keyed::{Table, slots};
-use associated::HyperlinkUnavailable;
+use associated::HtmlParseHyperlinkUnavailable;
 use surgeist_html::HtmlMetaPragmaState as Pragma;
 
 /// Independent domains in the finite current Document history.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MetaDomain {
+pub enum HtmlParseMetaDomain {
     Refresh,
     Csp,
     ThemeColor,
     ColorScheme,
 }
-impl MetaDomain {
+impl HtmlParseMetaDomain {
     pub(super) const ALL: [Self; 4] = [
         Self::Refresh,
         Self::Csp,
@@ -22,9 +22,9 @@ impl MetaDomain {
     ];
 }
 const META_DOMAIN_COUNT: usize = 4;
-/// One value per [`MetaDomain`]; a lookup cannot be out of range.
-pub(super) type MetaDomainTable<T> = Table<MetaDomain, T, META_DOMAIN_COUNT>;
-slots!(MetaDomain, META_DOMAIN_COUNT, {
+/// One value per [`HtmlParseMetaDomain`]; a lookup cannot be out of range.
+pub(super) type MetaDomainTable<T> = Table<HtmlParseMetaDomain, T, META_DOMAIN_COUNT>;
+slots!(HtmlParseMetaDomain, META_DOMAIN_COUNT, {
     Refresh => 0,
     Csp => 1,
     ThemeColor => 2,
@@ -38,7 +38,7 @@ slots!(MetaDomain, META_DOMAIN_COUNT, {
 const _: () = {
     let mut i = 0;
     while i < META_DOMAIN_COUNT {
-        assert!(MetaDomain::ALL[i] as usize == i);
+        assert!(HtmlParseMetaDomain::ALL[i] as usize == i);
         i += 1;
     }
 };
@@ -49,7 +49,7 @@ enum Reading {
     Theme(surgeist_color::Color),
     Scheme(crate::parser::control::CssSchemeValue),
     /// An operation it needs cannot be completed, which ends the selection.
-    Unsatisfied(MetaMissingKind),
+    Unsatisfied(HtmlParseMetaMissingKind),
 }
 /// What a selection ends up with after reading candidates.
 enum Decision {
@@ -291,19 +291,19 @@ enum Step {
 }
 /// First actual unsatisfied operation in one independent domain.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MetaMissingKind {
-    RefreshUrl(HyperlinkUnavailable),
+pub enum HtmlParseMetaMissingKind {
+    RefreshUrl(HtmlParseHyperlinkUnavailable),
     Csp,
     CspProcessing(surgeist_html::HtmlCspUnavailable),
     ThemeColor,
     ThemeColorProcessing(crate::parser::control::HtmlColorProcessingError),
 }
-impl MetaMissingKind {
-    pub(super) fn domain(&self) -> MetaDomain {
+impl HtmlParseMetaMissingKind {
+    pub(super) fn domain(&self) -> HtmlParseMetaDomain {
         match self {
-            Self::RefreshUrl(_) => MetaDomain::Refresh,
-            Self::Csp | Self::CspProcessing(_) => MetaDomain::Csp,
-            Self::ThemeColor | Self::ThemeColorProcessing(_) => MetaDomain::ThemeColor,
+            Self::RefreshUrl(_) => HtmlParseMetaDomain::Refresh,
+            Self::Csp | Self::CspProcessing(_) => HtmlParseMetaDomain::Csp,
+            Self::ThemeColor | Self::ThemeColorProcessing(_) => HtmlParseMetaDomain::ThemeColor,
         }
     }
 }
@@ -320,7 +320,7 @@ pub(super) struct MetaHistory {
     pub(super) theme: Option<surgeist_color::Color>,
     pub(super) scheme: Option<crate::parser::control::CssSchemeValue>,
     pub(super) gaps: MetaDomainTable<Option<usize>>,
-    pub(super) first: Option<MetaDomain>,
+    pub(super) first: Option<HtmlParseMetaDomain>,
     /// Where each color selection stands since the last walk of the tree.
     pub(super) selections: MetaDomainTable<SelectionIndex>,
 }
@@ -361,8 +361,8 @@ impl SelectionIndex {
 }
 impl MetaHistory {
     /// The first unsatisfied operation recorded for `domain`; the table has one
-    /// cell per `MetaDomain`.
-    fn gap(&self, domain: MetaDomain) -> Option<usize> {
+    /// cell per `HtmlParseMetaDomain`.
+    fn gap(&self, domain: HtmlParseMetaDomain) -> Option<usize> {
         self.gaps.copy(domain)
     }
     pub(super) fn offline() -> Self {
@@ -432,22 +432,22 @@ impl SessionStorage {
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
         let slot = self.document_slot(c, document)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self
             .meta_history(slot)
             .map_err(|_| latch_registry_row(c))?
-            .gap(MetaDomain::Csp))
+            .gap(HtmlParseMetaDomain::Csp))
     }
     pub(super) fn meta_missing(
         &mut self,
         c: &mut ParseControl,
         document: usize,
         subject: usize,
-        kind: MetaMissingKind,
+        kind: HtmlParseMetaMissingKind,
     ) -> Result<(), SessionError> {
         let slot = self.document_slot(c, document)?;
         let domain = kind.domain();
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self
             .meta_history(slot)
             .map_err(|_| latch_registry_row(c))?
@@ -464,7 +464,7 @@ impl SessionStorage {
             .is_none();
         payload_write::<Option<usize>>(c, 1)?;
         if first {
-            payload_write::<Option<MetaDomain>>(c, 1)?;
+            payload_write::<Option<HtmlParseMetaDomain>>(c, 1)?;
         }
         let prepared = self.prepare_payload_slot_owned(c)?;
         let gap = self
@@ -497,7 +497,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let root = self.ordinary_root(c, node, detached)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(matches!(
             self.construction
                 .node_at(root)
@@ -517,7 +517,7 @@ impl SessionStorage {
     ) -> Result<Option<DocumentString>, SessionError> {
         let raw = self.form_attribute(c, node, name)?;
         payload_write::<Option<DocumentString>>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         Ok(raw.cloned())
     }
     fn meta_range(
@@ -546,8 +546,9 @@ impl SessionStorage {
         let Some(raw) = self.meta_attribute(c, node, "http-equiv")? else {
             return Ok(());
         };
-        let Some(pragma) =
-            bounded::meta_pragma_state_with(&raw, || c.charge(WorkCategory::RecordVisit, 1))?
+        let Some(pragma) = bounded::meta_pragma_state_with(&raw, || {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+        })?
         else {
             return Ok(());
         };
@@ -573,7 +574,7 @@ impl SessionStorage {
         match pragma {
             Pragma::ContentLanguage => {
                 let Some(range) = bounded::meta_language_token_with(&content, || {
-                    c.charge(WorkCategory::RecordVisit, 1)
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                 })?
                 else {
                     return Ok(());
@@ -596,11 +597,11 @@ impl SessionStorage {
             }
             Pragma::Refresh if !content.is_empty() => {
                 let slot = self.document_slot(c, document)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .meta_history(slot)
                     .map_err(|_| latch_registry_row(c))?
-                    .gap(MetaDomain::Refresh)
+                    .gap(HtmlParseMetaDomain::Refresh)
                     .is_some()
                     || self
                         .meta_history(slot)
@@ -612,7 +613,7 @@ impl SessionStorage {
                 let target = bounded::meta_refresh_syntax_with(&content, |_| {
                     // DelayDigits retains the exact mathematical digit sequence;
                     // the selected Do-nothing branch never consumes a timer.
-                    c.charge(WorkCategory::RecordVisit, 1)
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                 })?;
                 let outcome = match target {
                     None => return Ok(()),
@@ -635,16 +636,19 @@ impl SessionStorage {
                             .map_err(|_| latch_registry_row(c))?
                             .refresh = true;
                     }
-                    Err(missing) => {
-                        self.meta_missing(c, document, node, MetaMissingKind::RefreshUrl(missing))?
-                    }
+                    Err(missing) => self.meta_missing(
+                        c,
+                        document,
+                        node,
+                        HtmlParseMetaMissingKind::RefreshUrl(missing),
+                    )?,
                 }
             }
             Pragma::DefaultStyle if !content.is_empty() => {
                 self.record_association(
                     c,
                     node,
-                    pending_association::OccurrenceKind::ChangePreferred,
+                    pending_association::HtmlParseAssociationOccurrenceKind::ChangePreferred,
                     None,
                     None,
                     true,
@@ -652,7 +656,7 @@ impl SessionStorage {
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
                 if !self.defer_csp(c, node, document, content)? {
-                    self.meta_missing(c, document, node, MetaMissingKind::Csp)?;
+                    self.meta_missing(c, document, node, HtmlParseMetaMissingKind::Csp)?;
                 } else {
                     self.service_meta_csp(
                         c,
@@ -668,19 +672,19 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         document: usize,
-    ) -> Result<Result<bool, HyperlinkUnavailable>, SessionError> {
+    ) -> Result<Result<bool, HtmlParseHyperlinkUnavailable>, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::BaseDocument { node, facts, .. } = payload
                 && *node == document
             {
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 return Ok(facts.document().document_url().map(|_| true).ok_or(
-                    HyperlinkUnavailable::Base(crate::HtmlBaseMissing::DocumentUrl),
+                    HtmlParseHyperlinkUnavailable::Base(crate::HtmlBaseMissing::DocumentUrl),
                 ));
             }
         }
-        Ok(Err(HyperlinkUnavailable::Base(
+        Ok(Err(HtmlParseHyperlinkUnavailable::Base(
             crate::HtmlBaseMissing::DocumentFacts,
         )))
     }
@@ -689,12 +693,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         raw: &[u16],
-    ) -> Result<Result<bool, HyperlinkUnavailable>, SessionError> {
+    ) -> Result<Result<bool, HtmlParseHyperlinkUnavailable>, SessionError> {
         let context = match self.encoding_url_context(c, node)? {
             Ok(value) => value,
             Err(missing) => return Ok(Err(missing)),
         };
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         match context.facts.lookup_units_with(
             raw,
             context.base,
@@ -704,11 +708,11 @@ impl SessionStorage {
         ) {
             Ok(surgeist_html_semantics::HtmlEncodingUrlParseOutcome::Failure) => Ok(Ok(false)),
             Ok(surgeist_html_semantics::HtmlEncodingUrlParseOutcome::Parsed(record)) => {
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 Ok(Ok(record.scheme() != crate::HtmlBaseUrlScheme::Javascript))
             }
             Err(surgeist_html_semantics::HtmlEncodingUrlLookupError::Facts(error)) => {
-                Ok(Err(HyperlinkUnavailable::Observation(error)))
+                Ok(Err(HtmlParseHyperlinkUnavailable::Observation(error)))
             }
             Err(surgeist_html_semantics::HtmlEncodingUrlLookupError::Interrupted(stop)) => {
                 Err(stop.into())
@@ -728,9 +732,9 @@ impl SessionStorage {
         let Some(content) = self.meta_attribute(c, node, "content")? else {
             return Ok(());
         };
-        if let Some(policy) =
-            bounded::meta_referrer_policy_with(&content, || c.charge(WorkCategory::RecordVisit, 1))?
-        {
+        if let Some(policy) = bounded::meta_referrer_policy_with(&content, || {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+        })? {
             let slot = self.document_slot(c, document)?;
             payload_write::<HtmlReferrerPolicy>(c, 1)?;
             self.meta_history_mut(slot)
@@ -752,8 +756,8 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let slot = self.document_slot(c, document)?;
         for (enabled, domain) in [
-            (theme, MetaDomain::ThemeColor),
-            (scheme, MetaDomain::ColorScheme),
+            (theme, HtmlParseMetaDomain::ThemeColor),
+            (scheme, HtmlParseMetaDomain::ColorScheme),
         ] {
             if !enabled
                 || self
@@ -767,7 +771,7 @@ impl SessionStorage {
             let mut decided = Decision::Nothing;
             let mut next = Some(document);
             while let Some(node) = next {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(reading) = self.read_candidate(c, document, node, domain)? {
                     decided = self.decide(c, document, node, reading)?;
                     if !matches!(decided, Decision::Nothing) {
@@ -788,9 +792,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
         node: usize,
-        domain: MetaDomain,
+        domain: HtmlParseMetaDomain,
     ) -> Result<Option<Reading>, SessionError> {
-        let expected = if domain == MetaDomain::ThemeColor {
+        let expected = if domain == HtmlParseMetaDomain::ThemeColor {
             "theme-color"
         } else {
             "color-scheme"
@@ -807,24 +811,28 @@ impl SessionStorage {
         let Some(content) = self.meta_attribute(c, node, "content")? else {
             return Ok(None);
         };
-        if domain == MetaDomain::ThemeColor {
+        if domain == HtmlParseMetaDomain::ThemeColor {
             if let Some(media) = self.meta_attribute(c, node, "media")? {
                 let mut known_match = true;
                 for unit in media.code_units() {
-                    c.charge(WorkCategory::InspectByte, 2)?;
+                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                     if !bounded::is_ascii_whitespace(*unit) {
                         known_match = false;
                         break;
                     }
                 }
                 if !known_match {
-                    return Ok(Some(Reading::Unsatisfied(MetaMissingKind::ThemeColor)));
+                    return Ok(Some(Reading::Unsatisfied(
+                        HtmlParseMetaMissingKind::ThemeColor,
+                    )));
                 }
             }
             return Ok(Some(match theme_color(c, content.code_units())? {
                 Ok(Some(color)) => Reading::Theme(color),
                 Ok(None) => Reading::Rejected,
-                Err(error) => Reading::Unsatisfied(MetaMissingKind::ThemeColorProcessing(error)),
+                Err(error) => {
+                    Reading::Unsatisfied(HtmlParseMetaMissingKind::ThemeColorProcessing(error))
+                }
             }));
         }
         let HtmlNodeKind::Document(mode) = self
@@ -836,7 +844,7 @@ impl SessionStorage {
             return Err(SessionError::NotDocument);
         };
         let candidate = c.parse_meta_color_scheme(content.code_units(), *mode)?;
-        if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
+        if let Err(stop) = c.charge(HtmlParseWorkCategory::ProviderCall, 1) {
             // The stop is latched; a refusal here would be a later one.
             let _ = candidate.release(c);
             return Err(stop.into());
@@ -872,14 +880,14 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         slot: usize,
-        domain: MetaDomain,
+        domain: HtmlParseMetaDomain,
         decided: Decision,
     ) -> Result<(), SessionError> {
         let deciding = match &decided {
             Decision::Theme(node, _) | Decision::Scheme(node, _) => Some(*node),
             Decision::Nothing | Decision::Unsatisfied => None,
         };
-        if domain == MetaDomain::ThemeColor {
+        if domain == HtmlParseMetaDomain::ThemeColor {
             payload_write::<Option<surgeist_color::Color>>(c, 1)?;
             let meta = self
                 .meta_history_mut(slot)
@@ -971,7 +979,7 @@ impl SessionStorage {
         // A meta that is the whole subtree changes one candidate. A larger
         // subtree may bring or take other candidates the hooks of its other
         // nodes have not reached, which only a walk of the tree sees.
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let alone = node == root
             && self
                 .construction
@@ -988,8 +996,8 @@ impl SessionStorage {
             Change::Candidate
         };
         for (enabled, domain) in [
-            (theme, MetaDomain::ThemeColor),
-            (scheme, MetaDomain::ColorScheme),
+            (theme, HtmlParseMetaDomain::ThemeColor),
+            (scheme, HtmlParseMetaDomain::ColorScheme),
         ] {
             if enabled {
                 self.meta_settle(c, document, node, detached, domain, effect)?;
@@ -1008,7 +1016,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
         detached: Option<usize>,
-        domain: MetaDomain,
+        domain: HtmlParseMetaDomain,
     ) -> Result<(), SessionError> {
         let slot = self.document_slot(c, document)?;
         let history = self.meta_history(slot).map_err(|_| latch_registry_row(c))?;
@@ -1070,13 +1078,13 @@ impl SessionStorage {
             });
         let slot = self.document_slot(c, document)?;
         for (enabled, domain) in [
-            (theme, MetaDomain::ThemeColor),
-            (scheme, MetaDomain::ColorScheme),
+            (theme, HtmlParseMetaDomain::ThemeColor),
+            (scheme, HtmlParseMetaDomain::ColorScheme),
         ] {
             if !enabled {
                 continue;
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let settled = batch.is_some()
                 && self.meta_batches.copy(domain) == batch
                 && self
@@ -1091,8 +1099,8 @@ impl SessionStorage {
                     c,
                     document,
                     detached,
-                    domain == MetaDomain::ThemeColor,
-                    domain == MetaDomain::ColorScheme,
+                    domain == HtmlParseMetaDomain::ThemeColor,
+                    domain == HtmlParseMetaDomain::ColorScheme,
                 )?;
                 *self.meta_batches.get_mut(domain) = batch;
             }
@@ -1110,7 +1118,7 @@ impl SessionStorage {
         document: usize,
         node: usize,
         detached: Option<usize>,
-        domain: MetaDomain,
+        domain: HtmlParseMetaDomain,
         change: Change,
     ) -> Result<(), SessionError> {
         let slot = self.document_slot(c, document)?;
@@ -1120,13 +1128,13 @@ impl SessionStorage {
         }
         let known = history.selections.copy(domain);
         let (theme, scheme) = (
-            domain == MetaDomain::ThemeColor,
-            domain == MetaDomain::ColorScheme,
+            domain == HtmlParseMetaDomain::ThemeColor,
+            domain == HtmlParseMetaDomain::ColorScheme,
         );
         let Some(deciding) = known.deciding() else {
             return self.meta_candidates(c, document, detached, theme, scheme);
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let step = if deciding == Some(node) {
             // The change may end or replace the decision: only a walk knows
             // the candidate that decides next.
@@ -1197,7 +1205,7 @@ impl SessionStorage {
     ) -> Result<bool, SessionError> {
         let storage = self.construction.storage(c)?;
         let parent = |c: &mut ParseControl, node: usize| -> Result<Option<usize>, SessionError> {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             Ok(storage
                 .node_at(node)
                 .ok_or(SessionError::ForeignNode)?
@@ -1222,10 +1230,10 @@ impl SessionStorage {
         let above = above.ok_or(SessionError::Cycle)?;
         // The later sibling is the one a walk back from the end of the child
         // order reaches first.
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let siblings = storage.node_at(above).ok_or(SessionError::ForeignNode)?;
         for ordinal in (0..siblings.child_count()).rev() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let sibling = siblings
                 .child_at(ordinal)
                 .ok_or_else(|| latch_registry_row(c))?
@@ -1293,7 +1301,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = record.kind() else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let attribute = element
             .attributes()
             .as_slice()
@@ -1352,14 +1360,14 @@ fn theme_color(
     SessionError,
 > {
     while let Some((unit, rest)) = input.split_first() {
-        c.charge(WorkCategory::InspectByte, 2)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
         input = rest;
     }
     while let Some((unit, rest)) = input.split_last() {
-        c.charge(WorkCategory::InspectByte, 2)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
@@ -1400,12 +1408,12 @@ fn meta_ascii(
     value: &DocumentString,
     expected: &str,
 ) -> Result<bool, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if value.len() != expected.len() {
         return Ok(false);
     }
     for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        c.charge(WorkCategory::InspectByte, 2)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if !u8::try_from(*unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte)) {
             return Ok(false);
         }
@@ -1514,7 +1522,7 @@ mod tests {
                 assert_eq!(failure.kind(), crate::HtmlParseCspFailureKind::Refused);
                 assert_eq!(
                     failure.parse_failure().first_stop(),
-                    Some(ParseStop::CspProcessing)
+                    Some(HtmlParseStop::CspProcessing)
                 );
                 assert_eq!(
                     failure.parse_failure().reason(),
@@ -1524,14 +1532,14 @@ mod tests {
             } else {
                 assert_eq!(
                     failure.parse_failure().first_stop(),
-                    Some(ParseStop::Cancelled)
+                    Some(HtmlParseStop::Cancelled)
                 );
                 CANCEL_AFTER_COMMIT.with(|hook| assert!(hook.borrow().is_none()));
             }
         }
     }
 
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
     fn next_node(
         session: &mut ParserArenaSession,
@@ -1573,7 +1581,9 @@ mod tests {
                 ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                     .unwrap();
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = next_node(&mut session, &mut c, &mut lexer);
             assert_eq!(
                 c.usage()
@@ -1603,7 +1613,7 @@ mod tests {
             if cap == 70 {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedUtf16Units,
                         current: 69,
                         requested_delta: 2,
@@ -1683,7 +1693,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut nodes = Vec::new();
         for _ in 0..source.len() {
             // One node for each start tag; the loop ends when the source does.
@@ -1898,10 +1908,18 @@ mod tests {
         // behind the color, and ends the selection once it is in front.
         put(&mut session, &mut c, &root, media, None);
         assert_eq!(theme(&session), BLUE);
-        assert!(history(&session).gap(MetaDomain::ThemeColor).is_none());
+        assert!(
+            history(&session)
+                .gap(HtmlParseMetaDomain::ThemeColor)
+                .is_none()
+        );
         put(&mut session, &mut c, &root, media, Some(blue));
         assert_eq!(theme(&session), None);
-        assert!(history(&session).gap(MetaDomain::ThemeColor).is_some());
+        assert!(
+            history(&session)
+                .gap(HtmlParseMetaDomain::ThemeColor)
+                .is_some()
+        );
         // Nothing later reselects: the first unsatisfied operation is recorded.
         put(&mut session, &mut c, &root, green, Some(media));
         assert_eq!(theme(&session), None);
@@ -1919,9 +1937,9 @@ mod tests {
         for span in spans {
             put(&mut session, &mut c, div, span, None);
         }
-        let before = c.usage().work(WorkCategory::RecordVisit);
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         put(&mut session, &mut c, &root, div, None);
-        let added = c.usage().work(WorkCategory::RecordVisit) - before;
+        let added = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         added
@@ -2049,7 +2067,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = next_node(&mut session, &mut c, &mut lexer);
         let second = next_node(&mut session, &mut c, &mut lexer);
         let theme = next_node(&mut session, &mut c, &mut lexer);
@@ -2178,7 +2196,7 @@ mod tests {
                 *hook.borrow_mut() = Some((point, skip, request.cancellation().clone()))
             });
             let failure = request.parse().unwrap_err();
-            assert_eq!(failure.first_stop(), Some(ParseStop::Cancelled));
+            assert_eq!(failure.first_stop(), Some(HtmlParseStop::Cancelled));
             assert_eq!(failure.source().identity(), &original);
             assert!(failure.encoding_url_facts().unwrap()[0].same_owner(&facts));
             assert_eq!(failure.encoding_url_fact_capacity(), Some(4));

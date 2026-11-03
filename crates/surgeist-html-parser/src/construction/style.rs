@@ -4,7 +4,7 @@ use super::*;
 /// This immutable parser profile has not completed Style's CSSOM association
 /// operation. Pending is distinct from a proven null associated stylesheet.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum StyleAssociation {
+pub enum HtmlParseStyleAssociation {
     Pending,
 }
 pub(super) struct StyleMetadata {
@@ -40,7 +40,7 @@ impl SessionStorage {
         self.record_association(
             c,
             node,
-            super::pending_association::OccurrenceKind::StyleCreated,
+            super::pending_association::HtmlParseAssociationOccurrenceKind::StyleCreated,
             None,
             None,
             false,
@@ -83,7 +83,7 @@ impl SessionStorage {
         self.record_association(
             c,
             node,
-            super::pending_association::OccurrenceKind::StyleParserCreated,
+            super::pending_association::HtmlParseAssociationOccurrenceKind::StyleParserCreated,
             None,
             None,
             false,

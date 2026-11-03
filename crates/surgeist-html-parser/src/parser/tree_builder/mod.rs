@@ -66,8 +66,8 @@ pub(crate) mod tests;
 use super::tokenizer::token::Tag;
 use super::{
     control::{
-        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported,
-        WorkCategory,
+        ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseUnsupportedState,
+        HtmlParseWorkCategory, OwnedVec, ParseControl,
     },
     tokenizer::token::Text,
 };
@@ -82,7 +82,7 @@ pub(crate) use tag_sets::Scope;
 
 #[derive(Debug)]
 pub(crate) enum KernelError {
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     Session(SessionError),
     EmptyStack,
     NotElement,
@@ -90,8 +90,8 @@ pub(crate) enum KernelError {
     DuplicateOpenElement,
     Consumed,
 }
-impl From<ParseStop> for KernelError {
-    fn from(value: ParseStop) -> Self {
+impl From<HtmlParseStop> for KernelError {
+    fn from(value: HtmlParseStop) -> Self {
         Self::Stop(value)
     }
 }
@@ -114,7 +114,7 @@ impl KernelError {
             | Self::NotElement
             | Self::FirstOpenElementNotHtml
             | Self::DuplicateOpenElement => {
-                StopCause::Unsupported(StandaloneUnsupported::InvalidNesting)
+                StopCause::Unsupported(HtmlParseUnsupportedState::InvalidNesting)
             }
             Self::Consumed => StopCause::LostOwner,
         }
@@ -135,13 +135,13 @@ pub(super) enum StopCause {
     /// (`SessionClass`).
     Session(SessionError),
     /// A state the closed standalone environment does not continue from.
-    Unsupported(StandaloneUnsupported),
+    Unsupported(HtmlParseUnsupportedState),
 }
 impl StopCause {
     pub(super) fn latch(self, control: &mut ParseControl) {
         match self {
             Self::LostOwner => {
-                control.fail_invariant(Invariant::TreeBuilderState);
+                control.fail_invariant(HtmlParseInvariant::TreeBuilderState);
             }
             Self::Session(error) => {
                 crate::construction::session_class(&error).latch(control);
@@ -216,8 +216,8 @@ pub(crate) struct LocationKernel {
 fn search_listing(
     listed: &[usize],
     index: usize,
-    mut probe: impl FnMut() -> Result<(), ParseStop>,
-) -> Result<Result<usize, usize>, ParseStop> {
+    mut probe: impl FnMut() -> Result<(), HtmlParseStop>,
+) -> Result<Result<usize, usize>, HtmlParseStop> {
     let (mut low, mut high) = (0_usize, listed.len());
     while low < high {
         probe()?;
@@ -234,15 +234,18 @@ fn search_listing(
     Ok(Err(low))
 }
 
-fn write(bytes: usize, writes: usize, control: &mut ParseControl) -> Result<(), ParseStop> {
+fn write(bytes: usize, writes: usize, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
     control.admit_atomic_layout(bytes)?;
-    control.charge(WorkCategory::CopyByte, bytes as u64)?;
-    control.charge(WorkCategory::RecordWrite, writes as u64)
+    control.charge(HtmlParseWorkCategory::CopyByte, bytes as u64)?;
+    control.charge(HtmlParseWorkCategory::RecordWrite, writes as u64)
 }
 
-fn copy_node(node: &ParserNode, control: &mut ParseControl) -> Result<ParserNode, ParseStop> {
-    control.charge(WorkCategory::ProviderCall, 1)?;
-    control.charge(WorkCategory::CopyByte, size_of::<ParserNode>() as u64)?;
+fn copy_node(node: &ParserNode, control: &mut ParseControl) -> Result<ParserNode, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+    control.charge(
+        HtmlParseWorkCategory::CopyByte,
+        size_of::<ParserNode>() as u64,
+    )?;
     Ok(node.clone())
 }
 
@@ -254,7 +257,7 @@ impl LocationKernel {
     ) -> Result<Option<usize>, KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.stack()?.len()).rev() {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
@@ -302,13 +305,13 @@ impl LocationKernel {
         c: &mut ParseControl,
     ) -> Result<(), KernelError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if index > self.stack()?.len() {
             return Err(KernelError::EmptyStack);
         }
         let template = self.named(target, "template", c)?;
         self.push(target, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         // The push left the target on top, so the stack is not empty.
         let top = self
             .stack()?
@@ -338,7 +341,7 @@ impl LocationKernel {
     }
     fn current(&self, c: &mut ParseControl) -> Result<ParserNode, KernelError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.at(
             self.stack()?
                 .len()
@@ -366,7 +369,7 @@ impl LocationKernel {
         c: &mut ParseControl,
     ) -> Result<bool, KernelError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.stack()?.len()).rev() {
             let node = self.at(index, c)?;
             if self.named(&node, name, c)? {
@@ -422,7 +425,7 @@ impl LocationKernel {
     ) -> Result<(), KernelError> {
         self.require(c)?;
         self.session.validate_node(c, target)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let len = self.stack()?.len();
         // An empty stack holds no match, which is the same refusal as below.
         let top = len.checked_sub(1).ok_or(KernelError::EmptyStack)?;
@@ -459,7 +462,7 @@ impl LocationKernel {
         session: &mut Option<ParserArenaSession>,
         control: &mut ParseControl,
     ) -> Result<Self, KernelError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let root_target = session
             .as_ref()
             .ok_or(KernelError::Consumed)?
@@ -468,7 +471,7 @@ impl LocationKernel {
         let templates = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         write(size_of::<Self>(), 5, control)?;
         write(size_of::<Option<ParserArenaSession>>(), 1, control)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         // Every fallible step precedes the take, so a refusal leaves the
         // caller's session where it was.
         let Some(session) = session.take() else {
@@ -487,7 +490,7 @@ impl LocationKernel {
 
     fn require(&self, control: &mut ParseControl) -> Result<(), KernelError> {
         control.require_identity(&self.owner)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.open.as_ref().ok_or(KernelError::Consumed)?;
         Ok(())
     }
@@ -497,7 +500,7 @@ impl LocationKernel {
     }
 
     fn at(&self, index: usize, control: &mut ParseControl) -> Result<ParserNode, KernelError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let node = self
             .stack()?
             .as_slice()
@@ -527,14 +530,14 @@ impl LocationKernel {
         if self.session.element_name(control, node)?.is_none() {
             return Err(KernelError::NotElement);
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.stack()?.len() == 0 && !self.named(node, "html", control)? {
             return Err(KernelError::FirstOpenElementNotHtml);
         }
         let position = self.session.node_position(control, node)?;
         if position < self.stack_position_bound {
             for index in 0..self.stack()?.len() {
-                control.charge(WorkCategory::StateStep, 1)?;
+                control.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 let existing = self.at(index, control)?;
                 if self.session.same_node(control, &existing, node)? {
                     return Err(KernelError::DuplicateOpenElement);
@@ -608,9 +611,9 @@ impl LocationKernel {
     ) -> Result<bool, KernelError> {
         self.require(control)?;
         self.session.validate_node(control, target)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.stack()?.len()).rev() {
-            control.charge(WorkCategory::StateStep, 1)?;
+            control.charge(HtmlParseWorkCategory::StateStep, 1)?;
             let node = self.at(index, control)?;
             if self.session.same_node(control, &node, target)? {
                 return Ok(true);
@@ -640,19 +643,19 @@ impl LocationKernel {
         let Some(root_target) = &self.root_target else {
             return self.at(0, control);
         };
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(copy_node(root_target, control)?)
     }
 
     /// Namespace-qualified membership, not ordinary tree ancestry or scope.
     fn contains_html_template(&self, control: &mut ParseControl) -> Result<bool, KernelError> {
         self.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.last_template_index().is_some())
     }
     /// The last template element in the stack of open elements, if any.
     fn last_template(&self, control: &mut ParseControl) -> Result<Option<ParserNode>, KernelError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.last_template_index()
             .map(|index| self.at(index, control))
             .transpose()
@@ -676,7 +679,7 @@ impl LocationKernel {
         c: &mut ParseControl,
     ) -> Result<Result<usize, usize>, KernelError> {
         Ok(search_listing(self.template_indices(), index, || {
-            c.charge(WorkCategory::StateStep, 1)
+            c.charge(HtmlParseWorkCategory::StateStep, 1)
         })?)
     }
     /// The position among the listings of the stack entry at `index`, if it is
@@ -686,7 +689,7 @@ impl LocationKernel {
         index: usize,
         c: &mut ParseControl,
     ) -> Result<Option<usize>, KernelError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.search_templates(index, c)?.ok())
     }
     /// Drops the last listing: the stack entry it names left the stack.
@@ -765,7 +768,7 @@ impl LocationKernel {
         control: &mut ParseControl,
     ) -> Result<AppropriatePlace, KernelError> {
         self.require(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let last = self
             .stack()?
             .len()
@@ -779,7 +782,7 @@ impl LocationKernel {
             None => self.at(last, control)?,
         };
         let mut before = None;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let foster = if self.foster_parenting {
             match self.session.element_name(control, &parent)? {
                 Some(name) => tag_sets::foster_target(name, control)?,
@@ -790,9 +793,9 @@ impl LocationKernel {
         };
         if foster {
             let mut selected = false;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for index in (0..self.stack()?.len()).rev() {
-                control.charge(WorkCategory::StateStep, 1)?;
+                control.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 let node = self.at(index, control)?;
                 if self.named(&node, "template", control)? {
                     parent = node;
@@ -855,7 +858,7 @@ impl LocationKernel {
             mut parent,
             mut before,
         } = self.appropriate_place(override_target, control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(root_target) = &self.root_target {
             let first = self.at(0, control)?;
             if self.session.same_node(control, &parent, &first)? {
@@ -1062,7 +1065,7 @@ impl ConstructionCapability<'_> {
         session: &ParserArenaSession,
     ) -> Result<bool, SessionError> {
         self.validate_session(c, session)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         // Both real issuers admit only this source/controller/arena's closed
         // construction producers. A fragment's temporary parser Document and
         // owned inert/ordinary trees are not its immutable captured target.
@@ -1079,10 +1082,10 @@ impl ConstructionCapability<'_> {
         session: &ParserArenaSession,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.owner)?;
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         c.require_source(self.source)?;
         if matches!(self.profile, ExecutionProfile::Ordinary) {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self.images != crate::HtmlImageSupport::Disabled {
                 return Err(SessionError::ContextFactUnavailable(
                     crate::HtmlCaptureFact::ImageSupport,
@@ -1103,7 +1106,7 @@ impl ConstructionCapability<'_> {
         self.validate_session(c, session)?;
         if !matches!(self.profile, ExecutionProfile::Fragment) {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(())
@@ -1114,7 +1117,7 @@ impl ConstructionCapability<'_> {
         session: &mut ParserArenaSession,
     ) -> Result<(), SessionError> {
         self.validate_session(c, session)?;
-        c.charge(WorkCategory::StateStep, 1)?;
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
         session.perform_intrinsic_checkpoint(c, self)
     }
 }
@@ -1122,7 +1125,7 @@ impl ConstructionCapability<'_> {
 pub(crate) enum StandaloneError {
     UnsupportedDocumentInitialization,
     UnsupportedExecutionProfile,
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     Prologue(prologue::PrologueError),
     Head(head::HeadError),
     Consumed,
@@ -1148,7 +1151,7 @@ impl StandaloneError {
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
     pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
-        Self::Stop(control.fail_invariant(Invariant::TreeBuilderState))
+        Self::Stop(control.fail_invariant(HtmlParseInvariant::TreeBuilderState))
     }
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.
@@ -1166,14 +1169,14 @@ impl StandaloneError {
             Self::Prologue(error) => error.stop_cause(),
             Self::Head(error) => error.stop_cause(),
             Self::UnsupportedDocumentInitialization | Self::UnsupportedExecutionProfile => {
-                StopCause::Unsupported(StandaloneUnsupported::Provenance)
+                StopCause::Unsupported(HtmlParseUnsupportedState::Provenance)
             }
             Self::Consumed | Self::TokenizerExhausted => StopCause::LostOwner,
         }
     }
 }
-impl From<ParseStop> for StandaloneError {
-    fn from(error: ParseStop) -> Self {
+impl From<HtmlParseStop> for StandaloneError {
+    fn from(error: HtmlParseStop) -> Self {
         Self::Stop(error)
     }
 }
@@ -1260,10 +1263,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
     #[cfg(test)]
     fn make_available_inner(&mut self, through: usize) -> Result<(), StandaloneError> {
         self.control.require_source(self.source)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(head) = &mut self.head {
             head.require(&mut self.control)?;
-            self.control.charge(WorkCategory::RecordVisit, 2)?;
+            self.control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             head.state
                 .as_mut()
                 .ok_or(StandaloneError::Consumed)?
@@ -1272,7 +1275,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 .ok_or(StandaloneError::Consumed)?
                 .make_available(through, &mut self.control)?;
         } else {
-            self.control.charge(WorkCategory::RecordVisit, 1)?;
+            self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.tokenizer
                 .as_mut()
                 .ok_or(StandaloneError::Consumed)?
@@ -1289,10 +1292,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
     #[cfg(test)]
     fn seal_input_inner(&mut self) -> Result<(), StandaloneError> {
         self.control.require_source(self.source)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(head) = &mut self.head {
             head.require(&mut self.control)?;
-            self.control.charge(WorkCategory::RecordVisit, 2)?;
+            self.control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             head.state
                 .as_mut()
                 .ok_or(StandaloneError::Consumed)?
@@ -1301,7 +1304,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 .ok_or(StandaloneError::Consumed)?
                 .seal_input(&mut self.control)?;
         } else {
-            self.control.charge(WorkCategory::RecordVisit, 1)?;
+            self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.tokenizer
                 .as_mut()
                 .ok_or(StandaloneError::Consumed)?
@@ -1315,16 +1318,16 @@ impl<'source> StandaloneDocumentDriver<'source> {
     ) -> Result<head::HeadStep, StandaloneError> {
         use super::tokenizer::token::Event;
         self.control.require_source(self.source)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(head) = &mut self.head {
             let step = head.step_with_meta_csp(&mut self.control, service)?;
-            if step == head::HeadStep::Boundary(head::HeadBoundary::AfterHead) {
+            if step == head::HeadStep::Boundary(head::HtmlParseConstructionBoundary::AfterHead) {
                 let state = head.state.as_mut().ok_or(StandaloneError::Consumed)?;
                 // Consume the actual phase handoff in the sole fresh driver.
                 // No new tree, tokenizer, controller or eligibility is minted.
-                self.control.charge(WorkCategory::RecordVisit, 1)?;
+                self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 write(
-                    size_of::<Option<head::HeadBoundary>>(),
+                    size_of::<Option<head::HtmlParseConstructionBoundary>>(),
                     1,
                     &mut self.control,
                 )?;
@@ -1334,11 +1337,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
             return Ok(step);
         }
         let c = &mut self.control;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self.token.is_none() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 write(size_of::<Option<Event>>(), 1, c)?;
                 let evidence = self
                     .prologue
@@ -1364,7 +1367,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         return Err(StandaloneError::TokenizerExhausted);
                     }
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let event = self
                     .event
                     .as_ref()
@@ -1381,7 +1384,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .map_err(|e| StandaloneError::Head(e.into()))?
                         .get(c, id)?;
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if matches!(event, Event::Token(_)) {
                     write(
                         const {
@@ -1398,7 +1401,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .as_mut()
                         .ok_or(StandaloneError::Consumed)?
                         .reserve_geometric(c, 1)?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     write(size_of::<Option<Event>>(), 1, c)?;
                     let event = self
                         .event
@@ -1416,7 +1419,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     return Ok(head::HeadStep::Consumed);
                 }
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self
                 .prologue
                 .as_mut()
@@ -1426,7 +1429,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             {
                 return Ok(head::HeadStep::Consumed);
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             write(
                 const {
                     size_of::<Option<prologue::BeforeHead>>()
@@ -1450,9 +1453,9 @@ impl<'source> StandaloneDocumentDriver<'source> {
             &mut self.tokenizer,
             c,
         )?);
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         write(size_of::<ConstructionCapability>(), 5, c)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let document = head
             .state
             .as_ref()
@@ -1472,7 +1475,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         head.install_standalone(capability, c)?;
         // Swap retained real lexical evidence into the same head owner; leave
         // its original empty vector in this driver for release, without cloning.
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         write(const { size_of::<OwnedVec<Event>>() * 2 }, 2, c)?;
         std::mem::swap(
             &mut head
@@ -1496,7 +1499,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         Some((&mut self.control, session, capability))
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> &super::control::ParseUsage {
+    pub(crate) fn usage(&self) -> &super::control::HtmlParseUsage {
         self.control.usage()
     }
     /// The only fixture issuer moves the real admitted owners after a genuine
@@ -1571,7 +1574,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
     fn reclaim_owners(&mut self, active_session: bool) -> Result<(), StandaloneError> {
         let c = &mut self.control;
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(head) = &mut self.head {
             if c.stop().is_none() {
@@ -1585,7 +1588,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             self.head = None;
         }
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(before) = &mut self.before {
             dispose_token(&mut before.input, c)?;
@@ -1610,7 +1613,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             before.whitespace.release(c)?;
         }
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(prologue) = &mut self.prologue {
             if c.stop().is_none() {
@@ -1621,7 +1624,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         }
         dispose_token(&mut self.token, c)?;
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             write(
                 const {
                     size_of::<Option<super::tokenizer::token::Event>>()
@@ -1638,7 +1641,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             tokenizer.release(c)?;
         }
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(lexical) = &mut self.lexical {
             loop {
@@ -1652,7 +1655,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             }
         }
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             write(
                 size_of::<Option<OwnedVec<super::tokenizer::token::Event>>>(),
                 1,
@@ -1670,12 +1673,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
 fn take_token_event(
     slot: &mut Option<super::tokenizer::token::Event>,
     c: &mut ParseControl,
-) -> Result<super::tokenizer::token::TokenEvent, ParseStop> {
+) -> Result<super::tokenizer::token::TokenEvent, HtmlParseStop> {
     match slot.take() {
         Some(super::tokenizer::token::Event::Token(event)) => Ok(event),
         other => {
             *slot = other;
-            Err(c.fail_invariant(super::control::Invariant::TreeBuilderState))
+            Err(c.fail_invariant(super::control::HtmlParseInvariant::TreeBuilderState))
         }
     }
 }
@@ -1684,7 +1687,7 @@ fn dispose_token(
     c: &mut ParseControl,
 ) -> Result<(), StandaloneError> {
     if c.stop().is_none() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if input.is_some() {
             write(
                 const {

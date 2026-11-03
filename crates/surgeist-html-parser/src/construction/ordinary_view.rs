@@ -9,7 +9,7 @@ pub(super) fn ordinary_view_parent(
     node: usize,
     detached: Option<usize>,
 ) -> Result<Option<usize>, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
     Ok(if detached == Some(node) {
         None
@@ -25,10 +25,10 @@ pub(super) fn next_ordinary_view_node(
     node: usize,
     detached: Option<usize>,
 ) -> Result<Option<usize>, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
     for position in 0..record.child_count() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let child = record
             .child_at(position)
             .ok_or_else(|| latch_registry_row(control))?
@@ -54,7 +54,7 @@ pub(super) fn next_ordinary_view_after_subtree(
         }
         let parent = ordinary_view_parent(records, control, node, detached)?
             .ok_or(SessionError::WrongSibling)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let children = records.node_at(parent).ok_or(SessionError::ForeignNode)?;
         let count = children.child_count();
         // The walk that reached `node` usually left its ordinal behind, so the
@@ -64,14 +64,14 @@ pub(super) fn next_ordinary_view_after_subtree(
         if let Some(hinted) = control.sibling_hint(parent)
             && hinted < count
         {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if children.child_at(hinted).map(|child| child.position()) == Some(node) {
                 ordinal = Some(hinted);
             }
         }
         if ordinal.is_none() {
             for position in 0..count {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = children
                     .child_at(position)
                     .ok_or_else(|| latch_registry_row(control))?
@@ -84,7 +84,7 @@ pub(super) fn next_ordinary_view_after_subtree(
         }
         let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
         for position in ordinal.saturating_add(1)..count {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let child = children
                 .child_at(position)
                 .ok_or_else(|| latch_registry_row(control))?
@@ -106,14 +106,17 @@ pub(super) fn find_output_state(
     node: usize,
 ) -> Result<OutputState, SessionError> {
     for slot in 0..payloads.values.len() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(RetainedPayload::Output {
             node: Some(owner),
             state,
         }) = payloads.values.get(slot)
             && *owner == node
         {
-            control.charge(WorkCategory::CopyByte, mem::size_of::<OutputState>() as u64)?;
+            control.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<OutputState>() as u64,
+            )?;
             return Ok(*state);
         }
     }
@@ -129,7 +132,7 @@ pub(super) fn append_descendant_text(
 ) -> Result<(), SessionError> {
     let mut next = next_ordinary_view_node(records, control, root, root, None)?;
     while let Some(node) = next {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let HtmlNodeKind::Text(value) = records
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?

@@ -155,13 +155,25 @@ impl ParseControl {
     pub(crate) fn admit_pool_work(
         &mut self,
         work: surgeist_html::bounded::HtmlValuePoolWork,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::RecordVisit, work.record_visits() as u64),
-            (WorkCategory::InspectByte, work.inspected_bytes() as u64),
-            (WorkCategory::CopyByte, work.copied_bytes() as u64),
-            (WorkCategory::ProviderCall, work.provider_calls() as u64),
-            (WorkCategory::ReserveByte, work.reserve_bytes() as u64),
+            (
+                HtmlParseWorkCategory::RecordVisit,
+                work.record_visits() as u64,
+            ),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                work.inspected_bytes() as u64,
+            ),
+            (HtmlParseWorkCategory::CopyByte, work.copied_bytes() as u64),
+            (
+                HtmlParseWorkCategory::ProviderCall,
+                work.provider_calls() as u64,
+            ),
+            (
+                HtmlParseWorkCategory::ReserveByte,
+                work.reserve_bytes() as u64,
+            ),
         ])
     }
     /// Credits a finalized vector ticket. A ticket of another controller or a
@@ -174,7 +186,9 @@ impl ParseControl {
     ) -> Result<(), FinalReleaseError<VectorCapacity<T>>> {
         let released = (|| {
             if !Arc::ptr_eq(&vector.owner, &self.identity) {
-                return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
             }
             let Some(bytes) = vector
                 .capacity
@@ -200,7 +214,12 @@ impl ParseControl {
             }),
         }
     }
-    fn acquire_final(&mut self, bytes: u64, units: u64, attributes: u64) -> Result<(), ParseStop> {
+    fn acquire_final(
+        &mut self,
+        bytes: u64,
+        units: u64,
+        attributes: u64,
+    ) -> Result<(), HtmlParseStop> {
         let values = self.plan_storage(&[
             (HtmlParseResource::ManagedUtf16Units, units),
             (HtmlParseResource::ManagedAttributes, attributes),
@@ -227,10 +246,10 @@ impl ParseControl {
     pub(crate) fn final_string_ticket(
         &mut self,
         value: &DocumentString,
-    ) -> Result<DocumentStringAllocation, ParseStop> {
+    ) -> Result<DocumentStringAllocation, HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
         let capacity = value.shared_code_units().capacity();
         let bytes = capacity
@@ -253,10 +272,10 @@ impl ParseControl {
     pub(crate) fn final_attribute_tickets(
         &mut self,
         value: &OrderedAttributes,
-    ) -> Result<(VectorCapacity<Attribute>, SharedAllocation<Vec<Attribute>>), ParseStop> {
+    ) -> Result<(VectorCapacity<Attribute>, SharedAllocation<Vec<Attribute>>), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 2),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 2),
         ])?;
         let capacity = value.shared_attributes().capacity();
         let bytes = capacity
@@ -288,9 +307,13 @@ impl ParseControl {
         shared: SharedAllocation<T>,
     ) -> Result<(), FinalReleaseError<SharedAllocation<T>>> {
         let released = if !Arc::ptr_eq(&shared.owner, &self.identity) {
-            self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl))
+            self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ))
         } else if !shared.finalized {
-            self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+            self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ))
         } else {
             self.commit_prepared_release(&[
                 (HtmlParseResource::ManagedCapacityBytes, shared.bytes),
@@ -322,13 +345,17 @@ impl ParseControl {
             if !Arc::ptr_eq(&vector.owner, &self.identity)
                 || !Arc::ptr_eq(&shared.owner, &self.identity)
             {
-                return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
             }
             if !shared.finalized
                 || shared.shared.as_ptr() != Arc::as_ptr(value.shared_attributes())
                 || vector.capacity != value.shared_attributes().capacity()
             {
-                return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::CapacityMismatch,
+                ));
             }
             let Some(bytes) = vector
                 .capacity
@@ -370,17 +397,17 @@ pub(crate) type FinalAttributes = (
 /// ticket(s) it did not take.
 #[derive(Debug)]
 pub(crate) struct FinalReleaseError<T> {
-    stop: ParseStop,
+    stop: HtmlParseStop,
     tickets: T,
 }
 impl<T> FinalReleaseError<T> {
-    pub(crate) fn into_parts(self) -> (ParseStop, T) {
+    pub(crate) fn into_parts(self) -> (HtmlParseStop, T) {
         (self.stop, self.tickets)
     }
     /// For a caller with nowhere to keep the refused tickets, such as a
     /// teardown of the storage that held them: drops them and returns the stop,
     /// which stays latched and reports the skipped credit.
-    pub(crate) fn discard(self) -> ParseStop {
+    pub(crate) fn discard(self) -> HtmlParseStop {
         let (stop, tickets) = self.into_parts();
         drop(tickets);
         stop
@@ -414,7 +441,7 @@ mod tests {
             let result = c.final_string_ticket(&value);
             if one_short {
                 assert!(
-                    matches!(result, Err(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
+                    matches!(result, Err(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
                 );
                 assert_eq!(Arc::weak_count(value.shared_code_units()), 0);
                 assert_eq!(c.usage().actual_capacity_bytes(), 0);
@@ -464,7 +491,9 @@ mod tests {
         );
         assert!(matches!(
             c.prepare_attribute_edit(values.shared_attributes(), &shared, &vector),
-            Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+            Err(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch
+            ))
         ));
         let held = values.clone();
         c.release_final_attributes(values, vector, shared).unwrap();

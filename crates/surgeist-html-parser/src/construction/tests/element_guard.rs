@@ -17,11 +17,14 @@ fn document_mode_update_rejects_fragment_and_work_stop_before_the_real_mode_writ
     let mut document =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, limits().work_credits() - used - 1)
-        .unwrap();
+    c.charge(
+        HtmlParseWorkCategory::StateStep,
+        limits().work_credits() - used - 1,
+    )
+    .unwrap();
     assert!(matches!(
         document.set_document_mode(&mut c, HtmlDocumentMode::Quirks),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         }))
@@ -47,22 +50,28 @@ fn element_guard_reads_document_children_without_restricting_generic_moves() {
     let root = session.root(&mut c).unwrap();
     let first = session.allocate_element(&mut c, html("html")).unwrap();
     let second = session.allocate_element(&mut c, html("body")).unwrap();
-    let visits = c.usage().work(WorkCategory::RecordVisit);
+    let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit);
     assert_eq!(
         session.element_insertion_ignored(&mut c, &first, &root),
         Ok(None)
     );
     // Sixteen readiness (two added Range phase reads) visits + two checked handles, element kind,
     // ancestry root and target kind.
-    assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 23);
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::RecordVisit) - visits,
+        23
+    );
     session.insert(&mut c, &root, &first, None, None).unwrap();
-    let visits = c.usage().work(WorkCategory::RecordVisit);
+    let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit);
     assert_eq!(
         session.element_insertion_ignored(&mut c, &second, &root),
         Ok(Some(ElementInsertionIgnored::DocumentAlreadyHasElement))
     );
     // The additional real child-index and referenced-kind reads cost two.
-    assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 25);
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::RecordVisit) - visits,
+        25
+    );
     assert_eq!(
         session
             .active()
@@ -129,8 +138,8 @@ fn element_guard_uses_actual_template_and_ordinary_ancestry_and_includes_self() 
             .map(|node| node.position())
             .is_none()
     );
-    let visits = c.usage().work(WorkCategory::RecordVisit);
-    let providers = c.usage().work(WorkCategory::ProviderCall);
+    let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+    let providers = c.usage().work(HtmlParseWorkCategory::ProviderCall);
     assert_eq!(
         session.element_insertion_ignored(&mut c, &template, &child),
         Ok(Some(
@@ -140,8 +149,14 @@ fn element_guard_uses_actual_template_and_ordinary_ancestry_and_includes_self() 
     // Sixteen readiness (two Radio and two Range phase reads) visits + two handles + element kind +
     // the shallow-element test, which fails here because the template's
     // contents hold the child, + child/contents/template ancestors.
-    assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 25);
-    assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::RecordVisit) - visits,
+        25
+    );
+    assert_eq!(
+        c.usage().work(HtmlParseWorkCategory::ProviderCall) - providers,
+        1
+    );
     assert_eq!(
         session.element_insertion_ignored(&mut c, &template, &template),
         Ok(Some(
@@ -242,12 +257,15 @@ fn element_guard_work_stop_precedes_document_child_reads_and_preserves_topology(
     let nodes = c.usage().resource(HtmlParseResource::ManagedNodes);
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges);
     let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, limits().work_credits() - used - 24)
-        .unwrap();
+    c.charge(
+        HtmlParseWorkCategory::StateStep,
+        limits().work_credits() - used - 24,
+    )
+    .unwrap();
     let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
     assert!(matches!(
         session.element_insertion_ignored(&mut c, &second, &root),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 2,
             ..
@@ -300,7 +318,7 @@ fn element_guard_rejects_foreign_handles_controls_and_cancellation_before_mutati
             cancellation.cancel();
             assert_eq!(
                 session.element_insertion_ignored(&mut c, &node, &root),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             );
         } else {
             let mut other = control();
@@ -313,7 +331,7 @@ fn element_guard_rejects_foreign_handles_controls_and_cancellation_before_mutati
             assert!(c.stop().is_none());
             assert!(matches!(
                 session.element_insertion_ignored(&mut other, &node, &root),
-                Err(SessionError::Stop(ParseStop::InternalInvariant(_)))
+                Err(SessionError::Stop(HtmlParseStop::InternalInvariant(_)))
             ));
             foreign.release(&mut other).unwrap();
             storage_zero(&other);

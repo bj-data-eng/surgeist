@@ -65,7 +65,7 @@ impl SessionStorage {
         new_parent: Option<usize>,
     ) -> Result<Option<FormEffects>, SessionError> {
         control.require_identity(&self.control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let old_parent = self
             .construction
             .node_at(root)
@@ -145,7 +145,7 @@ impl SessionStorage {
             #[cfg(test)]
             self.assert_explicit_forms_exact();
             for &slot in self.payloads.explicit_form_list() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(RetainedPayload::FormAssociation {
                     node: Some(node),
                     state,
@@ -194,7 +194,7 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = self
             .construction
             .node_at(node)
@@ -203,7 +203,7 @@ impl SessionStorage {
             return Ok(None);
         };
         for attribute in element.attributes().as_slice() {
-            control.charge(WorkCategory::RecordVisit, 2)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(control, Some(attribute.name().local_name()), local)?
             {
@@ -219,7 +219,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<bool, SessionError> {
         let id = self.form_attribute(control, node, "id")?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(id.is_some_and(|id| !id.is_empty()))
     }
 
@@ -234,7 +234,7 @@ impl SessionStorage {
         let mut next = Some(root);
         while let Some(candidate) = next {
             if let Some(id) = self.form_attribute(control, candidate, "id")? {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if !id.is_empty() && exact_string_equal(control, id, value)? {
                     return Ok(self
                         .html_local(control, candidate, "form")?
@@ -269,7 +269,7 @@ impl SessionStorage {
                 Action::ClearParserInserted => {
                     // Source step 1 precedes every attribute/ancestor lookup.
                     state.parser_inserted = false;
-                    state.evidence = FormAssociationEvidence::Reset;
+                    state.evidence = HtmlParseFormEvidence::Reset;
                     set_form_association_state(self, control, slot, state)?;
                     Reply::Applied
                 }
@@ -345,9 +345,9 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let result = (|| {
             control.require_identity(&self.control)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<Option<FormEffects>>() as u64,
             )?;
             let Some(mut effects) = self.effects.form else {
@@ -591,14 +591,14 @@ impl SessionStorage {
                     self.assert_explicit_forms_exact();
                     let next_slot = self.payloads.explicit_form_list().get(next_form).copied();
                     if let Some(next_slot) = next_slot {
-                        control.charge(WorkCategory::RecordVisit, 1)?;
+                        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let Some(RetainedPayload::FormAssociation {
                             node: Some(candidate),
                             state,
                         }) = self.payloads.values.get(next_slot)
                         {
                             control.charge(
-                                WorkCategory::CopyByte,
+                                HtmlParseWorkCategory::CopyByte,
                                 (const {
                                     mem::size_of::<usize>() + mem::size_of::<FormAssociationState>()
                                 }) as u64,

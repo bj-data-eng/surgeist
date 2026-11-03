@@ -13,7 +13,7 @@ impl SessionStorage {
         self.validate_template_facts(control)?;
         self.validate_svg_facts(control)?;
         self.validate_completion_facts(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let document = matches!(
             self.construction
                 .node_at(0)
@@ -22,9 +22,9 @@ impl SessionStorage {
             HtmlNodeKind::Document(_)
         );
         if let Some(fragment) = &self.fragment {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let output = fragment.output.ok_or(SessionError::ContextUnavailable)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if !matches!(
                 self.construction
                     .node_at(output)
@@ -35,7 +35,7 @@ impl SessionStorage {
                 return Err(SessionError::WrongToken);
             }
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<Option<usize>>() as u64,
             )?;
             Ok(Some(output))

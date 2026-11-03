@@ -156,7 +156,7 @@ fn script_eof_marks_started_without_preparation_and_cancelled_marker_has_no_effe
         }
         let result = session.mark_script_eof(&mut c, &node, &capability);
         if cancel {
-            assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+            assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
             let (_, retained) = session
                 .active()
                 .unwrap()
@@ -174,7 +174,7 @@ fn script_eof_marks_started_without_preparation_and_cancelled_marker_has_no_effe
             assert_eq!(retained, initial);
             assert!(matches!(
                 session.freeze(&mut c),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             ));
         } else {
             result.unwrap();
@@ -204,7 +204,7 @@ fn real_standalone_capability_cannot_be_reused_for_another_arena_on_the_same_con
     let (mut c, mut original, capability, node) = fresh_script(&request, true, false);
     let mut unrelated =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
-    let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+    let stop = HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance);
     let result = unrelated.mark_script_eof(&mut c, &node, &capability);
     assert_eq!(result, Err(SessionError::Stop(stop)));
     assert_eq!(c.stop(), Some(stop));
@@ -270,7 +270,7 @@ fn preparation_clears_parser_document_before_ordinary_connectivity_work_can_stop
     let result = session.prepare_disabled_script(&mut c, &node, &capability);
     assert!(matches!(
         result,
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         }))
@@ -321,7 +321,7 @@ fn preparation_clears_parser_document_before_ordinary_connectivity_work_can_stop
 
 #[test]
 fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = format!("<html><head><script>{}", "<div>".repeat(16));
     let mut observed_work = Vec::new();
     for depth in [0, 16] {
@@ -340,7 +340,8 @@ fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
             .expect("retained child ordinal")
             .position();
         let mut parent = session.active().unwrap().node(&mut c, html_index).unwrap();
-        let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         for _ in 0..depth {
             let tag = next_fixture_tag(&mut tokenizer, &mut c, &[0x64, 0x69, 0x76]);
             let child = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
@@ -461,9 +462,9 @@ fn actual_template_domain_adoption_qualifies_document_and_only_import_revokes_in
     session.allocate_element(&mut c, html("span")).unwrap();
     assert_eq!(
         session.active().unwrap().standalone_ineligibility,
-        Some(StandaloneUnsupported::Provenance)
+        Some(HtmlParseUnsupportedState::Provenance)
     );
-    let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+    let stop = HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance);
     assert_eq!(
         session.prepare_disabled_script(&mut c, &script, &capability),
         Err(SessionError::Stop(stop))
@@ -501,7 +502,7 @@ fn cancelled_domain_insert_preserves_ordinary_eligibility_and_all_actual_owners(
     request.cancellation().cancel();
     assert_eq!(
         session.insert(&mut c, &contents, &div, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert_eq!(storage.standalone_ineligibility, None);
@@ -534,11 +535,11 @@ fn cancelled_domain_insert_preserves_ordinary_eligibility_and_all_actual_owners(
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     assert!(matches!(
         session.freeze(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
@@ -626,7 +627,7 @@ fn exact_and_one_short_domain_insert_work_admit_eligibility_only_with_topology()
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -716,14 +717,14 @@ fn public_associated_domain_insert_stop_after_commit_never_publishes_the_complet
     session.insert(&mut c, &div, &script, None, None).unwrap();
     let unused =
         limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, unused - whole + 1)
+    c.charge(HtmlParseWorkCategory::StateStep, unused - whole + 1)
         .unwrap();
     let Err(SessionError::Stop(first)) = session.insert(&mut c, &contents, &div, None, None) else {
         panic!("real interrupted postcommit drain")
     };
     assert!(matches!(
         first,
-        ParseStop::LimitExceeded {
+        HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             requested_delta: 1,
             ..
@@ -875,7 +876,7 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -915,7 +916,7 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
 
 #[test]
 fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Before script creation Document/html + completion/cause/nonce/index
     // owners retain16 slots, including html's independent creation row.
     // Script metadata is reserved first:17 stops at document/native preflight.
@@ -932,7 +933,8 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
                 .unwrap(),
         );
         let (mut c, mut session, capability) = fresh_script_owner(&request);
-        let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut incoming = loop {
             let kind = lexical_kind(&mut tokenizer, &mut c);
             if matches!(&kind, TokenKind::Tag(tag) if tag.name.value.text().code_units() == [0x73,0x63,0x72,0x69,0x70,0x74])
@@ -976,7 +978,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
         } else {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     ..
                 }))
@@ -1004,13 +1006,14 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
 
 #[test]
 fn script_allocation_alias_rejection_preserves_the_actual_lexical_owner_and_arena() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let request = crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8("<html><head><script src=''>"),
         limits(),
     );
     let (mut c, mut session, capability, _) = fresh_script(&request, true, false);
-    let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let tag = loop {
         let kind = lexical_kind(&mut tokenizer, &mut c);
         if let TokenKind::Tag(tag) = kind {
@@ -1052,10 +1055,10 @@ fn lexical_script_type(attributes: &str) -> Option<HtmlScriptKind> {
     lexical_script_type_source(crate::HtmlSource::utf8(format!("<script {attributes}>")))
 }
 fn lexical_script_type_source(source: crate::HtmlSource) -> Option<HtmlScriptKind> {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut tokenizer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
         panic!("script tag")
     };
@@ -1101,8 +1104,11 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
     assert!(c.stop().is_none());
     for available in [0, 18] {
         let mut c = control();
-        c.charge(WorkCategory::StateStep, limits().work_credits() - available)
-            .unwrap();
+        c.charge(
+            HtmlParseWorkCategory::StateStep,
+            limits().work_credits() - available,
+        )
+        .unwrap();
         assert!(classify(&mut c, &value).is_err());
         let stopped = c.usage().clone();
         let first = c.stop();
@@ -1114,7 +1120,7 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
     cancellation.cancel();
     let mut c = ParseControl::new(limits(), cancellation);
     assert!(classify(&mut c, &value).is_err());
-    assert_eq!(c.usage().work(WorkCategory::InspectByte), 0);
+    assert_eq!(c.usage().work(HtmlParseWorkCategory::InspectByte), 0);
 }
 
 #[test]
@@ -1170,10 +1176,10 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
         let mut c = control();
         let before = c.usage().clone();
         assert_eq!(classify_script(&mut c, &element).unwrap(), expected);
-        let visits =
-            c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit);
-        let inspections =
-            c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte);
+        let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit)
+            - before.work(HtmlParseWorkCategory::RecordVisit);
+        let inspections = c.usage().work(HtmlParseWorkCategory::InspectByte)
+            - before.work(HtmlParseWorkCategory::InspectByte);
         assert_eq!(
             (visits, inspections),
             (visits_expected, inspections_expected),
@@ -1182,7 +1188,10 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
         for available in [0, visits_expected + inspections_expected - 1] {
             let mut short = control();
             short
-                .charge(WorkCategory::StateStep, limits().work_credits() - available)
+                .charge(
+                    HtmlParseWorkCategory::StateStep,
+                    limits().work_credits() - available,
+                )
                 .unwrap();
             assert!(classify_script(&mut short, &element).is_err());
             assert!(short.stop().is_some());
@@ -1298,7 +1307,7 @@ fn actual_import_permanently_revokes_standalone_inventory_but_foreign_control_do
     assert!(session.active().unwrap().standalone_ineligibility.is_none());
     session.validate_standalone_document(&mut c).unwrap();
     session.allocate_element(&mut c, html("div")).unwrap();
-    let stop = ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance);
+    let stop = HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance);
     assert_eq!(
         session.validate_standalone_document(&mut c),
         Err(SessionError::Stop(stop))
@@ -1322,9 +1331,9 @@ fn generic_fragment_and_preexisting_input_cannot_establish_ordinary_document_pro
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     assert_eq!(
         session.validate_standalone_document(&mut c),
-        Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-            StandaloneUnsupported::Provenance
-        )))
+        Err(SessionError::Stop(
+            HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
+        ))
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -1333,14 +1342,15 @@ fn generic_fragment_and_preexisting_input_cannot_establish_ordinary_document_pro
 #[test]
 fn actual_template_contents_adoption_qualifies_inert_document_and_preserves_disconnected_script_prefix()
  {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let request = crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8("<html><head><template><script src=''>"),
         limits(),
     );
     let (mut c, mut session, capability, node) = fresh_script(&request, false, false);
     let initial = session.script_metadata(&mut c, &node).unwrap();
-    let mut tokenizer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut tokenizer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let tag = loop {
         let kind = lexical_kind(&mut tokenizer, &mut c);
         if let TokenKind::Tag(tag) = kind {

@@ -4,7 +4,7 @@ use super::super::tests::{
 };
 use super::*;
 use crate::parser::tokenizer::{
-    states::{Raw, State},
+    states::{HtmlTokenizerRawState, HtmlTokenizerState},
     tests::LexerFixture,
     token::{Event, Token},
 };
@@ -127,7 +127,8 @@ pub(in crate::construction) fn graph<'a>(
     let html = session.active().unwrap().node(&mut c, html_index).unwrap();
     let mut stack = vec![html];
     let mut nodes = vec![];
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     loop {
         let token = next(&mut lexer, &mut c);
         match token.kind {
@@ -195,10 +196,20 @@ pub(in crate::construction) fn graph<'a>(
                 }
                 nodes.push((name.clone(), node));
                 if name == "script" {
-                    lexer.set_state(State::Raw(Raw::Script), &mut c).unwrap();
+                    lexer
+                        .set_state(
+                            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script),
+                            &mut c,
+                        )
+                        .unwrap();
                 }
                 if name == "textarea" {
-                    lexer.set_state(State::Raw(Raw::Rcdata), &mut c).unwrap();
+                    lexer
+                        .set_state(
+                            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata),
+                            &mut c,
+                        )
+                        .unwrap();
                 }
             }
             TokenKind::Tag(tag) => {
@@ -209,10 +220,10 @@ pub(in crate::construction) fn graph<'a>(
                     session
                         .prepare_disabled_script(&mut c, &removed, &proof)
                         .unwrap();
-                    lexer.set_state(State::Data, &mut c).unwrap();
+                    lexer.set_state(HtmlTokenizerState::Data, &mut c).unwrap();
                 }
                 if name == "textarea" {
-                    lexer.set_state(State::Data, &mut c).unwrap();
+                    lexer.set_state(HtmlTokenizerState::Data, &mut c).unwrap();
                 }
             }
             TokenKind::Text(text) => {
@@ -368,7 +379,8 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     );
     // A separately admitted real lexical replay supplies two useful text
     // payloads on the same controller; no detached synthetic Text is fabricated.
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut texts = Vec::new();
     loop {
         let token = next(&mut lexer, &mut c);
@@ -531,7 +543,7 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
         let target = named(&nodes, "selectedcontent", 0);
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         let result = session
             .active_mut()
@@ -736,12 +748,12 @@ fn select_clone_cancellation_and_pending_cleanup_never_drains_useful_work() {
     request.cancellation().cancel();
     assert_eq!(
         session.perform_intrinsic_checkpoint(&mut c, &proof),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(children(&session, &target), old);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     session.release(&mut c).unwrap();
@@ -750,7 +762,7 @@ fn select_clone_cancellation_and_pending_cleanup_never_drains_useful_work() {
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
     );
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
@@ -847,7 +859,7 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
         session.remove(&mut c, &option, Some(&proof)).unwrap();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         if let Err(SessionError::Stop(first)) = session.perform_intrinsic_checkpoint(&mut c, &proof)
         {
@@ -896,7 +908,8 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             .usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current;
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let token = next(&mut lexer, &mut c);
         let TokenKind::Tag(tag) = token.kind else {
             panic!("actual select")
@@ -933,7 +946,8 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), caps);
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let token = next(&mut lexer, &mut c);
         let TokenKind::Tag(tag) = token.kind else {
             panic!("actual select")
@@ -975,7 +989,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 panic!("exact selected auxiliary cap")
             };
             assert!(
-                matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
+                matches!(first, HtmlParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
             assert_eq!(input.is_some(), cap == held + 1);
             assert_eq!(
@@ -998,7 +1012,8 @@ fn select_creation_rejects_real_alias_and_foreign_parent_before_retaining_metada
     let request = request("<select>");
     let (mut c, mut session, proof) = fresh_script_owner(&request);
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let token = next(&mut lexer, &mut c);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("actual select")
@@ -1068,7 +1083,7 @@ fn select_text_clone_every_interruption_keeps_ticket_binding_coherent_for_dispos
         let text = children(&session, &option)[0];
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         let result = session
             .active_mut()
@@ -1182,7 +1197,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
         let slots = session.active().unwrap().payloads.values.len();
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         let result =
             session
@@ -1203,7 +1218,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
             // The complete measured envelope leaves zero credits. Establish
             // the terminal cleanup boundary explicitly, rather than spending
             // nonexistent credits on an active cleanup ownership walk.
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         }
         let first = c.stop();
         if let Some(first) = first {
@@ -1252,10 +1267,10 @@ fn non_element_clone_binding_boundary(kind: usize) {
         assert!(
             matches!(
                 first,
-                Some(ParseStop::Cancelled) if cancel
+                Some(HtmlParseStop::Cancelled) if cancel
             ) || matches!(
                 first,
-                Some(ParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, .. }) if !cancel
+                Some(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, .. }) if !cancel
             )
         );
     }
@@ -1283,7 +1298,13 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
     let mut foreign = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
     foreign.admit_source(request.source()).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut foreign).unwrap();
+    let mut lexer = LexerFixture::new(
+        request.source(),
+        HtmlTokenizerState::Data,
+        None,
+        &mut foreign,
+    )
+    .unwrap();
     let token = next(&mut lexer, &mut foreign);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("real foreign select token")
@@ -1313,7 +1334,9 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     assert_eq!(result.err(), Some(SessionError::Stop(first)));
     assert!(matches!(
         first,
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+        HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
+        )
     ));
     assert_eq!(
         input
@@ -1362,7 +1385,8 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
                 .flags
                 .already_started()
         );
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut text = loop {
             let token = next(&mut lexer, &mut c);
             if let TokenKind::Text(text) = token.kind {
@@ -1373,7 +1397,7 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
         let base = session.active().unwrap().payloads.values.len();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let result = session.insert_text(&mut c, &copy, None, &mut text, Some(&proof));
         let storage = session.active().unwrap();
@@ -1459,7 +1483,9 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
             }
         }
         measured.require_identity(&storage.control).unwrap();
-        measured.charge(WorkCategory::RecordVisit, 2).unwrap();
+        measured
+            .charge(HtmlParseWorkCategory::RecordVisit, 2)
+            .unwrap();
         if storage.effects.form.is_some() {
             storage.step_form_effects(&mut measured).unwrap();
         } else if let Some(frame) = storage.effects.current.as_ref() {
@@ -1467,7 +1493,10 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
                 .admit_atomic_layout(mem::size_of::<EffectFrame>())
                 .unwrap();
             measured
-                .charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)
+                .charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<EffectFrame>() as u64,
+                )
                 .unwrap();
             frame.admit_clone(&mut measured).unwrap();
             let frame = frame.clone();
@@ -1500,7 +1529,7 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
         let target = named(&nodes, "selectedcontent", 0);
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let result = (|| {
             let storage = session.active_mut()?;
@@ -1553,7 +1582,7 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
         let running_before_cleanup = c.stop().is_none();
         let released = session.release(&mut c);
         if let Err(SessionError::Stop(
-            stop @ ParseStop::LimitExceeded {
+            stop @ HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             },
@@ -1695,7 +1724,7 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
         storage.drain_construction_effects(&mut c).unwrap();
         assert!(storage.effects.current.is_none());
         let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
-        assert!(c.usage().work(WorkCategory::ProviderCall) > 0);
+        assert!(c.usage().work(HtmlParseWorkCategory::ProviderCall) > 0);
         // The completed drain adopted the element into the captured document.
         assert_eq!(binding(&owner), DocumentRef::Captured(document));
         owner.release(&mut c).unwrap();
@@ -1720,16 +1749,16 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
         start(&mut c, &mut owner, &document);
         let spare =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, spare - remaining)
+        c.charge(HtmlParseWorkCategory::StateStep, spare - remaining)
             .unwrap();
-        let providers = c.usage().work(WorkCategory::ProviderCall);
+        let providers = c.usage().work(HtmlParseWorkCategory::ProviderCall);
         let storage = owner.active_mut().unwrap();
         let error = storage.drain_construction_effects(&mut c).unwrap_err();
         let first = c.stop().unwrap();
         assert_eq!(error, SessionError::Stop(first), "remaining {remaining}");
         assert!(matches!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }
@@ -1751,7 +1780,7 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
                     bound == initial || bound == captured,
                     "remaining {remaining}"
                 );
-                if c.usage().work(WorkCategory::ProviderCall) == providers {
+                if c.usage().work(HtmlParseWorkCategory::ProviderCall) == providers {
                     assert_eq!(bound, initial, "remaining {remaining}");
                     Stopped::BeforeClone
                 } else {
@@ -1797,7 +1826,8 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     start(&mut c, &mut owner, &document);
     let spare =
         limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(WorkCategory::StateStep, spare - needed).unwrap();
+    c.charge(HtmlParseWorkCategory::StateStep, spare - needed)
+        .unwrap();
     let storage = owner.active_mut().unwrap();
     storage.drain_construction_effects(&mut c).unwrap();
     assert!(storage.effects.current.is_none());
@@ -1811,7 +1841,7 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     let refused = owner.release(&mut c).unwrap_err();
     assert!(matches!(
         refused,
-        SessionError::Stop(ParseStop::LimitExceeded {
+        SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
             ..
         })
@@ -1832,7 +1862,7 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
 /// calls and byte copies when a vector's capacity doubles, which depends on the
 /// current length and is not a lookup.
 fn lookup_work(c: &ParseControl) -> u64 {
-    c.usage().work(WorkCategory::RecordVisit)
+    c.usage().work(HtmlParseWorkCategory::RecordVisit)
 }
 
 /// Builds `unrelated` sibling subtrees, each retaining several payload rows,
@@ -2057,7 +2087,7 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
             2 * (mem::size_of::<Option<EffectFrame>>() as u64 + 1) + u64::from(after_provider);
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let error = storage
             .start_effect(&mut c, EffectFrame::AppendClone { parent: 0, copy: 0 })
@@ -2182,15 +2212,15 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
             img,
             surgeist_html::HtmlImageUpdateFlags::new(false, false)
         ),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::RegistryRow
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow
         )))
     );
     // The invariant is latched as the controller's first stop.
     assert_eq!(
         c.stop(),
-        Some(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::RegistryRow
+        Some(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow
         ))
     );
     // A slot whose successor does not exist is refused, never wrapped.
@@ -2213,7 +2243,8 @@ fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
     // The container row does not exist: the refusal comes after the edit began
     // and its group was taken, and must give the group back and abort it.
     let refused = storage.replace_attribute_storage(&mut c, div, usize::MAX / 2, 0, &mut None, &[]);
-    let invariant = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+    let invariant =
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow);
     assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
     assert_eq!(c.stop(), Some(invariant));
     assert!(!storage.construction.has_attribute_edit());
@@ -2232,7 +2263,7 @@ fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
     let refused = storage.replace_attribute_storage(&mut c, 0, container, 0, &mut None, &[]);
     // The edit's own begin refuses a document first; either way the refusal is
     // an invariant stop and the container still holds its frozen attributes.
-    let Some(SessionError::Stop(stop @ ParseStop::InternalInvariant(_))) = refused.err() else {
+    let Some(SessionError::Stop(stop @ HtmlParseStop::InternalInvariant(_))) = refused.err() else {
         panic!("expected an invariant stop")
     };
     assert_eq!(c.stop(), Some(stop));
@@ -2256,7 +2287,7 @@ fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
 /// runs under the head stage that classifies it.
 #[test]
 fn script_and_completion_metadata_errors_from_effect_work_stop_the_parse_as_unsupported_states() {
-    use crate::parser::control::StandaloneUnsupported as Unsupported;
+    use crate::parser::control::HtmlParseUnsupportedState as Unsupported;
     let source = "<!doctype html><p>x</p>";
     // Nothing is raised here: the armed position is never reached, and the
     // drains that did run are counted.
@@ -2285,7 +2316,7 @@ fn script_and_completion_metadata_errors_from_effect_work_stop_the_parse_as_unsu
         assert_eq!(super::take_effect_fault().0, None, "{error:?} was raised");
         assert_eq!(
             failure.and_then(|failure| failure.first_stop()),
-            Some(ParseStop::UnsupportedStandaloneState(expected)),
+            Some(HtmlParseStop::UnsupportedStandaloneState(expected)),
             "{error:?}"
         );
     }

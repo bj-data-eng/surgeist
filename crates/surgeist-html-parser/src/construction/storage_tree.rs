@@ -10,7 +10,7 @@ impl SessionStorage {
         element: &ParserNode,
     ) -> Result<Option<ParserNode>, SessionError> {
         let index = self.index(control, element)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.construction
             .node_at(index)
             .ok_or_else(|| latch_registry_row(control))?
@@ -24,7 +24,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         index: usize,
     ) -> Result<(), SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.construction
             .node_at(index)
             .ok_or(SessionError::ForeignNode)?
@@ -42,7 +42,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         index: usize,
     ) -> Result<(), SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match self
             .construction
             .node_at(index)
@@ -84,13 +84,13 @@ impl SessionStorage {
         storage: &bounded::HtmlConstructionStorage,
         root: usize,
     ) -> Result<bool, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = storage.node_at(root).ok_or(SessionError::ForeignNode)?;
         match record.fragment_owner() {
             None => Ok(false),
             Some(HtmlFragmentOwner::ShadowHost(_)) => Ok(self.fragment.is_none()),
             Some(HtmlFragmentOwner::Template(template)) => {
-                control.charge(WorkCategory::ProviderCall, 1)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let template_position = storage
                     .node_by_result_id(template)
                     .map_err(|_| SessionError::ForeignNode)?
@@ -155,7 +155,7 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<bool, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let record = storage.node_at(node).ok_or(SessionError::ForeignNode)?;
         let HtmlNodeKind::Element(element) = record.kind() else {
             return Ok(false);
@@ -200,7 +200,7 @@ impl SessionStorage {
             let Some(parent) = self.ordinary_parent(c, node, None)? else {
                 return Ok(false);
             };
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let record = self
                 .construction
                 .node_at(parent)
@@ -236,7 +236,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let root = self.ordinary_root(control, node, detached)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(matches!(
             self.construction
                 .node_at(root)
@@ -256,7 +256,7 @@ impl SessionStorage {
     ) -> Result<bool, SessionError> {
         let mut root = self.ordinary_root(control, node, detached)?;
         'roots: for _ in 0..self.construction.storage(control)?.len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(
                 self.construction
                     .node_at(root)
@@ -266,15 +266,18 @@ impl SessionStorage {
             ) {
                 return Ok(true);
             }
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
                 .ok_or_else(|| latch_registry_row(control))?
                 .fragment_owner()
             {
-                control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-                control.charge(WorkCategory::ProviderCall, 1)?;
+                control.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<usize>() as u64,
+                )?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
                     .storage(control)?
@@ -286,10 +289,10 @@ impl SessionStorage {
             }
             // A retained captured attachment is an influencing host, not proof
             // of disconnection. The adapter cannot invent its connectedness.
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(fragment) = &self.fragment {
                 for effect in fragment.effects.as_slice() {
-                    control.charge(WorkCategory::RecordVisit, 1)?;
+                    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let context::ContextEffect::AttachShadow {
                         contents: Some(contents),
                         host,
@@ -300,7 +303,7 @@ impl SessionStorage {
                         match host {
                             context::ShadowHostKey::Owned(host) => {
                                 control.charge(
-                                    WorkCategory::CopyByte,
+                                    HtmlParseWorkCategory::CopyByte,
                                     mem::size_of::<usize>() as u64,
                                 )?;
                                 root = self.ordinary_root(control, *host, detached)?;

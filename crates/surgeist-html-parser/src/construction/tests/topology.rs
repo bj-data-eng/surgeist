@@ -321,7 +321,7 @@ fn node_and_depth_cap_failures_leave_topology_unmodified_and_cleanup_releases_ca
     let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
     assert!(matches!(
         session.allocate_element(&mut control, html("template")),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedNodes,
             ..
         }))
@@ -370,7 +370,7 @@ fn node_and_depth_cap_failures_leave_topology_unmodified_and_cleanup_releases_ca
         .unwrap();
     assert!(matches!(
         session.insert(&mut control, &root, &template, None, None),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::TreeDepth,
             ..
         }))
@@ -479,7 +479,7 @@ fn failed_freeze_and_foreign_cleanup_retain_owned_tickets_for_recovery() {
     cancellation.cancel();
     assert!(matches!(
         candidate.freeze(&mut stopped),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     assert!(candidate.release(&mut stopped).is_ok());
     assert_eq!(stopped.usage().actual_capacity_bytes, 0);
@@ -629,7 +629,7 @@ fn edge_preflight_and_zero_physical_capacity_reject_before_actual_record_admissi
     let bytes_before = control.usage().actual_capacity_bytes;
     assert!(matches!(
         session.allocate_element(&mut control, html("template")),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedEdges,
             ..
         }))
@@ -657,7 +657,7 @@ fn edge_preflight_and_zero_physical_capacity_reject_before_actual_record_admissi
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
     assert!(matches!(
         ParserArenaSession::new(&mut control, RootKind::Fragment),
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedCapacityBytes,
             ..
         }))
@@ -787,7 +787,7 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         .unwrap()
         .kind() as *const HtmlNodeKind;
     assert!(
-        matches!(session.freeze(&mut control), Err(SessionError::Stop(ParseStop::LimitExceeded {
+        matches!(session.freeze(&mut control), Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
         resource: HtmlParseResource::ManagedCapacityBytes,
         current,
         requested_delta,

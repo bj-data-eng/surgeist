@@ -35,7 +35,7 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
         .prepare_document_allocation(&mut c, Some(DocumentRef::Owned(0)), true)
         .err();
     assert!(
-        matches!(error,Some(SessionError::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::ManagedCapacityBytes,limit,..})) if limit==one_short)
+        matches!(error,Some(SessionError::Stop(HtmlParseStop::LimitExceeded{resource:HtmlParseResource::ManagedCapacityBytes,limit,..})) if limit==one_short)
     );
     let storage = session.active().unwrap();
     assert_eq!(storage.construction.test_storage().len(), 1);
@@ -140,7 +140,7 @@ fn record_reserve_clamps_spare_capacity_to_the_limit_and_keeps_the_exact_refusal
         .reserve_records(&mut refuses, 9)
         .err();
     assert!(
-        matches!(error, Some(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, limit, .. })) if limit == exact_fit - 1)
+        matches!(error, Some(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, limit, .. })) if limit == exact_fit - 1)
     );
     session.release(&mut refuses).unwrap();
 }

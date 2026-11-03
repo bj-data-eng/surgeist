@@ -136,7 +136,10 @@ fn email_url_reset_cancellation_retains_sanitized_value_and_actual_count_before_
             &range,
             &capability,
         );
-        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(
+            result.err(),
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
+        );
         assert!(input.is_none());
         let (actual, observed_count, attached, parser_inserted) = {
             let storage = session.active().unwrap();
@@ -187,14 +190,14 @@ fn email_url_reset_cancellation_retains_sanitized_value_and_actual_count_before_
         };
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             stopped_work
@@ -282,11 +285,11 @@ fn email_url_exact_work_and_stopped_copy_prefixes_release_same_actual_owners() {
                     c.usage().resource(HtmlParseResource::WorkCredits).current,
                     total
                 );
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -347,7 +350,10 @@ fn temporal_input_reset_cancellation_retains_real_current_before_association() {
             &range,
             &capability,
         );
-        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(
+            result.err(),
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
+        );
         assert!(input.is_none());
         let (actual, observed_count, attached, parser_inserted) = {
             let storage = session.active().unwrap();
@@ -398,14 +404,14 @@ fn temporal_input_reset_cancellation_retains_real_current_before_association() {
         };
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             stopped_work
@@ -490,11 +496,11 @@ fn temporal_input_exact_work_and_stopped_scan_copy_prefixes_release_actual_owner
                     c.usage().resource(HtmlParseResource::WorkCredits).current,
                     total
                 );
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -521,7 +527,7 @@ fn temporal_input_exact_work_and_stopped_scan_copy_prefixes_release_actual_owner
 }
 #[test]
 fn temporal_input_ordered_type_reset_and_clone_keep_normalization_cause_and_exact_default() {
-    use crate::parser::tokenizer::token::OriginKind;
+    use crate::parser::tokenizer::token::HtmlParseOriginKind;
     for (source, source_start, source_end) in [
         (
             "<html><head></head><input value='2024-02-29&#32;12:34:01.120' type=datetime-local>",
@@ -570,7 +576,7 @@ fn temporal_input_ordered_type_reset_and_clone_keep_normalization_cause_and_exac
                 .observed_origins(group, &mut c)
                 .unwrap()
                 .into_iter()
-                .filter(|origin| origin.kind == OriginKind::InputValueNormalization)
+                .filter(|origin| origin.kind == HtmlParseOriginKind::InputValueNormalization)
                 .map(|origin| {
                     (
                         origin.start,
@@ -786,11 +792,11 @@ fn number_input_exact_work_partial_grammar_and_copy_stops_keep_all_owners() {
                     c.usage().resource(HtmlParseResource::WorkCredits).current,
                     total
                 );
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -934,7 +940,10 @@ fn number_input_real_reset_cancellation_retains_prefix_before_association() {
         &range,
         &capability,
     );
-    assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+    assert_eq!(
+        result.err(),
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
+    );
     assert!(input.is_none());
     let (actual, attached, associated) = {
         let storage = session.active().unwrap();
@@ -984,14 +993,14 @@ fn number_input_real_reset_cancellation_retains_prefix_before_association() {
     };
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.usage().actual_capacity_bytes, 0);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
@@ -1050,7 +1059,7 @@ fn number_input_alias_foreign_and_pre_cancelled_rejections_preserve_original_tag
             match case {
                 0 => SessionError::AliasedPayload,
                 1 => SessionError::ForeignNode,
-                _ => SessionError::Stop(ParseStop::Cancelled),
+                _ => SessionError::Stop(HtmlParseStop::Cancelled),
             }
         );
         assert!(input.is_some());
@@ -1155,11 +1164,11 @@ fn range_input_exact_work_cuts_keep_real_scratch_and_first_stop_cleanup_owned() 
                     c.usage().resource(HtmlParseResource::WorkCredits).current,
                     total
                 );
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -1235,7 +1244,7 @@ fn range_input_precancel_alias_and_foreign_refusal_preserve_original_lexical_fie
             Some(match case {
                 0 => SessionError::AliasedPayload,
                 1 => SessionError::ForeignNode,
-                _ => SessionError::Stop(ParseStop::Cancelled),
+                _ => SessionError::Stop(HtmlParseStop::Cancelled),
             })
         );
         assert!(input.is_some());
@@ -1257,7 +1266,7 @@ fn range_input_precancel_alias_and_foreign_refusal_preserve_original_lexical_fie
 
 #[test]
 fn range_generated_history_lenders_keep_role_qualified_inputs_without_digit_origins() {
-    use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+    use provenance::{HtmlParseRangeBranch, HtmlParseRangeOperandKind, HtmlParseRangeOperandRole};
     let source =
         crate::HtmlSource::utf8("<!doctype html><input type=range min=0 max=100 step=20 value=50>");
     let source_id = source.identity().clone();
@@ -1279,8 +1288,11 @@ fn range_generated_history_lenders_keep_role_qualified_inputs_without_digit_orig
         let group = history.group(index).unwrap();
         let header = history.header(group).unwrap();
         if let Some(computation) = header.cause.range_computation() {
-            assert!(matches!(header.body, history::HistoryBody::Leaf(_)));
-            if computation.branch() == RangeBranch::StepCorrection {
+            assert!(matches!(
+                header.body,
+                history::HtmlParseHistoryBody::Leaf(_)
+            ));
+            if computation.branch() == HtmlParseRangeBranch::StepCorrection {
                 step = Some((group, computation));
             }
         }
@@ -1290,34 +1302,39 @@ fn range_generated_history_lenders_keep_role_qualified_inputs_without_digit_orig
     assert!(computation.original_group().unwrap().is_some());
     assert!(computation.original_cause().unwrap().is_some());
     for role in [
-        RangeOperandRole::Minimum,
-        RangeOperandRole::Maximum,
-        RangeOperandRole::Step,
+        HtmlParseRangeOperandRole::Minimum,
+        HtmlParseRangeOperandRole::Maximum,
+        HtmlParseRangeOperandRole::Step,
     ] {
         let operand = computation.operand(role);
-        assert_eq!(operand.kind(), RangeOperandKind::Finite);
+        assert_eq!(operand.kind(), HtmlParseRangeOperandKind::Finite);
         assert!(operand.group().unwrap().is_some() && operand.cause().unwrap().is_some());
         assert!(
             (0..rows.len()).any(|i| rows.row(i).unwrap().unwrap().relation()
-                == provenance::AssociationRelation::RangeDependency(role))
+                == provenance::HtmlParseAssociationRelation::RangeDependency(role))
         );
     }
     assert_eq!(
-        computation.operand(RangeOperandRole::ValueContent).kind(),
-        RangeOperandKind::NotConsulted
+        computation
+            .operand(HtmlParseRangeOperandRole::ValueContent)
+            .kind(),
+        HtmlParseRangeOperandKind::NotConsulted
     );
-    let mut scratch = [history::HistoryFrame::default(); 32];
+    let mut scratch = [history::HtmlParseHistoryFrame::default(); 32];
     let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
     let first = cursor.advance();
     assert!(
-        matches!(first, history::HistoryStep::Leaf(atom) if atom.origins().is_empty() && atom.units()==[54,48])
+        matches!(first, history::HtmlParseHistoryStep::Leaf(atom) if atom.origins().is_empty() && atom.units()==[54,48])
     );
-    assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+    assert!(matches!(
+        cursor.advance(),
+        history::HtmlParseHistoryStep::Complete
+    ));
 }
 
 #[test]
 fn range_later_minimum_resanitization_retains_generated_original_and_constraint_history() {
-    use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+    use provenance::{HtmlParseRangeBranch, HtmlParseRangeOperandKind, HtmlParseRangeOperandRole};
     // type first produces50; bad again defaults to50. Installing min75
     // then clamps that real generated current to75. Later max60 disables
     // upper correction because it is below min, and any disables steps.
@@ -1339,7 +1356,7 @@ fn range_later_minimum_resanitization_retains_generated_original_and_constraint_
         let group = history.group(index).unwrap();
         let header = history.header(group).unwrap();
         if let Some(computation) = header.cause.range_computation()
-            && computation.branch() == RangeBranch::Underflow
+            && computation.branch() == HtmlParseRangeBranch::Underflow
         {
             underflow = Some((group, computation));
         }
@@ -1350,33 +1367,38 @@ fn range_later_minimum_resanitization_retains_generated_original_and_constraint_
     let original_cause = computation.original_cause().unwrap().unwrap();
     assert_eq!(
         original_cause.range_computation().unwrap().branch(),
-        RangeBranch::InvalidDefaultMidpoint
+        HtmlParseRangeBranch::InvalidDefaultMidpoint
     );
-    let minimum = computation.operand(RangeOperandRole::Minimum);
-    assert_eq!(minimum.kind(), RangeOperandKind::Finite);
+    let minimum = computation.operand(HtmlParseRangeOperandRole::Minimum);
+    assert_eq!(minimum.kind(), HtmlParseRangeOperandKind::Finite);
     assert!(minimum.cause().unwrap().unwrap().source().is_some());
     assert_eq!(
-        computation.operand(RangeOperandRole::Maximum).kind(),
-        RangeOperandKind::Absent
+        computation
+            .operand(HtmlParseRangeOperandRole::Maximum)
+            .kind(),
+        HtmlParseRangeOperandKind::Absent
     );
-    let mut frames = [history::HistoryFrame::default(); 32];
+    let mut frames = [history::HtmlParseHistoryFrame::default(); 32];
     for (target, expected, origin_free) in [
         (original, &[53, 48][..], true),
         (minimum.group().unwrap().unwrap(), &[55, 53][..], false),
         (group, &[55, 53][..], true),
     ] {
         let mut cursor = history.cursor(target, &mut frames, None).unwrap();
-        let history::HistoryStep::Leaf(atom) = cursor.advance() else {
+        let history::HtmlParseHistoryStep::Leaf(atom) = cursor.advance() else {
             panic!("actual retained leaf")
         };
         assert_eq!(atom.units(), expected);
         assert_eq!(atom.origins().is_empty(), origin_free);
-        assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+        assert!(matches!(
+            cursor.advance(),
+            history::HtmlParseHistoryStep::Complete
+        ));
     }
     let mut minimum_cursor = history
         .cursor(minimum.group().unwrap().unwrap(), &mut frames, None)
         .unwrap();
-    let history::HistoryStep::Leaf(minimum_atom) = minimum_cursor.advance() else {
+    let history::HtmlParseHistoryStep::Leaf(minimum_atom) = minimum_cursor.advance() else {
         panic!("actual minimum lexical leaf")
     };
     let minimum_source = &minimum_atom.origins()[0].source;
@@ -1389,7 +1411,9 @@ fn range_later_minimum_resanitization_retains_generated_original_and_constraint_
             read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             read::HtmlParseReverseStep::Match(row) => {
                 if row.relation()
-                    == provenance::AssociationRelation::RangeDependency(RangeOperandRole::Minimum)
+                    == provenance::HtmlParseAssociationRelation::RangeDependency(
+                        HtmlParseRangeOperandRole::Minimum,
+                    )
                 {
                     let source = row.source().unwrap();
                     assert_eq!(source.source(), minimum_source.source());
@@ -1412,7 +1436,7 @@ fn range_later_minimum_resanitization_retains_generated_original_and_constraint_
 
 #[test]
 fn range_later_maximum_resanitization_keeps_lexical_constraint_and_generated_history() {
-    use provenance::{RangeBranch, RangeOperandKind, RangeOperandRole};
+    use provenance::{HtmlParseRangeBranch, HtmlParseRangeOperandKind, HtmlParseRangeOperandRole};
     let request = crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8("<!doctype html><input type=range value=75 max=60 step=any>"),
         limits()
@@ -1428,15 +1452,15 @@ fn range_later_maximum_resanitization_keeps_lexical_constraint_and_generated_his
     for index in 0..history.len() {
         let group = history.group(index).unwrap();
         if let Some(computation) = history.header(group).unwrap().cause.range_computation()
-            && computation.branch() == RangeBranch::Overflow
+            && computation.branch() == HtmlParseRangeBranch::Overflow
         {
             correction = Some((group, computation));
         }
     }
     let (group, computation) = correction.expect("later max60 clamps actual75");
-    let maximum = computation.operand(RangeOperandRole::Maximum);
-    assert_eq!(maximum.kind(), RangeOperandKind::Finite);
-    let mut frames = [history::HistoryFrame::default(); 32];
+    let maximum = computation.operand(HtmlParseRangeOperandRole::Maximum);
+    assert_eq!(maximum.kind(), HtmlParseRangeOperandKind::Finite);
+    let mut frames = [history::HtmlParseHistoryFrame::default(); 32];
     for (target, expected, origin_free) in [
         // Valid authored75 was preserved, so this original is lexical.
         (
@@ -1448,12 +1472,15 @@ fn range_later_maximum_resanitization_keeps_lexical_constraint_and_generated_his
         (group, &[54, 48][..], true),
     ] {
         let mut cursor = history.cursor(target, &mut frames, None).unwrap();
-        let history::HistoryStep::Leaf(atom) = cursor.advance() else {
+        let history::HtmlParseHistoryStep::Leaf(atom) = cursor.advance() else {
             panic!("actual retained leaf")
         };
         assert_eq!(atom.units(), expected);
         assert_eq!(atom.origins().is_empty(), origin_free);
-        assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
+        assert!(matches!(
+            cursor.advance(),
+            history::HtmlParseHistoryStep::Complete
+        ));
     }
     let associations = report.associations();
     let mut reverse = associations.reverse(&maximum_source, None).unwrap();
@@ -1464,8 +1491,8 @@ fn range_later_maximum_resanitization_keeps_lexical_constraint_and_generated_his
             read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             read::HtmlParseReverseStep::Match(row)
                 if row.relation()
-                    == provenance::AssociationRelation::RangeDependency(
-                        RangeOperandRole::Maximum,
+                    == provenance::HtmlParseAssociationRelation::RangeDependency(
+                        HtmlParseRangeOperandRole::Maximum,
                     ) =>
             {
                 assert_eq!((row.start(), row.end()), (0, 2));
@@ -1498,7 +1525,7 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
         )>,
     >(&mut c, 1)
     .unwrap();
-    c.charge(WorkCategory::ProviderCall, 1).unwrap();
+    c.charge(HtmlParseWorkCategory::ProviderCall, 1).unwrap();
     session.active_mut().unwrap().cancel_after_range_append =
         Some((None, request.cancellation().clone()));
     let result = session.allocate_input_for_creation(
@@ -1512,7 +1539,10 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
         &range,
         &capability,
     );
-    assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+    assert_eq!(
+        result.err(),
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
+    );
     assert!(input.is_none());
     assert!(
         session
@@ -1527,7 +1557,7 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
     );
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let at_stop = c.first_stop_usage().unwrap().clone();
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -1535,7 +1565,7 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.usage().actual_capacity_bytes, 0);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(c.first_stop_usage(), Some(&at_stop));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1570,7 +1600,7 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
         let (mut c, mut session, capability, lexer, parent, mut input, source_range) =
             input_owner(&request);
         payload_write::<Option<RangeIngressCancellation>>(&mut c, 1).unwrap();
-        c.charge(WorkCategory::ProviderCall, 1).unwrap();
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1).unwrap();
         session.active_mut().unwrap().cancel_after_range_ingress = Some(RangeIngressCancellation {
             point,
             scalars_after_fold: 0,
@@ -1587,7 +1617,10 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
             &source_range,
             &capability,
         );
-        assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(
+            result.err(),
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
+        );
         assert!(input.is_none());
         // Terminal fixture inspection of the actual retained producer, not
         // a manufactured cursor/phase or a public test observation API.
@@ -1653,17 +1686,17 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         assert_eq!(
             session.input_state(&mut c, &parent).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(c.first_stop_usage(), Some(&first));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1693,7 +1726,7 @@ fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
     // actual Right append has committed. Earlier roles use the normal path.
     payload_write::<Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>>(&mut c, 1)
         .unwrap();
-    c.charge(WorkCategory::ProviderCall, 1).unwrap();
+    c.charge(HtmlParseWorkCategory::ProviderCall, 1).unwrap();
     session.active_mut().unwrap().cancel_after_range_append = Some((
         Some(RangeScratchRole::Right),
         request.cancellation().clone(),
@@ -1709,7 +1742,10 @@ fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
         &range,
         &capability,
     );
-    assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+    assert_eq!(
+        result.err(),
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
+    );
     assert!(input.is_none());
     let (len, capacity) = session
         .active()
@@ -1724,18 +1760,18 @@ fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     assert_eq!(
         session.input_state(&mut c, &parent).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(c.first_stop_usage(), Some(&first));
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.usage().actual_capacity_bytes, 0);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(c.first_stop_usage(), Some(&first));
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1884,8 +1920,8 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
     };
     assert!(matches!(
         refused,
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert_eq!(c.usage(), &before);

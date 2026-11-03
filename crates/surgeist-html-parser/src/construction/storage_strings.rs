@@ -9,7 +9,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         control.require_document_string(text.value.allocation(), text.value.text())?;
         text.origins.require_owner(control)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
@@ -19,7 +19,7 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         value: FrozenUtf16,
-        origins: Option<OwnedVec<TextOrigin>>,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
     ) -> Result<(DocumentString, usize), SessionError> {
         if let Err(error) = self.require(control) {
             value.release(control)?;
@@ -34,7 +34,7 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         value: FrozenUtf16,
-        origins: Option<OwnedVec<TextOrigin>>,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
     ) -> Result<(DocumentString, usize), SessionError> {
         let origins = if let Some(origins) = origins {
             let evidence = match self.origin_evidence(control) {
@@ -110,9 +110,9 @@ impl SessionStorage {
                 .ok_or(SessionError::WrongToken)?
                 .bind_leaf_value(control, origins, index)?;
         }
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<DocumentString>() as u64,
         )?;
         Ok((value.clone(), index))
@@ -138,9 +138,9 @@ impl SessionStorage {
         let parent_index = self.index(control, parent)?;
         let before_index = before.map(|node| self.index(control, node)).transpose()?;
         self.container(control, parent_index)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(before) = before_index {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self
                 .construction
                 .node_at(before)
@@ -154,7 +154,7 @@ impl SessionStorage {
         }
         let text = input.as_mut().ok_or(SessionError::Consumed)?;
         Self::check_text(control, text)?;
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if text.value.text().is_empty()
             || matches!(
                 self.construction
@@ -174,7 +174,7 @@ impl SessionStorage {
         if before_index.is_none() {
             // Appending: the preceding sibling is the last child, which needs
             // no walk over the parent's other children.
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let parent = self
                 .construction
                 .node_at(parent_index)
@@ -200,7 +200,7 @@ impl SessionStorage {
                 let Some(found) = position.checked_sub(1) else {
                     return Err(latch_registry_row(control));
                 };
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = parent
                     .child_at(found)
                     .ok_or_else(|| latch_registry_row(control))?
@@ -211,7 +211,7 @@ impl SessionStorage {
                 }
             }
             if let Some(previous) = position.checked_sub(1) {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 preceding = Some(
                     parent
                         .child_at(previous)
@@ -220,7 +220,7 @@ impl SessionStorage {
                 );
             }
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let preceding = match preceding {
             Some(index) => match self.construction.node_at(index).map(|record| record.kind()) {
                 Some(HtmlNodeKind::Text(_)) => Some(index),
@@ -279,7 +279,7 @@ impl SessionStorage {
             )
             .map(Some)
         } else {
-            control.charge(WorkCategory::RecordWrite, 2)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
             payload_write::<Option<usize>>(control, 1)?;
             let node = self.allocate_prepared_owned(
                 control,
@@ -304,7 +304,7 @@ impl SessionStorage {
         slot: usize,
         native: bool,
     ) -> Result<bool, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::String {
             value,
             allocation,
@@ -315,15 +315,15 @@ impl SessionStorage {
             return Err(latch_registry_row(control));
         };
         control.require_document_string(allocation, value)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if Arc::strong_count(value.shared_code_units()) != if native { 2 } else { 1 } {
             return Err(SessionError::AliasedPayload);
         }
         if let Some(group) = origins {
             let evidence = self.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<provenance::OriginGroup>() as u64,
             )?;
             let group = evidence.require_group(group)?;

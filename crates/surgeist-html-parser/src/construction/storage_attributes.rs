@@ -60,7 +60,7 @@ impl SessionStorage {
         name: AttributeMergeName,
     ) -> Result<Option<PreparedAttributeMerge>, SessionError> {
         let target = self.index(control, target)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(target)
@@ -82,12 +82,12 @@ impl SessionStorage {
             ConstructionView::Active(self.construction.storage(control)?),
             control,
         )?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if Arc::weak_count(element.attributes().shared_attributes()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if tag.kind != TagKind::Start {
             return Err(SessionError::WrongToken);
         }
@@ -117,7 +117,7 @@ impl SessionStorage {
         )?;
         let planned = (|| {
             for index in 0..tag.attributes.len() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 self.construction.plan_attribute_candidate(
                     control,
                     index,
@@ -175,7 +175,7 @@ impl SessionStorage {
                 .map_err(|_| latch_registry_row(control))?;
             let mut remaining = count;
             while !attributes.as_slice().is_empty() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let decision_index = attributes
                     .len()
                     .checked_sub(1)
@@ -223,11 +223,11 @@ impl SessionStorage {
                 };
                 control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
                 control.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>() })
                         as u64,
                 )?;
-                control.charge(WorkCategory::RecordWrite, 3)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
                 values.push(Attribute::new(
                     QualifiedName::new(Namespace::none(), None, local),
@@ -251,7 +251,7 @@ impl SessionStorage {
             // The actual stage remains reversed: last-pop yields source order
             // without a variable shift or a second attribute representation.
             self.edit_attributes(control, target, container, stage, count, false)?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let old_len = element_record(&self.construction, control, target)?
                 .attributes()
                 .len();
@@ -356,7 +356,7 @@ impl SessionStorage {
             // first-Base href trigger. Other fields share this merge owner.
             let mut href_changed = false;
             for position in start..end {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let attribute = element_attribute(&self.construction, control, target, position)?;
                 if attribute.name().namespace().uri().is_none()
                     && exact_ascii(control, Some(attribute.name().local_name()), "href")?
@@ -422,16 +422,16 @@ impl SessionStorage {
         destination: usize,
         start: usize,
     ) -> Result<(), SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         #[cfg(test)]
         control.observe_registry_iteration();
         if let Some(RetainedPayload::String { location, .. }) = self.payloads.values.get_mut(index)
         {
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 (const { 2 * mem::size_of::<StringLocation>() }) as u64,
             )?;
-            control.charge(WorkCategory::RecordWrite, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             #[cfg(test)]
             control.observe_registry_location_write(mem::size_of::<StringLocation>());
             *location = match *location {
@@ -480,7 +480,7 @@ impl SessionStorage {
         stage: usize,
     ) -> Result<Option<FormEffects>, SessionError> {
         control.require_identity(&self.control)?;
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
             values, ..
         }))) = self.payloads.values.get(stage)
@@ -493,14 +493,14 @@ impl SessionStorage {
         {
             return Ok(None);
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attribute.value().is_empty() {
             return Ok(None);
         }
         #[cfg(test)]
         self.assert_explicit_forms_exact();
         for &index in self.payloads.explicit_form_list() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::FormAssociation {
                 node: Some(node),
                 state,
@@ -554,11 +554,11 @@ impl SessionStorage {
         if form_effects.is_some() {
             payload_write::<Option<FormEffects>>(control, 1)?;
         }
-        control.charge(WorkCategory::ProviderCall, 2)?;
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         payload_write::<Option<AttributeStorage>>(control, 2)?;
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<OrderedAttributes>() as u64,
         )?;
         if append {
@@ -687,11 +687,11 @@ impl SessionStorage {
             let right = mirrored_position(len, left).ok_or_else(|| latch_registry_row(control))?;
             control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 (const { mem::size_of::<Attribute>() * 2 }) as u64,
             )?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            control.charge(WorkCategory::RecordWrite, 3)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 3)?;
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,
                 reversed_pairs,

@@ -17,7 +17,7 @@ impl SessionStorage {
         match document {
             DocumentRef::Owned(document) => {
                 let slot = self.document_slot(c, document)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if matches!(
                     self.payloads.values.get(slot),
                     Some(RetainedPayload::Document {
@@ -36,7 +36,7 @@ impl SessionStorage {
                     }
                     Err(error) => return Err(error),
                 };
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 // This original closed constructor issues the fresh ordinary
                 // parser Document, including the distinct §13.4 auxiliary
                 // Document. Its completion record cannot qualify another owner.
@@ -50,7 +50,7 @@ impl SessionStorage {
                 })
             }
             DocumentRef::Captured(document) => {
-                c.charge(WorkCategory::RecordVisit, 3)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                 let capture = self
                     .fragment
                     .as_ref()

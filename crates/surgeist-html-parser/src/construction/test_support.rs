@@ -23,7 +23,7 @@ pub(super) fn name_units(
     control: &mut ParseControl,
     name: &QualifiedName,
 ) -> Result<usize, SessionError> {
-    control.charge(WorkCategory::RecordVisit, 4)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
     let units = name
         .local_name()
         .len()

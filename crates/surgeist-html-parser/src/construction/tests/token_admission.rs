@@ -85,8 +85,8 @@ fn foreign_token_owner_preserves_input_and_original_ledger_for_cleanup() {
     let mut tag = Some(owned_tag(&mut foreign, "div", &[]));
     assert!(matches!(
         session.allocate_html_tag(&mut c, &mut tag),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert!(tag.is_some());
@@ -118,7 +118,7 @@ fn managed_string_cap_stops_before_text_replacement_and_retains_real_failed_payl
     let error = session.insert_text(&mut c, &root, None, &mut second, None);
     assert!(matches!(
         error,
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::ManagedUtf16Units,
             limit: 1,
             current: 1,

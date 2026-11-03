@@ -2,14 +2,14 @@ use super::*;
 
 #[test]
 fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backings() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("abcdefgh");
     let mut c = control();
     c.admit_source(&source).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     session.initialize_parse_evidence(&mut c, &source).unwrap();
     let root = session.root(&mut c).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut histories = Vec::new();
     let mut node = None;
     for length in 1..=8 {
@@ -177,7 +177,7 @@ fn two_leaf_history(
     let root = session.root(&mut c).unwrap();
     let mut lexer = crate::parser::tokenizer::tests::LexerFixture::new(
         &source,
-        crate::parser::tokenizer::states::State::Data,
+        crate::parser::tokenizer::states::HtmlTokenizerState::Data,
         None,
         &mut c,
     )
@@ -235,7 +235,7 @@ fn history_cursor_cancellation_keeps_canonical_snapshot_and_reclaims_real_frames
     cancel.cancel();
     assert_eq!(
         cursor.next(evidence, &mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let snapshot = c.first_stop_usage().unwrap().clone();
     let work = c.usage().resource(HtmlParseResource::WorkCredits);
@@ -250,7 +250,7 @@ fn history_cursor_cancellation_keeps_canonical_snapshot_and_reclaims_real_frames
     assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
     assert!(matches!(
         evidence.materialize_group(&mut c, &session.active().unwrap().payloads, &group),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     ));
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -265,8 +265,8 @@ fn history_cursor_foreign_control_or_evidence_cannot_advance_the_owning_cursor()
     let mut cursor = provenance::GroupOriginCursor::new(evidence, &group, &mut c).unwrap();
     assert!(matches!(
         cursor.next(evidence, &mut other),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
     assert!(c.stop().is_none());
@@ -280,8 +280,8 @@ fn history_cursor_foreign_control_or_evidence_cannot_advance_the_owning_cursor()
     let foreign = ParseEvidence::prepare(&mut c).unwrap();
     assert!(matches!(
         cursor.next(&foreign, &mut c),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignEvidence
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignEvidence
         )))
     ));
     cursor.release(&mut c).unwrap();
@@ -305,7 +305,7 @@ fn history_cursor_lender_disposal_is_safe_for_owning_control_and_cancellation() 
                 cancel.cancel();
                 assert!(matches!(
                     rows.next_group_origin(&mut cursor),
-                    Err(SessionError::Stop(ParseStop::Cancelled))
+                    Err(SessionError::Stop(HtmlParseStop::Cancelled))
                 ));
             } else {
                 let first = rows.next_group_origin(&mut cursor).unwrap().unwrap();
@@ -327,16 +327,16 @@ fn history_cursor_lender_disposal_is_safe_for_owning_control_and_cancellation() 
         assert_eq!(c.usage().actual_capacity_bytes, baseline_capacity);
         let first = c.first_stop_usage().cloned();
         if cancelled {
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             for category in [
-                WorkCategory::StateStep,
-                WorkCategory::InputUnitRead,
-                WorkCategory::InspectByte,
-                WorkCategory::CopyByte,
-                WorkCategory::RecordVisit,
-                WorkCategory::RecordWrite,
-                WorkCategory::ReserveByte,
-                WorkCategory::ProviderCall,
+                HtmlParseWorkCategory::StateStep,
+                HtmlParseWorkCategory::InputUnitRead,
+                HtmlParseWorkCategory::InspectByte,
+                HtmlParseWorkCategory::CopyByte,
+                HtmlParseWorkCategory::RecordVisit,
+                HtmlParseWorkCategory::RecordWrite,
+                HtmlParseWorkCategory::ReserveByte,
+                HtmlParseWorkCategory::ProviderCall,
             ] {
                 assert_eq!(
                     c.usage().work(category),
@@ -391,8 +391,8 @@ fn foreign_history_cursor_lender_disposal_keeps_cleanup_owned() {
         let mut rows = foreign_session.native_associations(&mut foreign).unwrap();
         assert_eq!(
             rows.release_group_origin_cursor(&mut cursor),
-            Err(SessionError::Stop(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::ForeignControl
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignControl
             )))
         );
     }
@@ -514,7 +514,7 @@ fn historical_materialization_exact_one_short_releases_output_and_traversal_on_f
         if short {
             assert!(matches!(
                 result,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 }))
@@ -524,7 +524,7 @@ fn historical_materialization_exact_one_short_releases_output_and_traversal_on_f
             let output = result.unwrap();
             assert_eq!(output.text().code_units(), [65, 66]);
             ParseEvidence::release_materialized_group(&mut c, &mut Some(output)).unwrap();
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         }
         assert_eq!(
             c.usage()
@@ -548,13 +548,13 @@ fn historical_materialization_exact_one_short_releases_output_and_traversal_on_f
 }
 #[test]
 fn invalidated_pi_map_keeps_exact_retired_decoded_values_for_completion() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<?marker a='A' a='B'?>");
     let mut c = control();
     c.admit_source(&source).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     session.initialize_parse_evidence(&mut c, &source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let TokenKind::ProcessingInstruction { target, data } = lexical_kind(&mut lexer, &mut c) else {
         panic!("literal PI");
     };
@@ -686,11 +686,11 @@ fn equal_units_with_distinct_atomic_origin_partition_keep_a_new_leaf() {
     let mut maps = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
     maps.try_push(
         &mut c,
-        TextOrigin {
+        HtmlParseTextOrigin {
             start: 0,
             end: 2,
             source: source.range(0, 2).unwrap(),
-            kind: crate::parser::tokenizer::token::OriginKind::Literal,
+            kind: crate::parser::tokenizer::token::HtmlParseOriginKind::Literal,
         },
     )
     .unwrap();
@@ -773,8 +773,8 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
     let mut foreign = control();
     assert_eq!(
         ParseEvidence::release_materialized_group(&mut foreign, &mut output),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::ForeignControl
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     );
     assert!(output.is_some());
@@ -795,7 +795,7 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
             .unwrap(),
     );
     // Actual work exhaustion latches the snapshot before cleanup.
-    c.charge(WorkCategory::StateStep, limits().work_credits())
+    c.charge(HtmlParseWorkCategory::StateStep, limits().work_credits())
         .unwrap_err();
     let first = c.first_stop_usage().unwrap().clone();
     let work = c.usage().resource(HtmlParseResource::WorkCredits);
@@ -836,7 +836,7 @@ fn completed_projection_refuses_real_pending_leaf_attachment() {
 
 #[test]
 fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // N>0 retains N origin atoms, 2N-1 group headers and 2N-1
     // causes; projection adds two native node rows plus N current atoms.
     // The native prefix therefore retains 6N SourceMapEntries. Complete
@@ -875,7 +875,7 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         session.initialize_parse_evidence(&mut c, &source).unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut last = None;
         for position in 0..count {
             let mut text = Some(match lexical_kind(&mut lexer, &mut c) {
@@ -961,7 +961,7 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         if one_short {
             assert_eq!(
                 projection,
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::SourceMapEntries,
                     limit: 2046,
                     current: 2046,
@@ -1028,19 +1028,19 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                 );
                 assert_eq!(
                     row.kind,
-                    Some(crate::parser::tokenizer::token::OriginKind::Literal)
+                    Some(crate::parser::tokenizer::token::HtmlParseOriginKind::Literal)
                 );
             }
         }
         let categories = [
-            WorkCategory::StateStep,
-            WorkCategory::InputUnitRead,
-            WorkCategory::InspectByte,
-            WorkCategory::CopyByte,
-            WorkCategory::RecordVisit,
-            WorkCategory::RecordWrite,
-            WorkCategory::ReserveByte,
-            WorkCategory::ProviderCall,
+            HtmlParseWorkCategory::StateStep,
+            HtmlParseWorkCategory::InputUnitRead,
+            HtmlParseWorkCategory::InspectByte,
+            HtmlParseWorkCategory::CopyByte,
+            HtmlParseWorkCategory::RecordVisit,
+            HtmlParseWorkCategory::RecordWrite,
+            HtmlParseWorkCategory::ReserveByte,
+            HtmlParseWorkCategory::ProviderCall,
         ];
         eprintln!(
             "append={count} retained_capacity={} retained_peak={} retained_work={:?} projection_work_delta={:?} projected_capacity={} projected_peak={}",
@@ -1058,7 +1058,7 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
 
 #[test]
 fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_times_history() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     // Independent fixture: Data emits N one-unit x leaves; real sink merges
     // them into one native Text. The direct sink's Request/Merge causes have
     // no direct source: complete D1 emits no causal lineage rows here.
@@ -1069,7 +1069,7 @@ fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_t
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         session.initialize_parse_evidence(&mut c, &source).unwrap();
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut last = None;
         for offset in 0..count {
             let mut text = Some(match lexical_kind(&mut lexer, &mut c) {
@@ -1108,11 +1108,11 @@ fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_t
         );
         event.release(&mut c).unwrap();
         lexer.release(&mut c).unwrap();
-        let before = c.usage().work(WorkCategory::RecordVisit);
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let visits = c.usage().work(WorkCategory::RecordVisit) - before;
+        let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         assert_eq!(
             session.native_associations(&mut c).unwrap().len(),
             count + 2
@@ -1126,28 +1126,30 @@ fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_t
             .collect();
         assert_eq!(
             rows.iter()
-                .filter(|row| row.relation == provenance::AssociationRelation::Output)
+                .filter(|row| row.relation == provenance::HtmlParseAssociationRelation::Output)
                 .count(),
             count
         );
         assert_eq!(
             rows.iter()
-                .filter(|row| row.relation == provenance::AssociationRelation::Cause)
+                .filter(|row| row.relation == provenance::HtmlParseAssociationRelation::Cause)
                 .count(),
             2 * count - 1
         );
         assert_eq!(
             rows.iter()
-                .filter(|row| row.relation == provenance::AssociationRelation::LexicalAnchor)
+                .filter(
+                    |row| row.relation == provenance::HtmlParseAssociationRelation::LexicalAnchor
+                )
                 .count(),
             1
         );
         assert!(rows.iter().all(|row| matches!(
             row.relation,
-            provenance::AssociationRelation::Output
-                | provenance::AssociationRelation::Creation
-                | provenance::AssociationRelation::Cause
-                | provenance::AssociationRelation::LexicalAnchor
+            provenance::HtmlParseAssociationRelation::Output
+                | provenance::HtmlParseAssociationRelation::Creation
+                | provenance::HtmlParseAssociationRelation::Cause
+                | provenance::HtmlParseAssociationRelation::LexicalAnchor
         )));
         assert_eq!(
             c.usage()
@@ -1184,13 +1186,13 @@ fn assert_merged_text_retains_qualified_origins(
         usize,
         usize,
         crate::HtmlSourceRange,
-        crate::parser::tokenizer::token::OriginKind,
+        crate::parser::tokenizer::token::HtmlParseOriginKind,
     )>,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let mut c = control();
     c.admit_source(source).unwrap();
-    let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
     let mut original: Option<ParserNode> = None;
@@ -1284,7 +1286,9 @@ fn assert_merged_text_retains_qualified_origins(
 
 #[test]
 fn merged_text_retains_rebased_utf8_scalar_newline_and_entity_origins() {
-    use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal, Newline};
+    use crate::parser::tokenizer::token::HtmlParseOriginKind::{
+        CharacterReference, Literal, Newline,
+    };
     let source = crate::HtmlSource::utf8("A🙂\r\n&NotEqualTilde;");
     assert_merged_text_retains_qualified_origins(
         &source,
@@ -1300,7 +1304,9 @@ fn merged_text_retains_rebased_utf8_scalar_newline_and_entity_origins() {
 
 #[test]
 fn merged_text_retains_rebased_utf16_scalar_newline_and_entity_origins() {
-    use crate::parser::tokenizer::token::OriginKind::{CharacterReference, Literal, Newline};
+    use crate::parser::tokenizer::token::HtmlParseOriginKind::{
+        CharacterReference, Literal, Newline,
+    };
     let source = crate::HtmlSource::utf16(DocumentString::from("A🙂\r\n&NotEqualTilde;"));
     assert_merged_text_retains_qualified_origins(
         &source,

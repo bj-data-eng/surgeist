@@ -80,7 +80,7 @@ impl StringLocation {
     ) -> Result<Option<&'a DocumentString>, SessionError> {
         let value = match *self {
             Self::PiName(map, index) | Self::PiValue(map, index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 2)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 2)?;
                 match payloads.get(map) {
                     Some(RetainedPayload::PiAttributes { values, .. }) => {
                         values.as_slice().get(index).map(|pair| {
@@ -96,21 +96,21 @@ impl StringLocation {
             }
             Self::Detached => None,
             Self::Text(index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
                     Some(HtmlNodeKind::Text(value)) => Some(value),
                     _ => None,
                 }
             }
             Self::Comment(index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
                     Some(HtmlNodeKind::Comment(value)) => Some(value),
                     _ => None,
                 }
             }
             Self::ProcessingInstructionTarget(index) | Self::ProcessingInstructionData(index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
                     Some(HtmlNodeKind::ProcessingInstruction(value)) => Some(match self {
                         Self::ProcessingInstructionTarget(_) => value.target(),
@@ -120,7 +120,7 @@ impl StringLocation {
                 }
             }
             Self::DoctypeName(index) | Self::DoctypePublic(index) | Self::DoctypeSystem(index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
                     Some(HtmlNodeKind::Doctype(value)) => match self {
                         Self::DoctypeName(_) => Some(value.name()),
@@ -131,7 +131,7 @@ impl StringLocation {
                 }
             }
             Self::ElementName(index) | Self::Namespace(index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
                     Some(HtmlNodeKind::Element(value)) => match self {
                         Self::ElementName(..) => Some(value.name().local_name()),
@@ -144,7 +144,7 @@ impl StringLocation {
             | Self::AttributeValue(container, index)
             | Self::AttributeNamespace(container, index)
             | Self::AttributePrefix(container, index) => {
-                cleanup_charge(control, WorkCategory::RecordVisit, 2)?;
+                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 2)?;
                 let attribute = match payloads.get(container) {
                     Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing {
                         values,
@@ -186,7 +186,7 @@ impl StringLocation {
                         ..
                     }))) => {
                         if index < *moved {
-                            cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+                            cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                             let Some(position) = start.checked_add(index) else {
                                 return Err(SessionError::AliasedPayload);
                             };

@@ -22,11 +22,11 @@ fn assert_listed_owner(
 
 #[test]
 fn ordinary_creation_does_not_issue_input_select_or_details_profile_metadata() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><input><select><details>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -57,11 +57,11 @@ fn ordinary_creation_does_not_issue_input_select_or_details_profile_metadata() {
 
 #[test]
 fn listed_creation_suppresses_pointer_for_present_empty_form_and_retains_qualified_kinds() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form id=f><button><fieldset form=''><object form=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -139,11 +139,11 @@ fn listed_creation_suppresses_pointer_for_present_empty_form_and_retains_qualifi
 
 #[test]
 fn listed_first_id_tree_order_blocks_later_form_and_id_only_removal_reassociates() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button form=f><div id=f><form id=f><form id=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -186,11 +186,11 @@ fn listed_first_id_tree_order_blocks_later_form_and_id_only_removal_reassociates
 
 #[test]
 fn listed_removal_id_event_resets_detached_same_document_recipient_after_local_preservation() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<div><button form=f><form id=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let group = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &group, None, None).unwrap();
@@ -262,11 +262,11 @@ fn listed_removal_id_event_resets_detached_same_document_recipient_after_local_p
 
 #[test]
 fn listed_connected_explicit_form_has_no_ancestor_fallback_but_detached_reset_does() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form id=f><fieldset form=missing><object form=''>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &form, None, None).unwrap();
@@ -318,11 +318,11 @@ fn listed_connected_explicit_form_has_no_ancestor_fallback_but_detached_reset_do
 
 #[test]
 fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freezes() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -385,7 +385,7 @@ fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freez
 
 #[test]
 fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     for text in ["<button>", "<fieldset>", "<object>"] {
         let source = crate::HtmlSource::utf8(text);
         let mut c = ParseControl::new(
@@ -397,7 +397,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             HtmlParseCancellation::new(),
         );
         c.admit_source(&source).unwrap();
-        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut session =
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
@@ -430,7 +430,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
         assert_eq!(result.err(), Some(SessionError::Stop(stop)));
         assert!(matches!(
             stop,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
                 current: 22,
                 requested_delta: 3,
@@ -458,11 +458,11 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
 
 #[test]
 fn listed_getters_require_actual_active_and_frozen_arena_and_control_owners() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let node = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &node, None, None).unwrap();
@@ -519,7 +519,7 @@ fn listed_getters_require_actual_active_and_frozen_arena_and_control_owners() {
 
 #[test]
 fn listed_id_matching_is_exact_untrimmed_utf16_and_empty_id_never_matches_empty_form() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let mut units: Vec<u16> = "<button form='X ".encode_utf16().collect();
     units.extend([0xd800, 0xd83d, 0xde00]);
     units.extend("'><form id='x ".encode_utf16());
@@ -530,7 +530,7 @@ fn listed_id_matching_is_exact_untrimmed_utf16_and_empty_id_never_matches_empty_
     let source = crate::HtmlSource::utf16(DocumentString::from_utf16(units));
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -575,11 +575,11 @@ fn listed_id_matching_is_exact_untrimmed_utf16_and_empty_id_never_matches_empty_
 
 #[test]
 fn listed_detached_id_change_resets_only_same_ordinary_tree() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<form><button form=f><button form=f><body id=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     let in_form = form_creation(&mut session, &mut lexer, &mut c, &form, None);
@@ -630,10 +630,10 @@ fn listed_detached_id_change_resets_only_same_ordinary_tree() {
 fn listed_move_fixture(
     c: &mut ParseControl,
 ) -> (ParserArenaSession, ParserNode, ParserNode, ParserNode) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<div><button form=f><form id=f><div>");
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, c).unwrap();
     let (mut session, body) = form_session(c);
     let group = form_creation(&mut session, &mut lexer, c, &body, None);
     session.insert(c, &body, &group, None, None).unwrap();
@@ -672,7 +672,7 @@ fn listed_exact_and_one_short_effect_work_retains_cleanup_only_phase_and_first_s
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
-            WorkCategory::StateStep,
+            HtmlParseWorkCategory::StateStep,
             unused - whole + if short { tail + 1 } else { 0 },
         )
         .unwrap();
@@ -724,7 +724,7 @@ fn listed_exact_and_one_short_effect_work_retains_cleanup_only_phase_and_first_s
             assert!(session.active().unwrap().effects.form.is_none());
             // Successful operation exhausts its exact finite budget. Latch
             // the next real attempted credit before terminal disposal.
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             session.release(&mut c).unwrap();
             storage_zero(&c);
         }
@@ -739,7 +739,7 @@ fn listed_real_cancel_between_removal_and_insertion_retains_completed_global_res
     session.active_mut().unwrap().cancel_after_removal = Some(cancellation);
     assert_eq!(
         session.insert(&mut c, &target, &group, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert_eq!(
@@ -768,14 +768,14 @@ fn listed_real_cancel_between_removal_and_insertion_retains_completed_global_res
         .unwrap();
     assert_eq!(state.owner, None);
     assert!(!state.parser_inserted);
-    assert_eq!(state.evidence, FormAssociationEvidence::Reset);
+    assert_eq!(state.evidence, HtmlParseFormEvidence::Reset);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 fn listed_id_slot_fixture(
@@ -786,10 +786,10 @@ fn listed_id_slot_fixture(
     ParserNode,
     PreparedAttributeMerge,
 ) {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=f title=after>");
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, c).unwrap();
     let (mut session, body) = form_session(c);
     let button = form_creation(&mut session, &mut lexer, c, &body, None);
     session.insert(c, &body, &button, None, None).unwrap();
@@ -865,8 +865,8 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
     let old_count = session.active().unwrap().construction.test_storage().len();
     assert!(matches!(
         session.form_association_owner(&mut c, &button),
-        Err(SessionError::Stop(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::PendingFormEffects
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::PendingFormEffects
         )))
     ));
     let stop = c.stop().unwrap();
@@ -917,8 +917,11 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
         let unused =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, unused - whole + u64::from(short))
-            .unwrap();
+        c.charge(
+            HtmlParseWorkCategory::StateStep,
+            unused - whole + u64::from(short),
+        )
+        .unwrap();
         let result = session.active_mut().unwrap().drain_form_effects(&mut c);
         let storage = session.active().unwrap();
         let state = storage
@@ -934,7 +937,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
             })
             .unwrap();
         assert_eq!(state.owner, None);
-        assert_eq!(state.evidence, FormAssociationEvidence::Reset);
+        assert_eq!(state.evidence, HtmlParseFormEvidence::Reset);
         assert!(!state.parser_inserted);
         assert!(matches!(
             &storage.payloads.values[prepared.stage],
@@ -963,7 +966,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
             assert!(session.active().unwrap().effects.form.is_none());
             // No credit remains to complete the next slot/rebind. Terminal
             // disposal must reclaim the existing redirect, not drop it.
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         }
         let stop = c.stop().unwrap();
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -987,11 +990,11 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
     cancellation.cancel();
     assert_eq!(
         session.active_mut().unwrap().drain_form_effects(&mut c),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(
         session.form_association_owner(&mut c, &button).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(session.active().unwrap().effects.form.is_some());
     assert!(matches!(
@@ -1011,21 +1014,21 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
     assert_eq!(element.attributes().as_slice().len(), 1);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
 fn listed_virtual_removal_excludes_moved_id_from_outside_tree_before_insertion() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     let source = crate::HtmlSource::utf8("<button form=f><div><form id=f><div>");
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -1047,7 +1050,7 @@ fn listed_virtual_removal_excludes_moved_id_from_outside_tree_before_insertion()
     session.active_mut().unwrap().cancel_after_removal = Some(cancellation);
     assert_eq!(
         session.insert(&mut c, &target, &group, None, None),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let storage = session.active().unwrap();
     assert_eq!(
@@ -1089,16 +1092,16 @@ fn listed_virtual_removal_excludes_moved_id_from_outside_tree_before_insertion()
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
 fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavailable() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button form=f><form id=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -1136,9 +1139,9 @@ fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavail
     );
     assert_eq!(
         session.validate_standalone_document(&mut c),
-        Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-            StandaloneUnsupported::Provenance
-        )))
+        Err(SessionError::Stop(
+            HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
+        ))
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -1147,11 +1150,11 @@ fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavail
 
 #[test]
 fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner() {
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let source = crate::HtmlSource::utf8("<button form=f><form id=f><body id=''><body id=f>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let (mut session, body) = form_session(&mut c);
     let button = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     session.insert(&mut c, &body, &button, None, None).unwrap();
@@ -1213,7 +1216,8 @@ fn a_creation_that_loses_its_form_association_row_reports_the_registry_row() {
         &range,
         &capability,
     );
-    let registry_row = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+    let registry_row =
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow);
     assert_eq!(result.err(), Some(SessionError::Stop(registry_row)));
     assert_eq!(c.stop(), Some(registry_row));
     // The row goes back where the registry expects it, so cleanup finds

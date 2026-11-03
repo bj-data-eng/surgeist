@@ -83,10 +83,10 @@ pub(super) fn validate_parser_attributes(
         {
             let layout = action.layout();
             if layout.record_visits() != 0 {
-                control.charge(WorkCategory::RecordVisit, layout.record_visits())?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, layout.record_visits())?;
             }
             if layout.inspected_bytes() != 0 {
-                control.charge(WorkCategory::InspectByte, layout.inspected_bytes())?;
+                control.charge(HtmlParseWorkCategory::InspectByte, layout.inspected_bytes())?;
             }
             action.advance().map_err(validation_error)?;
         }
@@ -213,7 +213,7 @@ impl ParserArenaSession {
             .associated_document_parent(control, parent)?
         {
             return Err(control
-                .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::ScriptDocument)
                 .into());
         }
         let storage = self.active()?;
@@ -230,14 +230,14 @@ impl ParserArenaSession {
         SessionStorage::check_html_tag(control, tag)?;
         check_text_source(control, &tag.name)?;
         for (index, attribute) in tag.attributes.as_slice().iter().enumerate() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.require_source_range(&attribute.source)?;
             check_text_source(control, &attribute.name)?;
             check_text_source(control, &attribute.value)?;
             // No recoverable duplicate rejection may follow an initialized
             // metadata slot. Compare actual unique no-namespace token names.
             for earlier in tag.attributes.as_slice().iter().take(index) {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_string_equal(
                     control,
                     earlier.name.value.text(),
@@ -256,7 +256,7 @@ impl ParserArenaSession {
             ) {
                 return Ok(false);
             }
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             exact_ascii(control, Some(tag.name.value.text()), candidate.local_name())
         })?;
         let token_source = match profile {
@@ -275,10 +275,10 @@ impl ParserArenaSession {
             }
             let closed = capability.details_notification_domain(control, self)?;
             for attr in tag.attributes.as_slice() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_ascii(control, Some(attr.name.value.text()), "open")? && !closed {
                     return Err(control
-                        .stop_unsupported_standalone(StandaloneUnsupported::DetailsNotification)
+                        .stop_unsupported_standalone(HtmlParseUnsupportedState::DetailsNotification)
                         .into());
                 }
             }
@@ -326,7 +326,7 @@ impl ParserArenaSession {
         let mut explicit_form = false;
         if kind.is_some_and(HtmlNativeFormAssociationKind::listed) {
             for attribute in tag.attributes.as_slice() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_ascii(control, Some(attribute.name.value.text()), "form")? {
                     explicit_form = true;
                     break;
@@ -355,7 +355,7 @@ impl ParserArenaSession {
         let value_source = if kind == Some(HtmlNativeFormAssociationKind::Input) {
             let mut selected = None;
             for attribute in tag.attributes.as_slice() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_ascii(control, Some(attribute.name.value.text()), "value")? {
                     selected = Some(&attribute.source);
                     break;
@@ -369,7 +369,7 @@ impl ParserArenaSession {
             token_source.filter(|_| kind == Some(HtmlNativeFormAssociationKind::Input))
         {
             control.charge(
-                WorkCategory::ProviderCall,
+                HtmlParseWorkCategory::ProviderCall,
                 if value_source.is_some() { 2 } else { 1 },
             )?;
             payload_write::<(crate::HtmlSourceRange, Option<crate::HtmlSourceRange>)>(control, 1)?;
@@ -383,7 +383,7 @@ impl ParserArenaSession {
             storage.prepare_document_allocation(control, Some(document), template)?;
         let mut is_value = None;
         for attr in tag.attributes.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attr.name.value.text()), "is")? {
                 is_value = Some(&attr.value);
                 break;
@@ -476,7 +476,7 @@ impl ParserArenaSession {
                     RetainedPayload::Output {
                         node: None,
                         state: OutputState {
-                            default_value_override: OutputDefaultValueOverride::Null,
+                            default_value_override: HtmlParseOutputOverride::Null,
                         },
                     },
                 )
@@ -570,9 +570,9 @@ impl ParserArenaSession {
                             },
                             parser_inserted: !reset_before_association && owner.is_some(),
                             evidence: if !reset_before_association && owner.is_some() {
-                                FormAssociationEvidence::ParserAssociated
+                                HtmlParseFormEvidence::ParserAssociated
                             } else {
-                                FormAssociationEvidence::Created
+                                HtmlParseFormEvidence::Created
                             },
                         },
                     },
@@ -628,7 +628,7 @@ impl ParserArenaSession {
                 *bound = Some(node.index);
             }
             if let Some(textarea) = textarea_slot {
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if storage
                     .construction
                     .node_at(node.index)
@@ -663,7 +663,7 @@ impl ParserArenaSession {
                 // Syntax3537 reset: actual freshly allocated output has a null
                 // override and empty descendants. DOM1593/716 therefore replaces
                 // all with null: zero removed/added children, no mutation record.
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if storage
                     .construction
                     .node_at(node.index)
@@ -681,7 +681,7 @@ impl ParserArenaSession {
                     return Err(latch_registry_row(control));
                 };
                 *bound = Some(node.index);
-                state.default_value_override = OutputDefaultValueOverride::Null;
+                state.default_value_override = HtmlParseOutputOverride::Null;
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_output_reset.take() {
                     cancellation.cancel();
@@ -695,7 +695,7 @@ impl ParserArenaSession {
                 *lost = Some((slot, mem::replace(row, RetainedPayload::Retired)));
             }
             if let Some(slot) = slot {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 payload_write::<Option<usize>>(control, 1)?;
                 let Some(RetainedPayload::FormAssociation { node: bound, .. }) =
                     storage.payloads.values.get_mut(slot)
@@ -717,9 +717,9 @@ impl ParserArenaSession {
                     state.owner = owner;
                     state.parser_inserted = owner.is_some();
                     state.evidence = if owner.is_some() {
-                        FormAssociationEvidence::ParserAssociated
+                        HtmlParseFormEvidence::ParserAssociated
                     } else {
-                        FormAssociationEvidence::Created
+                        HtmlParseFormEvidence::Created
                     };
                 }
                 if reset_before_association && owner.is_some() && input_slot.is_some() {

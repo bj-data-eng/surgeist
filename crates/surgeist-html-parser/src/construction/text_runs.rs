@@ -31,7 +31,7 @@ impl BodyTextRuns {
     ) -> Result<Option<TextRun>, SessionError> {
         let entries = self.entries.as_mut().ok_or(SessionError::Consumed)?;
         entries.require_owner(control)?;
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.next == entries.len() {
             return Ok(None);
         }
@@ -54,13 +54,13 @@ impl BodyTextRuns {
     /// Preflight precedes disposal. Once it begins, newly latched work or
     /// cancellation stops cannot strand later nested owners.
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
-        cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+        cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(entries) = self.entries.as_ref() else {
             return Ok(());
         };
         entries.require_disposal_owner(control)?;
         for entry in entries.as_slice() {
-            cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
+            cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(run) = entry {
                 check_disposal_text(control, &run.text)?;
             }
@@ -100,7 +100,7 @@ impl BodyTextRuns {
 struct TextRunDraft {
     pub(super) kind: BodyTextKind,
     pub(super) value: Utf16Buffer,
-    pub(super) origins: OwnedVec<TextOrigin>,
+    pub(super) origins: OwnedVec<HtmlParseTextOrigin>,
 }
 
 impl TextRunDraft {
@@ -198,19 +198,19 @@ fn stage_text_runs(
     };
     let mut draft: Option<TextRunDraft> = None;
     let result = (|| {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let units = text.value.text().code_units();
         let len = units.len();
         let mut covered = 0;
         for origin in text.origins.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.require_source_range(&origin.source)?;
             if origin.start != covered || origin.end <= origin.start || origin.end > len {
                 return Err(SessionError::OriginSplitUnavailable);
             }
             let mut kind = None;
             for index in origin.start..origin.end {
-                control.charge(WorkCategory::InspectByte, 2)?;
+                control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                 let Some(&unit) = units.get(index) else {
                     return Err(latch_registry_row(control));
                 };
@@ -242,11 +242,11 @@ fn stage_text_runs(
                 return Err(latch_registry_row(control));
             };
             current.value.extend_units(origin_units, control)?;
-            control.charge(WorkCategory::ProviderCall, 1)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlSourceRange>(control, 1)?;
             current.origins.try_push(
                 control,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start,
                     end: current.value.len(),
                     source: origin.source.clone(),
@@ -304,11 +304,11 @@ pub(crate) fn split_first_lf(
 ) -> Result<Option<Text>, SessionError> {
     let text = input.as_mut().ok_or(SessionError::Consumed)?;
     SessionStorage::check_text(control, text)?;
-    control.charge(WorkCategory::RecordVisit, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if text.value.text().is_empty() {
         return Ok(None);
     }
-    control.charge(WorkCategory::InspectByte, 2)?;
+    control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
     if text.value.text().code_units().first() != Some(&10) {
         return Ok(None);
     }
@@ -371,7 +371,7 @@ pub(crate) fn split_leading_ascii_whitespace(
     SessionStorage::check_text(control, text)?;
     let mut cut = 0usize;
     for &unit in text.value.text().code_units() {
-        control.charge(WorkCategory::InspectByte, 2)?;
+        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
         if !matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
             break;
         }
@@ -386,7 +386,7 @@ pub(crate) fn split_leading_ascii_whitespace(
     }
     let mut covered = 0;
     for origin in text.origins.as_slice() {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if origin.start != covered
             || origin.end <= origin.start
             || origin.end > text.value.text().len()
@@ -436,11 +436,11 @@ fn slice_text(
         };
         buffer.extend_units(units, control)?;
         for origin in text.origins.as_slice() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if origin.start < start || origin.end > end {
                 continue;
             }
-            control.charge(WorkCategory::ProviderCall, 1)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlSourceRange>(control, 1)?;
             let (Some(origin_start), Some(origin_end)) = (
                 origin.start.checked_sub(start),
@@ -450,7 +450,7 @@ fn slice_text(
             };
             origins.try_push(
                 control,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: origin_start,
                     end: origin_end,
                     source: origin.source.clone(),
