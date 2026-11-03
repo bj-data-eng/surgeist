@@ -3,6 +3,7 @@
 //! WHATWG source attribution is in the crate notice.
 
 use super::*;
+use crate::tokens::ascii_lowercase;
 use crate::{HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlTokenError};
 use std::{collections::HashMap, error::Error, fmt};
 
@@ -361,13 +362,7 @@ fn duplicate(specifiers: &[HtmlAcceptSpecifier]) -> Option<HtmlAcceptDuplicate> 
             .value()
             .code_units()
             .iter()
-            .map(|&unit| {
-                if (0x41..=0x5a).contains(&unit) {
-                    unit + 0x20
-                } else {
-                    unit
-                }
-            })
+            .map(|&unit| ascii_lowercase(unit))
             .collect();
         if let Some(&first_index) = seen.get(&key) {
             return Some(HtmlAcceptDuplicate {

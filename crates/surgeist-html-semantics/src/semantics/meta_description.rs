@@ -2,6 +2,7 @@
 //! Raw metadata, author requirements and contextual evidence remain independent.
 
 use super::*;
+use crate::bounded::ascii_case_insensitive_unit;
 
 /// The selected name requires content; a specified empty content satisfies this
 /// presence rule. This is not an assessment of the description's meaning.
@@ -127,7 +128,7 @@ impl<'a> HtmlSemanticSession<'a> {
         // A fixed ASCII keyword proof: no trim, Unicode fold or allocated copy.
         for (unit, byte) in units.iter().zip(b"description") {
             self.charge(1)?;
-            if *unit > 127 || (*unit as u8).to_ascii_lowercase() != *byte {
+            if !ascii_case_insensitive_unit(*unit, *byte) {
                 return Ok(None);
             }
         }

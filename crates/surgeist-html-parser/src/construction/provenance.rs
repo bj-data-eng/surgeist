@@ -900,10 +900,8 @@ impl ParseEvidence {
                         let mut offset = 0;
                         let mut compare = |unit: u16| -> Result<(), SessionError> {
                             c.charge_unit_inspection()?;
-                            let expected = if origin.kind == HtmlParseOriginKind::AsciiLowercase
-                                && (65..=90).contains(&unit)
-                            {
-                                unit | 0x20
+                            let expected = if origin.kind == HtmlParseOriginKind::AsciiLowercase {
+                                surgeist_html::bounded::ascii_lowercase(unit)
                             } else {
                                 unit
                             };

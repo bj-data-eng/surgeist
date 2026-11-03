@@ -192,8 +192,8 @@ impl HtmlTokenComparison {
             .code_units()
             .iter()
             .map(|&u| match self {
-                Self::AsciiCaseInsensitive if (0x41..=0x5A).contains(&u) => u + 0x20,
-                _ => u,
+                Self::AsciiCaseInsensitive => ascii_lowercase(u),
+                Self::CaseSensitive => u,
             })
             .collect()
     }
@@ -206,8 +206,8 @@ impl HtmlTokenComparison {
                 .zip(right.code_units())
                 .all(|(&a, &b)| {
                     let fold = |u: u16| match self {
-                        Self::AsciiCaseInsensitive if (0x41..=0x5A).contains(&u) => u + 0x20,
-                        _ => u,
+                        Self::AsciiCaseInsensitive => ascii_lowercase(u),
+                        Self::CaseSensitive => u,
                     };
                     fold(a) == fold(b)
                 })
@@ -402,8 +402,39 @@ fn unique_tokens(
 /// defines it: tab (U+0009), line feed (U+000A), form feed (U+000C), carriage
 /// return (U+000D) or space (U+0020). Vertical tab (U+000B) and non-ASCII
 /// whitespace such as U+00A0 are not ASCII whitespace.
+///
+/// The pinned HTML edition defers to Infra; the retained capture is
+/// `references/dom-infra-codepoints-strings--editor-capture-20261010--a140d8f6286f.md`,
+/// "ASCII whitespace" (line 89).
 pub fn ascii_whitespace(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
+}
+
+/// Applies the Infra Standard's ASCII lowercase to one UTF-16 code unit: each ASCII upper alpha
+/// (U+0041 through U+005A) becomes the corresponding ASCII lower alpha, and every other unit,
+/// including non-ASCII letters and surrogates, is returned unchanged.
+///
+/// The pinned HTML edition defers to Infra; the retained capture is
+/// `references/dom-infra-codepoints-strings--editor-capture-20261010--a140d8f6286f.md`,
+/// "ASCII lowercase" (line 333).
+pub fn ascii_lowercase(unit: u16) -> u16 {
+    if matches!(unit, 0x41..=0x5A) {
+        unit | 0x20
+    } else {
+        unit
+    }
+}
+
+/// Tests whether a UTF-16 code unit is an ASCII case-insensitive match for one byte, as the Infra
+/// Standard defines it: the ASCII lowercase of both is the same code point. A byte at or above
+/// 0x80 is compared as the code point of the same value, and a non-ASCII letter such as U+212A
+/// KELVIN SIGN is never folded to an ASCII letter.
+///
+/// The pinned HTML edition defers to Infra; the retained capture is
+/// `references/dom-infra-codepoints-strings--editor-capture-20261010--a140d8f6286f.md`,
+/// "ASCII case-insensitive" (line 337).
+pub fn ascii_case_insensitive_unit(unit: u16, byte: u8) -> bool {
+    ascii_lowercase(unit) == ascii_lowercase(u16::from(byte))
 }
 
 fn concatenate<'a>(
@@ -676,6 +707,56 @@ mod tests {
         assert_eq!(tokens.as_document_string(), DocumentString::from("A A"));
         let cloned = tokens.clone();
         assert!(Arc::ptr_eq(&tokens.tokens, &cloned.tokens));
+    }
+
+    /// Infra "ASCII whitespace", "ASCII lowercase" and "ASCII case-insensitive" (retained
+    /// capture `dom-infra-codepoints-strings--editor-capture-20261010--a140d8f6286f.md`):
+    /// the whitespace set is exactly U+0009, U+000A, U+000C, U+000D and U+0020, and only
+    /// U+0041 through U+005A fold. Expectations come from the Infra text and `std`'s ASCII
+    /// methods, over every UTF-16 unit.
+    #[test]
+    fn shared_ascii_predicates_follow_the_infra_boundaries_for_every_unit() {
+        for unit in 0..=u16::MAX {
+            let whitespace = [0x09, 0x0A, 0x0C, 0x0D, 0x20].contains(&unit);
+            assert_eq!(
+                ascii_whitespace(unit),
+                whitespace,
+                "whitespace U+{unit:04X}"
+            );
+            let lowered = u8::try_from(unit)
+                .ok()
+                .filter(u8::is_ascii)
+                .map_or(unit, |ascii| u16::from(ascii.to_ascii_lowercase()));
+            assert_eq!(ascii_lowercase(unit), lowered, "lowercase U+{unit:04X}");
+        }
+        for unit in 0..=u16::MAX {
+            for byte in 0..=u8::MAX {
+                let expected = unit == u16::from(byte)
+                    || (unit < 0x80 && byte < 0x80 && (unit as u8).eq_ignore_ascii_case(&byte));
+                assert_eq!(
+                    ascii_case_insensitive_unit(unit, byte),
+                    expected,
+                    "U+{unit:04X} against {byte:#04X}"
+                );
+            }
+        }
+        // Named boundaries: vertical tab and the no-break space are not ASCII whitespace; the
+        // neighbours of the upper-alpha range do not fold; non-ASCII letters are never folded.
+        for unit in [
+            0x0B, 0x08, 0x0E, 0x1F, 0x21, 0x85, 0xA0, 0x1680, 0x2028, 0x3000,
+        ] {
+            assert!(!ascii_whitespace(unit), "U+{unit:04X}");
+        }
+        assert_eq!(
+            [0x40, 0x41, 0x5A, 0x5B].map(ascii_lowercase),
+            [0x40, 0x61, 0x7A, 0x5B]
+        );
+        assert_eq!(ascii_lowercase(0x212A), 0x212A);
+        assert_eq!(ascii_lowercase(0xC9), 0xC9);
+        assert!(!ascii_case_insensitive_unit(0x212A, b'k'));
+        assert!(!ascii_case_insensitive_unit(0x017F, b's'));
+        assert!(!ascii_case_insensitive_unit(0x0130, b'i'));
+        assert!(ascii_case_insensitive_unit(0x4B, b'k'));
     }
 
     #[test]

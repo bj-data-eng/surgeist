@@ -2008,10 +2008,7 @@ impl<'a> Cursor<'a> {
         }
     }
     fn whitespace(&mut self) {
-        while self
-            .peek()
-            .is_some_and(|unit| matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20))
-        {
+        while self.peek().is_some_and(crate::tokens::ascii_whitespace) {
             self.position += 1;
         }
     }

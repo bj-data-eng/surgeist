@@ -5,6 +5,7 @@
 //! request limits before invoking these algorithms.
 
 use crate::DocumentString;
+use crate::tokens::ascii_whitespace;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
@@ -1799,15 +1800,8 @@ fn check_decimal_digits(units: &[u16]) -> Result<(), HtmlDecimalDigitsError> {
     Ok(())
 }
 
-fn is_ascii_whitespace(unit: u16) -> bool {
-    matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20)
-}
-
 fn skip_whitespace(units: &[u16], position: &mut usize) {
-    while units
-        .get(*position)
-        .is_some_and(|&u| is_ascii_whitespace(u))
-    {
+    while units.get(*position).is_some_and(|&u| ascii_whitespace(u)) {
         *position += 1;
     }
 }
@@ -1881,7 +1875,7 @@ impl IntegerPrefixScanner {
     pub fn feed(&mut self, unit: u16) -> bool {
         match self.phase {
             IntegerPrefixPhase::Done | IntegerPrefixPhase::Invalid => return false,
-            IntegerPrefixPhase::Leading if self.recover && is_ascii_whitespace(unit) => {
+            IntegerPrefixPhase::Leading if self.recover && ascii_whitespace(unit) => {
                 self.position += 1;
                 return true;
             }
@@ -2526,7 +2520,7 @@ impl<'a> FloatingPointGrammarCursor<'a> {
                     && self
                         .units
                         .get(self.position)
-                        .is_some_and(|&u| is_ascii_whitespace(u))
+                        .is_some_and(|&u| ascii_whitespace(u))
                 {
                     self.position += 1;
                 } else {
@@ -2785,7 +2779,7 @@ pub(crate) fn parse_floating_point_list(input: &DocumentString) -> HtmlFloatingP
     let units = input.code_units();
     let mut position = 0;
     let mut values = Vec::new();
-    let is_delimiter = |unit| is_ascii_whitespace(unit) || matches!(unit, 0x2c | 0x3b);
+    let is_delimiter = |unit| ascii_whitespace(unit) || matches!(unit, 0x2c | 0x3b);
     while units.get(position).is_some_and(|&u| is_delimiter(u)) {
         position += 1;
     }
@@ -2868,10 +2862,10 @@ pub(crate) fn parse_dimension_list(input: &DocumentString) -> HtmlDimensionList 
             position += 1;
         }
         let mut token = &units[start..position];
-        while token.first().is_some_and(|&unit| is_ascii_whitespace(unit)) {
+        while token.first().is_some_and(|&unit| ascii_whitespace(unit)) {
             token = &token[1..];
         }
-        while token.last().is_some_and(|&unit| is_ascii_whitespace(unit)) {
+        while token.last().is_some_and(|&unit| ascii_whitespace(unit)) {
             token = &token[..token.len() - 1];
         }
         values.push(dimension_list_token(token));
@@ -2895,7 +2889,7 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
         while let Some(&unit) = units.get(position) {
             if is_digit(unit) {
                 fraction.push(unit);
-            } else if !is_ascii_whitespace(unit) {
+            } else if !ascii_whitespace(unit) {
                 break;
             }
             position += 1;

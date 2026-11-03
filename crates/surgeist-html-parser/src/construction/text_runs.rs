@@ -149,7 +149,7 @@ enum TextPartition {
 fn body_text_kind(unit: u16) -> BodyTextKind {
     match unit {
         0 => BodyTextKind::Null,
-        9 | 10 | 12 | 13 | 32 => BodyTextKind::Whitespace,
+        unit if surgeist_html::bounded::is_ascii_whitespace(unit) => BodyTextKind::Whitespace,
         _ => BodyTextKind::Other,
     }
 }
@@ -369,7 +369,7 @@ pub(crate) fn split_leading_ascii_whitespace(
     let mut cut = 0usize;
     for &unit in text.value.text().code_units() {
         control.charge_unit_inspection()?;
-        if !matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
+        if !surgeist_html::bounded::is_ascii_whitespace(unit) {
             break;
         }
         // The run of whitespace cannot outgrow the text it is counted in.

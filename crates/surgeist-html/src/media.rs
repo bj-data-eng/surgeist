@@ -1,5 +1,7 @@
 //! HTML 877d #mq and #the-source-element surrounding rules, without CSS parsing.
 
+use crate::tokens::{ascii_case_insensitive_unit, ascii_whitespace};
+
 /// Original presence/content classification; non-ASCII whitespace is content.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaValueClass {
@@ -104,7 +106,7 @@ impl<'a> HtmlMediaValueCursor<'a> {
         match self.pending() {
             Pending::Inspect(index, units) => {
                 let unit = units[index];
-                if !matches!(unit, 9 | 10 | 12 | 13 | 32) {
+                if !ascii_whitespace(unit) {
                     self.first.get_or_insert(index);
                     self.end = index + 1;
                 }
@@ -120,9 +122,9 @@ impl<'a> HtmlMediaValueCursor<'a> {
                 let all = self.first.is_some_and(|first| {
                     self.end - first == 3
                         && self.units.is_some_and(|u| {
-                            ascii_equal(u[first], b'a')
-                                && ascii_equal(u[first + 1], b'l')
-                                && ascii_equal(u[first + 2], b'l')
+                            ascii_case_insensitive_unit(u[first], b'a')
+                                && ascii_case_insensitive_unit(u[first + 1], b'l')
+                                && ascii_case_insensitive_unit(u[first + 2], b'l')
                         })
                 });
                 self.result = Some(HtmlMediaValue {
@@ -139,10 +141,6 @@ impl<'a> HtmlMediaValueCursor<'a> {
     }
 }
 
-pub(crate) fn ascii_equal(unit: u16, byte: u8) -> bool {
-    u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
-}
-
 /// Placement only; this does not validate CSS media grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaMediaPlacement {
@@ -157,7 +155,7 @@ pub enum HtmlMetaMediaPlacement {
 }
 
 pub(crate) mod theme {
-    use super::ascii_equal;
+    use super::ascii_case_insensitive_unit;
     /// One fixed-name comparison step; shared by ordinary and controlled owners.
     #[derive(Debug)]
     pub struct ThemeColorNameCursor<'a> {
@@ -185,7 +183,10 @@ pub(crate) mod theme {
         /// Compares one more code unit. It does nothing once the comparison is complete.
         pub fn advance(&mut self) {
             if !self.is_complete() {
-                self.equal = ascii_equal(self.units[self.position], b"theme-color"[self.position]);
+                self.equal = ascii_case_insensitive_unit(
+                    self.units[self.position],
+                    b"theme-color"[self.position],
+                );
                 self.position += 1;
             }
         }

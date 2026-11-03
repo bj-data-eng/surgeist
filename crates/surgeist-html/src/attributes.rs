@@ -11,6 +11,7 @@
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
 
 use crate::semantic_input::{attributes_iter, capture_attribute, capture_name, find_attribute};
+use crate::tokens::ascii_case_insensitive_unit;
 use crate::{
     Attribute, DocumentString, HtmlCustomElementNameError, HtmlShadowRootMode, HtmlSlotAssignment,
     HtmlTokenError, HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute,
@@ -2054,11 +2055,7 @@ fn ascii_keyword_units(units: &[u16], keyword: &str) -> bool {
         && units
             .iter()
             .zip(keyword.bytes())
-            .all(|(&unit, byte)| ascii_keyword_unit(unit, byte))
-}
-
-pub(crate) fn ascii_keyword_unit(unit: u16, byte: u8) -> bool {
-    u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte))
+            .all(|(&unit, byte)| ascii_case_insensitive_unit(unit, byte))
 }
 
 struct EnumValueSelection<T> {
@@ -2105,7 +2102,7 @@ fn enum_keyword_matches_with<T, E>(
     }
     for offset in 0..units.len() {
         admit(Read::KeywordPair)?;
-        if !ascii_keyword_unit(units[offset], bytes[offset]) {
+        if !ascii_case_insensitive_unit(units[offset], bytes[offset]) {
             return Ok(false);
         }
     }

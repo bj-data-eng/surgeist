@@ -255,7 +255,7 @@ fn keyword_with<E>(
         let mut index = 0;
         while index < length {
             admit()?;
-            if !ascii_keyword_unit(units[index], entry.spelling.as_bytes()[index]) {
+            if !ascii_case_insensitive_unit(units[index], entry.spelling.as_bytes()[index]) {
                 matches = false;
                 break;
             }

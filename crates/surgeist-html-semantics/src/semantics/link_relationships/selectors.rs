@@ -1232,8 +1232,8 @@ impl<'a> HtmlSemanticSession<'a> {
                                                     .zip(&sizes.value().code_units()[start..end])
                                                     {
                                                         self.charge(3)?;
-                                                        if rel::fold_rel_ascii(*a)
-                                                            != rel::fold_rel_ascii(*b)
+                                                        if rel::ascii_lowercase(*a)
+                                                            != rel::ascii_lowercase(*b)
                                                         {
                                                             equal = false;
                                                             break;

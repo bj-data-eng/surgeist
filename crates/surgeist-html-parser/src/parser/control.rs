@@ -945,6 +945,27 @@ impl ParseControl {
     pub(crate) fn charge_unit_literal_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, UNIT_LITERAL_PAIR_BYTES)
     }
+    /// Compares a stored string with an ASCII literal as an ASCII case-insensitive match, charging
+    /// one record visit and then one literal comparison per paired unit, exactly as far as the
+    /// comparison proceeds. A length mismatch is decided after the record visit alone.
+    pub(crate) fn ascii_case_insensitive_literal_matches(
+        &mut self,
+        value: &crate::DocumentString,
+        literal: &str,
+    ) -> Result<bool, HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if value.len() != literal.len() {
+            return Ok(false);
+        }
+        // The lengths are equal, so the pairs are exactly the literal's indices.
+        for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
+            self.charge_unit_literal_comparison()?;
+            if !surgeist_html::bounded::ascii_case_insensitive_unit(unit, byte) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
     /// Charges comparing one byte of each of two byte sequences.
     pub(crate) fn charge_byte_pair_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, BYTE_PAIR_BYTES)
@@ -3245,6 +3266,66 @@ mod tests {
     }
     fn control() -> ParseControl {
         ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+
+    /// The documented charge is one record visit, then, per compared unit and literal byte, the
+    /// two bytes of the stored unit plus the one literal byte: three inspected bytes. A length
+    /// mismatch is decided after the visit alone, and the comparison stops at the first
+    /// mismatching pair. Matching follows Infra "ASCII case-insensitive": only U+0041..U+005A
+    /// fold, so U+212A KELVIN SIGN never matches `k`.
+    #[test]
+    fn ascii_case_insensitive_literal_match_charges_a_visit_then_three_bytes_per_compared_pair() {
+        let cases: [(&[u16], &str, bool, u64); 9] = [
+            (&[0x6F, 0x70, 0x65, 0x6E], "open", true, 4),
+            (&[0x4F, 0x70, 0x45, 0x4E], "open", true, 4),
+            (&[0x6F, 0x70, 0x65, 0x6E, 0x78], "open", false, 0),
+            (&[0x6F, 0x70, 0x65], "open", false, 0),
+            (&[], "open", false, 0),
+            (&[0x6F, 0x70, 0x58, 0x6E], "open", false, 3),
+            (&[0x78, 0x70, 0x65, 0x6E], "open", false, 1),
+            (&[0x212A], "k", false, 1),
+            (&[], "", true, 0),
+        ];
+        for (units, literal, expected, pairs) in cases {
+            let mut c = control();
+            let before = c.usage().clone();
+            let value = crate::DocumentString::from_utf16(units.to_vec());
+            assert_eq!(
+                c.ascii_case_insensitive_literal_matches(&value, literal)
+                    .unwrap(),
+                expected,
+                "{units:04X?} against {literal:?}"
+            );
+            assert_eq!(
+                c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                    - before.work(HtmlParseWorkCategory::RecordVisit),
+                1,
+                "{units:04X?} against {literal:?}"
+            );
+            assert_eq!(
+                c.usage().work(HtmlParseWorkCategory::InspectByte)
+                    - before.work(HtmlParseWorkCategory::InspectByte),
+                3 * pairs,
+                "{units:04X?} against {literal:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_case_insensitive_literal_match_returns_the_first_refused_charge() {
+        let value = crate::DocumentString::from("OPEN");
+        // One credit for the visit and three for the first pair; the second pair is refused.
+        let caps = limits().into_builder().work_credits(4).finish().unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        assert!(matches!(
+            c.ascii_case_insensitive_literal_matches(&value, "open"),
+            Err(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ));
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordVisit), 1);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::InspectByte), 3);
     }
 
     #[test]

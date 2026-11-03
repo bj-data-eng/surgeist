@@ -1656,12 +1656,13 @@ pub trait surgeist_html::bounded::HtmlRelMeter
 pub type surgeist_html::bounded::HtmlRelMeter::Error
 pub fn surgeist_html::bounded::HtmlRelMeter::reserve(&mut self, reservation: &mut surgeist_html::bounded::HtmlRelReservation<'_>) -> core::result::Result<(), Self::Error>
 pub fn surgeist_html::bounded::HtmlRelMeter::work(&mut self, units: usize) -> core::result::Result<(), Self::Error>
+pub fn surgeist_html::bounded::ascii_case_insensitive_unit(unit: u16, byte: u8) -> bool
+pub fn surgeist_html::bounded::ascii_lowercase(unit: u16) -> u16
 pub fn surgeist_html::bounded::autocomplete_materialization_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::classify_rel<M: surgeist_html::bounded::HtmlRelMeter>(units: &[u16], meter: &mut M) -> core::result::Result<(core::option::Option<surgeist_html::HtmlRelKeyword>, surgeist_html::HtmlRelSpelling), surgeist_html::bounded::HtmlRelActionError<<M as surgeist_html::bounded::HtmlRelMeter>::Error>>
 pub fn surgeist_html::bounded::crossorigin_processing_with<E>(raw: core::option::Option<&surgeist_html::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCrossOriginState, E>
 pub fn surgeist_html::bounded::element_classification_with<E>(name: &impl surgeist_html::HtmlNameInput + ?core::marker::Sized, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlElementNameRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlElementClass, E>
 pub fn surgeist_html::bounded::embedded_dimension_applicability(element: core::option::Option<surgeist_html::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::EmbeddedDimensionContext>) -> surgeist_html::bounded::EmbeddedDimensionApplicability
-pub fn surgeist_html::bounded::fold_rel_ascii(unit: u16) -> u16
 pub const fn surgeist_html::bounded::form_owner_lookup(explicit_listed_form_attribute: bool, connected: bool) -> surgeist_html::bounded::HtmlFormOwnerLookup
 pub const fn surgeist_html::bounded::form_owner_reset_trigger(trigger: surgeist_html::bounded::HtmlFormOwnerResetTrigger) -> surgeist_html::bounded::HtmlFormOwnerResetDecision
 pub fn surgeist_html::bounded::fragment_initial_modes<E>(effective: surgeist_html::HtmlParserScriptingMode, compare: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlFragmentNameTest<'_>) -> core::result::Result<bool, E>) -> core::result::Result<(surgeist_html::HtmlFragmentTokenizerState, surgeist_html::HtmlFragmentInsertionMode), E>
@@ -1689,6 +1690,7 @@ pub fn surgeist_html::bounded::parse_integer_long(input: &surgeist_html::Documen
 pub fn surgeist_html::bounded::parse_nonnegative_integer_capped(input: &surgeist_html::DocumentString, cap: usize) -> core::result::Result<usize, surgeist_html::bounded::NumericParseError>
 pub fn surgeist_html::bounded::referrerpolicy_processing_with<E>(raw: core::option::Option<&surgeist_html::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlReferrerPolicy, E>
 pub fn surgeist_html::bounded::rel_ascii_keyword(units: &[u16], keyword: &str) -> bool
+pub fn surgeist_html::bounded::rel_href_is_empty_or_ascii_whitespace_with<E>(units: &[u16], work: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub const fn surgeist_html::bounded::select_display_size_default(multiple: bool) -> u8
 pub fn surgeist_html::bounded::select_option_rule(kind: core::option::Option<surgeist_html::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::HtmlSelectOptionRule
 pub fn surgeist_html::bounded::selectedcontent_update(multiple: bool, disabled: bool, first_selected: surgeist_html::bounded::HtmlSelectFirstSelection) -> surgeist_html::bounded::HtmlSelectedcontentUpdate

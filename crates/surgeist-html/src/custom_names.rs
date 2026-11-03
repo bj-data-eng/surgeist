@@ -4,6 +4,7 @@
 //! DOM foundation. The required lowercase ASCII first code point selects DOM's
 //! ASCII-alpha branch; subsequent code points need not be Unicode scalars.
 
+use crate::tokens::ascii_whitespace;
 use crate::{Attribute, DocumentString, KnownHtmlAttribute, Namespace, QualifiedName};
 use std::{error::Error, fmt};
 
@@ -152,7 +153,7 @@ pub fn validate_custom_element_name_with<E>(
     while code_unit_offset < units.len() {
         admit(CustomNameScanAction::Unit)?;
         let code_unit = units[code_unit_offset];
-        if matches!(code_unit, 0 | 9 | 10 | 12 | 13 | 32 | 47 | 62 | 0x41..=0x5a) {
+        if ascii_whitespace(code_unit) || matches!(code_unit, 0 | 47 | 62 | 0x41..=0x5a) {
             return Ok(Err(HtmlCustomElementNameError::ForbiddenCodeUnit {
                 code_unit_offset,
                 code_unit,
