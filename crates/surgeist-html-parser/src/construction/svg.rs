@@ -7,20 +7,20 @@ use super::*;
 const SVG: &str = "http://www.w3.org/2000/svg";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SvgScriptOrigin {
+pub enum HtmlParseSvgScriptOrigin {
     Parser,
     Clone,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SvgScriptState {
     pub(crate) flags: SvgScriptFlags,
-    pub(crate) origin: SvgScriptOrigin,
+    pub(crate) origin: HtmlParseSvgScriptOrigin,
 }
 impl SvgScriptState {
     pub(super) fn fresh() -> Self {
         Self {
             flags: SvgScriptFlags::fresh(),
-            origin: SvgScriptOrigin::Parser,
+            origin: HtmlParseSvgScriptOrigin::Parser,
         }
     }
 }
@@ -36,7 +36,7 @@ fn local(
     records: ConstructionView<'_>,
     node: usize,
 ) -> Result<bool, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
     match record.kind() {
         HtmlNodeKind::Element(element) => {
@@ -52,7 +52,7 @@ fn state_at(
     node: usize,
 ) -> Result<(usize, SvgScriptState), SessionError> {
     for (slot, payload) in payloads.values.iter().enumerate() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::SvgScript {
             node: Some(bound),
             state,
@@ -60,7 +60,7 @@ fn state_at(
             && *bound == node
         {
             c.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<SvgScriptState>() as u64,
             )?;
             return Ok((slot, *state));
@@ -119,7 +119,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<SvgScriptProcessing, SessionError> {
         c.require_identity(&self.control)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if let Some(reason) = self.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
@@ -131,7 +131,7 @@ impl SessionStorage {
             HtmlNodeKind::Document(_)
         ) {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         let (slot, state) = self.svg_state_at(c, node)?;
@@ -158,7 +158,7 @@ impl SessionStorage {
     }
     pub(super) fn validate_svg_facts(&self, c: &mut ParseControl) -> Result<(), SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::SvgScript { node, .. } = payload {
                 let node = node.ok_or(SessionError::SvgScriptMetadataUnavailable)?;
                 if !self.svg_script_local(c, node)? {
@@ -203,7 +203,7 @@ impl ParserArenaSession {
     ) -> Result<SvgScriptProcessing, SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
             .storage(c)?
@@ -221,7 +221,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         c.require_identity(&storage.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
             .storage(c)?
@@ -257,8 +257,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = &storage.view;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -274,7 +274,7 @@ impl FrozenArena {
 mod tests {
     use super::super::tests::{fresh_script_owner, limits, storage_zero};
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::parser::tree_builder::ConstructionCapability;
 
     fn tag(
@@ -349,13 +349,15 @@ mod tests {
             let request = request(&format!("<script {attrs}>"));
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             assert_eq!(
                 session.svg_script_state(&mut c, &node).unwrap(),
                 SvgScriptState {
                     flags: SvgScriptFlags::from_retained(false),
-                    origin: SvgScriptOrigin::Parser
+                    origin: HtmlParseSvgScriptOrigin::Parser
                 }
             );
             session
@@ -414,7 +416,8 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         assert_eq!(
             session.process_disabled_svg(&mut c, &node, &proof).unwrap(),
@@ -465,7 +468,7 @@ mod tests {
                 .unwrap(),
             SvgScriptState {
                 flags: SvgScriptFlags::from_retained(true),
-                origin: SvgScriptOrigin::Parser
+                origin: HtmlParseSvgScriptOrigin::Parser
             }
         );
         frozen.release(&mut c).unwrap();
@@ -477,7 +480,9 @@ mod tests {
             let request = request("<script xlink:href='#saved'>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let source = script(&mut session, &mut c, &mut lexer, &root, &proof);
             if processed {
                 session
@@ -498,7 +503,7 @@ mod tests {
                 session.svg_script_state(&mut c, &copy).unwrap(),
                 SvgScriptState {
                     flags: SvgScriptFlags::from_retained(processed),
-                    origin: SvgScriptOrigin::Clone
+                    origin: HtmlParseSvgScriptOrigin::Clone
                 }
             );
             assert_eq!(
@@ -538,7 +543,8 @@ mod tests {
         let request = request("<template><script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (tag, _) = tag(&mut lexer, &mut c);
         let template = session
             .allocate_html_tag_for_creation(
@@ -607,7 +613,8 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         session
             .insert_parser(&mut c, &root, &node, None, &proof)
@@ -640,7 +647,8 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         let foreign =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<script>"), limits());
@@ -696,7 +704,8 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
         session
             .insert_parser(&mut c, &root, &node, None, &proof)
@@ -716,14 +725,16 @@ mod tests {
             let request = request("<script>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             session
                 .insert_parser(&mut c, &root, &node, None, &proof)
                 .unwrap();
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 request.limits().work_credits() - used - allowance,
             )
             .unwrap();
@@ -786,7 +797,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         ..
                     }))
@@ -808,7 +819,9 @@ mod tests {
             let request = request("<script>");
             let (mut c, mut session, proof) = fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
             session
                 .insert_parser(&mut c, &root, &node, None, &proof)
@@ -816,7 +829,7 @@ mod tests {
             request.cancellation().cancel();
             assert_eq!(
                 session.process_disabled_svg(&mut c, &node, &proof),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert!(
                 session
@@ -842,9 +855,9 @@ mod tests {
         let imported = session.allocate_element(&mut c, imported).unwrap();
         assert!(matches!(
             session.process_disabled_svg(&mut c, &imported, &proof),
-            Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-                StandaloneUnsupported::Provenance
-            )))
+            Err(SessionError::Stop(
+                HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
+            ))
         ));
         assert!(
             session
@@ -879,7 +892,8 @@ mod tests {
         let request = request("<script xlink:href='#saved'>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
@@ -924,7 +938,8 @@ mod tests {
     ) {
         let (mut c, mut session, proof) = fresh_script_owner(request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (tag, _) = tag(&mut lexer, &mut c);
         let parent = session
             .allocate_html_tag_for_creation(
@@ -978,7 +993,7 @@ mod tests {
                 detached_svg_siblings(&request);
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 request.limits().work_credits() - used - allowance,
             )
             .unwrap();
@@ -1041,7 +1056,7 @@ mod tests {
                     .unwrap();
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 limits().work_credits() - used - allowance,
             )
             .unwrap();

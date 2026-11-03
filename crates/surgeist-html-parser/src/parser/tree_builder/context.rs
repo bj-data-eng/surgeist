@@ -5,16 +5,16 @@ use super::*;
 use crate::construction::RootKind;
 use crate::parser::tokenizer::{
     Tokenizer,
-    states::{Raw, State},
+    states::{HtmlTokenizerRawState, HtmlTokenizerState},
 };
 use crate::{HtmlCapturedNodeKind, HtmlFragmentParseRequest, HtmlParserScriptingMode};
-use head::{HeadStage, HeadStep, InsertionMode};
+use head::{HeadStage, HeadStep, HtmlInsertionMode};
 use prologue::BeforeHead;
 
 pub(crate) mod ownership;
 
 pub(crate) enum FragmentExecutionError {
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     Kernel(KernelError),
     Head(head::HeadError),
     Consumed,
@@ -24,7 +24,7 @@ impl FragmentExecutionError {
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
     pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
-        Self::Stop(control.fail_invariant(super::Invariant::TreeBuilderState))
+        Self::Stop(control.fail_invariant(super::HtmlParseInvariant::TreeBuilderState))
     }
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.
@@ -51,8 +51,8 @@ impl std::fmt::Debug for FragmentExecutionError {
         }
     }
 }
-impl From<ParseStop> for FragmentExecutionError {
-    fn from(value: ParseStop) -> Self {
+impl From<HtmlParseStop> for FragmentExecutionError {
+    fn from(value: HtmlParseStop) -> Self {
         Self::Stop(value)
     }
 }
@@ -94,9 +94,9 @@ pub(crate) struct CompletedContextFragment<'source> {
 fn initial_modes(
     request: &HtmlFragmentParseRequest,
     c: &mut ParseControl,
-) -> Result<(State, InsertionMode, bool), FragmentExecutionError> {
+) -> Result<(HtmlTokenizerState, HtmlInsertionMode, bool), FragmentExecutionError> {
     c.require_source(request.source())?;
-    c.charge(WorkCategory::RecordVisit, 2)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     let context = request.context();
     let node = context
         .capture()
@@ -118,29 +118,35 @@ fn initial_modes(
     )?;
     let template = insertion == crate::HtmlFragmentInsertionMode::InTemplate;
     let lexical = match lexical {
-        crate::HtmlFragmentTokenizerState::Data => State::Data,
-        crate::HtmlFragmentTokenizerState::Rcdata => State::Raw(Raw::Rcdata),
-        crate::HtmlFragmentTokenizerState::Rawtext => State::Raw(Raw::Rawtext),
-        crate::HtmlFragmentTokenizerState::ScriptData => State::Raw(Raw::Script),
-        crate::HtmlFragmentTokenizerState::Plaintext => State::Plaintext,
+        crate::HtmlFragmentTokenizerState::Data => HtmlTokenizerState::Data,
+        crate::HtmlFragmentTokenizerState::Rcdata => {
+            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata)
+        }
+        crate::HtmlFragmentTokenizerState::Rawtext => {
+            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rawtext)
+        }
+        crate::HtmlFragmentTokenizerState::ScriptData => {
+            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script)
+        }
+        crate::HtmlFragmentTokenizerState::Plaintext => HtmlTokenizerState::Plaintext,
     };
     Ok((lexical, parser_insertion_mode(insertion), template))
 }
 
 /// Parser-private representation adapter; the HTML rule owner has no dependency
 /// on tree-builder state or its controller.
-pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> InsertionMode {
+pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> HtmlInsertionMode {
     use crate::HtmlFragmentInsertionMode as Mode;
     match mode {
-        Mode::InBody => InsertionMode::InBody,
-        Mode::InRow => InsertionMode::InRow,
-        Mode::InTableBody => InsertionMode::InTableBody,
-        Mode::InCaption => InsertionMode::InCaption,
-        Mode::InColumnGroup => InsertionMode::InColumnGroup,
-        Mode::InTable => InsertionMode::InTable,
-        Mode::InTemplate => InsertionMode::InTemplate,
-        Mode::InFrameset => InsertionMode::InFrameset,
-        Mode::BeforeHead => InsertionMode::BeforeHead,
+        Mode::InBody => HtmlInsertionMode::InBody,
+        Mode::InRow => HtmlInsertionMode::InRow,
+        Mode::InTableBody => HtmlInsertionMode::InTableBody,
+        Mode::InCaption => HtmlInsertionMode::InCaption,
+        Mode::InColumnGroup => HtmlInsertionMode::InColumnGroup,
+        Mode::InTable => HtmlInsertionMode::InTable,
+        Mode::InTemplate => HtmlInsertionMode::InTemplate,
+        Mode::InFrameset => HtmlInsertionMode::InFrameset,
+        Mode::BeforeHead => HtmlInsertionMode::BeforeHead,
     }
 }
 
@@ -235,13 +241,13 @@ impl<'source> ContextFragmentDriver<'source> {
         self.control.require_source(self.request.source())?;
         let head = self.head.as_mut().ok_or(FragmentExecutionError::Consumed)?;
         match head.step(&mut self.control)? {
-            HeadStep::Boundary(head::HeadBoundary::AfterHead) => {
+            HeadStep::Boundary(head::HtmlParseConstructionBoundary::AfterHead) => {
                 let state = head
                     .state
                     .as_mut()
                     .ok_or(FragmentExecutionError::Consumed)?;
                 write(
-                    size_of::<Option<head::HeadBoundary>>(),
+                    size_of::<Option<head::HtmlParseConstructionBoundary>>(),
                     1,
                     &mut self.control,
                 )?;
@@ -325,7 +331,8 @@ impl<'source> ContextFragmentDriver<'source> {
     }
     fn reclaim_failed(
         &mut self,
-    ) -> Result<(ParseStop, super::super::control::ParseUsage), FragmentExecutionError> {
+    ) -> Result<(HtmlParseStop, super::super::control::HtmlParseUsage), FragmentExecutionError>
+    {
         // The stop and its snapshot exist together.
         let (stop, at_stop) = self
             .control
@@ -354,9 +361,9 @@ impl<'source> ContextFragmentDriver<'source> {
 pub(crate) struct FailedContextFragment<'source> {
     request: &'source HtmlFragmentParseRequest,
     control: ParseControl,
-    stop: ParseStop,
-    at_stop: super::super::control::ParseUsage,
-    after_cleanup: super::super::control::ParseUsage,
+    stop: HtmlParseStop,
+    at_stop: super::super::control::HtmlParseUsage,
+    after_cleanup: super::super::control::HtmlParseUsage,
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl FailedContextFragment<'_> {
@@ -369,21 +376,21 @@ impl FailedContextFragment<'_> {
         self.request.context()
     }
     #[cfg(test)]
-    pub(crate) fn stop(&self) -> ParseStop {
+    pub(crate) fn stop(&self) -> HtmlParseStop {
         self.stop
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn at_stop(&self) -> &super::super::control::HtmlParseUsage {
         &self.at_stop
     }
     #[cfg(test)]
-    pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn after_cleanup(&self) -> &super::super::control::HtmlParseUsage {
         &self.after_cleanup
     }
     #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.evidence
             .as_ref()
             .map(|evidence| evidence.diagnostics())
@@ -403,18 +410,18 @@ pub(crate) struct FrozenContextFragmentParts {
     pub(super) control: ParseControl,
     pub(super) arena: Option<crate::construction::FrozenArena>,
     source: (crate::HtmlSourceId, crate::HtmlSourceCoordinates, usize),
-    final_usage: super::super::control::ParseUsage,
+    final_usage: super::super::control::HtmlParseUsage,
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_shadow: bool,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    after_cleanup: Option<super::super::control::ParseUsage>,
+    after_cleanup: Option<super::super::control::HtmlParseUsage>,
 }
 impl FrozenContextFragmentParts {
-    pub(super) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(super) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.control.first_stop_usage()
     }
-    pub(super) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(super) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.after_cleanup.as_ref()
     }
     pub(super) fn prepare_report_request(
@@ -422,10 +429,11 @@ impl FrozenContextFragmentParts {
         request: &crate::request::FragmentRequestParts,
     ) -> Result<(), SessionError> {
         self.control.require_source(request.source())?;
-        self.control.charge(WorkCategory::ProviderCall, 1)?;
-        self.control.charge(WorkCategory::RecordVisit, 5)?;
+        self.control
+            .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 5)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             const {
                 2 * size_of::<crate::HtmlSourceId>()
                     + 2 * size_of::<crate::HtmlSourceCoordinates>()
@@ -452,14 +460,16 @@ impl FrozenContextFragmentParts {
         &mut self,
         request: &HtmlFragmentParseRequest,
     ) -> Result<(), FragmentExecutionError> {
-        self.control.charge(WorkCategory::ProviderCall, 1)?;
+        self.control
+            .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if !self.control.owns_request(request.cancellation()) {
             return Err(FragmentExecutionError::Consumed);
         }
         self.control.require_source(request.source())?;
-        self.control.charge(WorkCategory::RecordVisit, 11)?;
+        self.control
+            .charge(HtmlParseWorkCategory::RecordVisit, 11)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             const {
                 2 * size_of::<crate::HtmlFragmentContext>()
                     + 2 * size_of::<crate::HtmlSourceId>()
@@ -503,7 +513,7 @@ impl FrozenContextFragmentParts {
             const {
                 size_of::<ownership::SealedFragmentConstruction>()
                     + size_of::<crate::request::FragmentRequestParts>()
-                    + size_of::<super::super::control::ParseUsage>()
+                    + size_of::<super::super::control::HtmlParseUsage>()
             },
             10,
             &mut self.control,
@@ -515,7 +525,7 @@ impl FrozenContextFragmentParts {
     #[cfg(test)]
     pub(crate) fn fragment(&mut self) -> Result<&crate::HtmlFragment, FragmentExecutionError> {
         self.control.checkpoint()?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.arena
             .as_ref()
             .and_then(|arena| arena.fragment())
@@ -535,12 +545,12 @@ impl FrozenContextFragmentParts {
         (&self.source.0, self.source.1, self.source.2)
     }
     #[cfg(test)]
-    pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn final_usage(&self) -> &super::super::control::HtmlParseUsage {
         &self.final_usage
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Result<crate::construction::evidence::DiagnosticEvidenceView<'_>, FragmentExecutionError>
+    ) -> Result<crate::construction::evidence::HtmlParseDiagnostics<'_>, FragmentExecutionError>
     {
         if let Some(evidence) = &self.failed_evidence {
             return Ok(evidence.diagnostics());
@@ -619,7 +629,8 @@ impl<'source> CompletedContextFragment<'source> {
     fn reclaim_frozen_failure(
         frozen: &mut crate::construction::FrozenArena,
         driver: &mut ContextFragmentDriver<'source>,
-    ) -> Result<(ParseStop, super::super::control::ParseUsage), FragmentExecutionError> {
+    ) -> Result<(HtmlParseStop, super::super::control::HtmlParseUsage), FragmentExecutionError>
+    {
         // The stop and its snapshot exist together.
         let (stop, at_stop) = driver
             .control
@@ -727,8 +738,12 @@ impl<'source> CompletedContextFragment<'source> {
             const { 13 + ownership::frozen_failure_layout().1 },
             &mut driver.control,
         )?;
-        driver.control.charge(WorkCategory::RecordVisit, 3)?;
-        driver.control.charge(WorkCategory::ProviderCall, 1)?;
+        driver
+            .control
+            .charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+        driver
+            .control
+            .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let source = (
             driver.request.source().identity().clone(),
             driver.request.source().coordinates(),
@@ -983,22 +998,22 @@ pub(super) mod tests {
                     let (actual_lexical, actual_insertion, template) =
                         initial_modes(&request, &mut c).unwrap();
                     let expected_lexical = match lexical {
-                        T::Data => State::Data,
-                        T::Rcdata => State::Raw(Raw::Rcdata),
-                        T::Rawtext => State::Raw(Raw::Rawtext),
-                        T::ScriptData => State::Raw(Raw::Script),
-                        T::Plaintext => State::Plaintext,
+                        T::Data => HtmlTokenizerState::Data,
+                        T::Rcdata => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata),
+                        T::Rawtext => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rawtext),
+                        T::ScriptData => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script),
+                        T::Plaintext => HtmlTokenizerState::Plaintext,
                     };
                     let expected_insertion = match insertion {
-                        I::InBody => InsertionMode::InBody,
-                        I::InRow => InsertionMode::InRow,
-                        I::InTableBody => InsertionMode::InTableBody,
-                        I::InCaption => InsertionMode::InCaption,
-                        I::InColumnGroup => InsertionMode::InColumnGroup,
-                        I::InTable => InsertionMode::InTable,
-                        I::InTemplate => InsertionMode::InTemplate,
-                        I::InFrameset => InsertionMode::InFrameset,
-                        I::BeforeHead => InsertionMode::BeforeHead,
+                        I::InBody => HtmlInsertionMode::InBody,
+                        I::InRow => HtmlInsertionMode::InRow,
+                        I::InTableBody => HtmlInsertionMode::InTableBody,
+                        I::InCaption => HtmlInsertionMode::InCaption,
+                        I::InColumnGroup => HtmlInsertionMode::InColumnGroup,
+                        I::InTable => HtmlInsertionMode::InTable,
+                        I::InTemplate => HtmlInsertionMode::InTemplate,
+                        I::InFrameset => HtmlInsertionMode::InFrameset,
+                        I::BeforeHead => HtmlInsertionMode::BeforeHead,
                     };
                     assert_eq!(
                         (actual_lexical, actual_insertion, template),
@@ -1103,7 +1118,7 @@ pub(super) mod tests {
             initial_modes(&request, &mut short),
             Err(FragmentExecutionError::Stop(_))
         ));
-        assert_eq!(short.usage().work(WorkCategory::RecordWrite), 0);
+        assert_eq!(short.usage().work(HtmlParseWorkCategory::RecordWrite), 0);
         super::super::tests::assert_released(&short);
         let cancellation = request.cancellation().clone();
         let mut cancelled = ParseControl::new(*request.limits(), cancellation.clone());
@@ -1112,15 +1127,15 @@ pub(super) mod tests {
         cancellation.cancel();
         assert!(matches!(
             initial_modes(&request, &mut cancelled),
-            Err(FragmentExecutionError::Stop(ParseStop::Cancelled))
+            Err(FragmentExecutionError::Stop(HtmlParseStop::Cancelled))
         ));
         assert_eq!(
-            cancelled.usage().work(WorkCategory::RecordVisit),
-            before.work(WorkCategory::RecordVisit)
+            cancelled.usage().work(HtmlParseWorkCategory::RecordVisit),
+            before.work(HtmlParseWorkCategory::RecordVisit)
         );
         assert_eq!(
-            cancelled.usage().work(WorkCategory::InspectByte),
-            before.work(WorkCategory::InspectByte)
+            cancelled.usage().work(HtmlParseWorkCategory::InspectByte),
+            before.work(HtmlParseWorkCategory::InspectByte)
         );
         super::super::tests::assert_released(&cancelled);
     }
@@ -1152,7 +1167,7 @@ pub(super) mod tests {
             assert!(error.invariant_fault(), "{error:?}");
         }
         let named = [
-            FragmentExecutionError::Stop(ParseStop::Cancelled),
+            FragmentExecutionError::Stop(HtmlParseStop::Cancelled),
             FragmentExecutionError::Kernel(KernelError::EmptyStack),
             FragmentExecutionError::Kernel(KernelError::Session(
                 SessionError::ScriptMetadataUnavailable,
@@ -1165,7 +1180,7 @@ pub(super) mod tests {
                 crate::parser::tokenizer::TokenizerHandoffError::NotData,
             )),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Stop(
-                ParseStop::Cancelled,
+                HtmlParseStop::Cancelled,
             ))),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::NotElement)),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Session(
@@ -1187,8 +1202,8 @@ pub(super) mod tests {
     #[test]
     fn a_fragment_stage_state_the_environment_does_not_support_latches_its_stop() {
         for (capability, state) in [
-            (false, StandaloneUnsupported::ScriptPause),
-            (true, StandaloneUnsupported::Provenance),
+            (false, HtmlParseUnsupportedState::ScriptPause),
+            (true, HtmlParseUnsupportedState::Provenance),
         ] {
             let request = request("<script>x</script>", "div", HtmlScriptingStatus::Disabled);
             let mut driver = initialized_driver(&request);
@@ -1214,7 +1229,7 @@ pub(super) mod tests {
             assert!(ended, "{state:?}");
             assert_eq!(
                 driver.control.stop(),
-                Some(ParseStop::UnsupportedStandaloneState(state))
+                Some(HtmlParseStop::UnsupportedStandaloneState(state))
             );
             driver
                 .head
@@ -1240,8 +1255,8 @@ pub(super) mod tests {
             driver.stop_for_public_failure(error.stop_cause());
             assert_eq!(
                 driver.control.stop(),
-                Some(ParseStop::UnsupportedStandaloneState(
-                    StandaloneUnsupported::InvalidNesting
+                Some(HtmlParseStop::UnsupportedStandaloneState(
+                    HtmlParseUnsupportedState::InvalidNesting
                 )),
                 "{name}"
             );
@@ -1261,7 +1276,7 @@ pub(super) mod tests {
         drop((driver, completed));
         parts
             .control
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance);
         (FragmentInitialization::new(request), parts)
     }
 
@@ -1272,7 +1287,7 @@ pub(super) mod tests {
         parts.source.0 = HtmlSource::utf8("other").identity().clone();
         let failure = super::parse::detach_frozen_fragment(
             owner,
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             parts,
         );
         assert_eq!(
@@ -1287,7 +1302,7 @@ pub(super) mod tests {
         parts.control.refuse_next_construction_retire();
         let failure = super::parse::detach_frozen_fragment(
             owner,
-            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
             parts,
         );
         assert_eq!(
@@ -1309,7 +1324,7 @@ pub(super) mod tests {
             .state
             .as_mut()
             .unwrap()
-            .boundary = Some(head::HeadBoundary::Script);
+            .boundary = Some(head::HtmlParseConstructionBoundary::Script);
         assert_eq!(driver.control.stop(), None);
         let error = driver.step().err().unwrap();
         assert!(
@@ -1321,8 +1336,8 @@ pub(super) mod tests {
         );
         assert_eq!(
             driver.control.stop(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::TreeBuilderState
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::TreeBuilderState
             ))
         );
         driver.release().unwrap();
@@ -1343,8 +1358,9 @@ pub(super) mod tests {
             "{error:?}"
         );
         let mut driver = slot.unwrap();
-        let stop =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::TreeBuilderState,
+        );
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head.as_mut().unwrap().state = Some(state);
         driver.release().unwrap();
@@ -1363,12 +1379,14 @@ pub(super) mod tests {
             completed.stop_for_public_failure(if lost {
                 StopCause::LostOwner
             } else {
-                StopCause::Unsupported(StandaloneUnsupported::Provenance)
+                StopCause::Unsupported(HtmlParseUnsupportedState::Provenance)
             });
             let expected = if lost {
-                ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
+                HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::TreeBuilderState,
+                )
             } else {
-                ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+                HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
             };
             assert_eq!(
                 completed.driver.as_ref().unwrap().control.stop(),
@@ -1403,8 +1421,9 @@ pub(super) mod tests {
             ),
             "{error:?}"
         );
-        let stop =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::TreeBuilderState,
+        );
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head.as_mut().unwrap().state = Some(state);
         driver.release().unwrap();
@@ -1422,8 +1441,9 @@ pub(super) mod tests {
             matches!(error, FragmentExecutionError::Consumed),
             "{error:?}"
         );
-        let stop =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::TreeBuilderState,
+        );
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head = Some(head);
         driver.release().unwrap();
@@ -1463,10 +1483,10 @@ pub(super) mod tests {
         // A single root uses the captured context as the last node: td/th/head
         // do not acquire the modes of a real non-last stack element.
         for (local, expected) in [
-            ("td", InsertionMode::InBody),
-            ("th", InsertionMode::InBody),
-            ("head", InsertionMode::InBody),
-            ("html", InsertionMode::BeforeHead),
+            ("td", HtmlInsertionMode::InBody),
+            ("th", HtmlInsertionMode::InBody),
+            ("head", HtmlInsertionMode::InBody),
+            ("html", HtmlInsertionMode::BeforeHead),
         ] {
             let request = request("", local, HtmlScriptingStatus::Disabled);
             let mut driver = initialized_driver(&request);
@@ -1477,11 +1497,11 @@ pub(super) mod tests {
             super::super::tests::assert_released(&driver.control);
         }
         for (context, source, expected) in [
-            ("div", "<table><tbody><tr><td>", InsertionMode::InCell),
-            ("div", "<table><tbody><tr><th>", InsertionMode::InCell),
-            ("html", "<head>", InsertionMode::InHead),
-            ("html", "<head></head>", InsertionMode::AfterHead),
-            ("template", "<col>", InsertionMode::InColumnGroup),
+            ("div", "<table><tbody><tr><td>", HtmlInsertionMode::InCell),
+            ("div", "<table><tbody><tr><th>", HtmlInsertionMode::InCell),
+            ("html", "<head>", HtmlInsertionMode::InHead),
+            ("html", "<head></head>", HtmlInsertionMode::AfterHead),
+            ("template", "<col>", HtmlInsertionMode::InColumnGroup),
         ] {
             let request = request(source, context, HtmlScriptingStatus::Disabled);
             let mut driver = initialized_driver(&request);
@@ -1505,7 +1525,9 @@ pub(super) mod tests {
 
     #[test]
     fn captured_bootstrap_cause_binds_actual_internal_root_and_f_without_lexical_range() {
-        use crate::construction::provenance::{CapturedCauseRole, ConstructionOperation};
+        use crate::construction::provenance::{
+            HtmlParseCapturedCauseRole, HtmlParseConstructionOperation,
+        };
         let request = request("<p>A</p>", "div", HtmlScriptingStatus::Disabled);
         let mut driver = initialized_driver(&request);
         let root = driver
@@ -1551,10 +1573,10 @@ pub(super) mod tests {
                 };
                 if is_root || is_output {
                     assert!(row.source.is_none());
-                    assert_eq!(cause.operation, ConstructionOperation::Captured);
+                    assert_eq!(cause.operation, HtmlParseConstructionOperation::Captured);
                     assert!(cause.source.is_none());
                     let captured = cause.captured.as_ref().unwrap();
-                    assert_eq!(captured.role, CapturedCauseRole::FragmentBootstrap);
+                    assert_eq!(captured.role, HtmlParseCapturedCauseRole::FragmentBootstrap);
                     assert_eq!(&captured.capture, request.context().capture().identity());
                     assert_eq!(
                         &captured.target_document,
@@ -1579,7 +1601,7 @@ pub(super) mod tests {
     fn copied_captured_namespace_does_not_replace_actual_lexical_node_trigger() {
         use crate::construction::StringLocation;
         use crate::construction::provenance::{
-            CapturedCauseRole, ConstructionOperation, NativeDestination,
+            HtmlParseCapturedCauseRole, HtmlParseConstructionOperation, NativeDestination,
         };
         let request = namespace_request("<x></x>", Namespace::from_uri("urn:actual:context"));
         let mut driver = initialized_driver(&request);
@@ -1622,11 +1644,9 @@ pub(super) mod tests {
                 if matches!(
                     row.destination,
                     NativeDestination::Field(StringLocation::Namespace(_))
-                ) && cause
-                    .captured
-                    .as_ref()
-                    .is_some_and(|captured| captured.role == CapturedCauseRole::ContextNamespace)
-                {
+                ) && cause.captured.as_ref().is_some_and(|captured| {
+                    captured.role == HtmlParseCapturedCauseRole::ContextNamespace
+                }) {
                     captured_namespace = row.source.is_none()
                         && cause.source.is_none()
                         && cause.captured.as_ref().unwrap().capture
@@ -1641,7 +1661,7 @@ pub(super) mod tests {
         assert!(captured_namespace);
         assert_eq!(
             node_trigger,
-            Some((ConstructionOperation::Token, Some((true, 0, 3))))
+            Some((HtmlParseConstructionOperation::Token, Some((true, 0, 3))))
         );
     }
 
@@ -1663,7 +1683,7 @@ pub(super) mod tests {
             parts.context().unwrap().context_element(),
             request.context().context_element()
         );
-        assert!(parts.final_usage().work(WorkCategory::RecordVisit) > 0);
+        assert!(parts.final_usage().work(HtmlParseWorkCategory::RecordVisit) > 0);
         assert_eq!(parts.diagnostics().unwrap().len(), 0);
         {
             let fragment = parts.fragment().unwrap();
@@ -1778,7 +1798,7 @@ pub(super) mod tests {
                 let remaining = request.limits().work_credits() - before;
                 driver
                     .control
-                    .charge(WorkCategory::StateStep, remaining - credit)
+                    .charge(HtmlParseWorkCategory::StateStep, remaining - credit)
                     .unwrap();
             }
             match completed.freeze_parts() {
@@ -1819,7 +1839,7 @@ pub(super) mod tests {
                     let first = completed.driver.as_ref().unwrap().control.stop().unwrap();
                     assert!(matches!(
                         first,
-                        ParseStop::LimitExceeded {
+                        HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::WorkCredits,
                             ..
                         }
@@ -1878,7 +1898,7 @@ pub(super) mod tests {
                 let remaining = request.limits().work_credits() - before;
                 driver
                     .control
-                    .charge(WorkCategory::StateStep, remaining - credit)
+                    .charge(HtmlParseWorkCategory::StateStep, remaining - credit)
                     .unwrap();
             }
             match completed.freeze_parts() {
@@ -1906,7 +1926,8 @@ pub(super) mod tests {
                         super::super::tests::limits(100),
                         crate::HtmlParseCancellation::new(),
                     );
-                    foreign.fail_invariant(crate::parser::control::Invariant::ForeignControl);
+                    foreign
+                        .fail_invariant(crate::parser::control::HtmlParseInvariant::ForeignControl);
                     std::mem::swap(
                         &mut completed.driver.as_mut().unwrap().control,
                         &mut foreign,
@@ -2030,10 +2051,12 @@ pub(super) mod tests {
             failure.context().context_element(),
             request.context().context_element()
         );
-        assert!(failure.at_stop().work(WorkCategory::RecordVisit) > 0);
+        assert!(failure.at_stop().work(HtmlParseWorkCategory::RecordVisit) > 0);
         assert!(
-            failure.after_cleanup().work(WorkCategory::RecordVisit)
-                >= failure.at_stop().work(WorkCategory::RecordVisit)
+            failure
+                .after_cleanup()
+                .work(HtmlParseWorkCategory::RecordVisit)
+                >= failure.at_stop().work(HtmlParseWorkCategory::RecordVisit)
         );
         assert_eq!(failure.diagnostics().unwrap().len(), 1);
         failure.release().unwrap();
@@ -2716,8 +2739,8 @@ pub(super) mod tests {
         let first = driver.control.stop().unwrap();
         assert_eq!(
             first,
-            ParseStop::UnsupportedStandaloneState(
-                crate::parser::control::StandaloneUnsupported::Provenance
+            HtmlParseStop::UnsupportedStandaloneState(
+                crate::parser::control::HtmlParseUnsupportedState::Provenance
             )
         );
         assert!(driver.completed_native_view().is_err());
@@ -2786,7 +2809,7 @@ pub(super) mod tests {
                 let first = driver.control.stop().unwrap();
                 assert!(matches!(
                     first,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ContextEffects,
                         ..
                     }
@@ -3620,7 +3643,7 @@ pub(super) mod tests {
             assert!(!facts.parser_inserted);
             assert_ne!(
                 facts.evidence,
-                crate::construction::FormAssociationEvidence::ParserAssociated
+                crate::construction::HtmlParseFormEvidence::ParserAssociated
             );
             let owner = session.image_form_owner(&mut driver.control, node).unwrap();
             match (owner, expected) {
@@ -3684,7 +3707,10 @@ pub(super) mod tests {
             .svg_script_state(&mut driver.control, &script)
             .unwrap();
         assert!(!facts.flags.already_processed());
-        assert_eq!(facts.origin, crate::construction::SvgScriptOrigin::Parser);
+        assert_eq!(
+            facts.origin,
+            crate::construction::HtmlParseSvgScriptOrigin::Parser
+        );
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
     }
@@ -3755,7 +3781,7 @@ pub(super) mod tests {
                 let first = driver.control.stop().unwrap();
                 assert!(matches!(
                     first,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedNodes,
                         ..
                     }
@@ -3794,12 +3820,12 @@ pub(super) mod tests {
         }
         request.cancellation().cancel();
         assert!(driver.step().is_err());
-        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
         assert!(driver.completed_native_view().is_err());
-        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
-        assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
     }
 
     #[test]
@@ -4057,7 +4083,9 @@ pub(super) mod tests {
                 let first = driver.control.stop().unwrap();
                 assert_eq!(
                     first,
-                    ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+                    HtmlParseStop::UnsupportedStandaloneState(
+                        HtmlParseUnsupportedState::Provenance
+                    )
                 );
                 let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
                 assert!(matches!(
@@ -4379,8 +4407,8 @@ pub(super) mod tests {
         }
         assert_eq!(
             first,
-            Some(ParseStop::UnsupportedStandaloneState(
-                StandaloneUnsupported::Provenance
+            Some(HtmlParseStop::UnsupportedStandaloneState(
+                HtmlParseUnsupportedState::Provenance
             ))
         );
     }
@@ -4493,8 +4521,8 @@ pub(super) mod tests {
                     let first = driver.control.stop().unwrap();
                     assert_eq!(
                         first,
-                        ParseStop::UnsupportedStandaloneState(
-                            crate::parser::control::StandaloneUnsupported::Provenance
+                        HtmlParseStop::UnsupportedStandaloneState(
+                            crate::parser::control::HtmlParseUnsupportedState::Provenance
                         )
                     );
                     assert!(driver.step().is_err());
@@ -4754,7 +4782,7 @@ pub(super) mod tests {
                 .form_association_state(&mut driver.control, &checkbox)
                 .unwrap();
             let final_reset = !association.parser_inserted
-                && association.evidence == crate::construction::FormAssociationEvidence::Reset;
+                && association.evidence == crate::construction::HtmlParseFormEvidence::Reset;
             let (resolved_expected_form, final_tree) = {
                 let mut view = session.native_view(&mut driver.control).unwrap();
                 let resolved_expected_form = owner
@@ -4940,8 +4968,8 @@ pub(super) mod tests {
                 assert!(refused);
                 assert_eq!(
                     first,
-                    Some(ParseStop::UnsupportedStandaloneState(
-                        crate::parser::control::StandaloneUnsupported::Provenance
+                    Some(HtmlParseStop::UnsupportedStandaloneState(
+                        crate::parser::control::HtmlParseUnsupportedState::Provenance
                     ))
                 );
             }
@@ -4967,8 +4995,8 @@ pub(super) mod tests {
             );
             assert_eq!(
                 failure.first_stop(),
-                Some(ParseStop::UnsupportedStandaloneState(
-                    StandaloneUnsupported::Provenance
+                Some(HtmlParseStop::UnsupportedStandaloneState(
+                    HtmlParseUnsupportedState::Provenance
                 )),
                 "{kind}"
             );
@@ -5023,8 +5051,8 @@ pub(super) mod tests {
         let first = driver.control.stop();
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
-        assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
-        assert_eq!(first, Some(ParseStop::Cancelled));
+        assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
+        assert_eq!(first, Some(HtmlParseStop::Cancelled));
         assert_eq!(driver.control.stop(), first);
     }
 }
@@ -5330,8 +5358,8 @@ mod owned_fragment_details_tests {
                         outcome,
                         Err(FragmentExecutionError::Head(head::HeadError::Kernel(
                             KernelError::Session(SessionError::Stop(
-                                ParseStop::UnsupportedStandaloneState(
-                                    StandaloneUnsupported::DetailsNotification
+                                HtmlParseStop::UnsupportedStandaloneState(
+                                    HtmlParseUnsupportedState::DetailsNotification
                                 )
                             ))
                         )))
@@ -5341,8 +5369,8 @@ mod owned_fragment_details_tests {
                 );
                 assert_eq!(
                     first,
-                    Some(ParseStop::UnsupportedStandaloneState(
-                        StandaloneUnsupported::DetailsNotification
+                    Some(HtmlParseStop::UnsupportedStandaloneState(
+                        HtmlParseUnsupportedState::DetailsNotification
                     ))
                 );
                 let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
@@ -5478,7 +5506,8 @@ mod owned_fragment_details_effect_tests {
         );
         let (mut c, mut session, proof) = owner(&request);
         let parent = session.fragment_output(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let (tag, _) = tag(&mut lexer, &mut c);
         // A real generic lexical creation did not issue/bind Details eligibility.
         // Matching local name, inert profile and null registry do not grant it.
@@ -5502,8 +5531,8 @@ mod owned_fragment_details_effect_tests {
             .as_ptr();
         let before = attributes(&session, &mut c, &node);
         assert_eq!(before, literals(&[("name", "g")]));
-        let expected = ParseStop::UnsupportedStandaloneState(
-            crate::parser::control::StandaloneUnsupported::DetailsNotification,
+        let expected = HtmlParseStop::UnsupportedStandaloneState(
+            crate::parser::control::HtmlParseUnsupportedState::DetailsNotification,
         );
         assert_eq!(
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
@@ -5545,7 +5574,8 @@ mod owned_fragment_details_effect_tests {
         );
         let (mut c, mut session, proof) = owner(&request);
         let parent = session.fragment_output(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         session
             .insert(&mut c, &parent, &first, None, Some(&proof))
@@ -5621,7 +5651,8 @@ mod owned_fragment_details_effect_tests {
         );
         let (mut c, mut session, proof) = owner(&request);
         let parent = session.fragment_output(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         let mut input = attribute(&mut lexer, &mut c);
         let alias = input.as_ref().unwrap().value.value.text().clone();
@@ -5669,7 +5700,9 @@ mod owned_fragment_details_effect_tests {
             );
             let (mut c, mut session, proof) = owner(&request);
             let parent = session.fragment_output(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
             let mut input = attribute(&mut lexer, &mut c);
             let pointer = input
@@ -5682,7 +5715,7 @@ mod owned_fragment_details_effect_tests {
                 .as_ptr();
             let expected = if cancelled {
                 request.cancellation().cancel();
-                let expected = ParseStop::Cancelled;
+                let expected = HtmlParseStop::Cancelled;
                 assert_eq!(
                     session.set_details_attribute(&mut c, &node, &mut input, &proof),
                     Err(SessionError::Stop(expected))
@@ -5692,8 +5725,9 @@ mod owned_fragment_details_effect_tests {
                 let foreign_request = tests::request("", "div", HtmlScriptingStatus::Disabled);
                 let (mut foreign, mut other, foreign_proof) = owner(&foreign_request);
                 let unchanged = foreign.usage().clone();
-                let expected =
-                    ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl);
+                let expected = HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::ForeignControl,
+                );
                 assert_eq!(
                     session.set_details_attribute(&mut c, &node, &mut input, &foreign_proof),
                     Err(SessionError::Stop(expected))
@@ -5736,12 +5770,18 @@ mod owned_fragment_details_effect_tests {
         let request = tests::request("<details name=g>", "div", HtmlScriptingStatus::Disabled);
         let (mut c, mut session, proof) = owner(&request);
         let parent = session.fragment_output(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         let foreign_request = tests::request("<i open=v>", "div", HtmlScriptingStatus::Disabled);
         let (mut foreign, mut other, _) = owner(&foreign_request);
-        let mut foreign_lexer =
-            LexerFixture::new(foreign_request.source(), State::Data, None, &mut foreign).unwrap();
+        let mut foreign_lexer = LexerFixture::new(
+            foreign_request.source(),
+            HtmlTokenizerState::Data,
+            None,
+            &mut foreign,
+        )
+        .unwrap();
         let mut input = attribute(&mut foreign_lexer, &mut foreign);
         let pointer = input
             .as_ref()
@@ -5752,8 +5792,9 @@ mod owned_fragment_details_effect_tests {
             .shared_code_units()
             .as_ptr();
         let foreign_usage = foreign.usage().clone();
-        let expected =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignSource);
+        let expected = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignSource,
+        );
         assert_eq!(
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
             Err(SessionError::Stop(expected))
@@ -5810,7 +5851,9 @@ mod owned_fragment_details_effect_tests {
             .unwrap();
             let (mut c, mut session, proof) = owner(&request);
             let parent = session.fragment_output(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
             let mut input = attribute(&mut lexer, &mut c);
             assert_eq!(
@@ -5836,7 +5879,7 @@ mod owned_fragment_details_effect_tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedAttributes,
                         ..
                     }))
@@ -6032,15 +6075,15 @@ mod owned_fragment_details_completion_tests {
             }
             request.cancellation().cancel();
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
             let usage = driver.control.usage().clone();
             assert!(driver.step().is_err());
             assert_eq!(driver.control.usage(), &usage);
             assert!(driver.completed_native_view().is_err());
-            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
             driver.release().unwrap();
             super::super::tests::assert_released(&driver.control);
-            assert_eq!(driver.control.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
         }
     }
 }
@@ -6080,8 +6123,8 @@ mod shadow_reference_alias_characterization {
             let first_stop = parts.control.stop();
             assert_eq!(
                 first_stop,
-                Some(ParseStop::InternalInvariant(
-                    crate::parser::control::Invariant::SharedAllocationAliased
+                Some(HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::SharedAllocationAliased
                 ))
             );
             assert!(parts.arena.is_some());

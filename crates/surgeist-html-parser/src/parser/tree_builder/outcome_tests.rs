@@ -14,7 +14,7 @@ use super::head::HeadError;
 use super::prologue::PrologueError;
 use super::{KernelError, StandaloneError};
 use crate::construction::{SessionError, fault_effect_drain, take_effect_fault};
-use crate::parser::control::{Invariant, ParseStop, StandaloneUnsupported};
+use crate::parser::control::{HtmlParseInvariant, HtmlParseStop, HtmlParseUnsupportedState};
 use crate::{
     HtmlCaptureFact, HtmlDocumentParseRequest, HtmlParseFailureReason, HtmlScriptingStatus,
     HtmlSource,
@@ -22,15 +22,15 @@ use crate::{
 
 const SOURCE: &str = "<!doctype html><p>x</p>";
 
-fn unsupported(state: StandaloneUnsupported) -> ParseStop {
-    ParseStop::UnsupportedStandaloneState(state)
+fn unsupported(state: HtmlParseUnsupportedState) -> HtmlParseStop {
+    HtmlParseStop::UnsupportedStandaloneState(state)
 }
 
 /// Every outcome of the document, the supplied facts or a service, with the
 /// reason and the first stop it ends a parse with.
-pub(super) fn outcomes() -> [(SessionError, HtmlParseFailureReason, ParseStop); 9] {
+pub(super) fn outcomes() -> [(SessionError, HtmlParseFailureReason, HtmlParseStop); 9] {
     use HtmlParseFailureReason as Reason;
-    use StandaloneUnsupported as State;
+    use HtmlParseUnsupportedState as State;
     let protocol = crate::construction::csp_protocol_error();
     let script = unsupported(State::ScriptDocument);
     let completion = unsupported(State::Completion);
@@ -39,17 +39,17 @@ pub(super) fn outcomes() -> [(SessionError, HtmlParseFailureReason, ParseStop); 
         (
             SessionError::CspService,
             Reason::CspProcessing,
-            ParseStop::CspProcessing,
+            HtmlParseStop::CspProcessing,
         ),
         (
             SessionError::CspProtocol(protocol),
             Reason::CspProtocol(protocol),
-            ParseStop::CspProtocol(protocol),
+            HtmlParseStop::CspProtocol(protocol),
         ),
         (
             SessionError::AssociatedFacts,
-            Reason::Stop(ParseStop::InvalidAssociatedFacts),
-            ParseStop::InvalidAssociatedFacts,
+            Reason::Stop(HtmlParseStop::InvalidAssociatedFacts),
+            HtmlParseStop::InvalidAssociatedFacts,
         ),
         (
             SessionError::ContextFactUnavailable(HtmlCaptureFact::ImageSupport),
@@ -86,18 +86,21 @@ pub(super) fn outcomes() -> [(SessionError, HtmlParseFailureReason, ParseStop); 
 
 /// Faults of the parser's own that reach a stage unlatched, with the
 /// invariant their kind names (`session_fault_invariant`).
-pub(super) fn faults() -> [(SessionError, Invariant); 4] {
+pub(super) fn faults() -> [(SessionError, HtmlParseInvariant); 4] {
     [
-        (SessionError::WrongToken, Invariant::RegistryRow),
+        (SessionError::WrongToken, HtmlParseInvariant::RegistryRow),
         (
             SessionError::PendingIntrinsicWork,
-            Invariant::PendingFormEffects,
+            HtmlParseInvariant::PendingFormEffects,
         ),
         (
             SessionError::AliasedPayload,
-            Invariant::SharedAllocationAliased,
+            HtmlParseInvariant::SharedAllocationAliased,
         ),
-        (SessionError::RootMove, Invariant::ConstructionOwnerRefusal),
+        (
+            SessionError::RootMove,
+            HtmlParseInvariant::ConstructionOwnerRefusal,
+        ),
     ]
 }
 
@@ -209,7 +212,7 @@ fn an_incomplete_completion_stage_error_latches_the_completion_stop() {
     )));
     assert_eq!(
         driver.control.stop(),
-        Some(unsupported(StandaloneUnsupported::Completion))
+        Some(unsupported(HtmlParseUnsupportedState::Completion))
     );
     driver.release().unwrap();
 }
@@ -228,7 +231,7 @@ fn a_parser_fault_in_any_ordinary_stage_error_latches_its_invariant() {
             driver.retain_terminal_failure(&Err::<(), _>(stage));
             assert_eq!(
                 driver.control.stop(),
-                Some(ParseStop::InternalInvariant(invariant)),
+                Some(HtmlParseStop::InternalInvariant(invariant)),
                 "{error:?}"
             );
             driver.release().unwrap();
@@ -245,7 +248,7 @@ pub(super) fn every_session_error() -> Vec<SessionError> {
         SessionError::NonceMetadataUnavailable,
         SessionError::CspService,
         SessionError::CspProtocol(protocol),
-        SessionError::Stop(ParseStop::Cancelled),
+        SessionError::Stop(HtmlParseStop::Cancelled),
         SessionError::ForeignNode,
         SessionError::RootMove,
         SessionError::AssociationMove,
@@ -330,19 +333,19 @@ pub(super) fn every_session_error() -> Vec<SessionError> {
 /// unsupported state each ends a parse as: a script that asks the parser to
 /// pause, a blocking script it would have to wait for, and a head owner that
 /// holds no proof of the construction capability.
-pub(super) fn stage_states() -> [(fn() -> HeadError, StandaloneUnsupported); 3] {
+pub(super) fn stage_states() -> [(fn() -> HeadError, HtmlParseUnsupportedState); 3] {
     [
         (
             || HeadError::UnsupportedScriptPause,
-            StandaloneUnsupported::ScriptPause,
+            HtmlParseUnsupportedState::ScriptPause,
         ),
         (
             || HeadError::UnsupportedPendingScript,
-            StandaloneUnsupported::PendingScript,
+            HtmlParseUnsupportedState::PendingScript,
         ),
         (
             || HeadError::ConstructionCapabilityUnavailable,
-            StandaloneUnsupported::Provenance,
+            HtmlParseUnsupportedState::Provenance,
         ),
     ]
 }
@@ -402,7 +405,7 @@ fn a_structure_error_latches_the_unsupported_nesting_stop_in_the_ordinary_driver
         driver.retain_terminal_failure(&Err::<(), _>(StandaloneError::Head(error())));
         assert_eq!(
             driver.control.stop(),
-            Some(unsupported(StandaloneUnsupported::InvalidNesting)),
+            Some(unsupported(HtmlParseUnsupportedState::InvalidNesting)),
             "{name}"
         );
         driver.release().unwrap();
@@ -429,7 +432,7 @@ fn an_unsupported_request_shape_latches_the_provenance_stop() {
         driver.retain_terminal_failure(&Err::<(), _>(error()));
         assert_eq!(
             driver.control.stop(),
-            Some(unsupported(StandaloneUnsupported::Provenance)),
+            Some(unsupported(HtmlParseUnsupportedState::Provenance)),
             "{name}"
         );
         driver.release().unwrap();

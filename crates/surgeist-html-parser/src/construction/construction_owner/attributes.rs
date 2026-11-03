@@ -55,8 +55,8 @@ impl ConstructionOwner {
         if self.attribute_edit.is_some() {
             return Err(latch_registry_row(control));
         }
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let handle = self
             .storage(control)?
             .node_at(target)

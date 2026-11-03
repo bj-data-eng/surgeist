@@ -14,7 +14,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<NotificationDomain, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Details {
                 node: Some(owner),
                 notification,
@@ -22,7 +22,7 @@ impl SessionStorage {
                 && *owner == node
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<NotificationDomain>() as u64,
                 )?;
                 return Ok(*notification);
@@ -35,7 +35,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(reason) = self.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
@@ -50,7 +50,7 @@ impl SessionStorage {
             Ok(())
         } else {
             Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::DetailsNotification)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::DetailsNotification)
                 .into())
         }
     }
@@ -60,7 +60,7 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -82,7 +82,7 @@ impl SessionStorage {
         } else {
             crate::HtmlDetailsAttribute::Other
         };
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<crate::HtmlDetailsAttributeEffect>(c, 1)?;
         let effect = crate::details_attribute_effect(
             attr.name().namespace(),
@@ -124,12 +124,12 @@ impl SessionStorage {
         let Some(name) = self.form_attribute(c, node, "name")? else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if name.is_empty() {
             return Ok(());
         }
         let root = self.ordinary_root(c, node, None)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if root == node
             && self
                 .construction
@@ -221,10 +221,10 @@ impl SessionStorage {
         position: Option<usize>,
     ) -> Result<(), SessionError> {
         self.payloads.forget_attribute_strings(node);
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<OrderedAttributes>() as u64,
         )?;
         payload_write::<usize>(c, 1)?;
@@ -370,7 +370,7 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
     fn request(source: &str) -> crate::HtmlDocumentParseRequest {
         crate::HtmlDocumentParseRequest::offline(
@@ -464,7 +464,8 @@ mod tests {
         let request = request("<details a=1 open=v b=2 name=g c=3><details name=g open>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let parent = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         session
             .insert(&mut c, &parent, &first, None, Some(&proof))
@@ -508,7 +509,8 @@ mod tests {
             request("<details name=g open><details name=h open><i name=g><i open=x><i open=y>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let parent = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         session
             .insert(&mut c, &parent, &first, None, Some(&proof))
@@ -560,7 +562,9 @@ mod tests {
             ));
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let a = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let b = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             // Detached nodes are separate ordinary trees. Connectivity itself
@@ -586,8 +590,13 @@ mod tests {
         let request = self::request(source);
         let (mut baseline, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut baseline).unwrap();
-        let mut lexer =
-            LexerFixture::new(request.source(), State::Data, None, &mut baseline).unwrap();
+        let mut lexer = LexerFixture::new(
+            request.source(),
+            HtmlTokenizerState::Data,
+            None,
+            &mut baseline,
+        )
+        .unwrap();
         let node = detail(&mut session, &mut baseline, &mut lexer, &proof, &root);
         let before = baseline
             .usage()
@@ -608,11 +617,13 @@ mod tests {
             let request = self::request(source);
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, remaining - admitted)
+            c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
                 .unwrap();
             let result =
                 session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open);
@@ -621,7 +632,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -631,7 +642,7 @@ mod tests {
                 assert_eq!(c.stop(), stop);
             }
             if c.stop().is_none() {
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -643,7 +654,8 @@ mod tests {
         let request = request("<details open=v a=1 name=g b=2>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         // Scheduling instrumentation only: no alternate operation or minted
         // phase. Cancel the real token after the actual adjacent slot commit.
@@ -651,7 +663,7 @@ mod tests {
             Some(request.cancellation().clone());
         assert_eq!(
             session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert!(
             session
@@ -680,13 +692,13 @@ mod tests {
         );
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         zero(&c);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             work
@@ -697,7 +709,8 @@ mod tests {
         let request = request("<details name=g><i open=v>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let mut input = attribute(&mut lexer, &mut c);
         let HtmlNodeKind::Element(element) = &session
@@ -751,7 +764,8 @@ mod tests {
         let request = request("<details name=g open a=x>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
             .insert(&mut c, &root, &node, None, Some(&proof))
@@ -778,7 +792,8 @@ mod tests {
         let request = request("<details name=g open><template><details name=g open x:open=q>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let outer = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
             .insert(&mut c, &root, &outer, None, Some(&proof))
@@ -814,7 +829,8 @@ mod tests {
         let request = request("<details a=1 open=v b=2 name=g c=3>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
             .remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open)
@@ -859,7 +875,9 @@ mod tests {
             let request = request(&source);
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -875,12 +893,13 @@ mod tests {
                 let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
                 let root = session.root(&mut c).unwrap();
                 let mut lexer =
-                    LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+                    LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                        .unwrap();
                 let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
                 let mut input = attribute(&mut lexer, &mut c);
                 let remaining = request.limits().work_credits()
                     - c.usage().resource(HtmlParseResource::WorkCredits).current;
-                c.charge(WorkCategory::StateStep, remaining - admitted)
+                c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
                     .unwrap();
                 let result = session.set_details_attribute(&mut c, &node, &mut input, &proof);
                 if admitted == cost {
@@ -890,7 +909,7 @@ mod tests {
                     assert!(c.stop().is_some());
                 }
                 if c.stop().is_none() {
-                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                    assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
                 }
                 if let Some(attr) = input.take() {
                     attr.name.release(&mut c).unwrap();
@@ -973,7 +992,8 @@ mod tests {
         );
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let second = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
@@ -997,7 +1017,9 @@ mod tests {
             let request = request("<details name=g><i open=new>");
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             let pointer = input
@@ -1012,7 +1034,7 @@ mod tests {
                 request.cancellation().cancel();
                 assert_eq!(
                     session.set_details_attribute(&mut c, &node, &mut input, &proof),
-                    Err(SessionError::Stop(ParseStop::Cancelled))
+                    Err(SessionError::Stop(HtmlParseStop::Cancelled))
                 );
             } else {
                 let before = c.usage().clone();
@@ -1022,8 +1044,8 @@ mod tests {
                 );
                 assert!(matches!(
                     session.set_details_attribute(&mut foreign, &node, &mut input, &proof),
-                    Err(SessionError::Stop(ParseStop::InternalInvariant(
-                        crate::parser::control::Invariant::ForeignControl
+                    Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                        crate::parser::control::HtmlParseInvariant::ForeignControl
                     )))
                 ));
                 assert_eq!(c.usage(), &before);
@@ -1067,7 +1089,9 @@ mod tests {
             );
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             // The actual details owns one native name slot. Appending open
@@ -1097,7 +1121,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedAttributes,
                         ..
                     }))
@@ -1122,7 +1146,7 @@ mod tests {
     fn details_dispatch_keeps_ordinary_self_closing_diagnostic() {
         use crate::parser::tree_builder::{
             StandaloneDocumentDriver,
-            head::{HeadCondition, HeadStep},
+            head::{HeadStep, HtmlTreeDiagnostic},
         };
         let request = request("<!doctype html><details name=g open/></details>");
         let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
@@ -1142,7 +1166,7 @@ mod tests {
         let (record, location) = evidence.retained_record(0).unwrap().unwrap();
         assert_eq!(
             record.kind,
-            evidence::DiagnosticKind::Tree(HeadCondition::UnacknowledgedSelfClosing)
+            evidence::HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::UnacknowledgedSelfClosing)
         );
         assert_eq!(record.rule.branch, "ordinary-start/self-closing");
         assert_eq!((location.start(), location.end()), (15, 37));
@@ -1154,7 +1178,8 @@ mod tests {
         let request = request("<details open=v a=1>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let storage = session.active_mut().unwrap();
         let container = storage
@@ -1186,8 +1211,9 @@ mod tests {
             rebound: 0,
         });
         let result = storage.edit_removing_attribute(&mut c, node.index, container, Some(0));
-        let invariant =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
         assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
         assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
         assert!(!storage.construction.has_attribute_edit());

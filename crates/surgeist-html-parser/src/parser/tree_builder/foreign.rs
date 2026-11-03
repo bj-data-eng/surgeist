@@ -13,7 +13,7 @@
 
 use super::{
     KernelError,
-    head::{HeadCondition, HeadError, HeadState, HeadStep},
+    head::{HeadError, HeadState, HeadStep, HtmlTreeDiagnostic},
     prologue::Payload,
     tag_sets, write,
 };
@@ -24,7 +24,7 @@ use crate::{
     },
     construction::{BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text},
     parser::{
-        control::{ParseControl, StandaloneUnsupported, WorkCategory},
+        control::{HtmlParseUnsupportedState, HtmlParseWorkCategory, ParseControl},
         tokenizer::token::{TagKind, Text},
     },
 };
@@ -39,13 +39,13 @@ pub(super) fn insensitive(
     literal: &'static str,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if value.len() != literal.len() {
         return Ok(false);
     }
     // The lengths are equal, so the pairs are exactly the literal's indices.
     for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
-        c.charge(WorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         let lower = if (65..=90).contains(&unit) {
             unit | 0x20
         } else {
@@ -75,7 +75,7 @@ fn integration_rule(
     c: &mut ParseControl,
 ) -> Result<HtmlIntegrationPointRule, HeadError> {
     // Borrow the namespace, its URI and the local name before comparisons.
-    c.charge(WorkCategory::RecordVisit, 3)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
     bounded::html_integration_point_rule(
         name.namespace().uri(),
         name.local_name(),
@@ -90,7 +90,7 @@ fn integration_encoding(
     for attribute in attributes.as_slice() {
         // Visit the attribute and borrow its name, namespace, URI, local name
         // and value. Variable UTF-16 inspections remain comparison-owned.
-        c.charge(WorkCategory::RecordVisit, 6)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 6)?;
         let name = attribute.name();
         if let Some(result) = bounded::html_integration_point_encoding_attribute(
             name.namespace().uri(),
@@ -116,11 +116,11 @@ impl HeadState<'_> {
         &'a self,
         c: &mut ParseControl,
     ) -> Result<&'a crate::QualifiedName, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = context
                 .capture()
                 .node(context.context_element().subject())
@@ -141,11 +141,11 @@ impl HeadState<'_> {
         &'a self,
         c: &mut ParseControl,
     ) -> Result<&'a crate::OrderedAttributes, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = context
                 .capture()
                 .node(context.context_element().subject())
@@ -166,7 +166,7 @@ impl HeadState<'_> {
         &self,
         c: &mut ParseControl,
     ) -> Result<Option<ForeignNamespace>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 0 {
             return Ok(None);
         }
@@ -185,8 +185,8 @@ impl HeadState<'_> {
             .kernel
             .session
             .fragment_context(c)?
-            .ok_or_else(|| c.stop_unsupported_standalone(StandaloneUnsupported::Provenance))?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+            .ok_or_else(|| c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance))?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let node = context
             .capture()
             .node(context.context_element().subject())
@@ -201,7 +201,7 @@ impl HeadState<'_> {
         };
         if !equal {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(Some(ForeignNamespace::Context))
@@ -241,7 +241,7 @@ impl HeadState<'_> {
         }
     }
     pub(super) fn foreign_dispatch(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let payload = &self
             .pending
             .as_ref()
@@ -294,7 +294,7 @@ impl HeadState<'_> {
         let svg_script =
             namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some();
         let place = self.before.kernel.appropriate_place(None, c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let Payload::Tag(input) = &mut pending.payload else {
             return Err(HeadError::MissingInput);
@@ -356,7 +356,7 @@ impl HeadState<'_> {
                 .element_attributes(c, node)?
                 .ok_or(KernelError::EmptyStack)?;
             for attribute in attrs.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if tag_sets::namespace(attribute.name(), "http://www.w3.org/2000/xmlns/", c)?
                     && tag_sets::ascii_eq(attribute.name().local_name(), local, c)?
                     && !(if let Some(expected) = expected {
@@ -380,8 +380,8 @@ impl HeadState<'_> {
             }
             if mismatch {
                 self.emit(
-                    HeadCondition::ForeignNamespaceMismatch,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::ForeignNamespaceMismatch,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inforeign",
                         branch: "foreign-start/xmlns-namespace-mismatch",
                     },
@@ -392,7 +392,7 @@ impl HeadState<'_> {
         Ok(())
     }
     fn foreign_characters(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.body_runs.is_none() {
             let Payload::Text(input) = &mut self
                 .pending
@@ -406,8 +406,8 @@ impl HeadState<'_> {
             self.body_runs = Some(partition_body_text(c, input)?);
         }
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self.body_run.is_none() {
                 write(size_of::<Option<crate::construction::TextRun>>(), 1, c)?;
                 self.body_run = self
@@ -416,32 +416,35 @@ impl HeadState<'_> {
                     .ok_or(HeadError::MissingInput)?
                     .take_next(c)?;
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(run) = self.body_run.as_ref() else {
                 break;
             };
-            c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<BodyTextKind>() as u64,
+            )?;
             let kind = run.kind;
             if kind == BodyTextKind::Null {
                 let mode = self.mode(c)?;
                 for origin in run.text.origins.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
 
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     self.before.kernel.session.evidence(c)?.append(
                         c,
-                        crate::construction::evidence::DiagnosticKind::Tree(
-                            HeadCondition::NullInForeign,
+                        crate::construction::evidence::HtmlParseDiagnosticKind::Tree(
+                            HtmlTreeDiagnostic::NullInForeign,
                         ),
-                        crate::construction::evidence::DiagnosticContext::Tree(mode),
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode),
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-inforeign",
                             branch: "null-character/replace",
                         },
                         crate::construction::evidence::DiagnosticLocationInput {
                             source: &origin.source,
-                            role: crate::construction::evidence::DiagnosticLocationRole::TextOrigin,
-                            token: Some(crate::construction::evidence::DiagnosticToken::Text),
+                            role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TextOrigin,
+                            token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text),
                         },
                     )?;
                 }
@@ -482,8 +485,8 @@ impl HeadState<'_> {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
-        self.record_trigger(crate::construction::provenance::ParserRule::Foreign, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.record_trigger(crate::construction::provenance::HtmlParserRule::Foreign, c)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .pending
             .as_ref()
@@ -494,8 +497,8 @@ impl HeadState<'_> {
             Payload::Comment(_) | Payload::Pi(_) => return Ok(Some(self.ordinary_node(c)?)),
             Payload::Doctype(_) => {
                 self.emit(
-                    HeadCondition::UnexpectedDoctype,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedDoctype,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inforeign",
                         branch: "foreign-doctype/ignore",
                     },
@@ -564,8 +567,8 @@ impl HeadState<'_> {
         };
         if breakout {
             self.emit(
-                HeadCondition::UnexpectedForeignToken,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedForeignToken,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inforeign",
                     branch: if kind == TagKind::Start {
                         "foreign-start/html-breakout"
@@ -576,7 +579,7 @@ impl HeadState<'_> {
                 c,
             )?;
             loop {
-                c.charge(WorkCategory::StateStep, 1)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 let current = self.before.kernel.current(c)?;
                 let current_name = self
                     .before
@@ -619,15 +622,15 @@ impl HeadState<'_> {
         }
         if !self.foreign_end_matches(&current, c)? {
             self.emit(
-                HeadCondition::UnexpectedForeignToken,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedForeignToken,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inforeign",
                     branch: "foreign-end/current-local-name-mismatch",
                 },
                 c,
             )?;
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let mut index = self
             .before
             .kernel
@@ -636,14 +639,14 @@ impl HeadState<'_> {
             .checked_sub(1)
             .ok_or(KernelError::EmptyStack)?;
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             if index == 0 {
                 return Ok(Some(self.discard(c)?));
             }
             let node = self.before.kernel.at(index, c)?;
             if self.foreign_end_matches(&node, c)? {
                 loop {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if self.before.kernel.stack()?.len() <= index {
                         break;
                     }
@@ -682,7 +685,7 @@ impl HeadState<'_> {
             .attributes
             .as_slice()
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for name in ["color", "face", "size"] {
                 if tag_sets::ascii_eq(attribute.name.value.text(), name, c)? {
                     return Ok(true);
@@ -717,13 +720,13 @@ impl HeadState<'_> {
             .name
             .value
             .text();
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if name.len() != token.len() {
             return Ok(false);
         }
         // The lengths are equal, so the pairs are exactly the shared indices.
         for (&unit, &expected) in name.code_units().iter().zip(token.code_units()) {
-            c.charge(WorkCategory::InspectByte, 4)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
             let lower = if (65..=90).contains(&unit) {
                 unit | 0x20
             } else {

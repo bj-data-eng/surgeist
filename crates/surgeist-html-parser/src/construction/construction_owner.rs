@@ -211,7 +211,7 @@ enum Disposition {
 
 /// Maps every fault to its report. A new fault needs a row here to compile.
 fn disposition(fault: OwnerFault) -> Disposition {
-    use crate::parser::control::Invariant;
+    use crate::parser::control::HtmlParseInvariant;
     use Disposition::{AllocationFailed, Class, Representation, Session};
     match fault {
         OwnerFault::ForeignBuilder | OwnerFault::UnknownNode => Session(SessionError::ForeignNode),
@@ -223,14 +223,18 @@ fn disposition(fault: OwnerFault) -> Disposition {
             Session(SessionError::WrongSibling)
         }
         OwnerFault::Cycle => Session(SessionError::Cycle),
-        OwnerFault::SharedAllocationAliased => {
-            Class(SessionClass::Fault(Invariant::SharedAllocationAliased))
-        }
+        OwnerFault::SharedAllocationAliased => Class(SessionClass::Fault(
+            HtmlParseInvariant::SharedAllocationAliased,
+        )),
         OwnerFault::RepresentationExhausted => Representation,
         OwnerFault::CapacityMismatch
         | OwnerFault::ForeignAllocation
-        | OwnerFault::LimitExceeded => Class(SessionClass::Fault(Invariant::CapacityMismatch)),
-        OwnerFault::ReleaseUnderflow => Class(SessionClass::Fault(Invariant::ReleaseUnderflow)),
+        | OwnerFault::LimitExceeded => {
+            Class(SessionClass::Fault(HtmlParseInvariant::CapacityMismatch))
+        }
+        OwnerFault::ReleaseUnderflow => {
+            Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow))
+        }
         // `layout_bytes: 0` means the layout is unknown here, not that none was
         // requested. Every bounded producer of this error reports it with its
         // real layout before it gets this far: the record and child reserves
@@ -252,7 +256,9 @@ fn disposition(fault: OwnerFault) -> Disposition {
         | OwnerFault::InvalidOutputRoot
         | OwnerFault::OperationConsumed
         | OwnerFault::OperationNotReady
-        | OwnerFault::Unlisted => Class(SessionClass::Fault(Invariant::ConstructionOwnerRefusal)),
+        | OwnerFault::Unlisted => Class(SessionClass::Fault(
+            HtmlParseInvariant::ConstructionOwnerRefusal,
+        )),
     }
 }
 
@@ -329,7 +335,7 @@ impl PendingConstruction {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<Option<HtmlConstructionAction<'_>>, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 3)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let Some(operation) = self.operation.as_mut() else {
             return Err(latch_registry_row(control));
         };
@@ -342,17 +348,17 @@ impl PendingConstruction {
     }
 }
 fn ticket_work(control: &mut ParseControl) -> Result<(), SessionError> {
-    control.charge(WorkCategory::ProviderCall, 2)?;
+    control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
     control.charge(
-        WorkCategory::CopyByte,
+        HtmlParseWorkCategory::CopyByte,
         mem::size_of::<ConstructionAllocation>() as u64,
     )?;
-    control.charge(WorkCategory::RecordWrite, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
     Ok(())
 }
 impl ConstructionOwner {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
-        control.charge(WorkCategory::ProviderCall, 1)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let mut initialization = Some(HtmlConstructionStorage::begin());
         let Some(owner) = initialization.as_mut() else {
             return Err(latch_registry_row(control));
@@ -377,9 +383,9 @@ impl ConstructionOwner {
         let Some(further_calls) = provider_calls.checked_sub(1) else {
             return Err(plan_below_charge(control));
         };
-        control.charge(WorkCategory::ProviderCall, further_calls as u64)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;
-        control.charge(WorkCategory::CopyByte, initialized_bytes as u64)?;
+        control.charge(HtmlParseWorkCategory::CopyByte, initialized_bytes as u64)?;
         ticket_work(control)?;
         let observation = action.perform();
         let mut identity = None;
@@ -570,7 +576,7 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         command: HtmlConstructionCommand,
     ) -> Result<PendingConstruction, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         // Moving bounded inline control metadata is not a payload copy in the
         // parser work model. Actual retained bank/slot writes and providers are
         // admitted by the operation's actions.
@@ -617,20 +623,20 @@ impl ConstructionOwner {
                 record_visits,
                 inspected_bytes,
             } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::InspectByte, inspected_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?;
             }
             HtmlConstructionActionDescription::Compare { inspected_bytes } => {
-                control.charge(WorkCategory::InspectByte, inspected_bytes as u64)?
+                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?
             }
             HtmlConstructionActionDescription::PrepareAllocationReport {
                 record_visits,
                 provider_calls,
                 copied_bytes,
             } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
             }
             HtmlConstructionActionDescription::Reserve {
                 report_provider_calls,
@@ -639,7 +645,7 @@ impl ConstructionOwner {
                 minimum_capacity,
                 growth,
             } => {
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 let bank = snapshot
                     .child_position()
                     .map_or(Bank::Records, Bank::Children);
@@ -673,7 +679,10 @@ impl ConstructionOwner {
                 let slot = self.allocation_slot(control, bank)?;
                 control.prepare_construction_reserve(snapshot, capacity, slot.as_ref())?;
                 ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, report_provider_calls as u64)?;
+                control.charge(
+                    HtmlParseWorkCategory::ProviderCall,
+                    report_provider_calls as u64,
+                )?;
                 allocation = Some(bank);
             }
             HtmlConstructionActionDescription::Share {
@@ -683,15 +692,18 @@ impl ConstructionOwner {
                 expected = snapshot.element_size();
                 control.prepare_construction_share(expected)?;
                 ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, report_provider_calls as u64)?;
+                control.charge(
+                    HtmlParseWorkCategory::ProviderCall,
+                    report_provider_calls as u64,
+                )?;
                 allocation = Some(Bank::Wrapper);
             }
             HtmlConstructionActionDescription::ShareReferences {
                 provider_calls,
                 copied_bytes,
             } => {
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
             }
             HtmlConstructionActionDescription::InitializeChildren {
                 provider_calls,
@@ -705,17 +717,17 @@ impl ConstructionOwner {
                     &mut self.children_allocation,
                     1,
                 )?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
                 control.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     const {
                         (mem::size_of::<Vec<usize>>()
                             + mem::size_of::<Option<ConstructionAllocation>>())
                             as u64
                     },
                 )?;
-                control.charge(WorkCategory::RecordWrite, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
                 ticket_work(control)?;
                 // The real child-bank registry append lands at the next row.
                 if position != self.children.len() {
@@ -723,7 +735,7 @@ impl ConstructionOwner {
                 }
                 // The zero-capacity bank physically exists in the pending owner;
                 // retain its ticket even if a later post-call checkpoint refuses.
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
                 self.children.push(None);
                 allocation = Some(Bank::Children(position));
             }
@@ -743,9 +755,9 @@ impl ConstructionOwner {
                     control.observe_tree_depth(depth as u64)?;
                 }
                 control.admit_atomic_layout(initialized_bytes)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
                 before_commit(control)?;
                 control.commit_construction_logical(
                     &self.control,

@@ -33,7 +33,7 @@ impl SessionStorage {
                 .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
             {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(root)
@@ -45,13 +45,13 @@ impl SessionStorage {
             }
             while let Some(node) = pending.try_pop(c)? {
                 self.node_document_ref(c, node)?;
-                c.charge(WorkCategory::RecordVisit, 4)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
                 let record = self
                     .construction
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?;
                 if let Some(shadow) = record.shadow_root() {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
                         .construction
                         .storage(c)?
@@ -63,7 +63,7 @@ impl SessionStorage {
                     }
                     self.shadow_state(c, shadow_contents)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<HtmlShadowRootProperties>() as u64,
                     )?;
                     if self
@@ -82,7 +82,7 @@ impl SessionStorage {
                             .ok_or_else(|| latch_registry_row(c))?
                             .child_count()
                         {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             let child = self
                                 .construction
                                 .node_at(shadow_contents)
@@ -101,7 +101,7 @@ impl SessionStorage {
                             || exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
                             || exact_ascii(c, namespace, "http://www.w3.org/2000/svg")?
                             || exact_ascii(c, namespace, "http://www.w3.org/1998/Math/MathML")?;
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !supported || element.name().prefix().is_some() {
                             return Err(SessionError::WrongToken);
                         }
@@ -113,8 +113,8 @@ impl SessionStorage {
                         }
                         let container = self.element_attribute_container(c, node)?;
                         for (position, attr) in element.attributes().as_slice().iter().enumerate() {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
-                            c.charge(WorkCategory::RecordVisit, 2)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                             for location in [
                                 attr.name().namespace().uri().map(|_| {
                                     StringLocation::AttributeNamespace(container, position)
@@ -192,7 +192,7 @@ impl SessionStorage {
                         .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                     {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let child = self
                             .construction
                             .node_at(contents)
@@ -209,7 +209,7 @@ impl SessionStorage {
                     .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                 {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(node)
@@ -233,7 +233,7 @@ impl SessionStorage {
         source: usize,
         copy: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self
             .construction
             .node_at(source)
@@ -277,7 +277,7 @@ impl SessionStorage {
         source: usize,
         document: DocumentRef,
     ) -> Result<usize, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .construction
             .node_at(source)
@@ -386,7 +386,7 @@ impl SessionStorage {
         let bindings = self.prepare_clone_metadata(c, source)?;
         let slot = self.field_slot(c, StringLocation::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let namespace_present = element_record(&self.construction, c, source)?
             .name()
             .namespace()
@@ -483,7 +483,7 @@ impl SessionStorage {
             shared,
             element: None,
         });
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<OrderedAttributes>(c, 1)?;
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. }))) =
             self.payloads.values.get(container)
@@ -535,7 +535,7 @@ impl SessionStorage {
         ) {
             let slot = self.base_slot(c, source)?;
             c.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<base::ResponseDomain>() as u64,
             )?;
             let Some(RetainedPayload::Base { domain, .. }) = self.payloads.values.get(slot) else {
@@ -546,7 +546,7 @@ impl SessionStorage {
         }
         payload_write::<usize>(c, 1)?;
 
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let count = element_record(&self.construction, c, source)?
             .attributes()
             .len();
@@ -562,7 +562,7 @@ impl SessionStorage {
                 StringLocation::AttributeValue(original_container, position),
             )?;
             let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let attribute = element_attribute(&self.construction, c, source, position)?;
             let has_namespace = attribute.name().namespace().uri().is_some();
             let has_prefix = attribute.name().prefix().is_some();
@@ -673,7 +673,7 @@ impl SessionStorage {
         let Some(slot) = self.payloads.joined(c, node, Join::Attributes)? else {
             return Err(SessionError::AttributeStorageUnavailable);
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. }))) if *owner == node)
         {
             Ok(slot)
@@ -712,7 +712,7 @@ impl SessionStorage {
         {
             let registry = self.lookup_registry_ref(c, source)?;
             let original = self.element_creation_state(c, source)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(source)
@@ -727,7 +727,7 @@ impl SessionStorage {
                 "http://www.w3.org/1999/xhtml",
             )?;
             let saved = if let Some(slot) = original.saved_is {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot)
                 else {
                     return Err(SessionError::ContextUnavailable);
@@ -776,7 +776,7 @@ impl SessionStorage {
                             kind: state.kind,
                             owner: None,
                             parser_inserted: false,
-                            evidence: FormAssociationEvidence::Created,
+                            evidence: HtmlParseFormEvidence::Created,
                         },
                     },
                 )
@@ -876,7 +876,7 @@ impl SessionStorage {
                 RetainedPayload::Output {
                     node: None,
                     state: OutputState {
-                        default_value_override: OutputDefaultValueOverride::Null,
+                        default_value_override: HtmlParseOutputOverride::Null,
                     },
                 },
             )?);
@@ -906,7 +906,7 @@ impl SessionStorage {
                 c,
                 SvgScriptState {
                     flags: original.flags.clone_for_element(),
-                    origin: SvgScriptOrigin::Clone,
+                    origin: HtmlParseSvgScriptOrigin::Clone,
                 },
             )?);
         }
@@ -936,7 +936,7 @@ impl SessionStorage {
         .into_iter()
         .flatten()
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             payload_write::<Option<usize>>(c, 1)?;
             match self.payloads.values.get_mut(slot) {
                 Some(
@@ -1003,7 +1003,7 @@ impl SessionStorage {
             self.initial_select_attribute(c, node, position)?;
         }
         if let Some(slot) = bindings.script {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let attribute = element_attribute(&self.construction, c, node, position)?;
             if exact_ascii(c, Some(attribute.name().local_name()), "async")? {
                 let (_, mut metadata) = script_metadata(&self.payloads, c, node)?;
@@ -1091,7 +1091,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(usize, usize, InputState), SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::Input {
                 node: Some(owner),
                 raw,
@@ -1102,7 +1102,7 @@ impl SessionStorage {
                 && *owner == node
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     const { (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64 },
                 )?;
                 return Ok((slot, *raw, *state));
@@ -1112,7 +1112,7 @@ impl SessionStorage {
     }
     fn output_clone_slot(&self, c: &mut ParseControl, node: usize) -> Result<usize, SessionError> {
         for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(payload, RetainedPayload::Output { node: Some(owner), .. } if *owner == node)
             {
                 return Ok(slot);
@@ -1145,7 +1145,7 @@ impl SessionStorage {
         control_field_owner(&self.payloads, c, source)?;
         let mut buffer = Utf16Buffer::new(c)?;
         let result = (|| {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(RetainedPayload::String { value, origins, .. }) =
                 self.payloads.values.get(source)
             else {
@@ -1178,7 +1178,7 @@ impl SessionStorage {
         location: StringLocation,
     ) -> Result<usize, SessionError> {
         if let StringLocation::Text(node) = location {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let slot = self
                 .payloads
                 .node_joins
@@ -1204,7 +1204,7 @@ impl SessionStorage {
         // Deliberately a registry scan: it runs per attribute on clone paths only,
         // not per parsed element, and string rows have no location index.
         for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {
                 location: stored, ..
             } = payload
@@ -1222,7 +1222,7 @@ fn control_field_owner(
     c: &mut ParseControl,
     slot: usize,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value,
         allocation,
@@ -1286,8 +1286,9 @@ mod tests {
             ..CloneBindings::default()
         };
         let failure = storage.bind_clone_metadata(&mut c, missing, bindings);
-        let invariant =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
         assert_eq!(failure.err(), Some(SessionError::Stop(invariant)));
         // The same stop the public failure path would report: `session_reason`
         // maps `SessionError::Stop(stop)` to `HtmlParseFailureReason::Stop(stop)`.

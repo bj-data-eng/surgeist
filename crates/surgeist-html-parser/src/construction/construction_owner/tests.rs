@@ -1,5 +1,5 @@
 use super::*;
-use crate::parser::control::{Invariant, ParseStop};
+use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 #[test]
 fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
     let mut control = ParseControl::new(
@@ -54,7 +54,9 @@ fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
     let before = control.usage().actual_capacity_bytes;
     assert_eq!(
         control.require_construction_retirement(&stale, current),
-        Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+        Err(HtmlParseStop::InternalInvariant(
+            HtmlParseInvariant::CapacityMismatch
+        ))
     );
     assert_eq!(control.usage().actual_capacity_bytes, before);
     assert_eq!(owner.test_storage().position(&root), Ok(0));
@@ -127,7 +129,7 @@ fn insertion_preflight_precedes_scratch_capacity(resource: HtmlParseResource) {
     );
     let stop = control.stop().expect("competing insertion limit");
     assert!(
-        matches!(stop, ParseStop::LimitExceeded { resource: actual, .. } if actual == resource),
+        matches!(stop, HtmlParseStop::LimitExceeded { resource: actual, .. } if actual == resource),
         "{stop:?}"
     );
     assert!(matches!(result, Err(SessionError::Stop(actual)) if actual == stop));
@@ -153,14 +155,14 @@ fn insertion_preflight_precedes_scratch_capacity(resource: HtmlParseResource) {
         0
     );
     let work = [
-        WorkCategory::InputUnitRead,
-        WorkCategory::InspectByte,
-        WorkCategory::CopyByte,
-        WorkCategory::StateStep,
-        WorkCategory::RecordVisit,
-        WorkCategory::RecordWrite,
-        WorkCategory::ReserveByte,
-        WorkCategory::ProviderCall,
+        HtmlParseWorkCategory::InputUnitRead,
+        HtmlParseWorkCategory::InspectByte,
+        HtmlParseWorkCategory::CopyByte,
+        HtmlParseWorkCategory::StateStep,
+        HtmlParseWorkCategory::RecordVisit,
+        HtmlParseWorkCategory::RecordWrite,
+        HtmlParseWorkCategory::ReserveByte,
+        HtmlParseWorkCategory::ProviderCall,
     ]
     .map(|category| control.usage().work(category));
     owner.retire(&mut control).unwrap();
@@ -168,14 +170,14 @@ fn insertion_preflight_precedes_scratch_capacity(resource: HtmlParseResource) {
     assert_eq!(control.stop(), Some(stop));
     assert_eq!(
         [
-            WorkCategory::InputUnitRead,
-            WorkCategory::InspectByte,
-            WorkCategory::CopyByte,
-            WorkCategory::StateStep,
-            WorkCategory::RecordVisit,
-            WorkCategory::RecordWrite,
-            WorkCategory::ReserveByte,
-            WorkCategory::ProviderCall
+            HtmlParseWorkCategory::InputUnitRead,
+            HtmlParseWorkCategory::InspectByte,
+            HtmlParseWorkCategory::CopyByte,
+            HtmlParseWorkCategory::StateStep,
+            HtmlParseWorkCategory::RecordVisit,
+            HtmlParseWorkCategory::RecordWrite,
+            HtmlParseWorkCategory::ReserveByte,
+            HtmlParseWorkCategory::ProviderCall
         ]
         .map(|category| control.usage().work(category)),
         work
@@ -235,7 +237,7 @@ fn parser_insertion_keeps_depth_and_edge_preflight_before_scratch_capacity() {
         let result = session.insert(&mut control, &root, &child, None, None);
         let stop = control.stop().unwrap();
         assert!(
-            matches!(stop, ParseStop::LimitExceeded { resource: actual, .. } if actual == resource),
+            matches!(stop, HtmlParseStop::LimitExceeded { resource: actual, .. } if actual == resource),
             "{stop:?}"
         );
         assert!(matches!(result, Err(SessionError::Stop(actual)) if actual == stop));
@@ -294,8 +296,8 @@ fn parser_insertion_keeps_depth_and_edge_preflight_before_scratch_capacity() {
 // custody slot through crate-private access, asserts the exact typed error,
 // that the stop is latched first, and that the owner's own retirement drains
 // every resource afterwards.
-fn registry_row() -> ParseStop {
-    ParseStop::InternalInvariant(Invariant::RegistryRow)
+fn registry_row() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow)
 }
 
 fn assert_registry_row<T>(result: Result<T, SessionError>, control: &ParseControl) {
@@ -542,11 +544,13 @@ fn a_refused_bank_credit_still_retires_every_other_bank_and_reports_the_first_re
 #[test]
 fn a_refused_witness_retirement_still_retires_the_rest_of_the_edit_and_reports_the_first_refusal() {
     use crate::construction::tests::{control, lexical_kind, storage_zero};
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::TokenKind};
+    use crate::parser::tokenizer::{
+        states::HtmlTokenizerState, tests::LexerFixture, token::TokenKind,
+    };
     let source = crate::HtmlSource::utf8("<html id=x><html a=y b=z>");
     let mut c = control();
     c.admit_source(&source).unwrap();
-    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let TokenKind::Tag(first) = lexical_kind(&mut lexer, &mut c) else {
         panic!("tag")
@@ -630,14 +634,14 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
 #[test]
 fn every_owner_fault_reports_what_it_violates() {
     use OwnerFault as F;
-    let invariant = |invariant| SessionError::Stop(ParseStop::InternalInvariant(invariant));
-    let mismatch = invariant(Invariant::CapacityMismatch);
-    let refusal = invariant(Invariant::ConstructionOwnerRefusal);
-    let allocation_failed = SessionError::Stop(ParseStop::AllocationFailed {
+    let invariant = |invariant| SessionError::Stop(HtmlParseStop::InternalInvariant(invariant));
+    let mismatch = invariant(HtmlParseInvariant::CapacityMismatch);
+    let refusal = invariant(HtmlParseInvariant::ConstructionOwnerRefusal);
+    let allocation_failed = SessionError::Stop(HtmlParseStop::AllocationFailed {
         resource: HtmlParseResource::ManagedCapacityBytes,
         layout_bytes: 0,
     });
-    let exhausted = SessionError::Stop(ParseStop::RepresentationExhausted {
+    let exhausted = SessionError::Stop(HtmlParseStop::RepresentationExhausted {
         resource: HtmlParseResource::ManagedCapacityBytes,
     });
     for (fault, expected, latched) in [
@@ -660,7 +664,7 @@ fn every_owner_fault_reports_what_it_violates() {
         (F::Cycle, SessionError::Cycle, false),
         (
             F::SharedAllocationAliased,
-            invariant(Invariant::SharedAllocationAliased),
+            invariant(HtmlParseInvariant::SharedAllocationAliased),
             true,
         ),
         (F::RepresentationExhausted, exhausted, true),
@@ -669,7 +673,7 @@ fn every_owner_fault_reports_what_it_violates() {
         (F::LimitExceeded, mismatch, true),
         (
             F::ReleaseUnderflow,
-            invariant(Invariant::ReleaseUnderflow),
+            invariant(HtmlParseInvariant::ReleaseUnderflow),
             true,
         ),
         (F::AllocationFailed, allocation_failed, true),
@@ -740,7 +744,9 @@ fn owner_dispositions_agree_with_the_session_classification() {
     }
     assert_eq!(
         disposition(OwnerFault::Unlisted),
-        Disposition::Class(SessionClass::Fault(Invariant::ConstructionOwnerRefusal))
+        Disposition::Class(SessionClass::Fault(
+            HtmlParseInvariant::ConstructionOwnerRefusal
+        ))
     );
 }
 

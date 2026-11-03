@@ -68,11 +68,11 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         storage.document_slot(c, 0)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if facts.document().iframe_srcdoc() {
             return Err(SessionError::WrongToken);
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlParseBaseFacts>(c, 1)?;
         let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
@@ -155,7 +155,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Base)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Base { node: Some(bound), .. }) if *bound == node)
             {
                 return Ok(slot);
@@ -169,7 +169,7 @@ impl SessionStorage {
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.values.get(slot), Some(RetainedPayload::BaseDocument { node, .. }) if *node == document)
             {
                 return Ok(Some(slot));
@@ -185,7 +185,7 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let mut next = Some(document);
         while let Some(node) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if is_base(
                 self.construction
                     .node_at(node)
@@ -211,7 +211,7 @@ impl SessionStorage {
         self.record_association(
             c,
             node,
-            pending_association::OccurrenceKind::BaseChanged,
+            pending_association::HtmlParseAssociationOccurrenceKind::BaseChanged,
             detached,
             None,
             false,
@@ -332,12 +332,12 @@ impl SessionStorage {
             .ok_or(SessionError::WrongToken)?;
         let mut selected = None;
         for observation in facts.observations() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<crate::HtmlBaseParseObservation>() as u64,
             )?;
-            c.charge(WorkCategory::ProviderCall, 3)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 3)?;
             if observation.inputs_match(fallback, encoding, environment.revision())
                 && exact_string_equal(c, observation.raw(), raw)?
             {
@@ -350,7 +350,7 @@ impl SessionStorage {
         })?;
         let (value, respond) = crate::select_frozen_base(fallback, outcome)
             .map_err(|missing| SessionError::Stop(c.stop_base_facts(missing)))?;
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         payload_write::<BaseValue>(c, 1)?;
         payload_write::<Option<usize>>(c, 1)?;
         let frozen = FrozenBase {
@@ -384,7 +384,7 @@ impl SessionStorage {
         });
         if respond {
             // This real checkpoint is after assignment and before response.
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(RetainedPayload::Base {
                 domain: ResponseDomain::ClosedOwned,
                 ..
@@ -406,7 +406,7 @@ impl SessionStorage {
     }
     pub(super) fn validate_base_facts(&self, c: &mut ParseControl) -> Result<(), SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::BaseDocument { node, first, .. } = payload {
                 self.document_slot(c, *node)?;
                 if self.first_base_href(c, *node, None)? != *first {
@@ -418,11 +418,11 @@ impl SessionStorage {
                 ..
             } = payload
             {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if !matches!(
                     self.payloads.values.get(*missing),
                     Some(RetainedPayload::MetaMissing {
-                        kind: meta::MetaMissingKind::Csp,
+                        kind: meta::HtmlParseMetaMissingKind::Csp,
                         ..
                     })
                 ) {
@@ -445,7 +445,9 @@ impl SessionStorage {
                 }
                 if frozen.response == Response::Pending {
                     return Err(c
-                        .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                        .fail_invariant(
+                            crate::parser::control::HtmlParseInvariant::PendingFormEffects,
+                        )
                         .into());
                 }
                 let slot = self
@@ -456,7 +458,7 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(c));
                 };
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
                     return Err(latch_registry_row(c));
                 }
@@ -469,7 +471,7 @@ impl SessionStorage {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
     pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =
@@ -560,7 +562,8 @@ pub(super) mod tests {
                 super::super::tests::fresh_script_owner(&$request);
             let $root = $session.root(&mut $c).unwrap();
             let mut $lexer =
-                LexerFixture::new($request.source(), State::Data, None, &mut $c).unwrap();
+                LexerFixture::new($request.source(), HtmlTokenizerState::Data, None, &mut $c)
+                    .unwrap();
             let $base = node(&mut $session, &mut $c, &mut $lexer);
             $session
                 .qualify_base_response(&mut $c, &$base, &capability)
@@ -644,7 +647,8 @@ pub(super) mod tests {
         let request = request("<base href=A><i target=_blank>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -751,7 +755,9 @@ pub(super) mod tests {
             let (mut c, mut session, capability) =
                 super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let base = node(&mut session, &mut c, &mut lexer);
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
@@ -767,7 +773,7 @@ pub(super) mod tests {
                 mutation::ManagedFamily::Base,
             );
             CANCEL_AFTER_BINDING.with(|slot| assert!(slot.borrow().is_none()));
-            assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+            assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
             assert!(incoming.is_none());
             assert_eq!(first(&session), Some(base.index));
             let (value, response) = frozen(&session, &base).unwrap();
@@ -779,7 +785,7 @@ pub(super) mod tests {
             let at_stop = c.first_stop_usage().unwrap().clone();
             assert_eq!(
                 session.freeze(&mut c).err(),
-                Some(SessionError::Stop(ParseStop::Cancelled))
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert_eq!(c.first_stop_usage(), Some(&at_stop));
             lexer.release(&mut c).unwrap();
@@ -798,15 +804,17 @@ pub(super) mod tests {
     /// (the registry row); a response that is still owed is a pending effect.
     #[test]
     fn validating_a_frozen_base_labels_row_faults_and_a_pending_response_apart() {
-        use crate::parser::control::Invariant;
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
-        let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
+        let pending = HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects);
         for (case, expected) in [(0, registry_row), (1, registry_row), (2, pending)] {
             let request = request("<base href=A>");
             let (mut c, mut session, capability) =
                 super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let base = node(&mut session, &mut c, &mut lexer);
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
@@ -863,14 +871,16 @@ pub(super) mod tests {
     /// inconsistent or missing.
     #[test]
     fn validating_base_rows_that_disagree_with_the_tree_reports_the_registry_row() {
-        use crate::parser::control::Invariant;
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         for case in 0..2 {
             let request = request("<base href=A>");
             let (mut c, mut session, capability) =
                 super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let base = node(&mut session, &mut c, &mut lexer);
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
@@ -927,15 +937,16 @@ pub(super) mod tests {
     /// two retained rows disagree about whose facts they hold.
     #[test]
     fn validating_a_frozen_base_with_another_owners_facts_reports_the_registry_row() {
-        use crate::parser::control::Invariant;
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         let other = request("<base href=A>");
         let foreign = other.base_facts().unwrap().clone();
         let request = request("<base href=A>");
         assert!(!request.base_facts().unwrap().same_owner(&foreign));
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -978,8 +989,8 @@ pub(super) mod tests {
     #[test]
     fn validating_an_unavailable_base_whose_missing_row_is_not_a_csp_row_reports_the_registry_row()
     {
-        use crate::parser::control::Invariant;
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         for case in 0..2 {
             let request = request(
                 "<head><base href=A><meta http-equiv=content-security-policy content=policy><i href=B>",
@@ -987,7 +998,9 @@ pub(super) mod tests {
             let (mut c, mut session, capability) =
                 super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let head = node(&mut session, &mut c, &mut lexer);
             session
                 .insert_parser(&mut c, &root, &head, None, &capability)
@@ -1035,7 +1048,7 @@ pub(super) mod tests {
                 else {
                     panic!("the base names its missing-policy row")
                 };
-                *kind = meta::MetaMissingKind::ThemeColor;
+                *kind = meta::HtmlParseMetaMissingKind::ThemeColor;
             } else {
                 // The named row is not a missing-policy row at all.
                 *missing = base_slot;
@@ -1053,7 +1066,7 @@ pub(super) mod tests {
                 *missing = named;
             }
             if let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named] {
-                *kind = meta::MetaMissingKind::Csp;
+                *kind = meta::HtmlParseMetaMissingKind::Csp;
             }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -1066,7 +1079,8 @@ pub(super) mod tests {
         let request = request("<base href=A><base href=B><i href=C>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let a = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &a, None, &capability)
@@ -1177,7 +1191,7 @@ pub(super) mod tests {
             if short {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         ..
                     }))
@@ -1270,7 +1284,7 @@ pub(super) mod tests {
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 remaining - total + u64::from(short),
             )
             .unwrap();
@@ -1278,7 +1292,7 @@ pub(super) mod tests {
             if short {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -1300,7 +1314,7 @@ pub(super) mod tests {
             } else {
                 assert_eq!(result, Ok(()));
                 assert_value(&session, &base, "https://base.test/A");
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -1309,14 +1323,15 @@ pub(super) mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         request.cancellation().cancel();
         assert_eq!(
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
                 .err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert!(frozen(&session, &base).is_none());
         assert_eq!(first(&session), None);
@@ -1342,7 +1357,8 @@ pub(super) mod tests {
         let request = request("<base href=A><template>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -1429,11 +1445,12 @@ pub(super) mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         CANCEL_AFTER_BINDING.with(|slot| *slot.borrow_mut() = Some(request.cancellation().clone()));
         let result = session.insert_parser(&mut c, &root, &base, None, &capability);
-        assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
         CANCEL_AFTER_BINDING.with(|slot| assert!(slot.borrow().is_none()));
         assert_eq!(first(&session), Some(base.index));
         assert_eq!(
@@ -1455,11 +1472,11 @@ pub(super) mod tests {
         let at_stop = c.first_stop_usage().unwrap().clone();
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(
             session.insert_parser(&mut c, &root, &base, None, &capability),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(c.first_stop_usage(), Some(&at_stop));
         assert_eq!(
@@ -1484,7 +1501,8 @@ pub(super) mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -1575,7 +1593,8 @@ pub(super) mod tests {
         );
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let head = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &head, None, &capability)
@@ -1620,7 +1639,7 @@ pub(super) mod tests {
         assert!(matches!(
             storage.payloads.values[*missing],
             RetainedPayload::MetaMissing {
-                kind: meta::MetaMissingKind::Csp,
+                kind: meta::HtmlParseMetaMissingKind::Csp,
                 ..
             }
         ));

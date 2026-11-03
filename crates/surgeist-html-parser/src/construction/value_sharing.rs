@@ -1,6 +1,6 @@
 //! Terminal report promotion. No mutable parser session can acquire these pools.
 use super::*;
-use crate::parser::control::{Invariant, SharedReleaseError};
+use crate::parser::control::{HtmlParseInvariant, SharedReleaseError};
 #[cfg(test)]
 use crate::request::ValueSharingMode;
 use surgeist_html::bounded::{
@@ -12,11 +12,11 @@ use surgeist_html::bounded::{
 
 /// The stop for a pool that refused a protocol step or ran out of
 /// representation, latched as the controller's first stop.
-fn pool_stop(c: &mut ParseControl, error: HtmlValuePoolError) -> ParseStop {
+fn pool_stop(c: &mut ParseControl, error: HtmlValuePoolError) -> HtmlParseStop {
     if matches!(error, HtmlValuePoolError::RepresentationExhausted) {
         c.stop_representation(HtmlParseResource::ManagedCapacityBytes)
     } else {
-        c.fail_invariant(Invariant::CapacityMismatch)
+        c.fail_invariant(HtmlParseInvariant::CapacityMismatch)
     }
 }
 fn pool_error(c: &mut ParseControl, error: HtmlValuePoolError) -> SessionError {
@@ -42,7 +42,7 @@ impl Usage {
         c.acquire_retained_provider(self.bytes, self.units, 0)?;
         Ok(())
     }
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         c.release_retained_provider(&c.identity(), self.bytes, self.units, 0)
     }
     fn grow(&mut self, target: Self, c: &mut ParseControl) -> Result<(), SessionError> {
@@ -75,17 +75,17 @@ impl Usage {
 /// The disjoint borrow lets useful work observe the value while Drop retains
 /// exclusive cleanup authority on both refusal and unwind.
 trait Temporary {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop>;
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop>;
 }
 impl Temporary for Usage {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         Usage::release(self, c)
     }
 }
 /// Teardown that runs on `Drop`, which has no result. A refused credit is
 /// already latched on the controller, whose next checkpoint reports it, and the
 /// refused ticket is dropped with its value.
-fn latched(result: Result<(), ParseStop>) {
+fn latched(result: Result<(), HtmlParseStop>) {
     let _ = result;
 }
 /// Owns one temporary until it is handed on. Only [`Self::take`] empties the
@@ -146,7 +146,7 @@ struct Selected<T> {
     usage: Usage,
 }
 impl<T> Temporary for Selected<T> {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let Self { value, usage } = self;
         drop(value);
         usage.release(c)
@@ -212,9 +212,9 @@ impl<'c> Sharing<'c> {
         }
         self.control
     }
-    pub(super) fn commit(mut self) -> Result<(), ParseStop> {
+    pub(super) fn commit(mut self) -> Result<(), HtmlParseStop> {
         let Some(mut pools) = self.pools.take() else {
-            return Err(self.control.fail_invariant(Invariant::RegistryRow));
+            return Err(self.control.fail_invariant(HtmlParseInvariant::RegistryRow));
         };
         // Both credits are released even when a pool refuses its seal; the
         // first refusal is reported.
@@ -353,7 +353,7 @@ struct StringOperation<'a> {
     candidate: Usage,
 }
 impl Temporary for StringOperation<'_> {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         drop(self.owner);
         self.candidate.release(c)
     }
@@ -363,7 +363,7 @@ struct AttributeOperation<'a> {
     candidate: Usage,
 }
 impl Temporary for AttributeOperation<'_> {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         drop(self.owner);
         self.candidate.release(c)
     }
@@ -569,7 +569,7 @@ impl Pools {
         };
         strings.and(attributes)
     }
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let Self {
             strings,
             attributes,
@@ -760,7 +760,7 @@ impl Updates {
     }
 }
 impl Temporary for Updates {
-    fn release(mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let mut refused = Ok(());
         while let Some(Update {
             value, allocation, ..
@@ -813,7 +813,7 @@ impl ComponentRows {
 }
 struct Parts(OwnedVec<ComponentRows>);
 impl Temporary for Parts {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.0.release(c)
     }
 }
@@ -972,7 +972,7 @@ impl BankOutput {
     }
 }
 impl Temporary for BankOutput {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let (shared, ticket) = match self.stage {
             BankStage::Building { vector, ticket } => {
                 drop(vector);
@@ -1013,7 +1013,7 @@ impl Temporary for BankOutput {
 }
 /// Drops a refused shared release's payload and ticket, for a caller with
 /// nowhere to keep them; the stop stays latched and reports the skipped credit.
-fn discard_shared<T>(error: SharedReleaseError<T>) -> ParseStop {
+fn discard_shared<T>(error: SharedReleaseError<T>) -> HtmlParseStop {
     let (stop, shared, allocation) = error.into_parts();
     drop(shared);
     drop(allocation);
@@ -1024,7 +1024,7 @@ struct StringOutput {
     ticket: Option<DocumentStringAllocation>,
 }
 impl Temporary for StringOutput {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let ticket = match self.ticket {
             Some(ticket) => c.release_document_string(ticket),
             None => Ok(()),
@@ -1089,7 +1089,7 @@ impl Finalizing {
             });
         }
         for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String { location, .. } = payload
                 && let Some((container, _)) = attribute_location(*location)
             {
@@ -1112,7 +1112,7 @@ impl Finalizing {
     ) -> Result<(), SessionError> {
         let mut next = join_at(joins, c, container)?.head;
         while let Some(slot) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let join = join_at(joins, c, slot)?;
             next = join.next;
             if join.update.is_none() {
@@ -1188,7 +1188,7 @@ impl Finalizing {
         // no replacement bank unless at least one actually changes.
         let mut next = join_at(&self.joins, c, container)?.head;
         while let Some(slot) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             next = join_at(&self.joins, c, slot)?.next;
             let (value, _) = string_row(&self.payloads, c, slot)?;
             if let Some(selected) = pools.string(value, c)? {
@@ -1231,7 +1231,7 @@ impl Finalizing {
         }
         let mut next = join_at(&self.joins, c, container)?.head;
         while let Some(slot) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let join = join_at(&self.joins, c, slot)?;
             next = join.next;
             let update = join.update;
@@ -1255,7 +1255,7 @@ impl Finalizing {
             let component = |component: Component,
                              c: &mut ParseControl|
              -> Result<DocumentString, SessionError> {
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 let Some(index) = parts_value
                     .as_slice()
                     .get(ordinal)
@@ -1327,7 +1327,7 @@ impl Finalizing {
         payload_write::<SharedAllocation<Vec<Attribute>>>(c, 1)?;
         let mut next = join_at(&self.joins, c, container)?.head;
         while let Some(slot) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             payload_write::<DocumentStringAllocation>(c, 1)?;
             next = join_at(&self.joins, c, slot)?.next;
         }
@@ -1359,7 +1359,7 @@ impl Finalizing {
         (|| {
             let mut next = join_at(&self.joins, c, container)?.head;
             while let Some(slot) = next {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 payload_write::<RetainedPayload>(c, 2)?;
                 payload_write::<Update>(c, 1)?;
                 next = join_at(&self.joins, c, slot)?.next;
@@ -1495,7 +1495,7 @@ impl Finalizing {
                 .into_iter()
                 .flatten()
             {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let bytes = component
                     .shared_code_units()
                     .capacity()
@@ -1545,13 +1545,13 @@ impl Finalizing {
     fn run(&mut self, pools: &mut Pools, c: &mut ParseControl) -> Result<(), SessionError> {
         self.make_joins(c)?;
         for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.row(c, slot)?, RetainedPayload::Attributes(_)) {
                 self.share_bank(slot, pools, c)?;
             }
         }
         for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.share_string(slot, pools, c)?;
         }
         Ok(())
@@ -1792,9 +1792,16 @@ mod tests {
             let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
             let pools = sharing.pools.as_mut().unwrap();
             assert_eq!(pools.strings.heap_usage().bytes(), 0);
-            let before = sharing.control.usage().work(WorkCategory::InspectByte);
+            let before = sharing
+                .control
+                .usage()
+                .work(HtmlParseWorkCategory::InspectByte);
             assert!(pools.string(&input, sharing.control).unwrap().is_none());
-            let inspected = sharing.control.usage().work(WorkCategory::InspectByte) - before;
+            let inspected = sharing
+                .control
+                .usage()
+                .work(HtmlParseWorkCategory::InspectByte)
+                - before;
             assert!(sharing.control.stop().is_none());
             assert!(pools.strings.heap_usage().bytes() > 0);
             assert_eq!(pools.attributes.heap_usage().bytes(), 0);
@@ -1878,8 +1885,8 @@ mod tests {
             let failure = pools.prepare(sharing.control).unwrap_err();
             assert!(matches!(
                 failure,
-                SessionError::Stop(ParseStop::InternalInvariant(
-                    crate::parser::control::Invariant::CapacityMismatch
+                SessionError::Stop(HtmlParseStop::InternalInvariant(
+                    crate::parser::control::HtmlParseInvariant::CapacityMismatch
                 ))
             ));
             assert!(matches!(pools.strings_root, Authority::Prepared(_)));
@@ -1890,8 +1897,8 @@ mod tests {
         super::super::tests::storage_zero(&c);
         assert!(matches!(
             c.stop(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::CapacityMismatch
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::CapacityMismatch
             ))
         ));
         assert_eq!(text.code_units(), &[118, 97, 108, 117, 101]);
@@ -1900,8 +1907,9 @@ mod tests {
 
     // Characterization of existing behaviour after B07 (a refused credit on
     // Drop is latched, not a panic); not RED against an earlier commit.
-    const UNDERFLOW: ParseStop =
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::ReleaseUnderflow);
+    const UNDERFLOW: HtmlParseStop = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::ReleaseUnderflow,
+    );
 
     #[test]
     fn characterization_dropping_a_pending_over_unadmitted_storage_latches_the_refusal() {
@@ -1947,11 +1955,13 @@ mod tests {
     // controller's first stop with every owner handed back, never a panic. Each
     // test forces the state through crate-private access, asserts the exact
     // typed error, that it is the first stop, and that release drains.
-    fn registry_row() -> ParseStop {
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    fn registry_row() -> HtmlParseStop {
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
     }
-    fn capacity_mismatch() -> ParseStop {
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch)
+    fn capacity_mismatch() -> HtmlParseStop {
+        HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::CapacityMismatch,
+        )
     }
     fn control() -> ParseControl {
         ParseControl::new(
@@ -2045,8 +2055,8 @@ mod tests {
             HtmlConstructionResult::Document(document) => document.clone(),
             HtmlConstructionResult::Fragment(_) => panic!("a document fixture"),
         };
-        let aliased = ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::SharedAllocationAliased,
+        let aliased = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
         );
         assert_eq!(
             arena.begin_finalizing(&mut c),
@@ -2084,8 +2094,11 @@ mod tests {
             .chain(cost.saturating_sub(64).max(32)..cost);
         for admitted in sampled {
             let (mut c, mut arena) = parsed();
-            c.charge(WorkCategory::StateStep, all - credits(&c) - admitted)
-                .unwrap();
+            c.charge(
+                HtmlParseWorkCategory::StateStep,
+                all - credits(&c) - admitted,
+            )
+            .unwrap();
             let error = match arena.share_values(&mut c, ValueSharingMode::Combined) {
                 Ok(_) => panic!("a cut sharing at {admitted} of {cost} credits succeeded"),
                 Err(error) => error,
@@ -2093,7 +2106,7 @@ mod tests {
             assert!(
                 matches!(
                     error,
-                    SessionError::Stop(ParseStop::LimitExceeded {
+                    SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     })
@@ -2305,8 +2318,8 @@ mod tests {
         }
         assert_eq!(
             c.stop(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::ForeignControl
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignControl
             ))
         );
         super::super::tests::storage_zero(&c);
@@ -2371,8 +2384,8 @@ mod tests {
                     let refused = pools.string(&equal, sharing.control);
                     assert!(matches!(
                         refused,
-                        Err(SessionError::Stop(ParseStop::InternalInvariant(
-                            crate::parser::control::Invariant::ReleaseUnderflow
+                        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                            crate::parser::control::HtmlParseInvariant::ReleaseUnderflow
                         )))
                     ));
                     pools.strings_usage = real;
@@ -2383,8 +2396,8 @@ mod tests {
                     };
                     assert!(matches!(
                         pools.string(&text, sharing.control),
-                        Err(SessionError::Stop(ParseStop::InternalInvariant(
-                            crate::parser::control::Invariant::ReleaseUnderflow
+                        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                            crate::parser::control::HtmlParseInvariant::ReleaseUnderflow
                         )))
                     ));
                     pools.strings_usage = Usage::default();

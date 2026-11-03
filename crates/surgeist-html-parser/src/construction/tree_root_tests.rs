@@ -129,7 +129,7 @@ fn a_refused_insertion_ends_its_announcement_and_leaves_exact_roots() {
     let refused = storage.insert(&mut c, &i, &div, None, InsertionCause::NonParser);
     assert!(matches!(
         refused,
-        Err(SessionError::Stop(ParseStop::LimitExceeded {
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::TreeDepth,
             ..
         }))

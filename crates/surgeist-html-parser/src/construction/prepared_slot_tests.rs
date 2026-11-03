@@ -86,7 +86,7 @@ fn stopped(failure: &HtmlParseFailure) -> Box<Stopped> {
 /// vectors hold exactly the length they were filled to. Anything beyond that
 /// baseline is a leak, including capacity bytes while diagnostics are kept.
 fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
-    use crate::construction::evidence::{DiagnosticLocation, DiagnosticRecord};
+    use crate::construction::evidence::{HtmlParseDiagnostic, HtmlParseDiagnosticLocation};
     if stop.cleanup_refused {
         retained.push(format!("{label}: cleanup refused"));
     }
@@ -100,8 +100,8 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
         // See the payload check below.
         HtmlParseResource::DiagnosticPayloadUnits => 0,
         HtmlParseResource::ManagedCapacityBytes | HtmlParseResource::PeakTransientBytes => {
-            (stop.kept_records * std::mem::size_of::<DiagnosticRecord>()
-                + stop.kept_locations * std::mem::size_of::<DiagnosticLocation>())
+            (stop.kept_records * std::mem::size_of::<HtmlParseDiagnostic>()
+                + stop.kept_locations * std::mem::size_of::<HtmlParseDiagnosticLocation>())
                 as u64
         }
         _ => 0,
@@ -370,7 +370,10 @@ fn reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_stops_aft
         &document("<!doctype html><a href=x>1<p>2</a>3<b nonce=n>4<p>5</b>6"),
         &[
             ("src/construction/associated.rs", "initial_associated_state"),
-            ("src/construction.rs", "allocate_html_payload_prepared"),
+            (
+                "src/construction/storage_allocation.rs",
+                "allocate_html_payload_prepared",
+            ),
         ],
     );
 }
@@ -382,8 +385,11 @@ fn form_control_rows_leave_nothing_retained_when_the_parse_stops_after_their_slo
             "<!doctype html><form id=f><input name=a form=f><textarea>t</textarea><output>o</output><select><option>x</option></select><button></button></form>",
         ),
         &[
-            ("src/construction.rs", "allocate_ordered_payload"),
-            ("src/construction.rs", "register_raw"),
+            (
+                "src/construction/storage_allocation.rs",
+                "allocate_ordered_payload",
+            ),
+            ("src/construction/storage_allocation.rs", "register_raw"),
         ],
     );
 }
@@ -412,8 +418,14 @@ fn script_link_and_details_rows_leave_nothing_retained_when_the_parse_stops_afte
             "<!doctype html><script>1</script><link rel=stylesheet href=s><details open><summary>s</summary></details>",
         ),
         &[
-            ("src/construction.rs", "allocate_disabled_parser_script"),
-            ("src/construction.rs", "allocate_for_creation"),
+            (
+                "src/construction/session_script.rs",
+                "allocate_disabled_parser_script",
+            ),
+            (
+                "src/construction/session_creation.rs",
+                "allocate_for_creation",
+            ),
         ],
     );
 }
@@ -431,7 +443,10 @@ fn text_select_and_style_order_rows_leave_nothing_retained_when_the_parse_stops_
                 "retain_style_order",
             ),
             ("src/construction/effects.rs", "retain_work_list"),
-            ("src/construction.rs", "allocate_ordered_payload"),
+            (
+                "src/construction/storage_allocation.rs",
+                "allocate_ordered_payload",
+            ),
         ],
     );
 }
@@ -472,7 +487,10 @@ fn attribute_and_cause_rows_leave_nothing_retained_when_the_parse_stops_after_th
         &document("<!doctype html><p id=a class=b>x<p id=c></b><table><tr><td>x</table>"),
         &[
             ("src/construction/provenance.rs", "prepare_node_causes"),
-            ("src/construction.rs", "allocate_html_payload_prepared"),
+            (
+                "src/construction/storage_allocation.rs",
+                "allocate_html_payload_prepared",
+            ),
         ],
     );
 }
@@ -504,7 +522,10 @@ fn fragment_association_rows_leave_nothing_retained_when_the_parse_stops_after_t
                 "retain_style_order",
             ),
             ("src/construction/style.rs", "initialize_style"),
-            ("src/construction.rs", "allocate_disabled_parser_script"),
+            (
+                "src/construction/session_script.rs",
+                "allocate_disabled_parser_script",
+            ),
             ("src/construction/associated.rs", "initial_associated_state"),
         ],
     );
@@ -516,8 +537,14 @@ fn fragment_reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_
     assert_nothing_retained(
         &fragment("<a href=x>1<p>2</a>3<form><input></form>"),
         &[
-            ("src/construction.rs", "allocate_ordered_payload"),
-            ("src/construction.rs", "allocate_for_creation"),
+            (
+                "src/construction/storage_allocation.rs",
+                "allocate_ordered_payload",
+            ),
+            (
+                "src/construction/session_creation.rs",
+                "allocate_for_creation",
+            ),
         ],
     );
 }

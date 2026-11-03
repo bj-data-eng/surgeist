@@ -171,7 +171,7 @@ impl ConstructionEffects {
         })
     }
     pub(super) fn require_idle(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 7)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 7)?;
         if self.range.is_some()
             || self.radio.is_some()
             || self.svg_wrapper.is_some()
@@ -181,13 +181,13 @@ impl ConstructionEffects {
             || self.checkpoint
         {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         Ok(())
     }
     pub(super) fn require_freezable(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 10)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 10)?;
         if self.range.is_some()
             || self.radio.is_some()
             || self.svg_wrapper.is_some()
@@ -210,7 +210,7 @@ impl ConstructionEffects {
             _ => None,
         }
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if let Some(range) = self.range {
             range.release(c)?;
         }
@@ -244,14 +244,17 @@ impl SessionStorage {
         c: &mut ParseControl,
         parent: Option<usize>,
     ) -> Result<bool, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(EffectFrame::FragmentInsertion {
             parent: actual,
             stage: FragmentStage::Insert,
             ..
         }) = self.effects.current.as_ref()
         {
-            c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
             return Ok(parent == Some(*actual));
         }
         Ok(false)
@@ -265,7 +268,7 @@ impl SessionStorage {
         payload_write::<Option<EffectFrame>>(c, 1)?;
         if self.effects.transfer.is_some() {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         self.effects.transfer = Some(frame);
@@ -318,14 +321,17 @@ impl SessionStorage {
             }
             loop {
                 c.require_identity(&self.control)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if self.effects.form.is_some() {
                     self.step_form_effects_with_meta_csp(c, service)?;
                     continue;
                 }
                 if self.effects.current.is_some() {
                     c.admit_atomic_layout(mem::size_of::<EffectFrame>())?;
-                    c.charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)?;
+                    c.charge(
+                        HtmlParseWorkCategory::CopyByte,
+                        mem::size_of::<EffectFrame>() as u64,
+                    )?;
                     // The wrapper below reports a missing frame as a registry
                     // row.
                     let frame = self
@@ -374,7 +380,7 @@ impl SessionStorage {
     /// They use the same canonical phase owner while clone creation is suspended.
     pub(super) fn drain_form_effects(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         while let Some(form) = self.effects.form {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if form.stage != FormEffectStage::IdChange {
                 return self.drain_construction_effects(c);
             }
@@ -408,7 +414,7 @@ impl SessionStorage {
                     self.record_association(
                         c,
                         node,
-                        pending_association::OccurrenceKind::StyleDocumentChanged,
+                        pending_association::HtmlParseAssociationOccurrenceKind::StyleDocumentChanged,
                         None,
                         Some(next_document),
                         false,
@@ -431,14 +437,14 @@ impl SessionStorage {
                         document: retained_document,
                     }),
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(shadow) = self
                     .construction
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?
                     .shadow_root()
                 {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let contents = self
                         .construction
                         .storage(c)?
@@ -456,7 +462,7 @@ impl SessionStorage {
                         },
                     )?;
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(node)
@@ -491,7 +497,7 @@ impl SessionStorage {
                         cursor: next_cursor(cursor),
                     }),
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(node)
@@ -518,7 +524,7 @@ impl SessionStorage {
                 cursor,
                 document,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if cursor
                     == self
                         .construction
@@ -540,7 +546,7 @@ impl SessionStorage {
                     }
                     return Ok(());
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(source)
@@ -840,10 +846,10 @@ impl SessionStorage {
             .payloads
             .push_row(prepared, RetainedPayload::WorkList(Some(list)))
             .map_err(|_| latch_registry_row(c))?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         let mut cursor = 0;
         while let Some(root) = self.work_list_node(c, roots, cursor)? {
-            c.charge(WorkCategory::RecordWrite, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             let mut next = Some(root);
             while let Some(node) = next {
                 let Some(RetainedPayload::WorkList(Some(list))) =
@@ -853,10 +859,10 @@ impl SessionStorage {
                 };
                 list.try_push_recover(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
-                c.charge(WorkCategory::RecordWrite, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
                 next = self.next_view_node(c, root, node, None)?;
             }
-            c.charge(WorkCategory::RecordWrite, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             cursor = next_cursor(cursor);
         }
         Ok(slot)
@@ -879,12 +885,15 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<usize, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::WorkList(Some(list))) = self.payloads.values.get(slot) else {
             return Err(SessionError::WrongToken);
         };
         list.require_disposal_owner(c)?;
-        c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<usize>() as u64,
+        )?;
         Ok(list.len())
     }
     pub(super) fn work_list_node(
@@ -893,14 +902,17 @@ impl SessionStorage {
         slot: usize,
         cursor: usize,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::WorkList(Some(list))) = self.payloads.values.get(slot) else {
             return Err(SessionError::WrongToken);
         };
         list.require_disposal_owner(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(node) = list.as_slice().get(cursor) {
-            c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
             Ok(Some(*node))
         } else {
             Ok(None)
@@ -960,7 +972,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if storage.effects.checkpoint {
             return Ok(());
         }
@@ -976,7 +988,7 @@ impl ParserArenaSession {
         let result = (|| {
             loop {
                 c.require_identity(&storage.control)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if storage.effects.dequeue == storage.effects.tasks.len() {
                     if let Some(cause) = &return_cause {
                         storage
@@ -992,7 +1004,7 @@ impl ParserArenaSession {
                 let cursor = storage.effects.dequeue;
                 payload_write::<Option<QueuedTask>>(c, 2)?;
                 payload_write::<usize>(c, 1)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let slot = storage
                     .effects
                     .tasks

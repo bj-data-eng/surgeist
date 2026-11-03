@@ -2,7 +2,7 @@
 //! Source backing remains borrowed from the actual request; public source-owning
 //! report assembly and frozen-result transfer are separate consumers.
 use super::{StandaloneDocumentDriver, StandaloneError, prologue, write};
-use crate::parser::control::{ParseControl, ParseStop, ParseUsage};
+use crate::parser::control::{HtmlParseStop, HtmlParseUsage, ParseControl};
 use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlParserScriptingMode, HtmlSource};
 use std::mem::size_of;
 
@@ -33,7 +33,7 @@ impl EntryRejection {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum InitializationFailure {
     Rejected(EntryRejection),
-    Stopped(ParseStop),
+    Stopped(HtmlParseStop),
 }
 #[derive(Clone, Copy)]
 enum Phase {
@@ -51,7 +51,7 @@ pub(crate) struct OrdinaryDocumentEntry<'source> {
     source: &'source HtmlSource,
     driver: Option<StandaloneDocumentDriver<'source>>,
     phase: Phase,
-    after_cleanup: Option<ParseUsage>,
+    after_cleanup: Option<HtmlParseUsage>,
 }
 impl<'source> OrdinaryDocumentEntry<'source> {
     #[cfg(test)]
@@ -157,16 +157,19 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             let (bytes, writes) = super::seal::initialization_bootstrap_layout();
             write(bytes, writes, c)?;
             c.charge(
-                super::super::control::WorkCategory::InspectByte,
+                super::super::control::HtmlParseWorkCategory::InspectByte,
                 super::seal::initialization_qualification_bytes() as u64,
             )?;
-            c.charge(super::super::control::WorkCategory::ProviderCall, 3)?;
-            c.charge(super::super::control::WorkCategory::RecordVisit, 6)?;
+            c.charge(
+                super::super::control::HtmlParseWorkCategory::ProviderCall,
+                3,
+            )?;
+            c.charge(super::super::control::HtmlParseWorkCategory::RecordVisit, 6)?;
         }
         write(size_of::<StandaloneDocumentDriver>(), 11, c)?;
         write(
             const {
-                size_of::<Option<ParseUsage>>()
+                size_of::<Option<HtmlParseUsage>>()
                     + 2 * size_of::<Option<crate::construction::evidence::FailureDiagnosticEvidence>>(
                     )
                     + size_of::<super::terminal::FailedStandaloneDocument>()
@@ -178,11 +181,14 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             c,
         )?;
         c.charge(
-            super::super::control::WorkCategory::InspectByte,
+            super::super::control::HtmlParseWorkCategory::InspectByte,
             super::seal::terminal_qualification_bytes() as u64,
         )?;
-        c.charge(super::super::control::WorkCategory::ProviderCall, 2)?;
-        c.charge(super::super::control::WorkCategory::RecordVisit, 2)?;
+        c.charge(
+            super::super::control::HtmlParseWorkCategory::ProviderCall,
+            2,
+        )?;
+        c.charge(super::super::control::HtmlParseWorkCategory::RecordVisit, 2)?;
         let mut lexical =
             crate::parser::control::OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(c)?;
@@ -197,7 +203,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         let make = crate::parser::tokenizer::Tokenizer::new;
         driver.tokenizer = Some(make(
             driver.source,
-            crate::parser::tokenizer::states::State::Data,
+            crate::parser::tokenizer::states::HtmlTokenizerState::Data,
             None,
             c,
         )?);
@@ -240,21 +246,21 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> Option<&ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&HtmlParseUsage> {
         self.driver.as_ref()?.control.first_stop_usage()
     }
     #[cfg(test)]
-    pub(crate) fn after_cleanup(&self) -> Option<&ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&HtmlParseUsage> {
         self.after_cleanup.as_ref()
     }
     #[cfg(test)]
-    pub(crate) fn retained_usage(&self) -> Option<&ParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<&HtmlParseUsage> {
         self.driver.as_ref().map(|driver| driver.control.usage())
     }
     #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.driver
             .as_ref()?
             .failed_evidence
@@ -407,28 +413,28 @@ impl<'source> OrdinaryDocumentEntry<'source> {
 pub(super) struct StoppedInitialization {
     control: ParseControl,
     binding: Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
-    after_cleanup: ParseUsage,
+    after_cleanup: HtmlParseUsage,
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl StoppedInitialization {
-    pub(super) fn stop(&self) -> Option<ParseStop> {
+    pub(super) fn stop(&self) -> Option<HtmlParseStop> {
         self.control.stop()
     }
     pub(super) fn source_admitted(&self) -> bool {
         self.binding.is_some()
     }
-    pub(super) fn at_stop(&self) -> Option<&ParseUsage> {
+    pub(super) fn at_stop(&self) -> Option<&HtmlParseUsage> {
         self.control.first_stop_usage()
     }
-    pub(super) fn after_cleanup(&self) -> &ParseUsage {
+    pub(super) fn after_cleanup(&self) -> &HtmlParseUsage {
         &self.after_cleanup
     }
-    pub(super) fn retained_usage(&self) -> &ParseUsage {
+    pub(super) fn retained_usage(&self) -> &HtmlParseUsage {
         self.control.usage()
     }
     pub(super) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.evidence
             .as_ref()
             .map(|evidence| evidence.diagnostics())
@@ -451,7 +457,7 @@ pub(super) const fn initialization_transfer_layout() -> (usize, usize) {
             size_of::<StoppedInitialization>()
                 + size_of::<Option<StandaloneDocumentDriver>>()
                 + size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-                + size_of::<Option<ParseUsage>>()
+                + size_of::<Option<HtmlParseUsage>>()
                 + size_of::<Option<StoppedInitialization>>()
                 + size_of::<Phase>(),
             4 + 3 + 1 + 1,
@@ -478,13 +484,13 @@ pub(crate) fn initialized_driver(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::control::WorkCategory;
+    use crate::parser::control::HtmlParseWorkCategory;
     use crate::{DocumentString, HtmlSourceCoordinates};
 
     fn limits() -> crate::HtmlParseLimits {
         super::super::tests::limits(100)
     }
-    fn released(usage: &ParseUsage) {
+    fn released(usage: &HtmlParseUsage) {
         for resource in [
             HtmlParseResource::BufferedUtf16Units,
             HtmlParseResource::TokenAttributes,
@@ -525,7 +531,7 @@ mod tests {
         );
         assert_eq!(
             entry.failure(),
-            Some(InitializationFailure::Stopped(ParseStop::Cancelled))
+            Some(InitializationFailure::Stopped(HtmlParseStop::Cancelled))
         );
         let at_stop = entry.at_stop().unwrap().clone();
         assert_eq!(at_stop.resource(HtmlParseResource::SourceUnits).current, 0);
@@ -538,7 +544,7 @@ mod tests {
         assert!(entry.diagnostics().is_none());
         assert!(matches!(
             entry.take_driver(),
-            Err(StandaloneError::Stop(ParseStop::Cancelled))
+            Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
         ));
         entry.release_failure().unwrap();
         assert_eq!(entry.retained_usage(), Some(&at_stop));
@@ -557,15 +563,17 @@ mod tests {
         let mut entry = OrdinaryDocumentEntry::new(&request);
         assert_eq!(
             entry.failure(),
-            Some(InitializationFailure::Stopped(ParseStop::LimitExceeded {
-                resource: HtmlParseResource::SourceUnits,
-                limit: 1,
-                current: 0,
-                requested_delta: 2,
-            }))
+            Some(InitializationFailure::Stopped(
+                HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::SourceUnits,
+                    limit: 1,
+                    current: 0,
+                    requested_delta: 2,
+                }
+            ))
         );
         let at_stop = entry.at_stop().unwrap().clone();
-        assert_eq!(at_stop.work(WorkCategory::RecordVisit), 1);
+        assert_eq!(at_stop.work(HtmlParseWorkCategory::RecordVisit), 1);
         assert_eq!(at_stop.resource(HtmlParseResource::SourceUnits).current, 0);
         assert_eq!(at_stop.largest_atomic_layout, 0);
         request.cancellation().cancel();
@@ -574,7 +582,7 @@ mod tests {
         assert_eq!(entry.after_cleanup(), Some(&at_stop));
         assert!(matches!(
             entry.take_driver(),
-            Err(StandaloneError::Stop(ParseStop::LimitExceeded {
+            Err(StandaloneError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceUnits,
                 ..
             }))
@@ -593,17 +601,19 @@ mod tests {
             let mut entry = OrdinaryDocumentEntry::new(&request);
             assert_eq!(
                 entry.failure(),
-                Some(InitializationFailure::Stopped(ParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    limit: cap,
-                    current: 1 + copied,
-                    requested_delta: requested,
-                }))
+                Some(InitializationFailure::Stopped(
+                    HtmlParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        limit: cap,
+                        current: 1 + copied,
+                        requested_delta: requested,
+                    }
+                ))
             );
             let first = entry.at_stop().unwrap().clone();
-            assert_eq!(first.work(WorkCategory::RecordVisit), 1);
-            assert_eq!(first.work(WorkCategory::CopyByte), copied);
-            assert_eq!(first.work(WorkCategory::RecordWrite), 0);
+            assert_eq!(first.work(HtmlParseWorkCategory::RecordVisit), 1);
+            assert_eq!(first.work(HtmlParseWorkCategory::CopyByte), copied);
+            assert_eq!(first.work(HtmlParseWorkCategory::RecordWrite), 0);
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 1);
             assert_eq!(first.largest_atomic_layout, bytes);
             released(&first);
@@ -625,12 +635,14 @@ mod tests {
         let mut entry = OrdinaryDocumentEntry::new(&request);
         assert!(matches!(
             entry.failure(),
-            Some(InitializationFailure::Stopped(ParseStop::LimitExceeded {
-                resource: HtmlParseResource::AuxiliaryEntries,
-                limit: 2,
-                current: 2,
-                requested_delta: 1
-            }))
+            Some(InitializationFailure::Stopped(
+                HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::AuxiliaryEntries,
+                    limit: 2,
+                    current: 2,
+                    requested_delta: 1
+                }
+            ))
         ));
         let first = entry.at_stop().unwrap().clone();
         // The actual Document admits its child-ticket slot and one append-field
@@ -677,7 +689,7 @@ mod tests {
         request.cancellation().cancel();
         assert!(matches!(
             entry.take_driver(),
-            Err(StandaloneError::Stop(ParseStop::Cancelled))
+            Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
         ));
         let first = entry.at_stop().unwrap().clone();
         assert_eq!(first.resource(HtmlParseResource::ManagedNodes).current, 1);
@@ -704,7 +716,7 @@ mod tests {
                 let snapshot = entry.at_stop().unwrap().clone();
                 assert!(matches!(
                     first,
-                    InitializationFailure::Stopped(ParseStop::LimitExceeded {
+                    InitializationFailure::Stopped(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     })

@@ -1,18 +1,18 @@
 //! Lexical parts are captured at actual state transitions, never reparsed.
 
 use super::*;
-use token::{Text, TextOrigin};
+use token::{HtmlParseTextOrigin, Text};
 
 impl Tokenizer<'_> {
     pub(super) fn retain_lexical_text(
         evidence: &mut ParseEvidence,
         c: &mut ParseControl,
         occurrence: &LexicalRef,
-        role: LexicalRole,
-        origins: &[TextOrigin],
-    ) -> Result<(), ParseStop> {
+        role: HtmlParseLexicalRole,
+        origins: &[HtmlParseTextOrigin],
+    ) -> Result<(), HtmlParseStop> {
         for origin in origins {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             evidence.lexical_part(
                 c,
                 occurrence,
@@ -29,10 +29,10 @@ impl Tokenizer<'_> {
         evidence: &mut ParseEvidence,
         c: &mut ParseControl,
         occurrence: &LexicalRef,
-        role: LexicalRole,
+        role: HtmlParseLexicalRole,
         text: &Text,
-    ) -> Result<(), ParseStop> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+    ) -> Result<(), HtmlParseStop> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if text.value.text().is_empty() {
             let anchor = self.range(self.current.start(), self.current.start(), c)?;
             evidence.lexical_part(c, occurrence, role, &anchor, 0..0, None)?;
@@ -45,66 +45,84 @@ impl Tokenizer<'_> {
         source: &HtmlSourceRange,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<Option<LexicalRef>, ParseStop> {
+    ) -> Result<Option<LexicalRef>, HtmlParseStop> {
         let Some(occurrence) = self.lexical.as_ref() else {
             return Ok(None);
         };
         let (family, disposition) = match kind {
             TokenKind::Tag(tag) => {
-                self.lexical_text(evidence, c, occurrence, LexicalRole::Name, &tag.name)?;
+                self.lexical_text(
+                    evidence,
+                    c,
+                    occurrence,
+                    HtmlParseLexicalRole::Name,
+                    &tag.name,
+                )?;
                 (
                     if tag.kind == TagKind::Start {
-                        LexicalKind::StartTag
+                        HtmlParseLexicalKind::StartTag
                     } else {
-                        LexicalKind::EndTag
+                        HtmlParseLexicalKind::EndTag
                     },
-                    LexicalDisposition::Emitted,
+                    HtmlParseLexicalDisposition::Emitted,
                 )
             }
             TokenKind::Comment(text) => {
-                self.lexical_text(evidence, c, occurrence, LexicalRole::Data, text)?;
-                (LexicalKind::Comment, LexicalDisposition::Emitted)
+                self.lexical_text(evidence, c, occurrence, HtmlParseLexicalRole::Data, text)?;
+                (
+                    HtmlParseLexicalKind::Comment,
+                    HtmlParseLexicalDisposition::Emitted,
+                )
             }
             TokenKind::Doctype(doctype) => {
                 for (text, role) in [
-                    (&doctype.name, LexicalRole::Name),
-                    (&doctype.public_id, LexicalRole::PublicIdentifier),
-                    (&doctype.system_id, LexicalRole::SystemIdentifier),
+                    (&doctype.name, HtmlParseLexicalRole::Name),
+                    (&doctype.public_id, HtmlParseLexicalRole::PublicIdentifier),
+                    (&doctype.system_id, HtmlParseLexicalRole::SystemIdentifier),
                 ] {
                     if let Some(text) = text {
                         self.lexical_text(evidence, c, occurrence, role, text)?;
                     }
                 }
-                (LexicalKind::Doctype, LexicalDisposition::Emitted)
+                (
+                    HtmlParseLexicalKind::Doctype,
+                    HtmlParseLexicalDisposition::Emitted,
+                )
             }
             TokenKind::ProcessingInstruction { target, data } => {
-                self.lexical_text(evidence, c, occurrence, LexicalRole::Target, target)?;
-                self.lexical_text(evidence, c, occurrence, LexicalRole::Data, data)?;
+                self.lexical_text(
+                    evidence,
+                    c,
+                    occurrence,
+                    HtmlParseLexicalRole::Target,
+                    target,
+                )?;
+                self.lexical_text(evidence, c, occurrence, HtmlParseLexicalRole::Data, data)?;
                 (
-                    LexicalKind::ProcessingInstruction,
-                    LexicalDisposition::Emitted,
+                    HtmlParseLexicalKind::ProcessingInstruction,
+                    HtmlParseLexicalDisposition::Emitted,
                 )
             }
             TokenKind::Text(text) => {
                 // CDATA emits ordinary Text while its delimiter owner remains
                 // open; only the actual closing transition ends that envelope.
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let offset = evidence.lexical_data_offset(c, occurrence)?;
                 let end = offset
                     .checked_add(text.value.text().len())
-                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                 for origin in text.origins.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let start = offset
                         .checked_add(origin.start)
-                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                     let end = offset
                         .checked_add(origin.end)
-                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                     evidence.lexical_part(
                         c,
                         occurrence,
-                        LexicalRole::Data,
+                        HtmlParseLexicalRole::Data,
                         &origin.source,
                         start..end,
                         Some(origin.kind),
@@ -114,7 +132,10 @@ impl Tokenizer<'_> {
                 if source.start() != self.start {
                     return Ok(None);
                 }
-                (LexicalKind::Markup, LexicalDisposition::LiteralRecovery)
+                (
+                    HtmlParseLexicalKind::Markup,
+                    HtmlParseLexicalDisposition::LiteralRecovery,
+                )
             }
             TokenKind::Eof => return Ok(None),
         };
@@ -130,20 +151,27 @@ impl Tokenizer<'_> {
         start: usize,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let Some(occurrence) = self.lexical.as_ref() else {
             return Ok(());
         };
         let source = self.range(start, self.current.end(), c)?;
-        evidence.lexical_part(c, occurrence, LexicalRole::Syntax, &source, 0..0, None)
+        evidence.lexical_part(
+            c,
+            occurrence,
+            HtmlParseLexicalRole::Syntax,
+            &source,
+            0..0,
+            None,
+        )
     }
     pub(super) fn retain_lexical_syntax(
         &self,
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        use states::{Quote, State::*};
+    ) -> Result<(), HtmlParseStop> {
+        use states::{HtmlTokenizerQuote, HtmlTokenizerState::*};
         let Some(markup) = self.lexical.as_ref() else {
             return Ok(());
         };
@@ -154,29 +182,35 @@ impl Tokenizer<'_> {
             .map(|attribute| &attribute.lexical);
         let field = attribute.unwrap_or(markup);
         let role = match self.state {
-            TagOpen if matches!(point, 0x21 | 0x2f | 0x3f) => Some(LexicalRole::Syntax),
+            TagOpen if matches!(point, 0x21 | 0x2f | 0x3f) => Some(HtmlParseLexicalRole::Syntax),
             EndTagOpen | TagName | BeforeAttributeName | AfterAttributeName
             | AfterAttributeValue
                 if matches!(point, 0x2f | 0x3e) =>
             {
-                Some(LexicalRole::Syntax)
+                Some(HtmlParseLexicalRole::Syntax)
             }
-            AttributeName | AfterAttributeName if point == 0x3d => Some(LexicalRole::Equals),
-            BeforeAttributeValue if point == 0x22 => Some(LexicalRole::OpeningQuote(Quote::Double)),
-            BeforeAttributeValue if point == 0x27 => Some(LexicalRole::OpeningQuote(Quote::Single)),
-            AttributeValue(Quote::Double) if point == 0x22 => {
-                Some(LexicalRole::ClosingQuote(Quote::Double))
+            AttributeName | AfterAttributeName if point == 0x3d => {
+                Some(HtmlParseLexicalRole::Equals)
             }
-            AttributeValue(Quote::Single) if point == 0x27 => {
-                Some(LexicalRole::ClosingQuote(Quote::Single))
-            }
+            BeforeAttributeValue if point == 0x22 => Some(HtmlParseLexicalRole::OpeningQuote(
+                HtmlTokenizerQuote::Double,
+            )),
+            BeforeAttributeValue if point == 0x27 => Some(HtmlParseLexicalRole::OpeningQuote(
+                HtmlTokenizerQuote::Single,
+            )),
+            AttributeValue(HtmlTokenizerQuote::Double) if point == 0x22 => Some(
+                HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Double),
+            ),
+            AttributeValue(HtmlTokenizerQuote::Single) if point == 0x27 => Some(
+                HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Single),
+            ),
             SelfClosing
             | BeforeAttributeValue
             | AttributeName
-            | AttributeValue(Quote::Unquoted)
+            | AttributeValue(HtmlTokenizerQuote::Unquoted)
                 if point == 0x3e =>
             {
-                Some(LexicalRole::Syntax)
+                Some(HtmlParseLexicalRole::Syntax)
             }
             TagName
             | BeforeAttributeName
@@ -184,10 +218,10 @@ impl Tokenizer<'_> {
             | AfterAttributeName
             | BeforeAttributeValue
             | AfterAttributeValue
-            | AttributeValue(Quote::Unquoted)
+            | AttributeValue(HtmlTokenizerQuote::Unquoted)
                 if space(point) =>
             {
-                Some(LexicalRole::Whitespace)
+                Some(HtmlParseLexicalRole::Whitespace)
             }
             Doctype
             | BeforeDoctypeName
@@ -199,30 +233,34 @@ impl Tokenizer<'_> {
             | AfterPiTarget
                 if space(point) =>
             {
-                Some(LexicalRole::Whitespace)
+                Some(HtmlParseLexicalRole::Whitespace)
             }
             AfterDoctypeKeyword(_)
             | BeforeDoctypeIdentifier(_)
-            | AfterDoctypeIdentifier(states::Identifier::Public)
+            | AfterDoctypeIdentifier(states::HtmlTokenizerIdentifier::Public)
             | BetweenDoctypeIdentifiers
                 if point == 0x22 =>
             {
-                Some(LexicalRole::OpeningQuote(Quote::Double))
+                Some(HtmlParseLexicalRole::OpeningQuote(
+                    HtmlTokenizerQuote::Double,
+                ))
             }
             AfterDoctypeKeyword(_)
             | BeforeDoctypeIdentifier(_)
-            | AfterDoctypeIdentifier(states::Identifier::Public)
+            | AfterDoctypeIdentifier(states::HtmlTokenizerIdentifier::Public)
             | BetweenDoctypeIdentifiers
                 if point == 0x27 =>
             {
-                Some(LexicalRole::OpeningQuote(Quote::Single))
+                Some(HtmlParseLexicalRole::OpeningQuote(
+                    HtmlTokenizerQuote::Single,
+                ))
             }
-            DoctypeIdentifier(_, Quote::Double) if point == 0x22 => {
-                Some(LexicalRole::ClosingQuote(Quote::Double))
-            }
-            DoctypeIdentifier(_, Quote::Single) if point == 0x27 => {
-                Some(LexicalRole::ClosingQuote(Quote::Single))
-            }
+            DoctypeIdentifier(_, HtmlTokenizerQuote::Double) if point == 0x22 => Some(
+                HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Double),
+            ),
+            DoctypeIdentifier(_, HtmlTokenizerQuote::Single) if point == 0x27 => Some(
+                HtmlParseLexicalRole::ClosingQuote(HtmlTokenizerQuote::Single),
+            ),
             DoctypeName
             | AfterDoctypeName
             | AfterDoctypeKeyword(_)
@@ -232,14 +270,16 @@ impl Tokenizer<'_> {
             | BogusDoctype
                 if point == 0x3e =>
             {
-                Some(LexicalRole::Syntax)
+                Some(HtmlParseLexicalRole::Syntax)
             }
             _ => None,
         };
         if let Some(role) = role {
             let occurrence = if matches!(
                 role,
-                LexicalRole::Equals | LexicalRole::OpeningQuote(_) | LexicalRole::ClosingQuote(_)
+                HtmlParseLexicalRole::Equals
+                    | HtmlParseLexicalRole::OpeningQuote(_)
+                    | HtmlParseLexicalRole::ClosingQuote(_)
             ) {
                 field
             } else {
@@ -248,9 +288,9 @@ impl Tokenizer<'_> {
             evidence.lexical_part(c, occurrence, role, &self.current, 0..0, None)?;
             if matches!(
                 role,
-                LexicalRole::OpeningQuote(_) | LexicalRole::ClosingQuote(_)
+                HtmlParseLexicalRole::OpeningQuote(_) | HtmlParseLexicalRole::ClosingQuote(_)
             ) {
-                let opening = matches!(role, LexicalRole::OpeningQuote(_));
+                let opening = matches!(role, HtmlParseLexicalRole::OpeningQuote(_));
                 let position = if opening {
                     self.current.end()
                 } else {
@@ -258,29 +298,32 @@ impl Tokenizer<'_> {
                 };
                 let empty = self.range(position, position, c)?;
                 let field_role = match self.state {
-                    AfterDoctypeKeyword(states::Identifier::Public)
-                    | BeforeDoctypeIdentifier(states::Identifier::Public)
-                    | DoctypeIdentifier(states::Identifier::Public, _) => {
-                        LexicalRole::PublicIdentifier
+                    AfterDoctypeKeyword(states::HtmlTokenizerIdentifier::Public)
+                    | BeforeDoctypeIdentifier(states::HtmlTokenizerIdentifier::Public)
+                    | DoctypeIdentifier(states::HtmlTokenizerIdentifier::Public, _) => {
+                        HtmlParseLexicalRole::PublicIdentifier
                     }
-                    AfterDoctypeKeyword(states::Identifier::System)
-                    | BeforeDoctypeIdentifier(states::Identifier::System)
-                    | DoctypeIdentifier(states::Identifier::System, _)
-                    | AfterDoctypeIdentifier(states::Identifier::Public)
-                    | BetweenDoctypeIdentifiers => LexicalRole::SystemIdentifier,
-                    _ => LexicalRole::Value,
+                    AfterDoctypeKeyword(states::HtmlTokenizerIdentifier::System)
+                    | BeforeDoctypeIdentifier(states::HtmlTokenizerIdentifier::System)
+                    | DoctypeIdentifier(states::HtmlTokenizerIdentifier::System, _)
+                    | AfterDoctypeIdentifier(states::HtmlTokenizerIdentifier::Public)
+                    | BetweenDoctypeIdentifiers => HtmlParseLexicalRole::SystemIdentifier,
+                    _ => HtmlParseLexicalRole::Value,
                 };
                 let offset = if opening {
                     0
                 } else {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    c.charge(WorkCategory::InspectByte, size_of::<usize>() as u64)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    c.charge(
+                        HtmlParseWorkCategory::InspectByte,
+                        size_of::<usize>() as u64,
+                    )?;
                     let text = match field_role {
-                        LexicalRole::PublicIdentifier => self
+                        HtmlParseLexicalRole::PublicIdentifier => self
                             .doctype
                             .as_ref()
                             .and_then(|doctype| doctype.public.as_ref()),
-                        LexicalRole::SystemIdentifier => self
+                        HtmlParseLexicalRole::SystemIdentifier => self
                             .doctype
                             .as_ref()
                             .and_then(|doctype| doctype.system.as_ref()),
@@ -290,7 +333,7 @@ impl Tokenizer<'_> {
                             .and_then(|tag| tag.attribute.as_ref())
                             .map(|attribute| &attribute.value),
                     }
-                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                     text.value.len()
                 };
                 evidence.lexical_part(c, occurrence, field_role, &empty, offset..offset, None)?;
@@ -300,7 +343,7 @@ impl Tokenizer<'_> {
                     evidence.lexical_part(
                         c,
                         occurrence,
-                        LexicalRole::EndAnchor,
+                        HtmlParseLexicalRole::EndAnchor,
                         &empty,
                         offset..offset,
                         None,
@@ -314,7 +357,7 @@ impl Tokenizer<'_> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let Some(occurrence) = self.lexical.as_ref() else {
             return Ok(());
         };
@@ -323,7 +366,7 @@ impl Tokenizer<'_> {
                 evidence,
                 c,
                 occurrence,
-                LexicalRole::Name,
+                HtmlParseLexicalRole::Name,
                 tag.name.origins.as_slice(),
             )?;
             if let Some(attribute) = &tag.attribute {
@@ -331,23 +374,26 @@ impl Tokenizer<'_> {
                     evidence,
                     c,
                     &attribute.lexical,
-                    LexicalRole::Name,
+                    HtmlParseLexicalRole::Name,
                     attribute.name.origins.as_slice(),
                 )?;
                 Self::retain_lexical_text(
                     evidence,
                     c,
                     &attribute.lexical,
-                    LexicalRole::Value,
+                    HtmlParseLexicalRole::Value,
                     attribute.value.origins.as_slice(),
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                c.charge(WorkCategory::InspectByte, size_of::<usize>() as u64)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(
+                    HtmlParseWorkCategory::InspectByte,
+                    size_of::<usize>() as u64,
+                )?;
                 let end = attribute.value.value.len();
                 evidence.lexical_part(
                     c,
                     &attribute.lexical,
-                    LexicalRole::Value,
+                    HtmlParseLexicalRole::Value,
                     &self.current,
                     end..end,
                     None,
@@ -355,7 +401,7 @@ impl Tokenizer<'_> {
                 evidence.lexical_part(
                     c,
                     &attribute.lexical,
-                    LexicalRole::EndAnchor,
+                    HtmlParseLexicalRole::EndAnchor,
                     &self.current,
                     end..end,
                     None,
@@ -365,23 +411,26 @@ impl Tokenizer<'_> {
                     c,
                     &attribute.lexical,
                     &source,
-                    LexicalKind::Attribute,
-                    LexicalDisposition::Abandoned,
+                    HtmlParseLexicalKind::Attribute,
+                    HtmlParseLexicalDisposition::Abandoned,
                 )?;
             }
         }
-        if matches!(self.state, states::State::PiOpen | states::State::PiTarget) {
+        if matches!(
+            self.state,
+            states::HtmlTokenizerState::PiOpen | states::HtmlTokenizerState::PiTarget
+        ) {
             Self::retain_lexical_text(
                 evidence,
                 c,
                 occurrence,
-                LexicalRole::Target,
+                HtmlParseLexicalRole::Target,
                 self.temporary.origins.as_slice(),
             )?;
         }
         for (text, role) in [
-            (&self.pi_target, LexicalRole::Target),
-            (&self.pi_data, LexicalRole::Data),
+            (&self.pi_target, HtmlParseLexicalRole::Target),
+            (&self.pi_data, HtmlParseLexicalRole::Data),
         ] {
             if let Some(text) = text {
                 Self::retain_lexical_text(evidence, c, occurrence, role, text.origins.as_slice())?;
@@ -391,28 +440,30 @@ impl Tokenizer<'_> {
         evidence.lexical_part(
             c,
             occurrence,
-            LexicalRole::EndAnchor,
+            HtmlParseLexicalRole::EndAnchor,
             &self.current,
             0..0,
             None,
         )?;
         let family = if let Some(tag) = &self.tag {
             if tag.kind == TagKind::Start {
-                LexicalKind::StartTag
+                HtmlParseLexicalKind::StartTag
             } else {
-                LexicalKind::EndTag
+                HtmlParseLexicalKind::EndTag
             }
         } else {
             match self.state {
-                states::State::PiOpen
-                | states::State::PiTarget
-                | states::State::AfterPiTarget
-                | states::State::PiData
-                | states::State::PiQuestionable => LexicalKind::ProcessingInstruction,
-                states::State::Cdata | states::State::CdataBracket | states::State::CdataEnd => {
-                    LexicalKind::Cdata
+                states::HtmlTokenizerState::PiOpen
+                | states::HtmlTokenizerState::PiTarget
+                | states::HtmlTokenizerState::AfterPiTarget
+                | states::HtmlTokenizerState::PiData
+                | states::HtmlTokenizerState::PiQuestionable => {
+                    HtmlParseLexicalKind::ProcessingInstruction
                 }
-                _ => LexicalKind::Markup,
+                states::HtmlTokenizerState::Cdata
+                | states::HtmlTokenizerState::CdataBracket
+                | states::HtmlTokenizerState::CdataEnd => HtmlParseLexicalKind::Cdata,
+                _ => HtmlParseLexicalKind::Markup,
             }
         };
         evidence.lexical_finish(
@@ -420,7 +471,7 @@ impl Tokenizer<'_> {
             occurrence,
             &source,
             family,
-            LexicalDisposition::Abandoned,
+            HtmlParseLexicalDisposition::Abandoned,
         )?;
         admit_record_write(size_of::<Option<LexicalRef>>(), 1, c)?;
         self.lexical = None;

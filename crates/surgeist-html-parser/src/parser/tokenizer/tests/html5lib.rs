@@ -471,14 +471,14 @@ fn cases(raw: &str) -> Result<Vec<Case>, String> {
         .collect()
 }
 
-fn state(name: &str) -> Result<State, String> {
+fn state(name: &str) -> Result<HtmlTokenizerState, String> {
     Ok(match name {
-        "Data state" => State::Data,
-        "PLAINTEXT state" => State::Plaintext,
-        "RCDATA state" => State::Raw(Raw::Rcdata),
-        "RAWTEXT state" => State::Raw(Raw::Rawtext),
-        "Script data state" => State::Raw(Raw::Script),
-        "CDATA section state" => State::Cdata,
+        "Data state" => HtmlTokenizerState::Data,
+        "PLAINTEXT state" => HtmlTokenizerState::Plaintext,
+        "RCDATA state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata),
+        "RAWTEXT state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rawtext),
+        "Script data state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script),
+        "CDATA section state" => HtmlTokenizerState::Cdata,
         other => return Err(format!("unknown initial state {other:?}")),
     })
 }
@@ -582,7 +582,7 @@ fn runs(case: &Case) -> Result<Vec<Run>, String> {
         for (encoding, source) in &sources {
             let last = case.last_start.as_deref();
             let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                collect(source, initial, last, initial == State::Cdata)
+                collect(source, initial, last, initial == HtmlTokenizerState::Cdata)
             }));
             let outcome = match run {
                 Err(panic) => Err(panic
