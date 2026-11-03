@@ -412,7 +412,7 @@ fn cache_miss_when_parent_size_changes() {
 }
 
 #[test]
-fn cache_hit_when_known_width_matches_cached_size_even_if_available_width_changes() {
+fn cache_authority_new_known_width_does_not_reuse_intrinsic_result_f32() {
     let mut cache = Cache::new();
     let base = cache_test_input();
     let output = ComputeOutput::from_outer_size(Size::new(20.0, 10.0));
@@ -433,7 +433,7 @@ fn cache_hit_when_known_width_matches_cached_size_even_if_available_width_change
 
     assert_eq!(
         cache.get_with_context(&changed, static_cache_context()),
-        Some(output)
+        None
     );
 }
 
@@ -915,4 +915,128 @@ fn cache_distinguishes_actual_anonymous_indent_policy_and_first_child_context() 
     }
     lane::<f32>();
     lane::<f64>();
+}
+
+fn cache_authority_input<S: LayoutScalar>(
+    run_mode: RunMode,
+    known_width: Option<S>,
+    available_width: AvailableOf<S>,
+) -> ComputeInputOf<S> {
+    ComputeInputOf::for_child(
+        run_mode,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::new(known_width, None),
+        Size::new(Some(S::from_f64(300.0)), Some(S::from_f64(200.0))),
+        ContainingLayoutContext::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            ParentFormattingContext::NoParent,
+        ),
+        Size::new(available_width, AvailableOf::MAX_CONTENT),
+    )
+}
+
+fn assert_cache_rejects_new_known_authority<S: LayoutScalar>(available_width: AvailableOf<S>) {
+    for run_mode in [RunMode::PerformLayout, RunMode::ComputeSize] {
+        let stored = cache_authority_input::<S>(run_mode, None, AvailableOf::MAX_CONTENT);
+        let query = cache_authority_input(run_mode, Some(S::from_f64(20.0)), available_width);
+        let output =
+            ComputeOutputOf::from_outer_size(Size::new(S::from_f64(20.0), S::from_f64(10.0)));
+        let mut cache = CacheOf::new();
+        cache.store_with_context(&stored, static_cache_context(), output);
+        assert_eq!(
+            cache.get_with_context(&stored, static_cache_context()),
+            Some(output),
+            "{run_mode:?}: the unchanged intrinsic request hits its own stored entry"
+        );
+        // A scalar result equal to20 does not establish that the stored
+        // execution was performed under an actual own-known width20.
+        assert_eq!(
+            cache.get_with_context(&query, static_cache_context()),
+            None,
+            "{run_mode:?}: new known20 cannot reuse unknown-width intrinsic execution; raw width={available_width:?}"
+        );
+        assert_eq!(
+            cache.get_with_context(&stored, static_cache_context()),
+            Some(output),
+            "{run_mode:?}: a rejected lookup preserves the original entry"
+        );
+    }
+}
+
+fn assert_cache_reuses_same_known_authority<S: LayoutScalar>(
+    stored_width: AvailableOf<S>,
+    queried_width: AvailableOf<S>,
+) {
+    for run_mode in [RunMode::PerformLayout, RunMode::ComputeSize] {
+        let known = Some(S::from_f64(20.0));
+        let stored = cache_authority_input(run_mode, known, stored_width);
+        let query = cache_authority_input(run_mode, known, queried_width);
+        let output =
+            ComputeOutputOf::from_outer_size(Size::new(S::from_f64(20.0), S::from_f64(10.0)));
+        let mut cache = CacheOf::new();
+        cache.store_with_context(&stored, static_cache_context(), output);
+        assert_eq!(
+            cache.get_with_context(&stored, static_cache_context()),
+            Some(output),
+            "{run_mode:?}: the unchanged own-known request hits"
+        );
+        assert_eq!(
+            cache.get_with_context(&query, static_cache_context()),
+            Some(output),
+            "{run_mode:?}: the same genuine own-known20 makes this axis's operation and external space ineffective"
+        );
+        assert_eq!(
+            cache.get_with_context(&stored, static_cache_context()),
+            Some(output),
+            "{run_mode:?}: relaxed reuse preserves the original entry"
+        );
+    }
+}
+
+#[test]
+fn cache_authority_new_known_width_does_not_reuse_intrinsic_result_f64() {
+    assert_cache_rejects_new_known_authority::<f64>(AvailableOf::MIN_CONTENT);
+}
+
+#[test]
+fn cache_authority_same_raw_max_new_known_width_requires_recompute_f32() {
+    assert_cache_rejects_new_known_authority::<f32>(AvailableOf::MAX_CONTENT);
+}
+
+#[test]
+fn cache_authority_same_raw_max_new_known_width_requires_recompute_f64() {
+    assert_cache_rejects_new_known_authority::<f64>(AvailableOf::MAX_CONTENT);
+}
+
+#[test]
+fn cache_authority_same_known_width_reuses_changed_physical_space_f32() {
+    assert_cache_reuses_same_known_authority::<f32>(
+        AvailableOf::Definite(100.0),
+        AvailableOf::Definite(200.0),
+    );
+}
+
+#[test]
+fn cache_authority_same_known_width_reuses_changed_physical_space_f64() {
+    assert_cache_reuses_same_known_authority::<f64>(
+        AvailableOf::Definite(100.0),
+        AvailableOf::Definite(200.0),
+    );
+}
+
+#[test]
+fn cache_authority_same_known_width_reuses_ineffective_intrinsic_operation_f32() {
+    assert_cache_reuses_same_known_authority::<f32>(
+        AvailableOf::MAX_CONTENT,
+        AvailableOf::MIN_CONTENT,
+    );
+}
+
+#[test]
+fn cache_authority_same_known_width_reuses_ineffective_intrinsic_operation_f64() {
+    assert_cache_reuses_same_known_authority::<f64>(
+        AvailableOf::MAX_CONTENT,
+        AvailableOf::MIN_CONTENT,
+    );
 }
