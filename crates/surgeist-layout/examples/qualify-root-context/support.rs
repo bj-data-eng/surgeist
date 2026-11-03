@@ -263,6 +263,8 @@ fn qualify(
             .expect("declared generated case");
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         qualify_xml(&xml, case)?;
+        let golden = crate::parity_support::Golden::parse(&xml)?;
+        crate::parity_support::assert_surgeist_matches(&golden)?;
     }
     let first = inventory
         .cases

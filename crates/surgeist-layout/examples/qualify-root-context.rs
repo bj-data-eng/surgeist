@@ -9,6 +9,8 @@ mod browser_profile;
 mod envelope;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
 mod measurement;
+#[path = "../tests/layout/browser_parity/support.rs"]
+pub mod parity_support;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
 #[path = "qualify-root-context/support.rs"]
