@@ -1,6 +1,9 @@
 //! Borrowed semantic operands, independent of their owning storage.
 
-use crate::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use crate::{
+    internal::values::Attribute, internal::values::DocumentString, internal::values::Namespace,
+    internal::values::OrderedAttributes, internal::values::QualifiedName,
+};
 
 /// Exact qualified-name components supplied to HTML language rules.
 ///

@@ -4,7 +4,7 @@
 //! They do not establish a captured subject, execute tree effects, normalize
 //! strings, move a selection, or dispatch events. Adapters retain those duties.
 
-use crate::HtmlInputValueComparison;
+use crate::internal::elements::input::HtmlInputValueComparison;
 
 /// Actual source of an output element's default value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

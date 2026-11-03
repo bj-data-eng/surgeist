@@ -1,11 +1,19 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
-    HtmlInteger, HtmlListIntegerAttributeReport, HtmlNonNegativeInteger,
-    HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError, HtmlValueAdmissionError,
-    HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState,
-    HtmlValueSyntax, HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace,
-    QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeContextAuthorState,
+        HtmlAttributeObservation, HtmlAttributeRecognition,
+        scalar::{
+            HtmlListIntegerAttributeReport, HtmlNumericAttributeAuthorState,
+            HtmlNumericAttributeConformanceError,
+        },
+    },
+    microsyntax::numeric::{HtmlInteger, HtmlNonNegativeInteger},
+    values::{
+        Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueFailure,
+        HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntax, HtmlValueSyntaxError,
+        Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 type Operation = fn(

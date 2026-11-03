@@ -1,7 +1,7 @@
 //! Frame's local classification and first post-connection decision.
 //! HTML 877d6146487f #frames and #child-navigables define these local facts.
 
-use crate::HtmlBrowsingContextPresence;
+use crate::internal::security::nonce::HtmlBrowsingContextPresence;
 
 /// The first decision of frame's HTML element post-connection steps.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

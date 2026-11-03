@@ -1,7 +1,19 @@
 use crate::html::support::{
     known_attribute as attr, ordered_attributes as attrs, value_interpreter as interpreter,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlLinkDestination,
+        link_destination::{
+            HtmlLinkDestinationContextAuthorState, HtmlLinkDestinationContextError,
+            HtmlLinkDestinationProcessing,
+        },
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn link() -> QualifiedName {
     KnownHtmlElement::Link.qualified_name()
@@ -91,7 +103,7 @@ fn thirteen_union_keywords_match_whole_ascii_case_and_emit_canonical_as() {
 #[test]
 fn missing_empty_invalid_and_xslt_never_get_an_enum_default() {
     let missing = interpreter()
-        .link_as(&link(), None::<&surgeist_html::Attribute>)
+        .link_as(&link(), None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);

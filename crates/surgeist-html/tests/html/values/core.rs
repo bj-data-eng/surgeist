@@ -1,4 +1,6 @@
-use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 
 #[test]
 fn validated_attribute_backing_keeps_identity_capacity_and_exact_units() {

@@ -6,8 +6,13 @@
 
 use super::*;
 use crate::{
-    HtmlDuplicateTokenError, HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenComparison,
-    HtmlUnorderedTokenSet, HtmlValueRecoveryState, HtmlValueReport,
+    internal::microsyntax::tokens::HtmlDuplicateTokenError,
+    internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
+    internal::microsyntax::tokens::HtmlSpaceToken,
+    internal::microsyntax::tokens::HtmlTokenComparison,
+    internal::microsyntax::tokens::HtmlUnorderedTokenSet,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 use std::{error::Error, fmt};
 
@@ -574,8 +579,8 @@ impl HtmlValueInterpreter {
     /// No navigation, origin fact, active policy or host enforcement is inferred.
     pub fn iframe_sandbox(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlSandboxReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(SANDBOX, element, raw);

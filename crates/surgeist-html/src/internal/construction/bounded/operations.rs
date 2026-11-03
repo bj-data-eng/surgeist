@@ -1,9 +1,12 @@
 use super::*;
 #[cfg(test)]
 mod charges;
-mod depth;
-mod orders;
-use crate::{Attribute, bounded::HtmlValidatedAttributes, internal::values::HTML_NAMESPACE_URI};
+pub(crate) mod depth;
+pub(crate) mod orders;
+use crate::{
+    internal::values::Attribute, internal::values::HTML_NAMESPACE_URI,
+    internal::values::bounded::HtmlValidatedAttributes,
+};
 use depth::{DepthPlan, owning_parent};
 
 /// Closed generic changes; parser policy and source evidence are not operands.
@@ -28,7 +31,7 @@ pub enum HtmlConstructionCommand {
         /// Link construction flags, supplied by the producer. Only an element named `link` in the
         /// HTML namespace may carry them; otherwise the command is refused with the
         /// wrong-node-kind error.
-        link_flags: Option<crate::HtmlLinkFlags>,
+        link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
     },
     /// Creates a detached Document record.
     CreateDocument {
@@ -146,7 +149,7 @@ pub enum HtmlConstructionCommand {
         /// The element that receives the flags. It must be a `link` element in the HTML namespace.
         element: HtmlBuilderNode,
         /// The flags to store.
-        flags: crate::HtmlLinkFlags,
+        flags: crate::internal::elements::rel::HtmlLinkFlags,
     },
     /// Publishes the tree rooted at `root` as an immutable result. The publication validates every
     /// record and consumes the storage until `HtmlConstructionLease::try_recover` returns it.
@@ -1318,7 +1321,10 @@ impl HtmlConstructionOperation {
                             (
                                 1 + history,
                                 size_of::<QualifiedName>()
-                                    + history * size_of::<Option<crate::HtmlLinkFlags>>(),
+                                    + history
+                                        * size_of::<
+                                            Option<crate::internal::elements::rel::HtmlLinkFlags>,
+                                        >(),
                             )
                         }
                         _ => (1, size_of::<HtmlNodeKind>()),
@@ -1595,8 +1601,10 @@ impl HtmlConstructionOperation {
                     plan.record_writes += 1;
                 }
                 Command::SetLinkFlags { .. } => {
-                    plan.copied_bytes =
-                        add(plan.copied_bytes, size_of::<Option<crate::HtmlLinkFlags>>())?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        size_of::<Option<crate::internal::elements::rel::HtmlLinkFlags>>(),
+                    )?;
                     plan.record_writes += 1;
                 }
                 _ => {}

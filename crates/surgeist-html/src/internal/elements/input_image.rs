@@ -1,6 +1,8 @@
 //! HTML877d Image Button observation/history and pre-resource guards.
 //! Consumers qualify source storage and the explicit disabled-images premise.
-use crate::{DocumentString, HtmlInputImageCoordinate};
+use crate::{
+    internal::elements::input::HtmlInputImageCoordinate, internal::values::DocumentString,
+};
 
 /// Actual last Image-state source. S belongs to the consumer's storage phase:
 /// e.g. its qualified retained-string slot or admitted immutable string value.

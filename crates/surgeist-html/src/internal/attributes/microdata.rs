@@ -1,6 +1,6 @@
 //! HTML §5.2 exact token observations; URL, vocabulary and tree proof are separate.
 use super::*;
-use crate::HtmlSpaceToken;
+use crate::internal::microsyntax::tokens::HtmlSpaceToken;
 
 /// Which of the three microdata token-list attributes is being read (HTML877d #encoding-microdata).
 /// The kind decides the attribute name and the nonemptiness and duplicate rules that apply.
@@ -117,7 +117,7 @@ pub enum HtmlMicrodataTokenListError {
     /// The kind requires at least one token (`itemtype` and `itemprop`) and none were given.
     Empty,
     /// Two tokens were identical in code units; the payload names the duplicate.
-    Duplicate(crate::HtmlDuplicateTokenError),
+    Duplicate(crate::internal::microsyntax::tokens::HtmlDuplicateTokenError),
 }
 impl std::fmt::Display for HtmlMicrodataTokenListError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -127,8 +127,10 @@ impl std::fmt::Display for HtmlMicrodataTokenListError {
         }
     }
 }
-impl From<crate::HtmlDuplicateTokenError> for HtmlMicrodataTokenListError {
-    fn from(error: crate::HtmlDuplicateTokenError) -> Self {
+impl From<crate::internal::microsyntax::tokens::HtmlDuplicateTokenError>
+    for HtmlMicrodataTokenListError
+{
+    fn from(error: crate::internal::microsyntax::tokens::HtmlDuplicateTokenError) -> Self {
         Self::Duplicate(error)
     }
 }
@@ -144,7 +146,7 @@ impl std::error::Error for HtmlMicrodataTokenListError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataTokenList {
     kind: HtmlMicrodataTokenKind,
-    tokens: crate::HtmlUnorderedTokenSet,
+    tokens: crate::internal::microsyntax::tokens::HtmlUnorderedTokenSet,
 }
 impl HtmlMicrodataTokenList {
     /// Builds a list for `kind` from already-valid tokens.
@@ -159,8 +161,10 @@ impl HtmlMicrodataTokenList {
         if kind != HtmlMicrodataTokenKind::ItemRef && tokens.is_empty() {
             return Err(HtmlMicrodataTokenListError::Empty);
         }
-        let tokens =
-            crate::HtmlUnorderedTokenSet::new(crate::HtmlTokenComparison::CaseSensitive, tokens)?;
+        let tokens = crate::internal::microsyntax::tokens::HtmlUnorderedTokenSet::new(
+            crate::internal::microsyntax::tokens::HtmlTokenComparison::CaseSensitive,
+            tokens,
+        )?;
         Ok(Self { kind, tokens })
     }
     /// Ordinary allocation, literal single-space separators, no URL validation.
@@ -179,7 +183,7 @@ impl HtmlValueInterpreter {
         raw: Option<&DocumentString>,
     ) -> Result<HtmlMicrodataTokenReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw)?;
-        use crate::bounded::{
+        use crate::internal::attributes::microdata::{
             HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenMeter,
             HtmlMicrodataTokenReservation,
         };

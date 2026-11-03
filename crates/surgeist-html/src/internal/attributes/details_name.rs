@@ -48,8 +48,8 @@ impl HtmlValueInterpreter {
     /// physical-memory, work or cancellation budget.
     pub fn details_name(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlDetailsName>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(

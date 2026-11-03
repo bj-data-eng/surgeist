@@ -7,10 +7,14 @@ use crate::internal::microsyntax::tokens::{
 pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
 use crate::{
-    DocumentString, HtmlLinkDestination, HtmlValueAdmissionError, HtmlValueInterpreter,
-    KnownHtmlElement,
+    internal::attributes::link_destination::HtmlLinkDestination, internal::values::DocumentString,
+    internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpreter, vocabulary::KnownHtmlElement,
 };
-use crate::{HtmlAttributeInput, HtmlNameInput};
+use crate::{
+    internal::values::semantic_input::HtmlAttributeInput,
+    internal::values::semantic_input::HtmlNameInput,
+};
 use controlled::HtmlRelInputs;
 
 /// HTML877d's historical flag, owned by the actual constructed link record.
@@ -33,7 +37,7 @@ impl HtmlLinkFlags {
     /// into a new element does not simulate a removal.
     pub fn disabled_attribute_changed(
         &mut self,
-        namespace: &crate::Namespace,
+        namespace: &crate::internal::values::Namespace,
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
     ) {
@@ -88,7 +92,9 @@ pub enum HtmlRelRole {
 impl HtmlRelRole {
     /// Maps an element name to its role, or `None` when the name is not an HTML `link`, `a`, `area`
     /// or `form` element, in which case no `rel` interpretation applies.
-    pub fn from_element(element: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
+    pub fn from_element(
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    ) -> Option<Self> {
         Self::from_known(KnownHtmlElement::from_name(element)?)
     }
     /// Maps a known HTML element to its role, or `None` for every element other than `link`, `a`,
@@ -1007,8 +1013,8 @@ impl HtmlValueInterpreter {
     /// registry, aggregate memory/work or cancellation certificate is supplied.
     pub fn rel_with_attributes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlRelReport, HtmlValueAdmissionError> {
         let get = |name: &str| {
             attributes_iter(attributes)
@@ -1023,7 +1029,7 @@ impl HtmlValueInterpreter {
                 })
                 .map(HtmlAttributeInput::value)
         };
-        let as_name = crate::KnownHtmlAttribute::As.qualified_name();
+        let as_name = crate::vocabulary::KnownHtmlAttribute::As.qualified_name();
         let as_attribute = find_attribute(attributes, as_name.namespace(), as_name.local_name());
         self.admit_attribute_raw(as_attribute.map(HtmlAttributeInput::value))?;
         let mut input = HtmlRelInputs {

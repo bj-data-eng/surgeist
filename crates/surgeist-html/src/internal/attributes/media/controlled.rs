@@ -1,6 +1,6 @@
 //! Actual-field selection and deferred local media report production.
 use super::*;
-use crate::bounded::HtmlThemeColorNameCursor;
+use crate::internal::elements::media::theme::HtmlThemeColorNameCursor;
 /// The two no-namespace attributes that media interpretation matches by local
 /// name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,7 +61,7 @@ pub fn match_media_field<'raw, E, A: HtmlAttributeInput>(
 }
 /// Ordinary matching shares the same rule and performs no controlled admission.
 pub fn media_field_matches(
-    attribute: &impl crate::HtmlAttributeInput,
+    attribute: &impl crate::internal::values::semantic_input::HtmlAttributeInput,
     field: HtmlMediaField,
 ) -> bool {
     match match_media_field(attribute, field, |_| Ok::<_, std::convert::Infallible>(())) {

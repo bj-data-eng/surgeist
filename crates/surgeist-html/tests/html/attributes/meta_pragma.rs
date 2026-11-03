@@ -1,4 +1,12 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeRecognition,
+        meta_pragma::{HtmlMetaPragma, HtmlMetaPragmaState},
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn element() -> QualifiedName {
     KnownHtmlElement::Meta.qualified_name()
@@ -64,7 +72,7 @@ fn all_seven_intrinsic_states_keep_recognition_separate_from_author_conformance(
 #[test]
 fn missing_empty_and_unrecognized_have_no_invented_default_state() {
     let r = HtmlValueInterpreter::new(0)
-        .meta_http_equiv(&element(), None::<&surgeist_html::Attribute>)
+        .meta_http_equiv(&element(), None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(r.intrinsic(), None);
     assert_eq!(r.recognition(), HtmlAttributeRecognition::Missing);

@@ -16,7 +16,10 @@
 //! under a document-mode or link-flag edit, so its write there rests on the
 //! arm alone.
 use super::*;
-use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+use crate::{
+    internal::construction::HtmlShadowRootMode, internal::construction::HtmlShadowRootProperties,
+    internal::construction::HtmlSlotAssignment,
+};
 
 fn begin() -> HtmlConstructionStorage {
     let mut initialization = Some(HtmlConstructionStorage::begin());
@@ -281,7 +284,9 @@ fn depth_cache_changes(before: &Snapshot, after: &Snapshot) -> usize {
 fn field_size(field: &str) -> usize {
     match field {
         "kind" => size_of::<HtmlNodeKind>(),
-        "kind.element.link_flags" => size_of::<Option<crate::HtmlLinkFlags>>(),
+        "kind.element.link_flags" => {
+            size_of::<Option<crate::internal::elements::rel::HtmlLinkFlags>>()
+        }
         "kind.element.name" => size_of::<QualifiedName>(),
         "kind.element.attributes" => size_of::<OrderedAttributes>(),
         "document_focused_area_designation" => size_of::<Option<HtmlFocusedAreaDesignation>>(),
@@ -499,7 +504,7 @@ fn name(namespace: Namespace, local: &str) -> QualifiedName {
 
 fn link(
     storage: HtmlConstructionStorage,
-    flags: Option<crate::HtmlLinkFlags>,
+    flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
 ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
     create(
         storage,
@@ -640,7 +645,10 @@ fn replacing_text_like_content_assigns_the_kind() {
 #[test]
 fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_link() {
     // A link with history renamed to a non-link loses the history.
-    let (storage, node) = link(begin(), Some(crate::HtmlLinkFlags::fresh()));
+    let (storage, node) = link(
+        begin(),
+        Some(crate::internal::elements::rel::HtmlLinkFlags::fresh()),
+    );
     assert_assigned(
         "ReplaceContent renaming a link to a non-link",
         storage,
@@ -654,7 +662,10 @@ fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_lin
     );
     // A rename to a link leaves the history alone: the element has history to
     // lose, and a prefix changes the name but keeps the HTML link expanded name.
-    let (storage, node) = link(begin(), Some(crate::HtmlLinkFlags::fresh()));
+    let (storage, node) = link(
+        begin(),
+        Some(crate::internal::elements::rel::HtmlLinkFlags::fresh()),
+    );
     assert_assigned(
         "ReplaceContent renaming a link to a link",
         storage,
@@ -674,7 +685,10 @@ fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_lin
 
 fn attributes_of(pairs: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(pairs.iter().map(|(local, value)| {
-        crate::Attribute::new(QualifiedName::new(Namespace::none(), None, *local), *value)
+        crate::internal::values::Attribute::new(
+            QualifiedName::new(Namespace::none(), None, *local),
+            *value,
+        )
     }))
     .unwrap()
 }
@@ -758,7 +772,7 @@ fn setting_link_flags_assigns_the_link_history() {
         storage,
         HtmlConstructionCommand::SetLinkFlags {
             element,
-            flags: crate::HtmlLinkFlags::fresh(),
+            flags: crate::internal::elements::rel::HtmlLinkFlags::fresh(),
         },
         &["kind.element.link_flags"],
         UsageEffect::Identical,

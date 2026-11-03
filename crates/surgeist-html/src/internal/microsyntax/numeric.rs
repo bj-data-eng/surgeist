@@ -4,12 +4,11 @@
 //! exposes intentional bounded operations through `bounded`; the caller applies
 //! request limits before invoking these algorithms.
 
-use crate::DocumentString;
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
+use crate::internal::values::DocumentString;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
-pub use natural_ratio::*;
 
 fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
     left_digits

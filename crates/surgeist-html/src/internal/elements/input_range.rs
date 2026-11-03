@@ -1,9 +1,14 @@
 //! Source-ordered Range sanitation decisions, HTML877d §4.10.5.1.13.
 //! Arithmetic, strings, storage, provenance and admission remain caller-owned.
 use crate::{
-    HtmlFloatingPointNumber, HtmlInputNumericBoundOrigin, HtmlInputNumericConstraints,
-    HtmlInputNumericContent, HtmlInputNumericStep, HtmlInputType, HtmlNonFiniteNumberError,
-    select_input_numeric_constraints,
+    internal::attributes::HtmlInputType,
+    internal::attributes::input_bounds::HtmlInputNumericBoundOrigin,
+    internal::attributes::input_bounds::HtmlInputNumericConstraints,
+    internal::attributes::input_bounds::HtmlInputNumericContent,
+    internal::attributes::input_bounds::HtmlInputNumericStep,
+    internal::attributes::input_bounds::select_input_numeric_constraints,
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::microsyntax::numeric::HtmlNonFiniteNumberError,
 };
 
 /// A completed finite Range calculation value, preserving actual signed-zero bits.

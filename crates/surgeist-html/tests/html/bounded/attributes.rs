@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use surgeist_html::{
-    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
-    bounded::{
+    bounded::values::{
         HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
         HtmlValidatedAttributes,
     },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 fn attribute(

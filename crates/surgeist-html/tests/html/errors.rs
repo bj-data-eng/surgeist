@@ -10,38 +10,68 @@ use std::error::Error;
 use crate::html::support::construction_limits;
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    HtmlAutocompleteMaterializationError, HtmlFloatingPointAllocationError,
-    HtmlIntegerRecoveryError, HtmlIntegerUnitStepError, HtmlNumericMaterializationError,
-    HtmlNumericParseError, HtmlRangeNumericError,
+    attributes::HtmlAutocompleteMaterializationError,
+    numeric::{
+        HtmlFloatingPointAllocationError, HtmlIntegerRecoveryError, HtmlIntegerUnitStepError,
+        HtmlNumericMaterializationError, HtmlNumericParseError, HtmlRangeNumericError,
+    },
 };
 use surgeist_html::{
-    DocumentString, HtmlAcceptSpecifierError, HtmlAreaCoordinatesAuthorError,
-    HtmlAttributeConformanceError, HtmlAttributeContextConformanceError,
-    HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutofillField,
-    HtmlCustomCommandError, HtmlCustomElementNameError, HtmlDecimalDigitsError,
-    HtmlDuplicateTokenError, HtmlIconSizeError, HtmlImageAttributeConformanceError,
-    HtmlInputImageAttributeError, HtmlInputSelection, HtmlInputSelectionDirection,
-    HtmlLinkDestinationContextError, HtmlMeterAuthorRelation, HtmlMeterNativeError,
-    HtmlMeterNumberRole, HtmlMicrodataTokenListError, HtmlNavigableTargetError,
-    HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericAttributeConformanceError,
-    HtmlOrderedTokenSet, HtmlProcessingInstructionError, HtmlProgressNumberAuthorError,
-    HtmlRationalError, HtmlSandboxRedundancy, HtmlSandboxValueError, HtmlSpaceToken,
-    HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation, HtmlSrcsetDensityError,
-    HtmlSrcsetInterpretationError, HtmlSrcsetParseError, HtmlSrcsetUrlTokenError,
-    HtmlTemporalError, HtmlTokenComparison, HtmlTokenDeclarationError, HtmlTokenError,
-    HtmlUtf8EncodingLabel, HtmlValueAdmissionError, HtmlValueFailure, HtmlValueInterpreter,
-    HtmlValueRepresentationError, HtmlValueSyntaxError, input_filename_setter,
+    attributes::{
+        HtmlAttributeConformanceError, HtmlAttributeContextConformanceError,
+        accept::HtmlAcceptSpecifierError,
+        area::HtmlAreaCoordinatesAuthorError,
+        autocomplete::{
+            HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutofillField,
+        },
+        command::HtmlCustomCommandError,
+        encoding_label::HtmlUtf8EncodingLabel,
+        image_values::{HtmlImageAttributeConformanceError, HtmlInputImageAttributeError},
+        link_destination::HtmlLinkDestinationContextError,
+        meter::{HtmlMeterAuthorRelation, HtmlMeterNativeError, HtmlMeterNumberRole},
+        microdata::HtmlMicrodataTokenListError,
+        navigable_target::HtmlNavigableTargetError,
+        progress::HtmlProgressNumberAuthorError,
+        sandbox::{HtmlSandboxRedundancy, HtmlSandboxValueError},
+        scalar::HtmlNumericAttributeConformanceError,
+        srcset::{
+            HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation, HtmlSrcsetDensityError,
+            HtmlSrcsetInterpretationError, HtmlSrcsetParseError, HtmlSrcsetUrlTokenError,
+        },
+        token_declarations::{HtmlIconSizeError, HtmlTokenDeclarationError},
+    },
+    construction::HtmlProcessingInstructionError,
+    elements::input::{HtmlInputSelection, HtmlInputSelectionDirection, input_filename_setter},
+    microsyntax::{
+        numeric::{
+            HtmlDecimalDigitsError, HtmlNonNegativeInteger, HtmlNonNegativeRational,
+            HtmlRationalError,
+        },
+        temporal::HtmlTemporalError,
+        tokens::{
+            HtmlDuplicateTokenError, HtmlOrderedTokenSet, HtmlSpaceToken, HtmlTokenComparison,
+            HtmlTokenError,
+        },
+    },
+    values::{
+        DocumentString, HtmlCustomElementNameError, HtmlValueAdmissionError, HtmlValueFailure,
+        HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
+    },
 };
 
 use surgeist_html::bounded::{
-    HtmlMediaActionError, HtmlMediaInterpretation, HtmlMicrodataTokenActionError,
-    HtmlMicrodataTokenInterpretation, HtmlRelActionError, HtmlRelInterpretation,
-    HtmlTimeElementInterpretation,
+    media::{HtmlMediaActionError, HtmlMediaInterpretation},
+    microdata::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation},
+    rel::{HtmlRelActionError, HtmlRelInterpretation},
+    temporal::HtmlTimeElementInterpretation,
 };
 use surgeist_html::{
-    Attribute, HtmlConstructionLimits, HtmlConstructionResource, HtmlCspError, HtmlCspOwner,
-    HtmlCspProcessorAuthority, HtmlDocument, HtmlDocumentMode, HtmlFragment, Namespace,
-    OrderedAttributes, QualifiedName,
+    construction::{
+        HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode,
+        HtmlFragment,
+    },
+    security::csp::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority},
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 
 /// The admission error of a three-unit value against a two-unit capacity.
@@ -1211,7 +1241,9 @@ fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
 
 #[test]
 fn natural_arithmetic_and_value_pool_errors_state_the_misuse() {
-    use surgeist_html::bounded::{HtmlNaturalArithmeticError as Natural, HtmlValuePoolError};
+    use surgeist_html::bounded::{
+        numeric::HtmlNaturalArithmeticError as Natural, values::HtmlValuePoolError,
+    };
     assert_eq!(
         message(&Natural::NonCanonical),
         "natural number digits are empty or have a leading zero"
@@ -1290,7 +1322,7 @@ fn duplicate_token_and_redundant_sandbox_errors_state_the_conflict_in_prose() {
 
 #[test]
 fn refused_pool_seal_returns_the_open_root_with_the_cause() {
-    use surgeist_html::bounded::{HtmlStringPool, HtmlValuePoolError};
+    use surgeist_html::bounded::values::{HtmlStringPool, HtmlValuePoolError};
     let mut pool = HtmlStringPool::new();
     let root = pool.begin_root().expect("fresh pool root");
     let _unresolved = pool.mark(&root).expect("nested mark");
@@ -1311,7 +1343,9 @@ fn refused_pool_seal_returns_the_open_root_with_the_cause() {
 
 #[test]
 fn wrappers_describe_their_own_operation_and_expose_the_cause_once() {
-    use surgeist_html::{HtmlControlLengthError, HtmlInputNumericConstraintsError};
+    use surgeist_html::attributes::{
+        control_length::HtmlControlLengthError, input_bounds::HtmlInputNumericConstraintsError,
+    };
     let admission = refused_admission();
 
     let duplicate = HtmlSandboxValueError::Duplicate(duplicate_token());

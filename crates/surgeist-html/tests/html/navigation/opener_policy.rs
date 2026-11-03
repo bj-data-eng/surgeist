@@ -1,4 +1,4 @@
-use surgeist_html::{HtmlOpenerPolicy, HtmlOpenerPolicyValue};
+use surgeist_html::security::opener_policy::{HtmlOpenerPolicy, HtmlOpenerPolicyValue};
 
 #[test]
 fn initial_record_has_four_source_defaults() {

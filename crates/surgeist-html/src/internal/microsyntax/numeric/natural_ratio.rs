@@ -612,7 +612,7 @@ impl<'scratch> HtmlNaturalDifference<'_, 'scratch> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DocumentString;
+    use crate::internal::values::DocumentString;
     fn integer(v: &str) -> HtmlNonNegativeInteger {
         HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(v)).unwrap()
     }

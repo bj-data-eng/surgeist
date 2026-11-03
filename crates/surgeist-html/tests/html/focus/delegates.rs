@@ -1,5 +1,5 @@
 //! Independent literal algorithm traces from HTML877d raw60113–60159.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
     HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,
     HtmlFocusDelegateAction as A, HtmlFocusDelegateCandidate as Candidate,

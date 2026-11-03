@@ -1,9 +1,11 @@
 use std::sync::Arc;
 use surgeist_html::{
-    DocumentString, HtmlFrameIframeAfterAncestors, HtmlFrameIframeSrcDecision,
-    HtmlIframeAttributeBranch,
-    bounded::{frame_iframe_after_ancestors_with, frame_iframe_src_with},
-    iframe_attribute_branch,
+    bounded::frame::{frame_iframe_after_ancestors_with, frame_iframe_src_with},
+    elements::frame::{
+        HtmlFrameIframeAfterAncestors, HtmlFrameIframeSrcDecision, HtmlIframeAttributeBranch,
+        iframe_attribute_branch,
+    },
+    values::DocumentString,
 };
 
 #[test]

@@ -5,7 +5,7 @@
 //! it neither observes a preference nor supplies a preference service.
 
 use crate::internal::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
-use crate::{HtmlNameInput, KnownHtmlAttribute};
+use crate::{internal::values::semantic_input::HtmlNameInput, vocabulary::KnownHtmlAttribute};
 
 /// Recognize one actual autofocus content attribute for an Element
 /// in the HTML, SVG or MathML namespace. HTML877d raw8898–8903 excludes global
@@ -24,8 +24,8 @@ use crate::{HtmlNameInput, KnownHtmlAttribute};
 /// local-name comparisons after its length check. The adapter admits its actual
 /// attribute walk and this fixed work before calling the helper.
 pub fn autofocus_presence(
-    element: &(impl crate::HtmlNameInput + ?Sized),
-    attribute: Option<&impl crate::HtmlAttributeInput>,
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    attribute: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
 ) -> bool {
     let Some(attribute) = attribute else {
         return false;

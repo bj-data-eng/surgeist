@@ -1,7 +1,7 @@
 //! Exact local hash-name observations, HTML §2.3.9. Tree proof is separate.
 
 use super::*;
-use crate::HtmlSpaceToken;
+use crate::internal::microsyntax::tokens::HtmlSpaceToken;
 
 const AUTHOR_SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#valid-hash-name-reference";
 const PROCESSING_SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#rules-for-parsing-a-hash-name-reference";

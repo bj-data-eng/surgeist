@@ -1,16 +1,24 @@
 //! Range language decisions serviced by the real bounded numerical operations.
 use surgeist_html::bounded::{
-    HtmlBestFiniteNumberCursor, HtmlInputRangeNumber as RangeNumber,
-    HtmlInputRangeReplacement as B, HtmlInputRangeSanitizationAction as A,
-    HtmlInputRangeSanitizationCursor as Policy, HtmlInputRangeSanitizationReply as R,
-    HtmlInputRangeSanitizationReplyError, HtmlInputRangeValue as V, HtmlRangeBufferHeader,
-    HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericHeaders,
-    HtmlRangeNumericReply, HtmlRangeNumericRequest,
+    input::{
+        HtmlInputRangeNumber as RangeNumber, HtmlInputRangeReplacement as B,
+        HtmlInputRangeSanitizationAction as A, HtmlInputRangeSanitizationCursor as Policy,
+        HtmlInputRangeSanitizationReply as R, HtmlInputRangeSanitizationReplyError,
+        HtmlInputRangeValue as V,
+    },
+    numeric::{
+        HtmlBestFiniteNumberCursor, HtmlRangeBufferHeader, HtmlRangeLatticeCursor,
+        HtmlRangeMidpointCursor, HtmlRangeNumericHeaders, HtmlRangeNumericReply,
+        HtmlRangeNumericRequest,
+    },
 };
 use surgeist_html::{
-    DocumentString, HtmlFloatingPointNumber as Number, HtmlInputNumericBoundOrigin,
-    HtmlInputNumericContent as C, HtmlInputNumericStep as S, HtmlInputNumericStepBaseOrigin,
-    HtmlInputNumericStepOrigin, HtmlValueInterpreter, HtmlValueRecoveryState,
+    attributes::input_bounds::{
+        HtmlInputNumericBoundOrigin, HtmlInputNumericContent as C, HtmlInputNumericStep as S,
+        HtmlInputNumericStepBaseOrigin, HtmlInputNumericStepOrigin,
+    },
+    microsyntax::numeric::HtmlFloatingPointNumber as Number,
+    values::{DocumentString, HtmlValueInterpreter, HtmlValueRecoveryState},
 };
 
 fn n(value: f64) -> Number {
@@ -35,7 +43,7 @@ fn calculation_values_preserve_actual_finite_bits_and_reject_nonfinite_values() 
     for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
         assert_eq!(
             RangeNumber::try_from(value),
-            Err(surgeist_html::HtmlNonFiniteNumberError)
+            Err(surgeist_html::microsyntax::numeric::HtmlNonFiniteNumberError)
         );
     }
 }

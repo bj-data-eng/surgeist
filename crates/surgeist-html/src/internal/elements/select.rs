@@ -1,6 +1,6 @@
 //! Select decisions from HTML 877d6146487f, without a tree or mutation owner.
 
-use crate::KnownHtmlElement;
+use crate::vocabulary::KnownHtmlElement;
 
 /// HTML display-size fallback for an absent or failed size attribute.
 /// A successfully recovered zero is not a fallback. This is not size IDL.
@@ -32,14 +32,14 @@ pub enum HtmlSelectOperation {
 /// The next fixed select operation; ordinals address one complete option list.
 ///
 /// The adapter admits each actual read/write before performing it. Writes use
-/// [`crate::HtmlOptionFlags`]'s owned transitions; no callback or event dispatch
+/// [`crate::internal::elements::control_values::HtmlOptionFlags`]'s owned transitions; no callback or event dispatch
 /// is requested. A refresh means HTML's selectedcontent update operation, which
 /// itself returns immediately while multiple is present.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectAction {
-    /// Apply [`crate::HtmlSelectFlags::reset`] to the actual select flags.
+    /// Apply [`crate::internal::elements::control_values::HtmlSelectFlags::reset`] to the actual select flags.
     ResetSelectFlags,
-    /// Apply [`crate::HtmlOptionFlags::reset`] using this option's actual
+    /// Apply [`crate::internal::elements::control_values::HtmlOptionFlags::reset`] using this option's actual
     /// selected-attribute presence, clearing dirtiness before normalization.
     ResetOption {
         /// Zero-based position of the option in the complete option list, in tree order.
@@ -51,7 +51,7 @@ pub enum HtmlSelectAction {
         /// Zero-based position of the option in the complete option list, in tree order.
         ordinal: usize,
     },
-    /// Apply [`crate::HtmlOptionFlags::set_selectedness_for_select`], preserving
+    /// Apply [`crate::internal::elements::control_values::HtmlOptionFlags::set_selectedness_for_select`], preserving
     /// dirtiness; never run the selected setter or change an authored attribute.
     WriteSelectedness {
         /// Zero-based position of the option in the complete option list, in tree order.

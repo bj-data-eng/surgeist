@@ -5,7 +5,12 @@ use super::*;
 use crate::internal::microsyntax::numeric::{
     HtmlScientificDecimalKey, ScientificDecimalKeyError, strict_scientific_decimal_key,
 };
-use crate::{HtmlFloatingPointNumber, HtmlValueAuthorState, HtmlValueReport, HtmlValueSyntaxError};
+use crate::{
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlValueReport,
+    internal::values::interpretation::HtmlValueSyntaxError,
+};
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
@@ -318,7 +323,7 @@ impl HtmlValueInterpreter {
     /// or clamps. Malformed present min/max never become author defaults 0/1.
     pub fn meter_attributes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         input: HtmlMeterAttributeInput<'_, impl HtmlAttributeInput>,
     ) -> Result<HtmlMeterAttributeReport, HtmlValueAdmissionError> {
         let raw = input.slots();
@@ -341,8 +346,8 @@ impl HtmlValueInterpreter {
     }
     fn meter_number(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         role: HtmlMeterNumberRole,
     ) -> Result<(HtmlMeterNumberReport, ExactFact), HtmlValueAdmissionError> {
         let attribute = report(role.metadata(), element, raw);

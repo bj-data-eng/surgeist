@@ -1,13 +1,21 @@
 use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlAttributeObservation,
-    HtmlControlAttributeApplication, HtmlControlGetterOrigin, HtmlControlInitialText,
-    HtmlControlInitialTextState, HtmlControlIntegerAuthorState, HtmlControlLengthBoundsReport,
-    HtmlControlLengthError, HtmlControlLengthPairState, HtmlControlLengthValue, HtmlInputSizeValue,
-    HtmlInputSizeZeroError, HtmlInputType, HtmlNonNegativeInteger, HtmlValueAuthorState,
-    HtmlValueInterpreter, HtmlValueRecoveryState, KnownHtmlAttribute as A, KnownHtmlElement as E,
-    Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlInputType,
+        control_length::{
+            HtmlControlAttributeApplication, HtmlControlGetterOrigin, HtmlControlInitialText,
+            HtmlControlInitialTextState, HtmlControlIntegerAuthorState,
+            HtmlControlLengthBoundsReport, HtmlControlLengthError, HtmlControlLengthPairState,
+            HtmlControlLengthValue, HtmlInputSizeValue, HtmlInputSizeZeroError,
+        },
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueInterpreter,
+        HtmlValueRecoveryState, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 fn length_report(
@@ -39,16 +47,20 @@ fn size_content_has_no_twenty_default_but_getter_does() {
         (
             Some(""),
             HtmlControlGetterOrigin::ParseFailureDefault,
-            HtmlControlIntegerAuthorState::Nonconforming(surgeist_html::HtmlValueFailure::Syntax(
-                surgeist_html::HtmlValueSyntaxError::InvalidNumericSyntax,
-            )),
+            HtmlControlIntegerAuthorState::Nonconforming(
+                surgeist_html::values::HtmlValueFailure::Syntax(
+                    surgeist_html::values::HtmlValueSyntaxError::InvalidNumericSyntax,
+                ),
+            ),
         ),
         (
             Some("oops"),
             HtmlControlGetterOrigin::ParseFailureDefault,
-            HtmlControlIntegerAuthorState::Nonconforming(surgeist_html::HtmlValueFailure::Syntax(
-                surgeist_html::HtmlValueSyntaxError::InvalidNumericSyntax,
-            )),
+            HtmlControlIntegerAuthorState::Nonconforming(
+                surgeist_html::values::HtmlValueFailure::Syntax(
+                    surgeist_html::values::HtmlValueSyntaxError::InvalidNumericSyntax,
+                ),
+            ),
         ),
         (
             Some("0"),
@@ -354,7 +366,7 @@ fn forbidden_input_authorship_keeps_lexical_error_and_raw() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Number),
             None,
@@ -379,8 +391,8 @@ fn absent_attributes_select_no_presence_author_violation_even_on_ignored_state()
     let report = HtmlValueInterpreter::new(0)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(HtmlInputType::Checkbox),
             None,
         )
@@ -504,7 +516,7 @@ fn textarea_does_not_accept_an_input_state_fact_family() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Textarea.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Text),
             None,
@@ -544,7 +556,7 @@ fn input_value_checks_exact_utf16_without_textarea_newline_normalization() {
         let report = interpreter
             .control_length_bounds(
                 &E::Input.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 Some(&maximum),
                 Some(HtmlInputType::Text),
                 Some(&initial),
@@ -582,7 +594,7 @@ fn textarea_descendant_text_counts_normalized_utf16_without_wrapping() {
         let report = interpreter
             .control_length_bounds(
                 &E::Textarea.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 Some(&maximum),
                 None,
                 Some(&initial),
@@ -662,7 +674,7 @@ fn wrong_initial_text_fact_family_and_value_identity_remain_explicit() {
         let report = interpreter
             .control_length_bounds(
                 &element.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 Some(&maximum),
                 state,
                 Some(facts),
@@ -766,8 +778,8 @@ fn source_rows_and_role_definitions_are_selected_without_reinventing_inventory()
         let report = interpreter
             .control_length_bounds(
                 &element.qualified_name(),
-                None::<&surgeist_html::Attribute>,
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 state,
                 None,
             )
@@ -808,7 +820,7 @@ fn source_rows_and_role_definitions_are_selected_without_reinventing_inventory()
     let size = interpreter
         .input_size(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(size.inventory_rows(), &[143]);
@@ -876,7 +888,7 @@ fn absent_or_failed_maximum_and_absent_input_value_need_no_text_state_fact() {
         let report = interpreter
             .control_length_bounds(
                 &E::Input.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 maximum,
                 None,
                 initial,
@@ -900,7 +912,7 @@ fn input_state_context_is_retained_when_initial_text_check_is_ignored() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Number),
             Some(&initial),
@@ -947,7 +959,7 @@ fn prefixed_input_value_has_unnamespaced_expanded_identity() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Email),
             Some(&initial),

@@ -4,7 +4,7 @@
 //! connectivity, qualification and admission. These decisions neither establish
 //! a scripting environment nor provide loading, compilation or execution.
 
-use crate::HtmlScriptKind;
+use crate::internal::elements::script_type::HtmlScriptKind;
 
 /// The source-defined terminal branch reached by the bounded preparation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,8 +1,13 @@
 use surgeist_html::{
-    DocumentString, HtmlDate, HtmlDuration, HtmlGlobalDateTime, HtmlLocalDateTime,
-    HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlParsedDuration, HtmlParsedGlobalDateTime,
-    HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTemporalError, HtmlTemporalPrecisionError,
-    HtmlTime, HtmlTimeZoneOffset, HtmlUtcInstant, HtmlYear,
+    microsyntax::{
+        numeric::{HtmlNonNegativeDecimal, HtmlNonNegativeInteger},
+        temporal::{
+            HtmlDate, HtmlDuration, HtmlGlobalDateTime, HtmlLocalDateTime, HtmlParsedDuration,
+            HtmlParsedGlobalDateTime, HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTemporalError,
+            HtmlTemporalPrecisionError, HtmlTime, HtmlTimeZoneOffset, HtmlUtcInstant, HtmlYear,
+        },
+    },
+    values::DocumentString,
 };
 
 fn decimal(integer: u128, fraction: &str) -> HtmlNonNegativeDecimal {

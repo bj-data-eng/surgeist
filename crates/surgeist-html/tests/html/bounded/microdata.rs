@@ -1,7 +1,14 @@
 //! Exact public microdata ownership, admission and publication contracts.
 #![forbid(unsafe_code)]
 use std::sync::Arc;
-use surgeist_html::{DocumentString, HtmlMicrodataTokenKind, bounded::*};
+use surgeist_html::{
+    attributes::microdata::HtmlMicrodataTokenKind,
+    bounded::microdata::{
+        HtmlMicrodataTokenActionError, HtmlMicrodataTokenActionKind,
+        HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenMeter, HtmlMicrodataTokenReservation,
+    },
+    values::DocumentString,
+};
 
 type Owner<'a> = HtmlMicrodataTokenInterpretation<'a>;
 #[derive(Default)]

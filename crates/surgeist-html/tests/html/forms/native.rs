@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use surgeist_html::HtmlFormNativeState;
+use surgeist_html::elements::form::HtmlFormNativeState;
 
 // HTML877d §4.10.3, raw33372–33375: reset() tests and marks locked-for-reset;
 // a newly created Form has not entered that event-bearing operation.

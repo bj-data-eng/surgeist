@@ -1,6 +1,17 @@
 //! Retained HTML877d local rel interpretation and checked refinement.
 #![forbid(unsafe_code)]
-use surgeist_html::{bounded::*, *};
+use surgeist_html::{
+    attributes::HtmlLinkDestination,
+    bounded::rel::{
+        HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation, HtmlRelInterpretationError,
+        HtmlRelMeter, HtmlRelRefinement, HtmlRelReservation,
+    },
+    elements::link::{
+        HtmlRelAlternate, HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelRole,
+        HtmlRelTitleAuthor,
+    },
+    values::DocumentString,
+};
 #[derive(Default)]
 struct Meter {
     work: Vec<usize>,

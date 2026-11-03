@@ -247,8 +247,8 @@ impl HtmlValueInterpreter {
     /// Unchecked, including required presence when the as attribute is absent.
     pub fn link_as(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlLinkDestination>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&LINK_AS, element, raw)?;
         if report.applicability == HtmlAttributeApplicability::Applicable {
@@ -263,8 +263,8 @@ impl HtmlValueInterpreter {
     /// only, without asserting that execution reached it (e.g. href may be empty).
     pub fn link_as_with_attributes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlLinkDestinationReport, HtmlValueAdmissionError> {
         let name = KnownHtmlAttribute::As.qualified_name();
         let raw = find_attribute(attributes, name.namespace(), name.local_name());
@@ -288,8 +288,8 @@ impl HtmlValueInterpreter {
         let has = |keyword| {
             rel.is_some_and(|rel| crate::internal::elements::rel::contains(rel.value(), keyword))
         };
-        let preload = has(crate::HtmlRelKeyword::Preload);
-        let modulepreload = has(crate::HtmlRelKeyword::ModulePreload);
+        let preload = has(crate::internal::elements::rel::HtmlRelKeyword::Preload);
+        let modulepreload = has(crate::internal::elements::rel::HtmlRelKeyword::ModulePreload);
         let state = result.attribute.intrinsic;
         result.preload_author = if !preload {
             HtmlLinkDestinationContextAuthorState::NotRequired

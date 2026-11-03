@@ -1,9 +1,9 @@
 //! HTML §13.4 decisions over supplied values. Capture qualification and parser
 //! execution/accounting belong to their adapters, never to this local owner.
 
-use crate::DocumentString;
+use crate::internal::values::DocumentString;
 #[cfg(test)]
-use crate::QualifiedName;
+use crate::internal::values::QualifiedName;
 use std::convert::Infallible;
 
 /// All four pinned parser modes. Fragment admission accepts requested Inert/Fragment.
@@ -159,14 +159,16 @@ fn exact(value: &DocumentString, literal: &str) -> bool {
             .copied()
             .eq(literal.bytes().map(u16::from))
 }
-fn html_namespace(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+fn html_namespace(
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+) -> bool {
     crate::internal::values::is_html_namespace_uri(name.namespace_uri())
 }
 
 /// Selects only the tokenizer state from an exact name and already-resolved mode.
 /// No capture facts or execution capability are read or inferred.
 pub fn fragment_tokenizer_state(
-    name: &(impl crate::HtmlNameInput + ?Sized),
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
     effective: HtmlParserScriptingMode,
 ) -> HtmlFragmentTokenizerState {
     if !html_namespace(name) {
@@ -181,7 +183,7 @@ pub fn fragment_tokenizer_state(
 /// Selects only the fragment's initial insertion mode from its exact context name.
 /// Scripting status and tokenizer state do not influence this operation.
 pub fn fragment_insertion_mode(
-    name: &(impl crate::HtmlNameInput + ?Sized),
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
 ) -> HtmlFragmentInsertionMode {
     if !html_namespace(name) {
         return HtmlFragmentInsertionMode::InBody;
@@ -209,7 +211,11 @@ mod tests {
     fn supplied_effective_scripting_selects_noscript_without_execution_validation() {
         // The local HTML algorithm consumes a resolved mode. Qualification and
         // capability rejection remain the capture/request owner's job.
-        let name = QualifiedName::new(crate::Namespace::html(), Some("prefix".into()), "noscript");
+        let name = QualifiedName::new(
+            crate::internal::values::Namespace::html(),
+            Some("prefix".into()),
+            "noscript",
+        );
         for effective in [
             HtmlParserScriptingMode::Normal,
             HtmlParserScriptingMode::Disabled,

@@ -3,8 +3,9 @@
 //! remain with the consuming owner. These are not Input Image Button rules.
 
 use crate::{
-    DocumentString, HtmlCrossOriginState, HtmlLoading, HtmlReferrerPolicy, KnownHtmlAttribute,
-    KnownHtmlElement, Namespace,
+    internal::attributes::HtmlCrossOriginState, internal::attributes::HtmlLoading,
+    internal::attributes::HtmlReferrerPolicy, internal::values::DocumentString,
+    internal::values::Namespace, vocabulary::KnownHtmlAttribute, vocabulary::KnownHtmlElement,
 };
 use std::{cmp::Ordering, error::Error, fmt};
 

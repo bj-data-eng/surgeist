@@ -318,8 +318,8 @@ impl HtmlValueInterpreter {
     /// without physical-memory, work or cancellation accounting.
     pub fn th_scope(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlTableHeaderScopeState>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&TH_SCOPE, element, raw)?;
         if matches!(

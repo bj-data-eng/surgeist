@@ -9,7 +9,11 @@
 //! selection/cursor and established empty-selection capability before continuing
 //! family effects. Reset/type cursors alone do not complete a live operation.
 
-use crate::{DocumentString, HtmlInputType, HtmlTextControlValueSetterFinish};
+use crate::{
+    internal::attributes::HtmlInputType,
+    internal::elements::control_values::HtmlTextControlValueSetterFinish,
+    internal::values::DocumentString,
+};
 
 impl HtmlInputType {
     /// Whether this Input state uses its current value for auto directionality.
@@ -211,7 +215,7 @@ pub enum HtmlInputColorEffect {
     ForceOpaqueAlpha,
     /// Converts the color to the given `colorspace` state's space: `srgb` for Limited sRGB and
     /// `display-p3` for Display P3.
-    Convert(crate::HtmlInputColorSpace),
+    Convert(crate::internal::attributes::input_colorspace::HtmlInputColorSpace),
     /// Rounds each sRGB component toward positive infinity into the range 0 to 255. It applies only
     /// to the Limited sRGB state.
     QuantizeSrgb,
@@ -225,13 +229,16 @@ pub enum HtmlInputColorEffect {
 #[derive(Debug)]
 pub struct HtmlInputColorSerialization {
     alpha: bool,
-    space: crate::HtmlInputColorSpace,
+    space: crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
     step: u8,
 }
 impl HtmlInputColorSerialization {
     /// Starts the steps for a control whose `alpha` attribute is specified or not (`alpha`) and
     /// whose `colorspace` attribute is in the given state (`space`).
-    pub fn new(alpha: bool, space: crate::HtmlInputColorSpace) -> Self {
+    pub fn new(
+        alpha: bool,
+        space: crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
+    ) -> Self {
         Self {
             alpha,
             space,
@@ -249,10 +256,10 @@ impl HtmlInputColorSerialization {
         match step {
             0 => Some(HtmlInputColorEffect::ForceOpaqueAlpha),
             1 => Some(HtmlInputColorEffect::Convert(self.space)),
-            2 if self.space == crate::HtmlInputColorSpace::LimitedSrgb => {
+            2 if self.space == crate::internal::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb => {
                 Some(HtmlInputColorEffect::QuantizeSrgb)
             }
-            3 if self.space == crate::HtmlInputColorSpace::LimitedSrgb && self.alpha => {
+            3 if self.space == crate::internal::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb && self.alpha => {
                 Some(HtmlInputColorEffect::ColorFunction)
             }
             _ => None,
@@ -262,7 +269,9 @@ impl HtmlInputColorSerialization {
     /// not specified and the `colorspace` state is Limited sRGB. It does not depend on how far the
     /// cursor has advanced.
     pub fn html_compatible(&self) -> bool {
-        !self.alpha && self.space == crate::HtmlInputColorSpace::LimitedSrgb
+        !self.alpha
+            && self.space
+                == crate::internal::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
     }
 }
 /// A string-level value sanitization rule. Each variant names one rule from the `type` states in
@@ -959,7 +968,9 @@ impl<'a> HtmlInputTypeCursor<'a> {
                         TypeStep::Done(crate::internal::attributes::input_type_invalid_default())
                     }
                 } else {
-                    TypeStep::Done(crate::HtmlInputType::missing_value_default())
+                    TypeStep::Done(
+                        crate::internal::attributes::HtmlInputType::missing_value_default(),
+                    )
                 }
             }
             TypeStep::Length(value, keyword, state) => {
@@ -1002,14 +1013,18 @@ impl<'a> HtmlInputTypeCursor<'a> {
 #[derive(Debug)]
 enum ColorSpaceStep<'a> {
     Row,
-    Length(&'a DocumentString, &'static str, crate::HtmlInputColorSpace),
+    Length(
+        &'a DocumentString,
+        &'static str,
+        crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
+    ),
     Unit(
         &'a DocumentString,
         &'static str,
-        crate::HtmlInputColorSpace,
+        crate::internal::attributes::input_colorspace::HtmlInputColorSpace,
         usize,
     ),
-    Done(crate::HtmlInputColorSpace),
+    Done(crate::internal::attributes::input_colorspace::HtmlInputColorSpace),
 }
 /// Borrowed recognizer over the authoritative attributes-owned colorspace rows.
 /// No trimming, allocation, copied keyword table or whole-string advance.
@@ -1084,7 +1099,9 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
     /// The recognized color space: the matching keyword's state, the invalid-value default if no
     /// keyword matches, or the missing-value default when the attribute is absent. It is `None`
     /// while recognition is incomplete.
-    pub fn result(&self) -> Option<crate::HtmlInputColorSpace> {
+    pub fn result(
+        &self,
+    ) -> Option<crate::internal::attributes::input_colorspace::HtmlInputColorSpace> {
         if let ColorSpaceStep::Done(state) = self.step {
             Some(state)
         } else {

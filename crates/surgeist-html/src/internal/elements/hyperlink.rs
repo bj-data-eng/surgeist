@@ -1,5 +1,5 @@
 //! HTML877d A/Area associated-URL steps, independent of URL parsing and storage.
-use crate::{KnownHtmlAttribute, Namespace};
+use crate::{internal::values::Namespace, vocabulary::KnownHtmlAttribute};
 use std::{error::Error, fmt};
 
 /// The next owner action of the set the URL algorithm (HTML877d #concept-hyperlink-url-set). The

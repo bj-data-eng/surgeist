@@ -1,7 +1,10 @@
 //! Literal Output source/operation expectations from HTML877d41608–41665.
 use surgeist_html::{
-    DocumentString, HtmlOutputAction as Action, HtmlOutputCursor as Cursor, HtmlOutputCursorError,
-    HtmlOutputDefaultSource as Source, HtmlOutputOperation as Operation, output_default_source,
+    elements::form::{
+        HtmlOutputAction as Action, HtmlOutputCursor as Cursor, HtmlOutputCursorError,
+        HtmlOutputDefaultSource as Source, HtmlOutputOperation as Operation, output_default_source,
+    },
+    values::DocumentString,
 };
 
 #[test]

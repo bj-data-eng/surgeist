@@ -1,5 +1,17 @@
 use crate::html::support::string_sanitization as string_policy;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    elements::{
+        form::HtmlTextControlValueSetterFinish,
+        input::{
+            HtmlInputCheckedAttributeChange, HtmlInputFlags, HtmlInputReset, HtmlInputResetEffect,
+            HtmlInputSanitization, HtmlInputSelection, HtmlInputSelectionDirection,
+            HtmlInputTypeChange, HtmlInputTypeEffect, HtmlInputValueAttributeEffect,
+            HtmlInputValueComparisonCursor, HtmlInputValueMode, HtmlInputValueSanitization,
+            HtmlInputValueSetterStart, input_value_setter_finish,
+        },
+    },
+};
 
 // HTML877d Checkbox/default-on, common reset/type-change/clone/checked rules.
 #[test]

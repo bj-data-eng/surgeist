@@ -1,7 +1,7 @@
 //! Native association categories, HTML877d §4.10.2. These values grant no
 //! creation profile, custom definition, form-owner identity or execution capability.
 
-use crate::KnownHtmlElement;
+use crate::vocabulary::KnownHtmlElement;
 
 // One semantic family mapping. Canonical tag spellings remain owned by
 // KnownHtmlElement; there is no second name inventory here. The first six

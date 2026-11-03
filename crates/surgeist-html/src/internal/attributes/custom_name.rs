@@ -1,7 +1,7 @@
 //! Local `is` authored-value checking, independently of custom definitions.
 
 use super::*;
-use crate::HtmlCustomElementName;
+use crate::internal::values::custom_names::HtmlCustomElementName;
 
 impl HtmlValueInterpreter {
     /// Checks `is`'s valid-custom-element-name value on an HTML element.
@@ -21,8 +21,8 @@ impl HtmlValueInterpreter {
     /// session work, physical-memory or cancellation guarantee.
     pub fn is_attribute(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlCustomElementName>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         Ok(Self::is_attribute_report_from_borrowed(element, raw))
@@ -34,8 +34,8 @@ impl HtmlValueInterpreter {
     /// The fixed 256 credits cover comparison headers and fixed report/Arc-share
     /// fields (no backing payload allocation), including all early exits.
     pub fn is_attribute_report_work_bound(
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Option<usize> {
         let mut units = element.namespace_uri().map_or(0, DocumentString::len);
         units = units.checked_add(element.local_name().len())?;
@@ -51,8 +51,8 @@ impl HtmlValueInterpreter {
     /// Only existing Arc-backed names/attributes are shared; no namespace,
     /// vocabulary or raw backing storage is allocated here.
     pub(crate) fn is_attribute_report_from_borrowed(
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> HtmlAttributeReport<HtmlCustomElementName> {
         let mut result = report(
             RuleMetadata {

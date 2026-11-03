@@ -1,7 +1,7 @@
 //! Complete, exclusive edits of the actual ordered attribute backing.
 
 use super::*;
-use crate::Attribute;
+use crate::internal::values::Attribute;
 use crate::internal::values::bounded::{
     ComparisonStep, Phase as NamePhase, advance_comparison, comparison_layout,
 };

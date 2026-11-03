@@ -1,5 +1,12 @@
 use crate::html::support::string_sanitization as string_policy;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    elements::input::{
+        HtmlInputFlags, HtmlInputSanitization, HtmlInputTypeChange, HtmlInputTypeEffect,
+        HtmlInputValueAttributeEffect, HtmlInputValueMode, HtmlInputValueSanitization,
+        HtmlRadioTrigger,
+    },
+};
 
 #[test]
 fn radio_canonical_kind_default_on_raw_policy_and_no_selection_are_source_defined() {

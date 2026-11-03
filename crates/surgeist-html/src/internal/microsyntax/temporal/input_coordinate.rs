@@ -6,7 +6,7 @@ use super::{
     HtmlDate, HtmlMonth, HtmlParsedLocalDateTime, HtmlParsedTime, HtmlWeek, gregorian_ordinal,
 };
 use crate::{
-    HtmlInputType,
+    internal::attributes::HtmlInputType,
     internal::microsyntax::numeric::{
         HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
         HtmlSignedDecimal,
@@ -266,7 +266,7 @@ impl HtmlParsedLocalDateTime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DocumentString;
+    use crate::internal::values::DocumentString;
 
     #[test]
     fn source_default_base_needs_no_successful_content_coordinate() {

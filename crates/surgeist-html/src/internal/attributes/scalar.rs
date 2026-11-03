@@ -5,8 +5,12 @@
 
 use super::*;
 use crate::{
-    HtmlInteger, HtmlNonNegativeInteger, HtmlValueAuthorState, HtmlValueFailure,
-    HtmlValueRecoveryState, HtmlValueReport,
+    internal::microsyntax::numeric::HtmlInteger,
+    internal::microsyntax::numeric::HtmlNonNegativeInteger,
+    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlValueFailure,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 
 /// Numeric-value author conformance, separate from prefix recovery/defaults.
@@ -707,8 +711,8 @@ impl HtmlValueInterpreter {
     fn nonnegative_attribute(
         &self,
         rule: NonnegativeRule,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -754,8 +758,8 @@ impl HtmlValueInterpreter {
     fn bounded_span(
         &self,
         rule: BoundedSpanRule,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -805,8 +809,8 @@ impl HtmlValueInterpreter {
     /// not establish overlap conformance or reflect a WebIDL getter.
     pub fn cell_colspan(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(CELL_COLSPAN, element, raw)
@@ -820,8 +824,8 @@ impl HtmlValueInterpreter {
     /// actual table formation and WebIDL reflection are separate operations.
     pub fn cell_rowspan(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(CELL_ROWSPAN, element, raw)
@@ -834,8 +838,8 @@ impl HtmlValueInterpreter {
     /// separate from WebIDL reflection and CSS table layout.
     pub fn col_span(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(COL_SPAN, element, raw)
@@ -851,8 +855,8 @@ impl HtmlValueInterpreter {
     /// group's own span. No child evidence, group width or IDL getter is inferred.
     pub fn colgroup_span(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(COLGROUP_SPAN, element, raw)
@@ -870,8 +874,8 @@ impl HtmlValueInterpreter {
     /// captured ancestor/reset/shadow-host computation remains with its own owner.
     pub fn heading_offset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -891,8 +895,8 @@ impl HtmlValueInterpreter {
     /// Missing or failed nonnegative recovery selects 300, without bitmap effects.
     pub fn canvas_width(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -904,8 +908,8 @@ impl HtmlValueInterpreter {
     /// This does not apply WebIDL conversion or allocate a bitmap.
     pub fn canvas_height(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -917,8 +921,8 @@ impl HtmlValueInterpreter {
     /// The exact positive content result is not an unsigned-long IDL projection.
     pub fn textarea_cols(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -930,8 +934,8 @@ impl HtmlValueInterpreter {
     /// This does not compute wrapping, rendering or unsigned-long IDL projection.
     pub fn textarea_rows(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -944,8 +948,8 @@ impl HtmlValueInterpreter {
     /// summary-parent qualification, focusability or focus navigation order.
     pub fn tabindex(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlInteger, HtmlTabindexValue>, HtmlValueAdmissionError>
     {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -993,8 +997,8 @@ macro_rules! override_methods {
             /// of unchecked author context, with no form submission effects.
             pub fn $ordinary(
                 &self,
-                element: &(impl crate::HtmlNameInput + ?Sized),
-                raw: Option<&impl crate::HtmlAttributeInput>,
+                element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated(&$rule, element, raw)
             }
@@ -1003,8 +1007,8 @@ macro_rules! override_methods {
             /// Forbidden state does not erase content; no form owner is selected.
             pub fn $input(
                 &self,
-                element: &(impl crate::HtmlNameInput + ?Sized),
-                raw: Option<&impl crate::HtmlAttributeInput>,
+                element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
                 state: HtmlInputType,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(&$rule, element, raw, SuppliedContext::Input(state))
@@ -1014,8 +1018,8 @@ macro_rules! override_methods {
             /// Auto eligibility is supplied, never inferred from type alone.
             pub fn $button(
                 &self,
-                element: &(impl crate::HtmlNameInput + ?Sized),
-                raw: Option<&impl crate::HtmlAttributeInput>,
+                element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
                 context: HtmlButtonSubmitterContext,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(
@@ -1296,9 +1300,9 @@ impl HtmlValueInterpreter {
     /// multiple unnecessary for the display-size result.
     pub fn select_size(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        size: Option<&impl crate::HtmlAttributeInput>,
-        multiple: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        size: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        multiple: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlSelectSizeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(size.map(HtmlAttributeInput::value))?;
         self.admit_attribute_raw(multiple.map(HtmlAttributeInput::value))?;
@@ -1410,8 +1414,8 @@ impl HtmlValueInterpreter {
     fn list_integer_attribute(
         &self,
         metadata: RuleMetadata,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(metadata, element, raw);
@@ -1442,8 +1446,8 @@ impl HtmlValueInterpreter {
     /// be authored with HtmlInteger::as_document_string and Attribute::new.
     pub fn ol_start(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.list_integer_attribute(OL_START, element, raw)
     }
@@ -1457,8 +1461,8 @@ impl HtmlValueInterpreter {
     /// applicability. Existing exact integer/Attribute factories author syntax.
     pub fn li_value(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.list_integer_attribute(LI_VALUE, element, raw)
     }

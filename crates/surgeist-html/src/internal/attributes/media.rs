@@ -1,7 +1,11 @@
 //! HTML 877d local media presence/content and meta placement; no CSS parser.
 use super::*;
 pub(crate) mod controlled;
-use crate::{HtmlMediaCursorAction, HtmlMediaValue, HtmlMediaValueCursor, HtmlMetaMediaPlacement};
+use crate::{
+    internal::elements::media::HtmlMediaCursorAction, internal::elements::media::HtmlMediaValue,
+    internal::elements::media::HtmlMediaValueCursor,
+    internal::elements::media::HtmlMetaMediaPlacement,
+};
 
 /// The kind of HTML element whose `media` attribute is interpreted.
 ///
@@ -91,8 +95,8 @@ impl HtmlValueInterpreter {
     /// actual link relationships are unproved. Original raw admission comes first.
     pub fn media(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
         self.media_report(element, raw, None, false)
     }
@@ -100,7 +104,7 @@ impl HtmlValueInterpreter {
     /// established absence; a wrong expanded attribute is DifferentContext.
     pub fn media_for_meta<A: HtmlAttributeInput>(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&A>,
         name: Option<&A>,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
@@ -108,7 +112,7 @@ impl HtmlValueInterpreter {
     }
     fn media_report<A: HtmlAttributeInput>(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&A>,
         name: Option<&A>,
         name_supplied: bool,

@@ -1,6 +1,6 @@
 //! New API characterization: no preimplementation callable pool existed.
 use super::*;
-use crate::{Namespace, QualifiedName};
+use crate::{internal::values::Namespace, internal::values::QualifiedName};
 use std::{cell::Cell, sync::Mutex};
 
 #[derive(Clone, Copy, Default)]
@@ -454,11 +454,15 @@ fn caller_shared_values_keep_capacity_and_empty_reserved_banks_are_real_candidat
     assert_eq!(budget.inspected, 0);
     let values = Vec::<Attribute>::with_capacity(7);
     let mut validation = Some(
-        crate::bounded::HtmlAttributeStorage::from_shared_attributes(Arc::new(values)).validate(),
+        crate::internal::values::bounded::HtmlAttributeStorage::from_shared_attributes(Arc::new(
+            values,
+        ))
+        .validate(),
     );
-    let original = crate::bounded::HtmlAttributeValidation::try_finish(&mut validation)
-        .unwrap()
-        .into_attributes();
+    let original =
+        crate::internal::values::bounded::HtmlAttributeValidation::try_finish(&mut validation)
+            .unwrap()
+            .into_attributes();
     let mut pool = HtmlAttributePool::new();
     seed_attributes(&mut pool, &original);
     let empty = OrderedAttributes::default();
@@ -1467,7 +1471,7 @@ fn invariant_validated_bank_proof_transfer_keeps_original_order_capacity_and_bac
     ));
     let original = bank(entries);
     let backing = original.shared_attributes().clone();
-    let proof = crate::bounded::HtmlValidatedAttributes::from(original);
+    let proof = crate::internal::values::bounded::HtmlValidatedAttributes::from(original);
     assert_eq!(proof.as_slice()[0].name().local_name().code_units(), &[98]);
     let result = proof.into_attributes();
     assert!(Arc::ptr_eq(&backing, result.shared_attributes()));

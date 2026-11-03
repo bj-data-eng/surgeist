@@ -2,7 +2,7 @@
 //! [HTML 877d map name](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-map-name).
 
 use super::*;
-use crate::HtmlSpaceToken;
+use crate::internal::microsyntax::tokens::HtmlSpaceToken;
 
 impl HtmlSpaceToken {
     /// Emits the exact token as a canonical no-namespace lowercase name attribute.
@@ -24,8 +24,8 @@ impl HtmlValueInterpreter {
     /// operation has a raw-unit cap, not a work or aggregate allocation budget.
     pub fn map_name(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlSpaceToken>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         Ok(Self::map_name_report_from_borrowed(element, raw))
@@ -40,8 +40,8 @@ impl HtmlValueInterpreter {
     /// ten report/five metadata fields and fixed state/branch writes. All loops
     /// and arithmetic are input-bounded; this is not a parser polling quantum.
     pub fn map_name_report_work_bound(
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Option<usize> {
         let namespace = element.namespace_uri().map_or(0, DocumentString::len);
         let element_work = element
@@ -72,8 +72,8 @@ impl HtmlValueInterpreter {
     /// token buffer or generic report applicability allocation. The caller owns
     /// raw admission and, for captured use, precharge and surrounding polls.
     pub(crate) fn map_name_report_from_borrowed(
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> HtmlAttributeReport<HtmlSpaceToken> {
         let mut result = report(
             RuleMetadata {

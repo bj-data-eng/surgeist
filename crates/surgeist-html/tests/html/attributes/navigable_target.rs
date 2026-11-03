@@ -1,10 +1,16 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeConformanceError, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
-    HtmlAttributeRecognition, HtmlAttributeReport, HtmlNavigableTarget,
-    HtmlNavigableTargetAttribute as Role, HtmlNavigableTargetError as Error,
-    HtmlNavigableTargetKeyword as Keyword, HtmlNavigableTargetName, HtmlValueInterpreter,
-    KnownHtmlAttribute as Attr, KnownHtmlElement as Element, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport,
+        navigable_target::{
+            HtmlNavigableTarget, HtmlNavigableTargetAttribute as Role,
+            HtmlNavigableTargetError as Error, HtmlNavigableTargetKeyword as Keyword,
+            HtmlNavigableTargetName,
+        },
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute as Attr, KnownHtmlElement as Element},
 };
 
 // Expectations follow #navigable-target-names and the six actual defining clauses.
@@ -474,7 +480,7 @@ fn full_original_utf16_cap_precedes_wrong_role_and_local_failure() {
             zero.navigable_target_attribute(
                 role,
                 &element.qualified_name(),
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             )
             .unwrap()
             .author(),

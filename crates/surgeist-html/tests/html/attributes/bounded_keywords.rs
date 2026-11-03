@@ -3,13 +3,16 @@
 #![forbid(unsafe_code)]
 
 use std::convert::Infallible;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::attributes::{
     HtmlAttributeKeywordRead as Read, crossorigin_processing_with, referrerpolicy_processing_with,
 };
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeAuthorState as Author,
-    HtmlAttributeRecognition as Recognition, HtmlCrossOrigin, HtmlCrossOriginState, HtmlOlType,
-    HtmlReferrerPolicy, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    attributes::{
+        HtmlAttributeAuthorState as Author, HtmlAttributeRecognition as Recognition,
+        HtmlCrossOrigin, HtmlCrossOriginState, HtmlOlType, HtmlReferrerPolicy,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn cors(raw: Option<&DocumentString>) -> HtmlCrossOriginState {

@@ -2,9 +2,13 @@
 //! #1243 KnownNull correction. These are pure language tests, not native Range,
 //! Source publication, Selection binding or positive focus integration evidence.
 use surgeist_html::{
-    HtmlDesignModeAction as A, HtmlDesignModeCursor as C, HtmlDesignModeInput as Input,
-    HtmlDesignModeReply as R, HtmlFocusingAction as FA, HtmlFocusingCursor, HtmlFocusingFallback,
-    HtmlFocusingReply as FR,
+    elements::native::{
+        HtmlDesignModeAction as A, HtmlDesignModeCursor as C, HtmlDesignModeInput as Input,
+        HtmlDesignModeReply as R,
+    },
+    focus::{
+        HtmlFocusingAction as FA, HtmlFocusingCursor, HtmlFocusingFallback, HtmlFocusingReply as FR,
+    },
 };
 
 const REPLIES: [R; 8] = [

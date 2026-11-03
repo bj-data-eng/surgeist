@@ -4,7 +4,10 @@
 
 use super::*;
 use crate::internal::microsyntax::tokens::ascii_lowercase;
-use crate::{HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenError};
+use crate::{
+    internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
+    internal::microsyntax::tokens::HtmlSpaceToken, internal::microsyntax::tokens::HtmlTokenError,
+};
 use std::{error::Error, fmt};
 
 const RULE: RuleMetadata = RuleMetadata {
@@ -1412,7 +1415,7 @@ fn input_applies(state: HtmlInputType) -> bool {
 
 fn context_author(
     element: KnownHtmlElement,
-    raw: Option<&impl crate::HtmlAttributeInput>,
+    raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     state: Option<HtmlInputType>,
     syntax: &HtmlAutocompleteSyntaxState,
     tokens: Option<&HtmlSpaceSeparatedTokens>,
@@ -1636,8 +1639,8 @@ impl HtmlValueInterpreter {
     /// processing. Default expectation outcomes request actual form-owner facts.
     pub fn control_autocomplete(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         self.control_autocomplete_with_state(element, raw, None)
     }
@@ -1645,16 +1648,16 @@ impl HtmlValueInterpreter {
     /// This does not sanitize data, infer form association or mediate credentials.
     pub fn control_autocomplete_for_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         self.control_autocomplete_with_state(element, raw, Some(state))
     }
     fn control_autocomplete_with_state(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         let result =
@@ -1676,8 +1679,8 @@ impl HtmlValueInterpreter {
     /// intermediates. All operands remain borrowed on refusal.
     pub fn control_autocomplete_controlled(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
         limits: HtmlAutocompleteMaterializationLimits,
     ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
@@ -1697,8 +1700,8 @@ impl HtmlValueInterpreter {
 
     fn materialize_autocomplete(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
         storage: &mut Materialization,
     ) -> Result<HtmlAutocompleteReport, HtmlAutocompleteMaterializationError> {

@@ -4,8 +4,8 @@
 //! This module owns native RGB8 values and legacy recovery; full CSS parsing and
 //! contextual color-input operations are separate contracts.
 
-use crate::DocumentString;
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
+use crate::internal::values::DocumentString;
 
 /// An opaque sRGB color with exact eight-bit red, green and blue components.
 ///

@@ -58,7 +58,7 @@ impl<T> HtmlAttributeReport<T> {
 
 fn with_cols_context(
     mut report: HtmlAttributeReport<HtmlTextareaWrap>,
-    cols: Option<&impl crate::HtmlAttributeInput>,
+    cols: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
 ) -> HtmlAttributeReport<HtmlTextareaWrap> {
     report.supplied_context = SuppliedContext::TextareaCols(cols.map(capture_attribute));
     report.context_author = if report.applicability != HtmlAttributeApplicability::Applicable {
@@ -89,8 +89,8 @@ impl HtmlValueInterpreter {
     /// per-original-value cap, without physical/work/cancellation accounting.
     pub fn textarea_wrap(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        wrap: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        wrap: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlTextareaWrap>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&TEXTAREA_WRAP, element, wrap)?;
         if report.applicability == HtmlAttributeApplicability::Applicable
@@ -117,8 +117,8 @@ impl HtmlValueInterpreter {
     /// physical-memory ledger, controlled work or cancellation guarantee.
     pub fn textarea_wrap_with_cols(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlAttributeReport<HtmlTextareaWrap>, HtmlValueAdmissionError> {
         let namespace = Namespace::none();
         let wrap = find_attribute(attributes, &namespace, &DocumentString::from("wrap"));

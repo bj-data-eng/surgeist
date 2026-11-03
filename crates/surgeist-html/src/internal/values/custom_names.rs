@@ -5,7 +5,10 @@
 //! ASCII-alpha branch; subsequent code points need not be Unicode scalars.
 
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
-use crate::{Attribute, DocumentString, KnownHtmlAttribute, Namespace, QualifiedName};
+use crate::{
+    internal::values::Attribute, internal::values::DocumentString, internal::values::Namespace,
+    internal::values::QualifiedName, vocabulary::KnownHtmlAttribute,
+};
 use std::{error::Error, fmt};
 
 /// A name satisfying HTML's valid-custom-element-name predicate.

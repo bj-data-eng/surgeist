@@ -2,8 +2,12 @@
 //! HTML 877d6146487f: Date/Month/Week/Time/LocalDateTime min/max/value grammar.
 
 use surgeist_html::{
-    Attribute, HtmlAttributeApplicability, HtmlAttributeObservation, HtmlInputNumericAuthorState,
-    HtmlInputType, HtmlValueInterpreter, KnownHtmlAttribute as A, KnownHtmlElement as E,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation, HtmlInputType,
+        input_bounds::HtmlInputNumericAuthorState,
+    },
+    values::{Attribute, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 fn temporal_content_authorship(state: HtmlInputType, spelling: &str) {
@@ -15,7 +19,7 @@ fn temporal_content_authorship(state: HtmlInputType, spelling: &str) {
             &E::Input.qualified_name(),
             Some(&minimum),
             Some(&maximum),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&value),
             state,
         )
@@ -75,14 +79,22 @@ fn local_date_time_content_author_grammar_is_applied() {
 }
 
 use surgeist_html::{
-    DocumentString, HtmlAttributeContextAuthorState, HtmlInputNumericAttributeValue,
-    HtmlInputNumericBoundOrigin as BoundOrigin, HtmlInputNumericCommonReport,
-    HtmlInputNumericConstraintsError, HtmlInputNumericConstraintsOutcome as Outcome,
-    HtmlInputNumericConstraintsReport, HtmlInputNumericLimitAuthorState as LimitAuthor,
-    HtmlInputNumericStepBaseOrigin as BaseOrigin, HtmlInputNumericStepOrigin as StepOrigin,
-    HtmlInputTemporalConstraints, HtmlInputTemporalCoordinate, HtmlInputTemporalCoordinateUnit,
-    HtmlValueAuthorState, HtmlValueFailure, HtmlValueRecoveryState, HtmlValueRepresentationError,
-    HtmlValueSyntaxError, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeContextAuthorState,
+        input_bounds::{
+            HtmlInputNumericAttributeValue, HtmlInputNumericBoundOrigin as BoundOrigin,
+            HtmlInputNumericCommonReport, HtmlInputNumericConstraintsError,
+            HtmlInputNumericConstraintsOutcome as Outcome, HtmlInputNumericConstraintsReport,
+            HtmlInputNumericLimitAuthorState as LimitAuthor,
+            HtmlInputNumericStepBaseOrigin as BaseOrigin, HtmlInputNumericStepOrigin as StepOrigin,
+            HtmlInputTemporalConstraints,
+        },
+    },
+    microsyntax::temporal::{HtmlInputTemporalCoordinate, HtmlInputTemporalCoordinateUnit},
+    values::{
+        DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueRecoveryState,
+        HtmlValueRepresentationError, HtmlValueSyntaxError, Namespace, QualifiedName,
+    },
 };
 
 fn observe(
@@ -592,9 +604,9 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         .input_numeric_constraints(
             &element,
             Some(&min),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             HtmlInputType::Time,
         )
         .unwrap();
@@ -610,9 +622,9 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         .input_numeric_constraints(
             &element,
             Some(&wrong),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             HtmlInputType::Time,
         )
         .unwrap_err();
@@ -623,9 +635,9 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         .input_numeric_constraints(
             &element,
             Some(&wrong),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             HtmlInputType::Time,
         )
         .unwrap();

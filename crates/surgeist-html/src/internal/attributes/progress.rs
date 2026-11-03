@@ -5,7 +5,12 @@ use super::*;
 use crate::internal::microsyntax::numeric::{
     HtmlScientificDecimalKey, ScientificDecimalKeyError, strict_scientific_decimal_key,
 };
-use crate::{HtmlFloatingPointNumber, HtmlValueAuthorState, HtmlValueReport, HtmlValueSyntaxError};
+use crate::{
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlValueReport,
+    internal::values::interpretation::HtmlValueSyntaxError,
+};
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt;
@@ -162,9 +167,9 @@ impl HtmlValueInterpreter {
     /// A malformed present max is not an absent max or an authored default one.
     pub fn progress_attributes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        value: Option<&impl crate::HtmlAttributeInput>,
-        maximum: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        value: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        maximum: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlProgressAttributeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(value.map(HtmlAttributeInput::value))?;
         self.admit_attribute_raw(maximum.map(HtmlAttributeInput::value))?;
@@ -180,8 +185,8 @@ impl HtmlValueInterpreter {
 
     fn progress_number(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         maximum: bool,
     ) -> Result<(HtmlProgressNumberReport, ExactNumber), HtmlValueAdmissionError> {
         let attribute = report(

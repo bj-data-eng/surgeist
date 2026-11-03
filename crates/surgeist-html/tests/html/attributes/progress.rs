@@ -1,7 +1,23 @@
 //! Literal requirements from HTML #the-progress-element; captured effective
 //! quantities have their independent existing tests in semantics_ranges.
 use crate::html::support::known_attribute as attr;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        progress::{
+            HtmlProgressAttributeReport, HtmlProgressAttributes, HtmlProgressNativeError,
+            HtmlProgressNumberAuthorError, HtmlProgressNumberAuthorState, HtmlProgressNumberReport,
+            HtmlProgressUpperBoundState, HtmlProgressUpperBoundUnavailable,
+        },
+    },
+    microsyntax::numeric::HtmlFloatingPointNumber,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueRepresentationError, HtmlValueSyntaxError, Namespace,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn read(value: Option<&str>, maximum: Option<&str>) -> HtmlProgressAttributeReport {
     let value = value.map(|s| attr(KnownHtmlAttribute::Value, s));
@@ -276,7 +292,7 @@ fn strict_failures_preserve_common_prefix_recovery_and_original_utf16() {
         .progress_attributes(
             &KnownHtmlElement::Progress.qualified_name(),
             Some(&raw),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     syntax(report.value());
@@ -376,7 +392,7 @@ fn each_original_slot_is_admitted_before_wrong_role_or_element_processing() {
         .progress_attributes(
             &KnownHtmlElement::Div.qualified_name(),
             Some(&raw),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap_err();
     assert_eq!((error.capacity(), error.required()), (2, 3));
@@ -385,7 +401,7 @@ fn each_original_slot_is_admitted_before_wrong_role_or_element_processing() {
             .progress_attributes(
                 &KnownHtmlElement::Div.qualified_name(),
                 Some(&raw),
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             )
             .is_ok()
     );

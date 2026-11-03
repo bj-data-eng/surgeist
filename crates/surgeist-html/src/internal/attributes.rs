@@ -15,11 +15,21 @@ use crate::internal::values::semantic_input::{
     attributes_iter, capture_attribute, capture_name, find_attribute,
 };
 use crate::{
-    Attribute, DocumentString, HtmlCustomElementNameError, HtmlShadowRootMode, HtmlSlotAssignment,
-    HtmlTokenError, HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute,
-    KnownHtmlElement, Namespace, QualifiedName,
+    internal::construction::HtmlShadowRootMode, internal::construction::HtmlSlotAssignment,
+    internal::microsyntax::tokens::HtmlTokenError, internal::values::Attribute,
+    internal::values::DocumentString, internal::values::Namespace, internal::values::QualifiedName,
+    internal::values::custom_names::HtmlCustomElementNameError,
+    internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpreter, vocabulary::KnownHtmlAttribute,
+    vocabulary::KnownHtmlElement,
 };
-use crate::{HtmlAttributeInput, HtmlNameInput};
+use crate::{
+    internal::values::semantic_input::HtmlAttributeInput,
+    internal::values::semantic_input::HtmlNameInput,
+};
+use encoding_label::HtmlUtf8EncodingLabelError;
+use input_colorspace::HtmlInputColorSpace;
+use navigable_target::HtmlNavigableTargetError;
 
 /// Exact presence of the supplied attribute, independent of validity/defaults.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1850,7 +1860,10 @@ impl HtmlBooleanAttribute {
         }
     }
 
-    fn rule_for(self, element: &(impl crate::HtmlNameInput + ?Sized)) -> RuleMetadata {
+    fn rule_for(
+        self,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    ) -> RuleMetadata {
         let mut rule = self.rule();
         if self == Self::Disabled {
             match KnownHtmlElement::from_name(element) {
@@ -1896,14 +1909,16 @@ impl HtmlBooleanAttribute {
     }
 }
 
-fn html_element_namespace(element: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+fn html_element_namespace(
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+) -> bool {
     crate::internal::values::is_html_namespace_uri(element.namespace_uri())
 }
 
 fn applies(
     rule: RuleMetadata,
-    element: &(impl crate::HtmlNameInput + ?Sized),
-    raw: Option<&impl crate::HtmlAttributeInput>,
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
 ) -> HtmlAttributeApplicability {
     // Compare only the selected expanded name; prefixes have no role here.
     // Avoid a vocabulary scan so specialized callers retain their work bounds.
@@ -1976,7 +1991,7 @@ fn applies(
 
 fn has_hyperlink_author_constraint(
     rule: RuleMetadata,
-    element: &(impl crate::HtmlNameInput + ?Sized),
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
 ) -> bool {
     matches!(
         rule.context,
@@ -1992,7 +2007,7 @@ fn has_hyperlink_author_constraint(
 
 fn has_boolean_author_constraint(
     rule: RuleMetadata,
-    element: &(impl crate::HtmlNameInput + ?Sized),
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
 ) -> bool {
     match rule.context {
         Context::ImageMap | Context::ImageControls | Context::StylesheetLink => true,
@@ -2012,8 +2027,8 @@ fn has_boolean_author_constraint(
 // context remain with the selected attribute owner.
 fn report<T>(
     rule: RuleMetadata,
-    element: &(impl crate::HtmlNameInput + ?Sized),
-    raw: Option<&impl crate::HtmlAttributeInput>,
+    element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
 ) -> HtmlAttributeReport<T> {
     let observation = match raw {
         None => HtmlAttributeObservation::Missing,
@@ -2190,8 +2205,8 @@ impl HtmlValueInterpreter {
     fn enumerated<T: Copy>(
         &self,
         rule: &EnumRule<T>,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.enumerated_with_context(rule, element, raw, SuppliedContext::None)
     }
@@ -2199,8 +2214,8 @@ impl HtmlValueInterpreter {
     fn enumerated_with_context<T: Copy>(
         &self,
         rule: &EnumRule<T>,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         supplied_context: SuppliedContext,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -2329,8 +2344,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::None)
     }
@@ -2338,8 +2353,8 @@ impl HtmlValueInterpreter {
     fn boolean_with_context(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         supplied_context: SuppliedContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -2526,8 +2541,8 @@ impl HtmlValueInterpreter {
     /// URL resolution, activation and server-side map behavior remain external.
     pub fn ismap_with_context(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlImageMapAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2542,8 +2557,8 @@ impl HtmlValueInterpreter {
     /// A host may expose UI; this operation does not create or suppress controls.
     pub fn image_controls_with_context(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlImageControlsAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2562,7 +2577,10 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlStylesheetLinkAttributeContext, HtmlValueAdmissionError> {
         self.admit_attribute_raw(rel)?;
         let contains_stylesheet = rel.is_some_and(|raw| {
-            crate::internal::elements::rel::contains(raw, crate::HtmlRelKeyword::Stylesheet)
+            crate::internal::elements::rel::contains(
+                raw,
+                crate::internal::elements::rel::HtmlRelKeyword::Stylesheet,
+            )
         });
         Ok(HtmlStylesheetLinkAttributeContext {
             rel: rel.cloned(),
@@ -2574,8 +2592,8 @@ impl HtmlValueInterpreter {
     /// The supplied context is re-admitted under this interpreter's own cap.
     pub fn stylesheet_disabled(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: &HtmlStylesheetLinkAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2592,8 +2610,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute_for_input(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::Input(state))
@@ -2604,8 +2622,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute_for_script(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlScriptAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::Script(context))
@@ -2615,8 +2633,8 @@ impl HtmlValueInterpreter {
     /// This does not compute form ownership or the effective no-validate state.
     pub fn formnovalidate_for_button(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlButtonSubmitterContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2631,8 +2649,8 @@ impl HtmlValueInterpreter {
     /// Presence does not describe current editability or validation results.
     pub fn readonly_for_custom_control(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlCustomControlAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2647,8 +2665,8 @@ impl HtmlValueInterpreter {
     /// Ancestors, legend exceptions and actual disabledness are separate queries.
     pub fn disabled(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_attribute(HtmlBooleanAttribute::Disabled, element, raw)
     }
@@ -2656,8 +2674,8 @@ impl HtmlValueInterpreter {
     /// Interprets disabled for an explicitly classified autonomous custom control.
     pub fn disabled_for_custom_control(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlCustomControlAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2672,8 +2690,8 @@ impl HtmlValueInterpreter {
     /// Computed directionality and auto-directionality need separate context.
     pub fn dir(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlDirState>, HtmlValueAdmissionError> {
         let mut result = self.enumerated(&DIR, element, raw)?;
         if result.applicability == HtmlAttributeApplicability::Applicable
@@ -2700,7 +2718,7 @@ macro_rules! interpret_method {
     ($method:ident, $rule:ident, $type:ty) => {
         impl HtmlValueInterpreter {
             #[doc = concat!("Interprets the intrinsic ", stringify!($method), " attribute state; no contextual or runtime state is computed.")]
-            pub fn $method(&self, element: &(impl crate::HtmlNameInput + ?Sized), raw: Option<&impl crate::HtmlAttributeInput>) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
+            pub fn $method(&self, element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized), raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated(&$rule, element, raw)
             }
         }
@@ -2749,8 +2767,8 @@ macro_rules! script_interpret_method {
             /// Interprets an intrinsic keyword attribute with explicitly supplied script facts.
             pub fn $method(
                 &self,
-                element: &(impl crate::HtmlNameInput + ?Sized),
-                raw: Option<&impl crate::HtmlAttributeInput>,
+                element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
                 context: HtmlScriptAttributeContext,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(&$rule, element, raw, SuppliedContext::Script(context))
@@ -2772,8 +2790,8 @@ impl HtmlValueInterpreter {
     /// The href value and effective request policy are not resolved.
     pub fn referrerpolicy_for_hyperlink(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlHyperlinkAttributeContext,
     ) -> Result<HtmlAttributeReport<HtmlReferrerPolicy>, HtmlValueAdmissionError> {
         self.enumerated_with_context(
@@ -2883,118 +2901,36 @@ pub(crate) use bounded_rules::HtmlWritingSuggestionsProcessing;
 #[cfg(test)]
 use bounded_rules::stylesheet_link_context_work_bound;
 
-mod scalar;
-pub use scalar::*;
-
+pub(crate) mod accept;
+pub(crate) mod area;
 pub(crate) mod autocomplete;
-pub use autocomplete::{
-    HtmlAutocompleteContactFieldError, HtmlAutocompleteContactHint,
-    HtmlAutocompleteContextAuthorState, HtmlAutocompleteContextViolations,
-    HtmlAutocompleteCredential, HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefault,
-    HtmlAutocompleteDefaultField, HtmlAutocompleteDefaultReason, HtmlAutocompleteDetails,
-    HtmlAutocompleteMantle, HtmlAutocompleteMode, HtmlAutocompleteProcessed,
-    HtmlAutocompleteProcessingState, HtmlAutocompleteReport, HtmlAutocompleteSection,
-    HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError, HtmlAutocompleteSyntaxState,
-    HtmlAutocompleteValue, HtmlAutofillControlGroup, HtmlAutofillField, HtmlAutofillFieldCategory,
-    HtmlAutofillFieldIdentity,
-};
-
-mod accept;
-pub use accept::*;
-
-pub(crate) mod token_declarations;
-pub use token_declarations::{
-    HtmlAccessKeyReport, HtmlAccessKeys, HtmlBitmapIconSize, HtmlBlockingReport,
-    HtmlBlockingTokens, HtmlIconSize, HtmlIconSizeError, HtmlIconSizeKeyword, HtmlIconSizes,
-    HtmlIconSizesReport, HtmlTokenDeclarationAuthorState, HtmlTokenDeclarationError,
-    HtmlTokenDeclarationInput,
-};
-
-mod control_length;
-pub use control_length::*;
-
-mod control_text;
-pub use control_text::*;
-
-mod sandbox;
-pub use sandbox::*;
-
-mod input_bounds;
-pub use input_bounds::*;
-
-mod srcset;
-pub use srcset::*;
-
-mod command;
-pub use command::*;
-
-mod modification;
-pub use modification::*;
-
-mod area;
-pub use area::*;
-
-mod progress;
-pub use progress::*;
-
-mod meter;
-pub use meter::*;
-
-mod details_name;
-pub use details_name::*;
-
-mod custom_name;
-mod form_name;
-mod id;
-mod map_name;
-pub use form_name::*;
-
-pub(crate) mod navigable_target;
-pub use navigable_target::{
-    HtmlNavigableTarget, HtmlNavigableTargetAttribute, HtmlNavigableTargetError,
-    HtmlNavigableTargetKeyword, HtmlNavigableTargetName,
-};
-
-mod textarea_wrap;
-pub use textarea_wrap::*;
-
-pub(crate) mod microdata;
-pub use microdata::{
-    HtmlMicrodataToken, HtmlMicrodataTokenKind, HtmlMicrodataTokenList,
-    HtmlMicrodataTokenListError, HtmlMicrodataTokenReport,
-};
+pub(crate) mod command;
+pub(crate) mod control_length;
+pub(crate) mod control_text;
+pub(crate) mod custom_name;
+pub(crate) mod details_name;
+pub(crate) mod encoding_label;
+pub(crate) mod form_name;
 pub(crate) mod hash_name;
-pub use hash_name::{
-    HtmlHashNameAuthorForm, HtmlHashNameProcessing, HtmlHashNameReferenceReport,
-    HtmlUsemapReference,
-};
-
-mod input_colorspace;
-pub use input_colorspace::*;
-
-mod encoding_label;
-pub use encoding_label::*;
-mod meta_pragma;
-pub use meta_pragma::*;
-pub(crate) mod meta_processing;
-pub use meta_processing::{
-    HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget, default_document_referrer_policy,
-};
-
-mod table_header_scope;
-pub use table_header_scope::*;
-
+pub(crate) mod id;
 pub(crate) mod image_values;
-pub use image_values::{
-    HtmlEmbeddedDimensionAttributeReport, HtmlEmbeddedDimensionContext,
-    HtmlEmbeddedDimensionReport, HtmlImageAttributeAuthorState, HtmlImageAttributeConformanceError,
-    HtmlImageExternalConformance, HtmlImageSourceParent, HtmlInputImageAttributeError,
-    HtmlInputImageAttributeReport, HtmlInputImageAttributes, HtmlInputImageStringReport,
-};
-
-mod link_destination;
-pub use link_destination::*;
-
+pub(crate) mod input_bounds;
+pub(crate) mod input_colorspace;
+pub(crate) mod link_destination;
+pub(crate) mod map_name;
+pub(crate) mod meta_pragma;
+pub(crate) mod meta_processing;
+pub(crate) mod meter;
+pub(crate) mod microdata;
+pub(crate) mod modification;
+pub(crate) mod navigable_target;
+pub(crate) mod progress;
+pub(crate) mod sandbox;
+pub(crate) mod scalar;
+pub(crate) mod srcset;
+pub(crate) mod table_header_scope;
+pub(crate) mod textarea_wrap;
+pub(crate) mod token_declarations;
 #[cfg(test)]
 mod stylesheet_context_tests {
     use super::*;
@@ -3095,8 +3031,5 @@ mod stylesheet_context_tests {
     }
 }
 
-mod script_type;
-pub use script_type::*;
-
 pub(crate) mod media;
-pub use media::*;
+pub(crate) mod script_type;

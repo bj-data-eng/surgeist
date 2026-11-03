@@ -4,7 +4,10 @@
 //! Over the accepted raw domain, attribute identity is namespace/local name;
 //! retained prefix metadata does not change that identity (issue #1175).
 
-use crate::{DocumentString, HtmlAttributeInput, HtmlNameInput};
+use crate::{
+    internal::values::DocumentString, internal::values::semantic_input::HtmlAttributeInput,
+    internal::values::semantic_input::HtmlNameInput,
+};
 use std::convert::Infallible;
 
 /// Comparison semantics requested by an HTML integration-point rule.
@@ -100,8 +103,8 @@ fn borrowed_comparison(
 /// Classifies an HTML integration point over exact borrowed construction values.
 /// Attribute identity uses namespace/local name and ignores retained prefix metadata.
 pub fn is_html_integration_point(
-    name: &(impl crate::HtmlNameInput + ?Sized),
-    attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
 ) -> bool {
     let rule =
         html_integration_point_rule(name.namespace_uri(), name.local_name(), borrowed_comparison)
@@ -150,7 +153,9 @@ pub fn mathml_text_integration_point<E>(
 
 /// Classifies MathML text integration points from an exact expanded name.
 /// Prefix metadata, scripting and attributes do not influence this local rule.
-pub fn is_mathml_text_integration_point(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+pub fn is_mathml_text_integration_point(
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+) -> bool {
     // Retain the ordinary capture adapter's exact-unit iterator comparisons;
     // parser adapters independently admit their length/header and pair reads.
     let exact = |value: &DocumentString, literal: &str| {

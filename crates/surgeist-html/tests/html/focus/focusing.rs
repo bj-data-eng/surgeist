@@ -1,6 +1,6 @@
 //! Independent focusing-step traces from HTML877d raw60163–60185. Called
 //! chains/update remain real dependencies, not services supplied by this test.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlFocusingAction as A, HtmlFocusingCursor as C, HtmlFocusingFallback as Fallback,
     HtmlFocusingReply as R,
 };
@@ -241,7 +241,7 @@ fn different_target_requires_old_chain_then_new_chain_then_actual_focus_update_c
 }
 #[test]
 fn real_current_area_child_null_result_is_not_whole_focusing_completion() {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
         HtmlCurrentlyFocusedAreaOutcome as CO, HtmlCurrentlyFocusedAreaReply as CR,
     };

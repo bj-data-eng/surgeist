@@ -17,8 +17,8 @@ use crate::internal::microsyntax::temporal::{
 };
 use crate::internal::microsyntax::tokens::{HtmlCommaSeparatedTokens, HtmlSpaceSeparatedTokens};
 use crate::{
-    DocumentString, internal::microsyntax::color, internal::microsyntax::numeric,
-    internal::microsyntax::temporal, internal::microsyntax::tokens,
+    internal::microsyntax::color, internal::microsyntax::numeric, internal::microsyntax::temporal,
+    internal::microsyntax::tokens, internal::values::DocumentString,
 };
 use std::{error::Error, fmt};
 

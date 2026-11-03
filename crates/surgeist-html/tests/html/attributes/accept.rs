@@ -1,10 +1,16 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAcceptAuthorState, HtmlAcceptMimeConformance,
-    HtmlAcceptProcessingState, HtmlAcceptReport, HtmlAcceptSpecifier, HtmlAcceptSpecifierError,
-    HtmlAcceptSpecifierKind, HtmlAcceptValue, HtmlAttributeApplicability,
-    HtmlAttributeContextAuthorState, HtmlAttributeContextConformanceError,
-    HtmlAttributeObservation, HtmlCommaToken, HtmlInputType, HtmlTokenError, HtmlValueInterpreter,
-    KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlInputType,
+        accept::{
+            HtmlAcceptAuthorState, HtmlAcceptMimeConformance, HtmlAcceptProcessingState,
+            HtmlAcceptReport, HtmlAcceptSpecifier, HtmlAcceptSpecifierError,
+            HtmlAcceptSpecifierKind, HtmlAcceptValue,
+        },
+    },
+    microsyntax::tokens::{HtmlCommaToken, HtmlTokenError},
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn raw(value: impl Into<DocumentString>) -> Attribute {
@@ -149,7 +155,7 @@ fn missing_empty_and_whitespace_have_independent_presence_and_fields() {
     let missing = HtmlValueInterpreter::new(100)
         .input_accept_for_input(
             &KnownHtmlElement::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             HtmlInputType::File,
         )
         .unwrap();
@@ -364,7 +370,7 @@ fn unsupplied_state_is_required_and_type_defaults_do_not_guess_file() {
     );
     assert_eq!(report.author(), &HtmlAcceptAuthorState::Conforming);
     let state = *interpreter
-        .input_type(&element, None::<&surgeist_html::Attribute>)
+        .input_type(&element, None::<&surgeist_html::values::Attribute>)
         .unwrap()
         .intrinsic()
         .unwrap();
@@ -480,7 +486,7 @@ fn missing_accept_in_nonfile_state_has_no_authored_presence_violation() {
     let report = HtmlValueInterpreter::new(0)
         .input_accept_for_input(
             &KnownHtmlElement::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             HtmlInputType::Text,
         )
         .unwrap();

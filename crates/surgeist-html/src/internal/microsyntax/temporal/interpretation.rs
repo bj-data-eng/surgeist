@@ -4,7 +4,11 @@ use crate::internal::microsyntax::numeric::{
     HtmlIntegerUnitStep, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
     HtmlNumericMaterialized,
 };
-use crate::{HtmlValueAdmissionError, HtmlValueInterpreter, HtmlValueReport};
+use crate::{
+    internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpreter,
+    internal::values::interpretation::HtmlValueReport,
+};
 
 /// A refused owner transition or latched processing failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1098,7 +1102,9 @@ mod cause_tests {
             ),
             (
                 HtmlTimeElementInterpretationErrorKind::Processing(
-                    HtmlNumericMaterializationError::Digits(crate::HtmlDecimalDigitsError::Empty),
+                    HtmlNumericMaterializationError::Digits(
+                        crate::internal::microsyntax::numeric::HtmlDecimalDigitsError::Empty,
+                    ),
                 )
                 .error(),
                 "time-element value processing failed",

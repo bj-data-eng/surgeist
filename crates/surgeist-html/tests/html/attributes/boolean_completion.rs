@@ -1,15 +1,19 @@
 use crate::html::support::html_element as element;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability as Applicability,
-    HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
-    HtmlAttributeContextAuthorState as ContextAuthor,
-    HtmlAttributeContextConformanceError as ContextConformance,
-    HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlBooleanAttribute as Boolean, HtmlButtonSubmitterContext, HtmlCustomControlAttributeContext,
-    HtmlHyperlinkAttributeContext as Hyperlink, HtmlImageControlsAttributeContext as ImageControls,
-    HtmlImageMapAttributeContext as ImageMap, HtmlInputType as Input, HtmlReferrerPolicy,
-    HtmlScriptAttributeContext as Script, HtmlValueInterpreter, KnownHtmlAttribute, Namespace,
-    QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability as Applicability, HtmlAttributeAuthorState as Author,
+        HtmlAttributeConformanceError as Conformance,
+        HtmlAttributeContextAuthorState as ContextAuthor,
+        HtmlAttributeContextConformanceError as ContextConformance,
+        HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
+        HtmlBooleanAttribute as Boolean, HtmlButtonSubmitterContext,
+        HtmlCustomControlAttributeContext, HtmlHyperlinkAttributeContext as Hyperlink,
+        HtmlImageControlsAttributeContext as ImageControls,
+        HtmlImageMapAttributeContext as ImageMap, HtmlInputType as Input, HtmlReferrerPolicy,
+        HtmlScriptAttributeContext as Script,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::KnownHtmlAttribute,
 };
 
 #[test]
@@ -44,7 +48,11 @@ fn image_map_presence_survives_a_missing_qualifying_ancestor_and_invalid_spellin
         assert!(report.source_clause().ends_with("#attr-img-ismap"));
         assert_eq!(report.context_source_clause(), Some(report.source_clause()));
         let omitted = interpreter
-            .ismap_with_context(&element("img"), None::<&surgeist_html::Attribute>, context)
+            .ismap_with_context(
+                &element("img"),
+                None::<&surgeist_html::values::Attribute>,
+                context,
+            )
             .unwrap();
         assert_eq!(omitted.intrinsic(), Some(&false));
         assert_eq!(omitted.author(), Author::Missing);
@@ -85,7 +93,7 @@ fn image_controls_presence_survives_missing_or_empty_alt() {
         let missing = interpreter
             .image_controls_with_context(
                 &element("img"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 context,
             )
             .unwrap();
@@ -153,7 +161,7 @@ fn stylesheet_link_context_uses_ascii_space_tokens_and_retains_exact_rel() {
         let absent = interpreter
             .stylesheet_disabled(
                 &element("link"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 &context,
             )
             .unwrap();
@@ -185,7 +193,11 @@ fn content_only_image_and_link_rules_leave_present_author_context_unchecked() {
         assert_eq!(present.author(), Author::Conforming);
         assert_eq!(present.context_author(), ContextAuthor::Unchecked);
         let absent = interpreter
-            .boolean_attribute(selected, &element(local), None::<&surgeist_html::Attribute>)
+            .boolean_attribute(
+                selected,
+                &element(local),
+                None::<&surgeist_html::values::Attribute>,
+            )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
         assert_eq!(absent.context_author(), ContextAuthor::NotRequired);
@@ -260,7 +272,7 @@ fn image_and_link_contexts_do_not_apply_to_other_roles_or_namespaces() {
             .boolean_attribute(
                 Boolean::Disabled,
                 &element("link"),
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             )
             .unwrap()
             .intrinsic(),
@@ -324,7 +336,7 @@ fn stylesheet_context_is_readmitted_and_attribute_limits_precede_applicability()
     let error = short
         .stylesheet_disabled(
             &element("link"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             &context,
         )
         .unwrap_err();
@@ -403,7 +415,7 @@ fn hyperlink_author_context_and_literal_policy_conformance_remain_independent() 
             let report = interpreter
                 .referrerpolicy_for_hyperlink(
                     &element(local),
-                    None::<&surgeist_html::Attribute>,
+                    None::<&surgeist_html::values::Attribute>,
                     context,
                 )
                 .unwrap();
@@ -504,7 +516,7 @@ fn unqualified_hyperlink_policies_retain_intrinsic_state_and_unchecked_author_co
             assert_eq!(report.raw_attribute(), Some(&raw));
         }
         let omitted = interpreter
-            .referrerpolicy(&element(local), None::<&surgeist_html::Attribute>)
+            .referrerpolicy(&element(local), None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(omitted.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
         assert_eq!(omitted.context_author(), ContextAuthor::NotRequired);
@@ -749,7 +761,7 @@ fn all_actual_input_states_select_author_conformance_without_erasing_boolean_con
                 .boolean_attribute_for_input(
                     rule,
                     &element("input"),
-                    None::<&surgeist_html::Attribute>,
+                    None::<&surgeist_html::values::Attribute>,
                     state,
                 )
                 .unwrap();
@@ -809,7 +821,7 @@ fn input_name_alone_preserves_content_and_leaves_state_conformance_unchecked() {
     }
     // The real type producer can supply the missing-value default explicitly.
     let state = *interpreter
-        .input_type(&element("input"), None::<&surgeist_html::Attribute>)
+        .input_type(&element("input"), None::<&surgeist_html::values::Attribute>)
         .unwrap()
         .intrinsic()
         .unwrap();
@@ -818,7 +830,7 @@ fn input_name_alone_preserves_content_and_leaves_state_conformance_unchecked() {
         .boolean_attribute_for_input(
             Boolean::Required,
             &element("input"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             state,
         )
         .unwrap();
@@ -904,7 +916,11 @@ fn select_and_textarea_use_their_own_clauses_without_input_facts() {
         assert_eq!(present.inventory_rows(), &[row]);
         assert_eq!(present.input_state(), None);
         let missing = interpreter
-            .boolean_attribute(rule, &element(local), None::<&surgeist_html::Attribute>)
+            .boolean_attribute(
+                rule,
+                &element(local),
+                None::<&surgeist_html::values::Attribute>,
+            )
             .unwrap();
         assert_eq!(missing.intrinsic(), Some(&false));
         assert_eq!(missing.recognition(), Recognition::Missing);
@@ -913,7 +929,7 @@ fn select_and_textarea_use_their_own_clauses_without_input_facts() {
         .boolean_attribute(
             Boolean::Multiple,
             &element("textarea"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(wrong.applicability(), Applicability::DifferentElement);
@@ -973,7 +989,7 @@ fn script_flags_follow_all_seven_supplied_script_contexts() {
                 .boolean_attribute_for_script(
                     rule,
                     &element("script"),
-                    None::<&surgeist_html::Attribute>,
+                    None::<&surgeist_html::values::Attribute>,
                     context,
                 )
                 .unwrap();
@@ -1039,7 +1055,7 @@ fn button_formnovalidate_retains_content_and_observes_submitter_author_conforman
         let absent = interpreter
             .formnovalidate_for_button(
                 &element("button"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 context,
             )
             .unwrap();
@@ -1106,7 +1122,7 @@ fn new_boolean_rules_distinguish_missing_empty_name_and_invalid_spelling() {
             .boolean_attribute_for_input(
                 rule,
                 &element("input"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 state,
             )
             .unwrap();

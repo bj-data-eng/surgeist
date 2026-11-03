@@ -1,7 +1,7 @@
 //! Pinned HTML opener-policy language values and the initial immutable record.
 //! HTML877d raw64771–64827. No header parsing or policy effects occur here.
 
-use crate::DocumentString;
+use crate::internal::values::DocumentString;
 
 /// An opener policy value of HTML877d #cross-origin-opener-policies, which lets a document
 /// navigated to in a top-level browsing context force a new top-level browsing context and group.

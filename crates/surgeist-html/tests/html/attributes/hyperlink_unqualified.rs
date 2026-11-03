@@ -1,8 +1,12 @@
 use crate::html::support::html_element as element;
 use surgeist_html::{
-    Attribute, HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
-    HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlReferrerPolicy, HtmlValueInterpreter, KnownHtmlAttribute,
+    attributes::{
+        HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
+        HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
+        HtmlReferrerPolicy,
+    },
+    values::{Attribute, HtmlValueInterpreter},
+    vocabulary::KnownHtmlAttribute,
 };
 
 #[test]
@@ -12,7 +16,7 @@ fn absent_href_evidence_does_not_erase_the_missing_policy_default() {
     // interpretation does not need evidence of the href author requirement.
     for local in ["a", "area"] {
         let report = HtmlValueInterpreter::new(100)
-            .referrerpolicy(&element(local), None::<&surgeist_html::Attribute>)
+            .referrerpolicy(&element(local), None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
         assert_eq!(report.observation(), Observation::Missing);

@@ -1,4 +1,13 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    elements::input::{
+        HtmlInputFileSelection, HtmlInputFilenameInvalidState, HtmlInputFlags,
+        HtmlInputImageCoordinate, HtmlInputReset, HtmlInputResetEffect, HtmlInputRuleWork,
+        HtmlInputSanitization, HtmlInputTypeChange, HtmlInputTypeCursor, HtmlInputTypeEffect,
+        HtmlInputValueMode, HtmlInputValueSanitization, HtmlInputValueSetterStart,
+        input_filename_setter,
+    },
+};
 
 #[test]
 fn fresh_image_coordinates_are_zero_without_host_activation_facts() {

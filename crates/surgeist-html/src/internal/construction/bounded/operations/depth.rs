@@ -686,7 +686,11 @@ mod tests {
 
     #[test]
     fn every_topology_command_keeps_depths_usage_and_histogram_exact_under_random_use() {
-        use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+        use crate::{
+            internal::construction::HtmlShadowRootMode,
+            internal::construction::HtmlShadowRootProperties,
+            internal::construction::HtmlSlotAssignment,
+        };
         const KINDS: usize = 7;
         let properties = || {
             HtmlShadowRootProperties::new(

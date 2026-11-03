@@ -1,6 +1,6 @@
 //! Independent literal HTML877d raw59747–59758 query traces. The pure owner
 //! returns roles; exact Document/area identities remain with the actual adapter.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlCurrentlyFocusedAreaAction as A, HtmlCurrentlyFocusedAreaCursor as C,
     HtmlCurrentlyFocusedAreaOutcome as O, HtmlCurrentlyFocusedAreaReply as R,
     HtmlFocusedAreaKind as Area,

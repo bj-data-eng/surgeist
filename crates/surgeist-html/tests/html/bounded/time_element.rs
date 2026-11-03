@@ -1,13 +1,15 @@
 //! Public retained time interpretation, using the pinned time-element rules.
 #![forbid(unsafe_code)]
 use surgeist_html::{
-    DocumentString, HtmlMachineReadableTime, HtmlTimeElementValue, HtmlValueAuthorState,
-    HtmlValueInterpreter, HtmlValueRecoveryState,
     bounded::{
-        HtmlIntegerUnitStepError, HtmlNumericMaterializationError,
-        HtmlTimeElementInterpretation as Interpretation,
-        HtmlTimeElementInterpretationActionKind as Kind,
+        numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
+        temporal::{
+            HtmlTimeElementInterpretation as Interpretation,
+            HtmlTimeElementInterpretationActionKind as Kind,
+        },
     },
+    microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
+    values::{DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState},
 };
 
 fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {

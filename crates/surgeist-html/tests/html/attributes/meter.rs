@@ -1,6 +1,24 @@
 //! Independent literals from HTML #the-meter-element authoring requirements,
 //! rather than its separately tested effective processing defaults and clamps.
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeObservation,
+        HtmlAttributeRecognition,
+        meter::{
+            HtmlMeterAttributeInput, HtmlMeterAttributeReport, HtmlMeterAttributes,
+            HtmlMeterAuthorRelation, HtmlMeterNativeError, HtmlMeterNumberAuthorState,
+            HtmlMeterNumberReport, HtmlMeterNumberRole, HtmlMeterRelationState,
+            HtmlMeterRelationUnavailable,
+        },
+    },
+    microsyntax::numeric::HtmlFloatingPointNumber,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueRepresentationError, HtmlValueSyntaxError, Namespace,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 const KINDS: [KnownHtmlAttribute; 6] = [
     KnownHtmlAttribute::Value,

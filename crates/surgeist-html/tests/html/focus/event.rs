@@ -1,6 +1,6 @@
 //! Public source-body behavior from HTML877d raw60303–60311. The small
 //! adapter below owns operands and captures; it supplies no native focus proof.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlFocusEventAction as A, HtmlFocusEventCursor as C, HtmlFocusEventInterface as Interface,
     HtmlFocusEventName, HtmlFocusEventReply as R, HtmlFocusEventTargetKind as Target,
     HtmlFocusEventView as View,

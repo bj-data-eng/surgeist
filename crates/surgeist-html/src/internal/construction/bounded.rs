@@ -3,19 +3,19 @@
 use super::*;
 use std::mem::{align_of, size_of};
 
-mod attribute_edit;
-pub use attribute_edit::*;
+pub(crate) mod attribute_edit;
 
-mod operations;
+pub(crate) mod operations;
 pub use operations::*;
 
-mod text_append;
-pub use text_append::*;
+pub(crate) mod text_append;
 
 /// Test adapters that keep a protocol owner in an `Option` slot, as a driver that stores it in a
 /// field does, and put the owner back when its consuming step refuses it.
 #[cfg(test)]
 mod slots {
+    use super::attribute_edit::*;
+    use super::text_append::*;
     use super::*;
 
     fn step<T, R>(

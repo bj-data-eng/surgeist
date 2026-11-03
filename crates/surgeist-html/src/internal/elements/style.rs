@@ -1,5 +1,7 @@
 //! HTML877d native Style update and notification order; no CSS/CSP execution.
-use crate::{DocumentString, KnownHtmlAttribute, Namespace};
+use crate::{
+    internal::values::DocumentString, internal::values::Namespace, vocabulary::KnownHtmlAttribute,
+};
 use std::{error::Error, fmt};
 
 /// The explicit processing set of a blocking attribute. Token splitting and
@@ -9,9 +11,9 @@ use std::{error::Error, fmt};
 pub fn blocking_tokens_with<E>(
     value: Option<&DocumentString>,
     mut step: impl FnMut() -> Result<(), E>,
-) -> Result<crate::HtmlBlockingTokens, E> {
+) -> Result<crate::internal::attributes::token_declarations::HtmlBlockingTokens, E> {
     let Some(value) = value else {
-        return Ok(crate::HtmlBlockingTokens::Empty);
+        return Ok(crate::internal::attributes::token_declarations::HtmlBlockingTokens::Empty);
     };
     let mut cursor =
         crate::internal::microsyntax::tokens::HtmlSpaceTokenCursor::new(value.code_units());
@@ -20,11 +22,15 @@ pub fn blocking_tokens_with<E>(
         match cursor.step() {
             crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Continue => {}
             crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Done => {
-                return Ok(crate::HtmlBlockingTokens::Empty);
+                return Ok(
+                    crate::internal::attributes::token_declarations::HtmlBlockingTokens::Empty,
+                );
             }
             crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Token { start, end } => {
                 if blocking_token_is_render_with(&value.code_units()[start..end], &mut step)? {
-                    return Ok(crate::HtmlBlockingTokens::Render);
+                    return Ok(
+                        crate::internal::attributes::token_declarations::HtmlBlockingTokens::Render,
+                    );
                 }
             }
         }
@@ -50,12 +56,14 @@ pub(crate) fn blocking_token_is_render_with<E>(
 /// The parser relation is an actual identity join supplied by the tree owner,
 /// independently of the Style's historical creation state.
 pub const fn style_is_potentially_render_blocking(
-    explicit: crate::HtmlBlockingTokens,
+    explicit: crate::internal::attributes::token_declarations::HtmlBlockingTokens,
     state: HtmlStyleState,
     created_by_current_document_parser: bool,
 ) -> bool {
-    matches!(explicit, crate::HtmlBlockingTokens::Render)
-        || (state.created_by_document_parser() && created_by_current_document_parser)
+    matches!(
+        explicit,
+        crate::internal::attributes::token_declarations::HtmlBlockingTokens::Render
+    ) || (state.created_by_document_parser() && created_by_current_document_parser)
 }
 
 /// HTML's Document gate for adding render-blocking Elements. Neither a missing
@@ -85,8 +93,10 @@ pub enum HtmlDocumentBodyRole {
 /// HTML namespace can name `html`, `body` or `frameset`; any other namespace is `Other`. `admit` is
 /// called before each name read and its error ends the classification.
 pub fn document_body_role_with<E>(
-    name: &(impl crate::HtmlNameInput + ?Sized),
-    mut admit: impl FnMut(crate::bounded::HtmlElementNameRead) -> Result<(), E>,
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    mut admit: impl FnMut(
+        crate::internal::elements::native_initialization::HtmlElementNameRead,
+    ) -> Result<(), E>,
 ) -> Result<HtmlDocumentBodyRole, E> {
     use crate::internal::elements::native_initialization::{local_matches, namespace_matches};
     if namespace_matches(

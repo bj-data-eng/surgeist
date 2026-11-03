@@ -8,8 +8,13 @@ use crate::internal::microsyntax::numeric::{
     ScientificDecimalKeyError, strict_scientific_decimal_key_units,
 };
 use crate::{
-    HtmlFloatingPointList, HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeInteger,
-    HtmlValueAuthorState, HtmlValueRecoveryState, HtmlValueReport,
+    internal::microsyntax::numeric::HtmlFloatingPointList,
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::microsyntax::numeric::HtmlInteger,
+    internal::microsyntax::numeric::HtmlNonNegativeInteger,
+    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 use std::cmp::Ordering;
 use std::error::Error;
@@ -552,9 +557,9 @@ impl HtmlValueInterpreter {
     /// Wrong roles never run a grammar or become a missing-attribute default.
     pub fn area_coordinates(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        shape: Option<&impl crate::HtmlAttributeInput>,
-        coords: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        shape: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        coords: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAreaCoordinatesReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(shape.map(HtmlAttributeInput::value))?;
         self.admit_attribute_raw(coords.map(HtmlAttributeInput::value))?;

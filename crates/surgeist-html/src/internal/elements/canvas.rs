@@ -3,7 +3,7 @@
 //! HTML 877d6146487f #the-canvas-element supplies these initial values and
 //! #attr-canvas-width/#attr-canvas-height supply the exact bitmap dimensions.
 
-use crate::HtmlNonNegativeInteger;
+use crate::internal::microsyntax::numeric::HtmlNonNegativeInteger;
 
 pub(crate) const CANVAS_DEFAULT_WIDTH: u128 = 300;
 pub(crate) const CANVAS_DEFAULT_HEIGHT: u128 = 150;

@@ -1,6 +1,6 @@
 //! Local child-navigable guards over the live owner's actual relationship.
 
-use crate::DocumentString;
+use crate::internal::values::DocumentString;
 
 /// Source candidate selection in shared Frame/Iframe attribute processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

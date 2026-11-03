@@ -3,7 +3,7 @@
 //! Grammar validity is independent of attribute-specific allowed keywords or
 //! further token restrictions. Those defining clauses require their own checks.
 
-use crate::DocumentString;
+use crate::internal::values::DocumentString;
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
 /// A nonempty space-separated token containing no ASCII whitespace.

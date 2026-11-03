@@ -3,8 +3,8 @@
 //! The sixteen essence strings are incorporated under the WHATWG BSD permission
 //! recorded by this crate's NOTICE. This is not MIME parsing or author validation.
 
-use crate::DocumentString;
 use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
+use crate::internal::values::DocumentString;
 
 /// A script kind selected by HTML's type/language classification step.
 /// This value alone does not establish preparation, saved metadata or execution.

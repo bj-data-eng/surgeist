@@ -3,8 +3,11 @@
 pub(crate) mod bounded;
 
 #[cfg(test)]
-use crate::Namespace;
-use crate::{DocumentString, OrderedAttributes, QualifiedName};
+use crate::internal::values::Namespace;
+use crate::{
+    internal::values::DocumentString, internal::values::OrderedAttributes,
+    internal::values::QualifiedName,
+};
 use std::{
     collections::VecDeque,
     error::Error,
@@ -696,7 +699,7 @@ impl Error for HtmlProcessingInstructionError {}
 /// Exact element name and ordered raw attributes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlElement {
-    link_flags: Option<crate::HtmlLinkFlags>,
+    link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
     name: QualifiedName,
     attributes: OrderedAttributes,
 }
@@ -710,7 +713,7 @@ impl HtmlElement {
         }
     }
     /// Actual construction flags. Imported records without history return None.
-    pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
+    pub fn link_flags(&self) -> Option<crate::internal::elements::rel::HtmlLinkFlags> {
         self.link_flags
     }
     /// Exact shared qualified name.
@@ -1334,7 +1337,7 @@ impl Builder {
         if parent_view.template_contents().is_some() {
             return Err(HtmlConstructionErrorKind::TemplateContentsRequired.into());
         }
-        let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::KnownHtmlElement::from_name(element.name()) == Some(crate::KnownHtmlElement::Template));
+        let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::vocabulary::KnownHtmlElement::from_name(element.name()) == Some(crate::vocabulary::KnownHtmlElement::Template));
         let depth = self
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
@@ -1470,9 +1473,9 @@ macro_rules! authoring_methods {
             self.builder.append(
                 parent,
                 HtmlNodeKind::Element(HtmlElement {
-                    link_flags: (crate::KnownHtmlElement::from_name(&name)
-                        == Some(crate::KnownHtmlElement::Link))
-                    .then(crate::HtmlLinkFlags::fresh),
+                    link_flags: (crate::vocabulary::KnownHtmlElement::from_name(&name)
+                        == Some(crate::vocabulary::KnownHtmlElement::Link))
+                    .then(crate::internal::elements::rel::HtmlLinkFlags::fresh),
                     name,
                     attributes,
                 }),
@@ -1620,7 +1623,7 @@ mod tests {
     #[test]
     fn native_admission_checks_exactly_the_usage_the_append_commits() {
         let attribute = |namespace: &str, prefix: Option<&str>, local: &str, value: &str| {
-            crate::Attribute::new(
+            crate::internal::values::Attribute::new(
                 QualifiedName::new(
                     Namespace::from_uri(namespace),
                     prefix.map(DocumentString::from),
@@ -1629,7 +1632,7 @@ mod tests {
                 value,
             )
         };
-        let element = |attributes: Vec<crate::Attribute>| {
+        let element = |attributes: Vec<crate::internal::values::Attribute>| {
             HtmlNodeKind::Element(HtmlElement::new(
                 QualifiedName::new(Namespace::from_uri("urn:x"), Some("p".into()), "tag"),
                 OrderedAttributes::new(attributes).unwrap(),

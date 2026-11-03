@@ -3,13 +3,22 @@
 use crate::html::support::initialize_native_element as initialize;
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    HtmlElementNameRead as Read, element_classification_with, is_nonce_element,
-    native_element_initialization_with,
+    native::{
+        HtmlElementNameRead as Read, element_classification_with,
+        native_element_initialization_with,
+    },
+    security::is_nonce_element,
 };
 use surgeist_html::{
-    DocumentString, HtmlCommonScope, HtmlCommonState, HtmlElementClass as R,
-    HtmlNativeFormAssociationKind as F, HtmlNativeFreshNonce, HtmlNativeInitialization,
-    KnownHtmlElement as K, Namespace, QualifiedName,
+    elements::{
+        form::HtmlNativeFormAssociationKind as F,
+        native::{
+            HtmlCommonScope, HtmlCommonState, HtmlElementClass as R, HtmlNativeFreshNonce,
+            HtmlNativeInitialization,
+        },
+    },
+    values::{DocumentString, Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement as K,
 };
 
 fn html(local: &str) -> HtmlNativeInitialization {

@@ -3,7 +3,10 @@
 //! remain separate. No string here is parsed as a MIME record or a JS/JSON program.
 
 use super::*;
-use crate::{HtmlScriptKind, internal::elements::script_type::HtmlScriptTypeCursor};
+use crate::{
+    internal::elements::script_type::HtmlScriptKind,
+    internal::elements::script_type::HtmlScriptTypeCursor,
+};
 
 /// The three HTML-defined authored type keywords. Classic is expressed by
 /// omission; data blocks retain an authored MIME string rather than a keyword.
@@ -181,8 +184,8 @@ impl HtmlValueInterpreter {
     /// controlled session/work/cancellation or aggregate memory guarantee.
     pub fn script_type(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlScriptTypeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let applicability = applies(
@@ -239,8 +242,8 @@ impl HtmlValueInterpreter {
     /// execution; the ordinary per-value allocation contract is unchanged.
     pub fn script_type_with_attributes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlScriptTypePreparationReport, HtmlValueAdmissionError> {
         let name = KnownHtmlAttribute::Type.qualified_name();
         let raw = find_attribute(attributes, name.namespace(), name.local_name());

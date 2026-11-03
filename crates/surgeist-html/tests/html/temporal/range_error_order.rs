@@ -3,8 +3,11 @@
 //! check. Expectations come from the step numbers cited at each group, not from
 //! current output.
 use surgeist_html::{
-    DocumentString, HtmlTemporalError, HtmlValueAuthorState, HtmlValueFailure,
-    HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntaxError,
+    microsyntax::temporal::HtmlTemporalError,
+    values::{
+        DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueSyntaxError,
+    },
 };
 
 fn author_error<T: std::fmt::Debug>(state: &HtmlValueAuthorState<T>) -> Option<HtmlTemporalError> {

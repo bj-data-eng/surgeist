@@ -1,9 +1,15 @@
 //! Public common-value behavior; expected results follow the pinned clauses.
 use surgeist_html::{
-    DocumentString, HtmlDateOrTime, HtmlDimension, HtmlTime, HtmlValueAuthorState as Author,
-    HtmlValueFailure as Failure, HtmlValueInterpreter, HtmlValueRecoveryState as Recovery,
-    HtmlValueRepresentationError as Representation, HtmlValueSyntax,
-    HtmlValueSyntaxError as Syntax,
+    microsyntax::{
+        numeric::HtmlDimension,
+        temporal::{HtmlDateOrTime, HtmlTime},
+    },
+    values::{
+        DocumentString, HtmlValueAuthorState as Author, HtmlValueFailure as Failure,
+        HtmlValueInterpreter, HtmlValueRecoveryState as Recovery,
+        HtmlValueRepresentationError as Representation, HtmlValueSyntax,
+        HtmlValueSyntaxError as Syntax,
+    },
 };
 
 #[test]

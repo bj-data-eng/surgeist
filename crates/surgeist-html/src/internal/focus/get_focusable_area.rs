@@ -6,7 +6,7 @@
 //! Omission uses the source default `other`; a supplied trigger is forwarded
 //! unchanged through existing focus-delegate and nested resolution calls.
 
-use crate::HtmlCurrentlyFocusedAreaOutcome;
+use crate::internal::focus::current_focus::HtmlCurrentlyFocusedAreaOutcome;
 
 /// The exact source result's role. Actual objects remain adapter-owned: a shape,
 /// scroll region, viewport, Document, anchor and delegated area are distinct.

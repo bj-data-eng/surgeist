@@ -6,10 +6,19 @@
 
 use super::*;
 use crate::{
-    HtmlDate, HtmlFloatingPointNumber, HtmlInputTemporalCoordinate,
-    HtmlInputTemporalCoordinateUnit, HtmlLocalDateTime, HtmlMonth, HtmlNonNegativeDecimal,
-    HtmlParsedLocalDateTime, HtmlParsedTime, HtmlTime, HtmlValueAuthorState, HtmlValueFailure,
-    HtmlValueRecoveryState, HtmlValueReport, HtmlWeek,
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::microsyntax::numeric::HtmlNonNegativeDecimal,
+    internal::microsyntax::temporal::HtmlDate, internal::microsyntax::temporal::HtmlLocalDateTime,
+    internal::microsyntax::temporal::HtmlMonth,
+    internal::microsyntax::temporal::HtmlParsedLocalDateTime,
+    internal::microsyntax::temporal::HtmlParsedTime, internal::microsyntax::temporal::HtmlTime,
+    internal::microsyntax::temporal::HtmlWeek,
+    internal::microsyntax::temporal::input_coordinate::HtmlInputTemporalCoordinate,
+    internal::microsyntax::temporal::input_coordinate::HtmlInputTemporalCoordinateUnit,
+    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlValueFailure,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 use std::{cmp::Ordering, error::Error, fmt};
 
@@ -571,8 +580,8 @@ fn author<A, R>(
 impl HtmlValueInterpreter {
     fn input_numeric_attribute(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         role: KnownHtmlAttribute,
         state: HtmlInputType,
     ) -> Result<HtmlInputNumericAttributeReport, HtmlValueAdmissionError> {
@@ -649,7 +658,7 @@ impl HtmlValueInterpreter {
     /// standalone cap does not claim parser/session allocation or cancellation bounds.
     pub fn input_numeric_constraints<A: HtmlAttributeInput>(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         minimum: Option<&A>,
         maximum: Option<&A>,
         step: Option<&A>,

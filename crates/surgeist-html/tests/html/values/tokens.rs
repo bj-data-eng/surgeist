@@ -1,7 +1,9 @@
 use surgeist_html::{
-    DocumentString, HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlOrderedTokenSet,
-    HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenComparison, HtmlTokenError,
-    HtmlUnorderedTokenSet,
+    microsyntax::tokens::{
+        HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlOrderedTokenSet, HtmlSpaceSeparatedTokens,
+        HtmlSpaceToken, HtmlTokenComparison, HtmlTokenError, HtmlUnorderedTokenSet,
+    },
+    values::DocumentString,
 };
 
 fn space(value: &str) -> HtmlSpaceToken {

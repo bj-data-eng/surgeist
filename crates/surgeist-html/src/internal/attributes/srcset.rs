@@ -6,7 +6,10 @@ use super::*;
 use crate::internal::microsyntax::numeric::{
     self, HtmlNumericParseError, HtmlScientificDecimalKey, ScientificDecimalKeyError,
 };
-use crate::{HtmlFloatingPointNumber, HtmlNonNegativeInteger, OrderedAttributes};
+use crate::{
+    internal::microsyntax::numeric::HtmlFloatingPointNumber,
+    internal::microsyntax::numeric::HtmlNonNegativeInteger, internal::values::OrderedAttributes,
+};
 use std::{collections::HashMap, error::Error, fmt};
 
 const GRAMMAR: &str = source!("srcset-attributes");
@@ -901,7 +904,7 @@ impl Role {
         )
     }
 }
-fn attribute<'a, A: crate::HtmlAttributesInput + ?Sized>(
+fn attribute<'a, A: crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized>(
     attributes: &'a A,
     name: &str,
 ) -> Option<&'a A::Attribute> {
@@ -912,31 +915,31 @@ impl HtmlValueInterpreter {
     /// Interprets literal img candidates; surrounding author facts stay unchecked.
     pub fn img_srcset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Img, element, raw, None)
     }
     /// Interprets literal source candidates without guessing picture ancestry.
     pub fn source_srcset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Source, element, raw, None)
     }
     /// Interprets literal link candidates without executing preload or selection.
     pub fn link_imagesrcset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Link, element, raw, None)
     }
     /// Context target content and surrounding facts come from one raw attribute set.
     pub fn img_srcset_with_context(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Img, element, context)
@@ -945,7 +948,7 @@ impl HtmlValueInterpreter {
     /// image. Surrounding raw values obey the same per-value cap.
     pub fn source_srcset_with_context(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Source, element, context)
@@ -954,7 +957,7 @@ impl HtmlValueInterpreter {
     /// values obey the same per-value cap.
     pub fn link_imagesrcset_with_context(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Link, element, context)
@@ -962,7 +965,7 @@ impl HtmlValueInterpreter {
     fn context_srcset(
         &self,
         role: Role,
-        element: &(impl crate::HtmlNameInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         let name = match role {
@@ -979,8 +982,8 @@ impl HtmlValueInterpreter {
     fn srcset(
         &self,
         role: Role,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: Option<&HtmlSrcsetContext>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -1211,8 +1214,8 @@ fn check_context(
 }
 fn allows_auto_sizes(
     interpreter: &HtmlValueInterpreter,
-    name: &(impl crate::HtmlNameInput + ?Sized),
-    attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+    name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
 ) -> bool {
     // Reuse the existing enum owner; no CSS sizes evaluation is required here.
     let loading = interpreter

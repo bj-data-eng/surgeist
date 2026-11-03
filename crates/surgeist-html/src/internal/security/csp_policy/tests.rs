@@ -592,5 +592,5 @@ fn equal_generation_private_branches_still_require_the_exact_prior_artifact() {
     assert_eq!(&native(b.policy(), p.profile()).values[..1], [202]);
 }
 
-mod admission;
-mod disposal;
+pub(crate) mod admission;
+pub(crate) mod disposal;

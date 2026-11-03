@@ -1,7 +1,7 @@
 //! Independent flag expectations from HTML877d #script-processing-model,
 //! #prepare-the-script-element and the HTML script cloning steps.
 
-use surgeist_html::HtmlScriptFlags;
+use surgeist_html::elements::script::HtmlScriptFlags;
 
 fn slots(flags: HtmlScriptFlags) -> [bool; 5] {
     [

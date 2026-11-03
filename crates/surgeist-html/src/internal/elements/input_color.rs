@@ -5,7 +5,7 @@
 //! reads and service CSS/Color operations. These scalar decisions own no input,
 //! identities, facts, controller, tree, storage or publication.
 
-use crate::HtmlLegacyColor;
+use crate::internal::microsyntax::color::HtmlLegacyColor;
 
 /// Which actual value the Color update must read before CSS parsing.
 ///

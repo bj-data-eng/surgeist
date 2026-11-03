@@ -1,4 +1,13 @@
-use surgeist_html::*;
+use surgeist_html::{
+    elements::link::{
+        HtmlRelAddressAuthor, HtmlRelAlternate, HtmlRelBodyAllowance, HtmlRelEffect,
+        HtmlRelHrefAuthor, HtmlRelKeyword, HtmlRelLinks, HtmlRelOccurrenceSource,
+        HtmlRelPresenceAuthor, HtmlRelReport, HtmlRelSpelling, HtmlRelTitleAuthor,
+        HtmlRelTokenApplicability,
+    },
+    values::{Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn report(role: KnownHtmlElement, attrs: &[(KnownHtmlAttribute, &str)]) -> HtmlRelReport {
     let attrs = OrderedAttributes::new(

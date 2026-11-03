@@ -4,9 +4,15 @@
 
 use super::*;
 use crate::{
-    HtmlDuplicateTokenError, HtmlNonNegativeInteger, HtmlOrderedTokenSet, HtmlSpaceSeparatedTokens,
-    HtmlSpaceToken, HtmlTokenComparison, HtmlUnorderedTokenSet, HtmlValueRecoveryState,
-    HtmlValueReport,
+    internal::microsyntax::numeric::HtmlNonNegativeInteger,
+    internal::microsyntax::tokens::HtmlDuplicateTokenError,
+    internal::microsyntax::tokens::HtmlOrderedTokenSet,
+    internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
+    internal::microsyntax::tokens::HtmlSpaceToken,
+    internal::microsyntax::tokens::HtmlTokenComparison,
+    internal::microsyntax::tokens::HtmlUnorderedTokenSet,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 use std::{error::Error, fmt};
 
@@ -655,8 +661,8 @@ fn rule(attribute: KnownHtmlAttribute, element: Option<KnownHtmlElement>) -> Rul
 impl HtmlValueInterpreter {
     fn declaration_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         attribute: KnownHtmlAttribute,
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlTokenDeclarationInput, HtmlValueAdmissionError> {
@@ -699,8 +705,8 @@ impl HtmlValueInterpreter {
     /// filtering. Does not assign keyboard shortcuts or execute activation.
     pub fn accesskey(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAccessKeyReport, HtmlValueAdmissionError> {
         let mut input =
             self.declaration_input(element, raw, KnownHtmlAttribute::Accesskey, None)?;
@@ -730,15 +736,15 @@ impl HtmlValueInterpreter {
     /// processing set. Link/script author context remains unchecked when present.
     pub fn blocking(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         self.blocking_observed(element, raw, None)
     }
     fn blocking_observed(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         let mut input =
@@ -795,8 +801,8 @@ impl HtmlValueInterpreter {
     /// type/src. Only external classic/module allow authored blocking presence.
     pub fn blocking_for_script(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: HtmlScriptAttributeContext,
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         let mut result = self.blocking_observed(element, raw, Some(KnownHtmlElement::Script))?;
@@ -822,8 +828,8 @@ impl HtmlValueInterpreter {
     /// membership only, not whole rel conformance or rendering behavior.
     pub fn blocking_for_link(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         let raw = selected(attributes, KnownHtmlAttribute::Blocking);
         let rel = selected(attributes, KnownHtmlAttribute::Rel);
@@ -846,15 +852,15 @@ impl HtmlValueInterpreter {
     /// availability certification. Context stays independent of token validity.
     pub fn icon_sizes(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlIconSizesReport, HtmlValueAdmissionError> {
         self.icon_sizes_observed(element, raw, None)
     }
     fn icon_sizes_observed(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlIconSizesReport, HtmlValueAdmissionError> {
         let mut input =
@@ -897,8 +903,8 @@ impl HtmlValueInterpreter {
     /// attributes, retaining original rel. Resource availability stays unchecked.
     pub fn icon_sizes_for_link(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlIconSizesReport, HtmlValueAdmissionError> {
         let raw = selected(attributes, KnownHtmlAttribute::Sizes);
         let rel = selected(attributes, KnownHtmlAttribute::Rel);
@@ -917,7 +923,7 @@ impl HtmlValueInterpreter {
         Ok(result)
     }
 }
-fn selected<A: crate::HtmlAttributesInput + ?Sized>(
+fn selected<A: crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized>(
     attributes: &A,
     name: KnownHtmlAttribute,
 ) -> Option<&A::Attribute> {
@@ -926,7 +932,7 @@ fn selected<A: crate::HtmlAttributesInput + ?Sized>(
 }
 fn link_context(
     input: &mut HtmlTokenDeclarationInput,
-    rel: Option<&impl crate::HtmlAttributeInput>,
+    rel: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     required: &[&str],
     error: HtmlAttributeContextConformanceError,
 ) {

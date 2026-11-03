@@ -1,14 +1,19 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeObservation,
-    HtmlAutocompleteContactHint, HtmlAutocompleteContextAuthorState, HtmlAutocompleteCredential,
-    HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefaultField, HtmlAutocompleteDefaultReason,
-    HtmlAutocompleteDetails, HtmlAutocompleteMantle, HtmlAutocompleteMode,
-    HtmlAutocompleteProcessed, HtmlAutocompleteProcessingState, HtmlAutocompleteReport,
-    HtmlAutocompleteSection, HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError,
-    HtmlAutocompleteSyntaxState, HtmlAutocompleteValue, HtmlAutofillControlGroup,
-    HtmlAutofillField, HtmlAutofillFieldCategory, HtmlAutofillFieldIdentity, HtmlFormAutocomplete,
-    HtmlInputType, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace,
-    QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation, HtmlAutocompleteContactHint,
+        HtmlAutocompleteMode, HtmlFormAutocomplete, HtmlInputType,
+        autocomplete::{
+            HtmlAutocompleteContextAuthorState, HtmlAutocompleteCredential,
+            HtmlAutocompleteCredentialOutcome, HtmlAutocompleteDefaultField,
+            HtmlAutocompleteDefaultReason, HtmlAutocompleteDetails, HtmlAutocompleteMantle,
+            HtmlAutocompleteProcessed, HtmlAutocompleteProcessingState, HtmlAutocompleteReport,
+            HtmlAutocompleteSection, HtmlAutocompleteSectionError, HtmlAutocompleteSyntaxError,
+            HtmlAutocompleteSyntaxState, HtmlAutocompleteValue, HtmlAutofillControlGroup,
+            HtmlAutofillField, HtmlAutofillFieldCategory, HtmlAutofillFieldIdentity,
+        },
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn raw(value: &str) -> Attribute {
@@ -721,7 +726,7 @@ fn missing_empty_and_unknown_defaults_keep_source_null_owner_unresolved() {
         let report = interpreter
             .control_autocomplete_for_input(
                 &KnownHtmlElement::Input.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 state,
             )
             .unwrap();
@@ -1111,7 +1116,7 @@ fn raw_admission_precedes_role_and_state_checks_while_zero_admits_empty() {
     let element = KnownHtmlElement::Textarea.qualified_name();
     assert!(
         interpreter
-            .control_autocomplete(&element, None::<&surgeist_html::Attribute>)
+            .control_autocomplete(&element, None::<&surgeist_html::values::Attribute>)
             .is_ok()
     );
     assert!(

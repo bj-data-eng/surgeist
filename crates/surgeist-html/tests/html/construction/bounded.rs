@@ -6,9 +6,19 @@ mod replace;
 use crate::html::support::{Cause, cause, has_cause, slots};
 use std::sync::Arc;
 use surgeist_html::{
-    DocumentString, HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
-    HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-    HtmlTemplateContentsKind, Namespace, OrderedAttributes, QualifiedName, bounded::*,
+    bounded::construction::{
+        HtmlConstructionActionDescription, HtmlConstructionAllocationRole,
+        HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode, HtmlConstructionCommand,
+        HtmlConstructionCommit, HtmlConstructionContent, HtmlConstructionGrowth,
+        HtmlConstructionLease, HtmlConstructionNode, HtmlConstructionReadyOperation,
+        HtmlConstructionRefusal, HtmlConstructionResult, HtmlConstructionRetirementDescription,
+        HtmlConstructionStorage, HtmlConstructionTextAppend,
+    },
+    construction::{
+        HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 fn storage() -> HtmlConstructionStorage {
@@ -1383,9 +1393,12 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
 
 #[test]
 fn element_creation_installs_supplied_link_history_only_in_atomic_ready_commit() {
-    for supplied in [None, Some(surgeist_html::HtmlLinkFlags::fresh())] {
+    for supplied in [
+        None,
+        Some(surgeist_html::elements::link::HtmlLinkFlags::fresh()),
+    ] {
         let (owner, _) = fragment(storage());
-        let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+        let attributes = OrderedAttributes::new([surgeist_html::values::Attribute::new(
             QualifiedName::new(Namespace::none(), None, "rel"),
             "stylesheet",
         )])
@@ -1434,7 +1447,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
         let owner = storage();
         let name = QualifiedName::new(namespace, None, local);
         let name_alias = name.local_name().shared_code_units().clone();
-        let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+        let attributes = OrderedAttributes::new([surgeist_html::values::Attribute::new(
             QualifiedName::new(Namespace::none(), None, "x"),
             "v",
         )])
@@ -1443,7 +1456,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
         let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateElement {
             name,
             attributes,
-            link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+            link_flags: Some(surgeist_html::elements::link::HtmlLinkFlags::fresh()),
         }));
         loop {
             let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
@@ -1489,7 +1502,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
 #[test]
 fn interrupted_element_creation_returns_original_command_without_publishing_a_node() {
     let (owner, root) = fragment(storage());
-    let attributes = OrderedAttributes::new([surgeist_html::Attribute::new(
+    let attributes = OrderedAttributes::new([surgeist_html::values::Attribute::new(
         QualifiedName::new(Namespace::none(), None, "href"),
         "x",
     )])
@@ -1498,7 +1511,7 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateElement {
         name: QualifiedName::new(Namespace::html(), None, "link"),
         attributes,
-        link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+        link_flags: Some(surgeist_html::elements::link::HtmlLinkFlags::fresh()),
     }));
     loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();

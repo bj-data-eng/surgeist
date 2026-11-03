@@ -1,7 +1,7 @@
 //! A recurring live candidate competes with a stream of one-use values.
 //! The collision controller selects one bucket; the driver uses public actions.
 use super::*;
-use crate::{Namespace, QualifiedName};
+use crate::{internal::values::Namespace, internal::values::QualifiedName};
 
 fn pay(remaining: &mut usize, work: HtmlValuePoolWork) {
     for amount in [

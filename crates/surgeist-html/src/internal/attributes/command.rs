@@ -161,8 +161,8 @@ impl HtmlValueInterpreter {
     /// Target resolution, command validity and activation are not performed.
     pub fn command(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlCommandReadback>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(COMMAND.metadata, element, raw);
@@ -200,8 +200,8 @@ impl HtmlValueInterpreter {
     /// Unchecked author-context observation until actual input state is supplied.
     pub fn popovertargetaction(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlPopoverTargetAction>, HtmlValueAdmissionError> {
         self.enumerated(&POPOVER_ACTION, element, raw)
     }
@@ -211,8 +211,8 @@ impl HtmlValueInterpreter {
     /// or apply the source's separate activation/effect rules.
     pub fn popovertargetaction_for_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<HtmlPopoverTargetAction>, HtmlValueAdmissionError> {
         self.enumerated_with_context(&POPOVER_ACTION, element, raw, SuppliedContext::Input(state))

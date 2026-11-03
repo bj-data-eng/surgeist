@@ -1,4 +1,16 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport,
+        encoding_label::{HtmlUtf8EncodingLabel, HtmlUtf8EncodingLabelError},
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter, Namespace,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 #[derive(Clone, Copy)]
 enum Role {

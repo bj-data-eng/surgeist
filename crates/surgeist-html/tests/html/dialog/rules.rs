@@ -1,9 +1,14 @@
 use surgeist_html::{
-    DocumentString, HtmlClosedBy, HtmlClosedByState, HtmlDialogAction as A, HtmlDialogCursor,
-    HtmlDialogEventSource as Source, HtmlDialogFreshState, HtmlDialogOperation as Op,
-    HtmlDialogOutcome as Outcome, HtmlDialogReply as R, HtmlDialogState as State,
-    HtmlDialogToggleDecision, HtmlDialogToggleEffect as T, KnownHtmlAttribute, Namespace,
-    computed_dialog_closed_by, dialog_attribute_operation, dialog_close_watcher_enabled,
+    attributes::{HtmlClosedBy, HtmlClosedByState},
+    elements::dialog::{
+        HtmlDialogAction as A, HtmlDialogCursor, HtmlDialogEventSource as Source,
+        HtmlDialogFreshState, HtmlDialogOperation as Op, HtmlDialogOutcome as Outcome,
+        HtmlDialogReply as R, HtmlDialogState as State, HtmlDialogToggleDecision,
+        HtmlDialogToggleEffect as T, computed_dialog_closed_by, dialog_attribute_operation,
+        dialog_close_watcher_enabled,
+    },
+    values::{DocumentString, Namespace},
+    vocabulary::KnownHtmlAttribute,
 };
 
 fn step(cursor: &mut HtmlDialogCursor, action: A, reply: R) {

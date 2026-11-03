@@ -92,7 +92,10 @@ enum ControlTextRole {
 }
 
 impl ControlTextRole {
-    fn metadata(self, element: &(impl crate::HtmlNameInput + ?Sized)) -> RuleMetadata {
+    fn metadata(
+        self,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+    ) -> RuleMetadata {
         let (attribute, rows, source): (_, &'static [u16], _) = match self {
             Self::Dirname => (
                 KnownHtmlAttribute::Dirname,
@@ -144,8 +147,8 @@ impl HtmlValueInterpreter {
     fn control_text_report<T>(
         &self,
         role: ControlTextRole,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
@@ -181,8 +184,8 @@ impl HtmlValueInterpreter {
 
     fn dirname_report(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAttributeReport<HtmlDirectionSubmissionName>, HtmlValueAdmissionError> {
         let mut result = self.control_text_report(ControlTextRole::Dirname, element, raw, state)?;
@@ -206,8 +209,8 @@ impl HtmlValueInterpreter {
 
     fn placeholder_report(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAttributeReport<DocumentString>, HtmlValueAdmissionError> {
         let mut result =
@@ -251,8 +254,8 @@ impl HtmlValueInterpreter {
     /// memory, work or cancellation accounting.
     pub fn dirname(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlDirectionSubmissionName>, HtmlValueAdmissionError> {
         self.dirname_report(element, raw, None)
     }
@@ -264,8 +267,8 @@ impl HtmlValueInterpreter {
     /// It does not execute input ignore rules or submission. Limits match dirname.
     pub fn dirname_for_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<HtmlDirectionSubmissionName>, HtmlValueAdmissionError> {
         self.dirname_report(element, raw, Some(state))
@@ -284,8 +287,8 @@ impl HtmlValueInterpreter {
     /// the per-value cap do not provide physical-memory/work/cancellation limits.
     pub fn placeholder(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<DocumentString>, HtmlValueAdmissionError> {
         self.placeholder_report(element, raw, None)
     }
@@ -298,8 +301,8 @@ impl HtmlValueInterpreter {
     /// executed, and resource limits are the same as placeholder.
     pub fn placeholder_for_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<DocumentString>, HtmlValueAdmissionError> {
         self.placeholder_report(element, raw, Some(state))

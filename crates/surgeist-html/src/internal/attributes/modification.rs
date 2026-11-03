@@ -6,8 +6,11 @@
 
 use super::*;
 use crate::{
-    HtmlDate, HtmlDateOrTime, HtmlDateWithOptionalTime, HtmlParsedGlobalDateTime,
-    HtmlValueRecoveryState, HtmlValueReport,
+    internal::microsyntax::temporal::HtmlDate, internal::microsyntax::temporal::HtmlDateOrTime,
+    internal::microsyntax::temporal::HtmlDateWithOptionalTime,
+    internal::microsyntax::temporal::HtmlParsedGlobalDateTime,
+    internal::values::interpretation::HtmlValueRecoveryState,
+    internal::values::interpretation::HtmlValueReport,
 };
 
 /// Why a present, applicable datetime supplies no modification timestamp.
@@ -121,8 +124,8 @@ impl HtmlValueInterpreter {
     /// Raw admission precedes applicability; wrong names do not run a grammar.
     pub fn modification_datetime(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlModificationDatetimeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let attribute = report(

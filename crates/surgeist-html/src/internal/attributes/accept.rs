@@ -4,7 +4,10 @@
 
 use super::*;
 use crate::internal::microsyntax::tokens::ascii_lowercase;
-use crate::{HtmlCommaSeparatedTokens, HtmlCommaToken, HtmlTokenError};
+use crate::{
+    internal::microsyntax::tokens::HtmlCommaSeparatedTokens,
+    internal::microsyntax::tokens::HtmlCommaToken, internal::microsyntax::tokens::HtmlTokenError,
+};
 use std::{collections::HashMap, error::Error, fmt};
 
 const RULE: RuleMetadata = RuleMetadata {
@@ -390,8 +393,8 @@ impl HtmlValueInterpreter {
     /// Retains token observations; effective hints require actual input state.
     pub fn input_accept(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
         self.input_accept_with_state(element, raw, None)
     }
@@ -399,16 +402,16 @@ impl HtmlValueInterpreter {
     /// This operation does not execute a picker, sniff files or validate MIME.
     pub fn input_accept_for_input(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
         self.input_accept_with_state(element, raw, Some(state))
     }
     fn input_accept_with_state(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;

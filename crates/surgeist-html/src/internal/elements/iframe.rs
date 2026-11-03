@@ -2,7 +2,9 @@
 //! HTML 877d6146487f #the-iframe-element, #lazy-load-resumption-steps and
 //! #child-navigables define these facts; resource effects remain with consumers.
 
-use crate::{HtmlBrowsingContextPresence, HtmlLoading};
+use crate::{
+    internal::attributes::HtmlLoading, internal::security::nonce::HtmlBrowsingContextPresence,
+};
 
 /// Source-first branch of processing iframe attributes, after child creation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

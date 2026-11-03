@@ -21,17 +21,15 @@
 
 pub(crate) mod interpretation;
 
-mod input_coordinate;
-
-pub use input_coordinate::{
-    HtmlInputTemporalCoordinate, HtmlInputTemporalCoordinateUnit, HtmlInputTemporalStepError,
-};
+pub(crate) mod input_coordinate;
 
 use crate::{
-    Attribute, DocumentString, KnownHtmlAttribute,
     internal::microsyntax::numeric::{
         HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger, borrowed_decimal_remainder,
     },
+    internal::values::Attribute,
+    internal::values::DocumentString,
+    vocabulary::KnownHtmlAttribute,
 };
 use std::{error::Error, fmt, num::NonZeroU32};
 

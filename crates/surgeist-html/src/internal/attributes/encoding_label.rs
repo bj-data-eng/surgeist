@@ -68,8 +68,8 @@ impl HtmlValueInterpreter {
     /// no work, cancellation or physical-memory admission is promised.
     pub fn form_accept_charset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlUtf8EncodingLabel>, HtmlValueAdmissionError> {
         self.encoding_label_report(
             RuleMetadata {
@@ -95,8 +95,8 @@ impl HtmlValueInterpreter {
     /// form_accept_charset; literal recognition supplies no enumerated fallback.
     pub fn meta_charset(
         &self,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlUtf8EncodingLabel>, HtmlValueAdmissionError> {
         self.encoding_label_report(
             RuleMetadata {
@@ -114,8 +114,8 @@ impl HtmlValueInterpreter {
     fn encoding_label_report(
         &self,
         rule: RuleMetadata,
-        element: &(impl crate::HtmlNameInput + ?Sized),
-        raw: Option<&impl crate::HtmlAttributeInput>,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlUtf8EncodingLabel>, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(rule, element, raw);

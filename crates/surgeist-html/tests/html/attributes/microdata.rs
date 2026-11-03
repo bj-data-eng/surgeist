@@ -1,4 +1,9 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenList},
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{DocumentString, HtmlValueInterpreter},
+    vocabulary::KnownHtmlAttribute,
+};
 
 // HTML 877d §5.2: exact Infra ASCII split, unique authored tokens, but only
 // itemprop processing removes later equal occurrences.

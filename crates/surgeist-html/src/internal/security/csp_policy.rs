@@ -1,11 +1,11 @@
 //! Neutral qualified Meta CSP transitions over caller-owned native artifacts.
 //! No CSP grammar, live policy registry, tree guard, or execution service lives here.
-use crate::DocumentString;
+use crate::internal::values::DocumentString;
 use std::{any::Any, error::Error, fmt, mem::size_of, sync::Arc};
 
-mod accounting;
-mod identity;
-mod transition;
+pub(crate) mod accounting;
+pub(crate) mod identity;
+pub(crate) mod transition;
 pub use accounting::*;
 pub use identity::*;
 pub use transition::*;

@@ -1,11 +1,27 @@
 #![forbid(unsafe_code)]
 
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAutocompleteContactHint,
-    HtmlAutocompleteCredential, HtmlAutocompleteCredentialOutcome, HtmlAutocompleteMode,
-    HtmlAutocompleteProcessingState, HtmlHashNameProcessing, HtmlIconSizeError, HtmlInputType,
-    HtmlValueInterpreter, HtmlWritingSuggestions, HtmlWritingSuggestionsState, KnownHtmlAttribute,
-    KnownHtmlElement, Namespace, QualifiedName, bounded::*,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAutocompleteContactHint, HtmlAutocompleteMode,
+        HtmlInputType, HtmlWritingSuggestions, HtmlWritingSuggestionsState,
+        autocomplete::{
+            HtmlAutocompleteCredential, HtmlAutocompleteCredentialOutcome,
+            HtmlAutocompleteProcessingState,
+        },
+        hash_name::HtmlHashNameProcessing,
+        token_declarations::HtmlIconSizeError,
+    },
+    bounded::attributes::{
+        HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationLimits,
+        HtmlAutocompleteMaterializationUsage, HtmlEmbeddedDimensionApplicability,
+        HtmlEmbeddedDimensionApplicabilityContext, HtmlEmbeddedDimensionEvidenceNeeded,
+        HtmlEmbeddedDimensionParent, HtmlHashNameScan, HtmlHashNameScanStep, HtmlIconSizeCursor,
+        HtmlIconSizeShape, HtmlTargetRecovery, autocomplete_materialization_work_bound,
+        embedded_dimension_applicability, input_readonly_applies,
+        stylesheet_link_context_work_bound,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn autocomplete_raw(value: impl Into<DocumentString>) -> Attribute {
@@ -152,7 +168,7 @@ fn hash_name_scan_separates_first_hash_read_from_report_retention() {
         (HtmlHashNameScan::BEGIN_WORK, HtmlHashNameScan::STEP_WORK),
         (1, 4)
     );
-    let missing = surgeist_html::HtmlHashNameReferenceReport::missing();
+    let missing = surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport::missing();
     assert_eq!(missing.raw(), None);
     assert_eq!(missing.processing(), HtmlHashNameProcessing::Missing);
 }
@@ -271,8 +287,11 @@ fn work_metadata_accompanies_existing_owner_checked_report_operations() {
     let id = Attribute::new(KnownHtmlAttribute::Id.qualified_name(), "actual-id");
     let is = Attribute::new(KnownHtmlAttribute::Is.qualified_name(), "x-submit");
     assert!(
-        surgeist_html::HtmlValueInterpreter::form_name_report_work_bound(&form, Some(&name))
-            .unwrap()
+        surgeist_html::values::HtmlValueInterpreter::form_name_report_work_bound(
+            &form,
+            Some(&name)
+        )
+        .unwrap()
             > 0
     );
     assert!(
@@ -283,7 +302,8 @@ fn work_metadata_accompanies_existing_owner_checked_report_operations() {
             .is_some()
     );
     assert!(
-        surgeist_html::HtmlValueInterpreter::map_name_report_work_bound(&map, Some(&name)).unwrap()
+        surgeist_html::values::HtmlValueInterpreter::map_name_report_work_bound(&map, Some(&name))
+            .unwrap()
             > 0
     );
     assert!(
@@ -294,7 +314,9 @@ fn work_metadata_accompanies_existing_owner_checked_report_operations() {
             .is_some()
     );
     assert!(
-        surgeist_html::HtmlValueInterpreter::id_report_work_bound(&button, Some(&id)).unwrap() > 0
+        surgeist_html::values::HtmlValueInterpreter::id_report_work_bound(&button, Some(&id))
+            .unwrap()
+            > 0
     );
     assert!(
         interpreter
@@ -304,8 +326,11 @@ fn work_metadata_accompanies_existing_owner_checked_report_operations() {
             .is_some()
     );
     assert!(
-        surgeist_html::HtmlValueInterpreter::is_attribute_report_work_bound(&button, Some(&is))
-            .unwrap()
+        surgeist_html::values::HtmlValueInterpreter::is_attribute_report_work_bound(
+            &button,
+            Some(&is)
+        )
+        .unwrap()
             > 0
     );
     assert!(

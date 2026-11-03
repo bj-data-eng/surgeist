@@ -2,7 +2,25 @@
 
 use crate::html::support::non_negative_integer as integer;
 use std::{cmp::Ordering, num::NonZeroU32};
-use surgeist_html::{DocumentString, HtmlInteger, HtmlNonNegativeRational, bounded::*};
+use surgeist_html::{
+    bounded::{
+        input::HtmlInputRangeNumber,
+        numeric::{
+            HtmlBestFiniteNumberCursor, HtmlFiniteDecimalIngressCursor,
+            HtmlFloatingPointAllocationError, HtmlFloatingPointGrammarCursor,
+            HtmlFloatingPointParseMode, HtmlIntegerPrefixScanner, HtmlIntegerRecoveryError,
+            HtmlIntegerUnitStep, HtmlIntegerUnitStepError, HtmlNaturalArithmeticError,
+            HtmlNaturalComparison, HtmlNaturalDifference, HtmlNaturalDigits, HtmlNaturalProduct,
+            HtmlNumericMaterializationError, HtmlNumericParseError, HtmlRangeBufferHeader,
+            HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericError,
+            HtmlRangeNumericHeaders, HtmlRangeNumericReply, HtmlRangeNumericRequest,
+            parse_integer_long, parse_nonnegative_integer_capped, try_floating_point_number,
+            try_parse_integer,
+        },
+    },
+    microsyntax::numeric::{HtmlInteger, HtmlNonNegativeRational},
+    values::DocumentString,
+};
 
 #[test]
 fn recovery_and_unit_steps_preserve_arbitrary_digits_and_report_capacity() {

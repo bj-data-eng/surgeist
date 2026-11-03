@@ -15,7 +15,7 @@ use std::{
     },
 };
 
-mod policy;
+pub(crate) mod policy;
 use policy::{Operation, Pool, State, Value};
 
 /// Known retained payload, excluding opaque Arc and allocator internals.

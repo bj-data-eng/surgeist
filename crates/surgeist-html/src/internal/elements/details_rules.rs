@@ -101,10 +101,10 @@ pub enum HtmlDetailsAttributeEffect {
 /// input; their contents are irrelevant to the open transition. This operation
 /// does not dispatch an event, certify a closed recipient domain or mutate a tree.
 pub fn details_attribute_effect(
-    namespace: &crate::Namespace,
+    namespace: &crate::internal::values::Namespace,
     attribute: HtmlDetailsAttribute,
-    old: Option<&crate::DocumentString>,
-    new: Option<&crate::DocumentString>,
+    old: Option<&crate::internal::values::DocumentString>,
+    new: Option<&crate::internal::values::DocumentString>,
 ) -> HtmlDetailsAttributeEffect {
     if namespace.uri().is_some() {
         return HtmlDetailsAttributeEffect::None;
