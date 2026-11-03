@@ -1798,7 +1798,7 @@ impl<'a> BorrowedDurationComponent<'a> {
         self.millisecond
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct BorrowedDurationCursor<'a> {
     cursor: Cursor<'a>,
     phase: TemporalPhase,
@@ -1831,11 +1831,19 @@ impl<'a> BorrowedDurationCursor<'a> {
             finished: false,
         }
     }
-    /// Each step can consume a run of T markers, whitespace and one component.
-    /// The same checked linear envelope covers the remaining run and its digit
-    /// zero/fraction checks. The caller polls before and after each step.
+    /// The envelope of the next step, which consumes the T markers and whitespace before one
+    /// component and then that component with the whitespace after it, or the trailing
+    /// whitespace of the last step. The step's scan visits each consumed unit a bounded number
+    /// of times (its digit zero/fraction checks included), so the checked linear envelope of
+    /// the consumed units covers it, and a duration of any number of components is charged
+    /// linearly in total. The measurement replays the step on a copy of the cursor, which
+    /// visits only the units that the step then consumes; a recognized plan cannot fail here.
+    /// The caller polls before and after each step.
     pub(crate) fn next_work_bound(&self) -> Option<usize> {
-        temporal_recognition_work_bound(self.cursor.input.len() - self.cursor.position)
+        let mut probe = self.clone();
+        let before = probe.cursor.position;
+        let _ = probe.next_component();
+        temporal_recognition_work_bound(probe.cursor.position.saturating_sub(before))
     }
     pub(crate) fn next_component(
         &mut self,
@@ -1998,7 +2006,7 @@ impl<'a> BorrowedDurationCursor<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Cursor<'a> {
     input: &'a [u16],
     position: usize,
