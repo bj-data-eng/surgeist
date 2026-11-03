@@ -363,9 +363,11 @@ fn duplicates_and_work(text: &str) -> (Vec<Option<usize>>, usize) {
 /// The `rel` value must be an unordered set of unique space-separated tokens
 /// (references/html-language-elements-text-links--877d6146487f--8833a85fd242.md:8471), an
 /// author conformance finding, so finding the earlier twin of each token must not compare
-/// every pair of tokens.
+/// every pair of tokens. Ordering the tokens costs n log n comparisons, so each doubling may
+/// multiply the charge by 2 * (1 + 1 / log2 n), about 2.2, plus jitter from the heap shape; the
+/// pairwise comparison multiplies it by four.
 #[test]
-fn rel_duplicate_detection_charge_grows_linearly_with_distinct_tokens() {
+fn rel_duplicate_detection_charge_grows_near_linearly_with_distinct_tokens() {
     let charges: Vec<usize> = [512, 1024, 2048, 4096]
         .into_iter()
         .map(|tokens| {
@@ -378,7 +380,30 @@ fn rel_duplicate_detection_charge_grows_linearly_with_distinct_tokens() {
         .collect();
     for pair in charges.windows(2) {
         assert!(
-            pair[1] * 10 <= pair[0] * 22,
+            pair[1] * 10 <= pair[0] * 26,
+            "doubling the tokens grew the charge from {} to {}: {charges:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+/// One token repeated is the other extreme: every comparison runs to the end of the token.
+#[test]
+fn rel_duplicate_detection_charge_grows_near_linearly_with_repeated_tokens() {
+    let charges: Vec<usize> = [512, 1024, 2048, 4096]
+        .into_iter()
+        .map(|tokens| {
+            let (duplicates, work) = duplicates_and_work(&"Stylesheet ".repeat(tokens));
+            assert_eq!(duplicates.len(), tokens);
+            assert_eq!(duplicates[0], None);
+            assert!(duplicates[1..].iter().all(|&twin| twin == Some(0)));
+            work
+        })
+        .collect();
+    for pair in charges.windows(2) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 26,
             "doubling the tokens grew the charge from {} to {}: {charges:?}",
             pair[0],
             pair[1]

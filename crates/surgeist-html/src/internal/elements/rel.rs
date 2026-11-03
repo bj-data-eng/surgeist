@@ -16,6 +16,7 @@ use crate::{
     internal::values::semantic_input::HtmlNameInput,
 };
 use controlled::HtmlRelInputs;
+use std::cmp::Ordering;
 
 /// HTML877d's historical flag, owned by the actual constructed link record.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -707,18 +708,113 @@ fn keyword_at<C: RelMeter>(units: &[u16], keyword: &str, m: &mut C) -> Result<bo
     }
     Ok(true)
 }
-fn equal_at<C: RelMeter>(a: &[u16], b: &[u16], m: &mut C) -> Result<bool, C::Error> {
+/// Orders two token spans of `units` by their ASCII-case-folded content. The charge is made
+/// before each unit pair is examined, so it is exactly the work done.
+fn compare_folded<C: RelMeter>(
+    units: &[u16],
+    a: &HtmlRelOccurrence,
+    b: &HtmlRelOccurrence,
+    m: &mut C,
+) -> Result<Ordering, C::Error> {
     m.work(1)?;
-    if a.len() != b.len() {
-        return Ok(false);
-    }
+    let (a, b) = (&units[a.start..a.end], &units[b.start..b.end]);
     for (a, b) in a.iter().zip(b) {
         m.work(3)?;
-        if ascii_lowercase(*a) != ascii_lowercase(*b) {
-            return Ok(false);
+        let order = ascii_lowercase(*a).cmp(&ascii_lowercase(*b));
+        if order != Ordering::Equal {
+            return Ok(order);
         }
     }
-    Ok(true)
+    Ok(a.len().cmp(&b.len()))
+}
+/// Restores the heap property below `root` among the first `end` items.
+fn sift_down<C: RelMeter>(
+    items: &mut [HtmlRelOccurrence],
+    mut root: usize,
+    end: usize,
+    m: &mut C,
+    order: &mut impl FnMut(&HtmlRelOccurrence, &HtmlRelOccurrence, &mut C) -> Result<Ordering, C::Error>,
+) -> Result<(), C::Error> {
+    loop {
+        m.work(1)?;
+        let Some(mut child) = root.checked_mul(2).and_then(|n| n.checked_add(1)) else {
+            return Ok(());
+        };
+        if child >= end {
+            return Ok(());
+        }
+        if child + 1 < end && order(&items[child], &items[child + 1], m)? == Ordering::Less {
+            child += 1;
+        }
+        if order(&items[root], &items[child], m)? != Ordering::Less {
+            return Ok(());
+        }
+        items.swap(root, child);
+        root = child;
+    }
+}
+/// Sorts in place under `order`, which charges its own work, without allocating. Every
+/// comparison moves its larger operand one level up the heap or ends a sift, so a comparison of
+/// two tokens is paid for by one of their lengths, and the total is O(total token units *
+/// log(tokens)) however the tokens are arranged.
+fn heap_sort<C: RelMeter>(
+    items: &mut [HtmlRelOccurrence],
+    m: &mut C,
+    mut order: impl FnMut(&HtmlRelOccurrence, &HtmlRelOccurrence, &mut C) -> Result<Ordering, C::Error>,
+) -> Result<(), C::Error> {
+    let len = items.len();
+    for root in (0..len / 2).rev() {
+        sift_down(items, root, len, m, &mut order)?;
+    }
+    for end in (1..len).rev() {
+        items.swap(0, end);
+        sift_down(items, 0, end, m, &mut order)?;
+    }
+    Ok(())
+}
+/// Sets `duplicate_of` of every `rel` token that an earlier token equals under ASCII case
+/// folding to the position of the first such token. The tokens are ordered by (folded content,
+/// position), so equal tokens are adjacent and the first of a run is the earliest; the
+/// positions are then restored by the (strictly increasing) offsets of the tokens. While the
+/// order is scrambled `duplicate_of` holds the offset of the run's first token, and the final
+/// pass replaces it by that token's position.
+fn mark_duplicates<C: RelMeter>(
+    units: &[u16],
+    occurrences: &mut [HtmlRelOccurrence],
+    m: &mut C,
+) -> Result<(), C::Error> {
+    heap_sort(occurrences, m, |a, b, m| {
+        Ok(compare_folded(units, a, b, m)?.then(a.start.cmp(&b.start)))
+    })?;
+    let mut first_start = None;
+    for index in 0..occurrences.len() {
+        m.work(1)?;
+        let same_run = index > 0
+            && compare_folded(units, &occurrences[index - 1], &occurrences[index], m)?
+                == Ordering::Equal;
+        if same_run {
+            occurrences[index].duplicate_of = first_start;
+        } else {
+            first_start = Some(occurrences[index].start);
+        }
+    }
+    heap_sort(occurrences, m, |a, b, m| {
+        m.work(1)?;
+        Ok(a.start.cmp(&b.start))
+    })?;
+    let search_steps = usize::BITS as usize + 1 - occurrences.len().leading_zeros() as usize;
+    for index in 0..occurrences.len() {
+        m.work(1)?;
+        if let Some(start) = occurrences[index].duplicate_of {
+            m.work(search_steps)?;
+            occurrences[index].duplicate_of = Some(
+                occurrences
+                    .binary_search_by_key(&start, |occurrence| occurrence.start)
+                    .expect("a run's first token is an occurrence"),
+            );
+        }
+    }
+    Ok(())
 }
 fn classify<C: RelMeter>(
     units: &[u16],
@@ -777,14 +873,6 @@ fn interpret<C: RelMeter>(
                     {
                         spelling = HtmlRelSpelling::ShortcutException;
                     }
-                    let mut duplicate_of = None;
-                    for (index, prior) in occurrences.iter().enumerate() {
-                        m.work(1)?;
-                        if equal_at(units, &raw.code_units()[prior.start..prior.end], m)? {
-                            duplicate_of = Some(index);
-                            break;
-                        }
-                    }
                     m.reserve_occurrences(occurrences)?;
                     m.work(1)?;
                     occurrences.push(HtmlRelOccurrence {
@@ -793,13 +881,14 @@ fn interpret<C: RelMeter>(
                         end,
                         keyword,
                         spelling,
-                        duplicate_of,
+                        duplicate_of: None,
                         registry_resolved: false,
                         effect: keyword.and_then(|k| input.role.and_then(|r| k.effect(r))),
                     });
                 }
             }
         }
+        mark_duplicates(raw.code_units(), occurrences, m)?;
     }
     if matches!(
         input.role,
