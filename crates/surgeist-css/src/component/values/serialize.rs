@@ -219,6 +219,7 @@ impl CssCanonicalBuilder {
             // Canonical output combines grammar tokens and multiple graphs. Its
             // origins are complete, but it has no single source component path space.
             component_paths: Box::new([]),
+            lookups: Default::default(),
         })
     }
 }
@@ -509,6 +510,7 @@ pub(super) fn serialize(
         segments: emitter.segments.into_boxed_slice(),
         end: CssSerializedOrigin::End(emitter.last_origin),
         component_paths: emitter.component_paths.into_boxed_slice(),
+        lookups: Default::default(),
     })
 }
 

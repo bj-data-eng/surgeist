@@ -177,6 +177,100 @@ fn block_at_rules_without_a_block_resolve_in_linear_work() {
     }
 }
 
+/// The components compared by lookups by path while `work` ran, and what it
+/// returned.
+fn compared<T>(work: impl FnOnce() -> T) -> (usize, T) {
+    crate::component::values::PATH_COMPARISONS.with(|compared| compared.set(0));
+    let result = work();
+    (
+        crate::component::values::PATH_COMPARISONS.with(std::cell::Cell::get),
+        result,
+    )
+}
+
+/// Constructing from `prefix`, `count` copies of `unit` and `suffix` as
+/// components, which `construct` accepts, locates positions and looks components
+/// up by path in proportion to the components, not to their product.
+fn assert_construction_linear(
+    prefix: &str,
+    unit: &str,
+    suffix: &str,
+    construct: impl Fn(crate::component::CssComponentValues) -> bool,
+) {
+    let mut previous: Option<(usize, usize)> = None;
+    for count in [100_usize, 200, 400] {
+        let text = format!("{prefix}{}{suffix}", unit.repeat(count));
+        let values = crate::component::CssComponentValues::parse(&parser(), &text).unwrap();
+        let (walked_bytes, (path_comparisons, accepted)) =
+            walked(|| compared(|| construct(values)));
+        assert!(accepted, "{unit:?} x {count} is constructed");
+        assert!(
+            walked_bytes <= bound(text.len(), count),
+            "{unit:?} x {count}: walked {walked_bytes} bytes of {}",
+            text.len()
+        );
+        // A lookup compares about as many paths as the binary logarithm of
+        // the components, and the construction looks up a few per unit.
+        assert!(
+            path_comparisons <= 16 * count * (usize::BITS - count.leading_zeros()) as usize,
+            "{unit:?} x {count}: compared {path_comparisons} paths"
+        );
+        if let Some((before_bytes, before_comparisons)) = previous {
+            // Doubling the count roughly doubles the work; a scan or a walk
+            // from the start for each lookup would multiply it by four.
+            assert!(
+                walked_bytes <= 3 * before_bytes,
+                "{unit:?} x {count}: {walked_bytes} bytes after {before_bytes}"
+            );
+            assert!(
+                path_comparisons <= 3 * before_comparisons,
+                "{unit:?} x {count}: {path_comparisons} comparisons after {before_comparisons}"
+            );
+        }
+        previous = Some((walked_bytes, path_comparisons));
+    }
+}
+
+#[test]
+fn media_queries_of_many_features_construct_in_linear_work() {
+    let limits = crate::component::CssComponentValueLimits::default();
+    for (unit, suffix) in [
+        ("(width: 1px) and ", "(height)"),
+        ("(width: 1px) or ", "(height)"),
+        ("(100px <= width <= 200px) and ", "(height)"),
+    ] {
+        assert_construction_linear("", unit, suffix, |values| {
+            crate::query::media::CssMediaQuery::try_from_components(values, limits).is_ok()
+        });
+        assert_construction_linear("", unit, suffix, |values| {
+            crate::query::CssCondition::<crate::query::media::CssMediaLeaf>::try_from_components(
+                values, limits,
+            )
+            .is_ok()
+        });
+    }
+}
+
+#[test]
+fn custom_media_preludes_of_many_features_construct_in_linear_work() {
+    let limits = crate::component::CssComponentValueLimits::default();
+    assert_construction_linear("--c ", "(width: 1px) and ", "(height)", |values| {
+        crate::rule::CssCustomMediaRule::try_from_components(values, limits).is_ok()
+    });
+}
+
+#[test]
+fn font_face_source_lists_of_many_members_construct_in_linear_work() {
+    let limits = crate::component::CssComponentValueLimits::default();
+    let kind = crate::rule::font_face::CssFontFaceDescriptorKind::from_css_name("src").unwrap();
+    assert_construction_linear("", "url(a) format(woff), ", "local(x)", |values| {
+        crate::rule::font_face::CssAuthoredFontFaceDescriptorValue::try_from_components(
+            kind, values, limits,
+        )
+        .is_ok()
+    });
+}
+
 #[test]
 fn rules_of_a_chain_that_are_out_of_place_resolve_in_linear_work() {
     assert_linear(

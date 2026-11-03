@@ -883,6 +883,8 @@ impl surgeist_css::component::CssSerializedValue
 pub fn surgeist_css::component::CssSerializedValue::as_css(&self) -> &str
 pub fn surgeist_css::component::CssSerializedValue::origin_at(&self, byte_offset: usize) -> core::option::Option<&surgeist_css::component::CssSerializedOrigin>
 pub fn surgeist_css::component::CssSerializedValue::segments(&self) -> &[surgeist_css::component::CssSerializedOriginSegment]
+impl core::fmt::Debug for surgeist_css::component::CssSerializedValue
+pub fn surgeist_css::component::CssSerializedValue::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::component::CssSimpleBlock
 impl surgeist_css::component::CssSimpleBlock
 pub const fn surgeist_css::component::CssSimpleBlock::closing_origin(&self) -> &surgeist_css::component::CssValueOrigin

@@ -110,6 +110,9 @@ impl<'a> NumericInputContext<'a> {
     pub(crate) fn position_in(&self, text: &str, offset: usize) -> CssSourcePosition {
         match self.ordinary() {
             Self::Parsed(snapshot) => snapshot.position_or_walk(offset),
+            Self::Components(_, serialized) if std::ptr::eq(text, serialized.as_css()) => {
+                serialized.position_at(offset)
+            }
             _ => CssSourcePosition::from_byte_offset_in(text, offset),
         }
     }
@@ -208,7 +211,7 @@ impl<'a> NumericInputContext<'a> {
                     return fallback;
                 };
 
-                crate::source::CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset)
+                serialized.position_at(offset)
             }
         }
     }
