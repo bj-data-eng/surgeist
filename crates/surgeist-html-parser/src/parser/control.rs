@@ -2382,6 +2382,17 @@ impl<T> OwnedVec<T> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.vector.get_mut(index))
     }
+    /// Admits one visit to the container and lends its admitted entries for editing in place.
+    /// The borrow grants no per-entry admission: the caller must charge every access, and the
+    /// entries can neither grow nor shrink.
+    pub(crate) fn as_mut_slice(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<&mut [T], HtmlParseStop> {
+        self.require_owner(control)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(&mut self.vector)
+    }
     /// Swaps two actual admitted fixed slots. No payload clone, allocation,
     /// logical-slot change, or mutable-vector escape is involved.
     pub(crate) fn swap_slots(

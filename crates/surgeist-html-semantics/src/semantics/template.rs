@@ -2,16 +2,21 @@
 //! This immutable captured operation does not execute content patching.
 use super::*;
 use crate::HtmlCapturedProcessingInstruction;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use surgeist_html::bounded::{
     lexical::{
         HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
         HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
-        HtmlPiPseudoAttributeNameKey as NameKey, HtmlPiPseudoAttributeReply as Reply,
+        HtmlPiPseudoAttributeReply as Reply,
     },
     template::{
         HtmlTemplateMarkerFirst as First, HtmlTemplateMarkerSiblings as Siblings,
         HtmlTemplateMarkerTarget as Target, template_marker_first,
+    },
+    values::{
+        HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
+        HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
     },
 };
 use surgeist_html::{
@@ -374,9 +379,9 @@ impl<'a> HtmlSemanticSession<'a> {
         // The index of committed names: a table at most half full of pair numbers plus one,
         // probed from a randomly keyed hash of the name, so that no input can choose names that
         // collide. It is reserved when the first name is complete and released with `names`.
-        let key = NameKey::new();
-        let slots = NameKey::table_slots(pi.data().len());
-        let mut table: Vec<usize> = Vec::new();
+        let hasher = NameHasher::new();
+        let slots = Cursor::name_index_slots(pi.data().len());
+        let mut table: Vec<Option<NonZeroUsize>> = Vec::new();
         let mut current = 0..0;
         let mut name_count = 0usize;
         let mut is_name = true;
@@ -441,52 +446,51 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     Action::FindName => {
                         if table.is_empty() {
-                            self.reserve_scratch(&mut table, slots)?;
-                            self.charge(slots)?;
-                            table.resize(slots, 0);
+                            self.reserve_scratch(&mut table, slots.get())?;
+                            self.charge(slots.get())?;
+                            table.resize(slots.get(), None);
                         }
                         let units = pi.data().code_units();
-                        let unavailable = |this: &mut Self| {
-                            this.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                        let Some(sought) = units.get(current.clone()) else {
+                            return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
                         };
-                        let sought = units
-                            .get(current.clone())
-                            .ok_or_else(|| unavailable(self))?;
                         self.charge(sought.len())?;
-                        let mut probe =
-                            key.probe(sought, slots).ok_or_else(|| unavailable(self))?;
-                        let found = loop {
-                            self.charge(1)?;
-                            let entry =
-                                *table.get(probe.slot()).ok_or_else(|| unavailable(self))?;
-                            if entry == 0 {
-                                *table
-                                    .get_mut(probe.slot())
-                                    .ok_or_else(|| unavailable(self))? = names.len() + 1;
-                                break None;
-                            }
-                            let existing = names
-                                .get(entry - 1)
-                                .and_then(|span| units.get(span.clone()))
-                                .ok_or_else(|| unavailable(self))?;
-                            let mut equal = existing.len() == sought.len();
-                            if equal {
+                        let mut index = NameTable::new(slots, &mut table).map_err(|_| {
+                            self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                        })?;
+                        let lookup = index.find_or_insert(
+                            hasher.hash(sought),
+                            names.len(),
+                            self,
+                            |session| session.charge(1),
+                            |session, pair| {
+                                let Some(existing) =
+                                    names.get(pair).and_then(|span| units.get(span.clone()))
+                                else {
+                                    return Ok(false);
+                                };
+                                if existing.len() != sought.len() {
+                                    return Ok(false);
+                                }
                                 for (left, right) in existing.iter().zip(sought) {
-                                    self.charge(1)?;
+                                    session.charge(1)?;
                                     if left != right {
-                                        equal = false;
-                                        break;
+                                        return Ok(false);
                                     }
                                 }
+                                Ok(true)
+                            },
+                        );
+                        Reply::Pair(match lookup {
+                            Ok(Lookup::Found(pair)) => Some(pair),
+                            Ok(Lookup::Inserted) => None,
+                            Err(IndexError::Consumer(failure)) => return Err(failure),
+                            Err(_) => {
+                                return Err(
+                                    self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                );
                             }
-                            if equal {
-                                break Some(entry - 1);
-                            }
-                            if !probe.advance() {
-                                return Err(unavailable(self));
-                            }
-                        };
-                        Reply::Pair(found)
+                        })
                     }
                     Action::NameLength(index) => {
                         self.charge(1)?;

@@ -3,14 +3,17 @@ use surgeist_html::bounded::{
         HtmlCustomNameScanAction as CustomAction, HtmlPiPseudoAttributeAction as PiAction,
         HtmlPiPseudoAttributeCursor as PiCursor, HtmlPiPseudoAttributeError as PiError,
         HtmlPiPseudoAttributeField as PiField, HtmlPiPseudoAttributeName as PiName,
-        HtmlPiPseudoAttributeNameKey as PiNameKey, HtmlPiPseudoAttributeReply as PiReply,
-        HtmlSpaceTokenCursor, HtmlSpaceTokenStep, is_ascii_whitespace,
-        validate_custom_element_name, validate_custom_element_name_with,
+        HtmlPiPseudoAttributeReply as PiReply, HtmlSpaceTokenCursor, HtmlSpaceTokenStep,
+        is_ascii_whitespace, validate_custom_element_name, validate_custom_element_name_with,
     },
     security::is_nonce_element,
     template::{
         HtmlTemplateMarkerFirst as MarkerFirst, HtmlTemplateMarkerSiblings,
         HtmlTemplateMarkerTarget, template_marker_first,
+    },
+    values::{
+        HtmlNameIndexHasher as PiNameHasher, HtmlNameIndexLookup as PiLookup,
+        HtmlNameIndexTable as PiNameTable,
     },
 };
 use surgeist_html::values::{
@@ -141,9 +144,9 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
     let mut pairs = Vec::<(Vec<u16>, Vec<u16>)>::new();
     let mut requests = 0;
     // The consumer's index of committed names: a table at most half full, probed from a keyed hash.
-    let key = PiNameKey::new();
-    let slots = PiNameKey::table_slots(units.len());
-    let mut table = vec![None::<usize>; slots];
+    let hasher = PiNameHasher::new();
+    let slots = PiCursor::name_index_slots(units.len());
+    let mut table = vec![None; slots.get()];
     while let Some(action) = cursor.action() {
         requests += 1;
         let reply = match action {
@@ -163,20 +166,22 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
                 }
                 PiReply::Ack
             }
-            PiAction::FindName => {
-                let mut probe = key.probe(&current.0, slots).unwrap();
-                let found = loop {
-                    match table[probe.slot()] {
-                        None => {
-                            table[probe.slot()] = Some(pairs.len());
-                            break None;
-                        }
-                        Some(pair) if pairs[pair].0 == current.0 => break Some(pair),
-                        Some(_) => assert!(probe.advance(), "a half-full table has an empty slot"),
-                    }
-                };
-                PiReply::Pair(found)
-            }
+            PiAction::FindName => PiReply::Pair(
+                match PiNameTable::new(slots, &mut table)
+                    .unwrap()
+                    .find_or_insert(
+                        hasher.hash(&current.0),
+                        pairs.len(),
+                        &mut (),
+                        |_| Ok::<_, std::convert::Infallible>(()),
+                        |_, pair| Ok(pairs[pair].0 == current.0),
+                    )
+                    .unwrap()
+                {
+                    PiLookup::Found(pair) => Some(pair),
+                    PiLookup::Inserted => None,
+                },
+            ),
             PiAction::NameLength(index) => PiReply::Length(pairs[index].0.len()),
             PiAction::NameUnit(name, offset) => PiReply::Unit(match name {
                 PiName::Current => current.0.get(offset).copied(),

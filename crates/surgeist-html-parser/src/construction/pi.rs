@@ -1,6 +1,7 @@
 //! DOM PI pseudo-attributes. XML-stylesheet 20101028 §3, XML 1.0 Fifth Edition
 //! productions 2–5 and 66 define this whole-string operation, not HTML recovery.
 use super::*;
+use std::num::NonZeroUsize;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
@@ -88,7 +89,11 @@ impl SessionStorage {
             HtmlPiPseudoAttributeAction as Action,
             HtmlPiPseudoAttributeCursor as HtmlParsePendingAssociationCursor,
             HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
-            HtmlPiPseudoAttributeNameKey as NameKey, HtmlPiPseudoAttributeReply as Reply,
+            HtmlPiPseudoAttributeReply as Reply,
+        };
+        use surgeist_html::bounded::values::{
+            HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
+            HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
@@ -106,8 +111,8 @@ impl SessionStorage {
         // The index of committed names: a table at most half full of pair numbers plus one,
         // probed from a randomly keyed hash of the name, so that no input can choose names that
         // collide. It exists once the first name is complete and is released with the fields.
-        let key = NameKey::new();
-        let mut table: Option<OwnedVec<usize>> = None;
+        let hasher = NameHasher::new();
+        let mut table: Option<OwnedVec<Option<NonZeroUsize>>> = None;
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -170,14 +175,14 @@ impl SessionStorage {
                         Reply::Ack
                     }
                     Action::FindName => {
-                        let slots = NameKey::table_slots(data_len);
+                        let slots = HtmlParsePendingAssociationCursor::name_index_slots(data_len);
                         if table.is_none() {
                             table = Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?);
-                            for _ in 0..slots {
+                            for _ in 0..slots.get() {
                                 table
                                     .as_mut()
                                     .ok_or(SessionError::WrongToken)?
-                                    .try_push_geometric_toward(c, 0, slots)?;
+                                    .try_push_geometric_toward(c, None, slots.get())?;
                             }
                         }
                         let current = name
@@ -188,56 +193,48 @@ impl SessionStorage {
                         for _ in current {
                             c.charge_unit_inspection()?;
                         }
-                        let mut probe = key
-                            .probe(current, slots)
-                            .ok_or_else(|| latch_registry_row(c))?;
-                        let found = loop {
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                            let bank = table.as_mut().ok_or(SessionError::WrongToken)?;
-                            let entry = *bank
-                                .as_slice()
-                                .get(probe.slot())
-                                .ok_or_else(|| latch_registry_row(c))?;
-                            let RetainedPayload::PiAttributes { values, .. } =
-                                self.payloads.row(c, map)?
-                            else {
-                                return Err(SessionError::WrongToken);
-                            };
-                            let Some(existing_pair) = entry.checked_sub(1) else {
-                                let next = values
-                                    .len()
-                                    .checked_add(1)
-                                    .ok_or_else(|| latch_registry_row(c))?;
-                                *bank
-                                    .get_mut(probe.slot(), c)?
-                                    .ok_or_else(|| latch_registry_row(c))? = next;
-                                break None;
-                            };
-                            let existing = values
-                                .as_slice()
-                                .get(existing_pair)
-                                .ok_or(SessionError::WrongToken)?
-                                .name
-                                .code_units();
-                            let mut equal = existing.len() == current.len();
-                            if equal {
+                        let RetainedPayload::PiAttributes { values, .. } =
+                            self.payloads.row(c, map)?
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        let bank = table
+                            .as_mut()
+                            .ok_or(SessionError::WrongToken)?
+                            .as_mut_slice(c)?;
+                        let mut index =
+                            NameTable::new(slots, bank).map_err(|_| latch_registry_row(c))?;
+                        let lookup = index.find_or_insert(
+                            hasher.hash(current),
+                            values.len(),
+                            c,
+                            |c| Ok(c.charge(HtmlParseWorkCategory::RecordVisit, 1)?),
+                            |c, pair| {
+                                let existing = values
+                                    .as_slice()
+                                    .get(pair)
+                                    .ok_or(SessionError::WrongToken)?
+                                    .name
+                                    .code_units();
+                                if existing.len() != current.len() {
+                                    return Ok(false);
+                                }
                                 for (left, right) in existing.iter().zip(current) {
                                     c.charge_unit_inspection()?;
                                     c.charge_unit_inspection()?;
                                     if left != right {
-                                        equal = false;
-                                        break;
+                                        return Ok(false);
                                     }
                                 }
-                            }
-                            if equal {
-                                break Some(existing_pair);
-                            }
-                            if !probe.advance() {
-                                return Err(latch_registry_row(c));
-                            }
-                        };
-                        Reply::Pair(found)
+                                Ok(true)
+                            },
+                        );
+                        Reply::Pair(match lookup {
+                            Ok(Lookup::Found(pair)) => Some(pair),
+                            Ok(Lookup::Inserted) => None,
+                            Err(IndexError::Consumer(error)) => return Err(error),
+                            Err(_) => return Err(latch_registry_row(c)),
+                        })
                     }
                     Action::NameLength(index) => {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

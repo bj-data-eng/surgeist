@@ -2,6 +2,8 @@
 //! XML-stylesheet 20101028 §3 and XML 1.0 Fifth Edition productions 2–5/66.
 //! The cursor owns no source, allocation, controller or retained field.
 
+use crate::internal::values::name_index::HtmlNameIndexSlots;
+
 /// The caller-owned field affected by a cursor action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlPiPseudoAttributeField {
@@ -51,12 +53,19 @@ pub enum HtmlPiPseudoAttributeAction {
         reference: bool,
     },
     /// The name of the pair being scanned is complete. Find the committed pair whose name
-    /// equals it, using the caller's own index of committed names, and reply with
-    /// `HtmlPiPseudoAttributeReply::Pair`: `Some(index)` of the committed pair, or `None` when no
-    /// committed pair has that name. The caller also records the name in its index for the
-    /// pair that `Commit` then adds, which takes the next index. The cursor verifies a
-    /// `Some` answer with `NameLength` and `NameUnit` against that one pair only, so the
-    /// requests of a scan grow with the pair count and the name units, not with their product.
+    /// equals it, using the caller's own index of committed names (see
+    /// [`HtmlNameIndexHasher`](crate::bounded::values::HtmlNameIndexHasher) and [`HtmlPiPseudoAttributeCursor::name_index_slots`]), and reply with `HtmlPiPseudoAttributeReply::Pair`:
+    /// `Some(index)` of the committed pair, or `None` when no committed pair has that name. The
+    /// caller also records the name in its index for the pair that `Commit` then adds, which
+    /// takes the next index. The cursor verifies a `Some` answer with `NameLength` and
+    /// `NameUnit` against that one pair only: a candidate with another name is not a duplicate,
+    /// and a candidate that is not a committed pair is an integrity failure. A `None` answer
+    /// is trusted and never verified, so a false `None` hides a duplicate. The index is never
+    /// consulted after `Pop` or `Discard`, because those occur only on the invalid path, so it
+    /// needs no removal. The requests of a scan grow with the pair count and the name units,
+    /// not with their product. The caller's cost for the index varies from scan to scan,
+    /// because the hash key is random: charge totals for a PI with several pairs differ from
+    /// run to run, though never beyond the table bound the caller admitted.
     FindName,
     /// Report the length, in UTF-16 code units, of the name of the committed pair at this index,
     /// to compare it with the name of the pair being scanned for a duplicate. Reply with
@@ -169,6 +178,13 @@ impl HtmlPiPseudoAttributeCursor {
             named: [0; 4],
             named_len: 0,
         }
+    }
+    /// The slot count of the index of committed names for pseudo-attribute data of `data_len`
+    /// code units, at most half full. A pair needs at least four code units (a name, `=` and two
+    /// quotes) and consecutive pairs are separated by at least one more, so the data holds at
+    /// most `data_len / 4 + 1` pairs.
+    pub fn name_index_slots(data_len: usize) -> HtmlNameIndexSlots {
+        HtmlNameIndexSlots::for_entries(data_len / 4 + 1)
     }
     /// Observes the pending action without advancing it; `None` is terminal.
     pub fn action(&self) -> Option<HtmlPiPseudoAttributeAction> {
@@ -581,80 +597,6 @@ impl HtmlPiPseudoAttributeCursor {
         Ok(())
     }
 }
-/// A random key and probe sequence for a consumer's index of committed pseudo-attribute names.
-///
-/// The consumer keeps a table of [`table_slots`](Self::table_slots) entries, each empty or naming a
-/// committed pair, and answers `HtmlPiPseudoAttributeAction::FindName` by probing it: it
-/// starts at [`probe`](Self::probe)'s first slot, compares the name of the pair in each
-/// occupied slot with the current name, takes the pair of an equal name as the answer,
-/// and, at an empty slot, records the current name's pair there and answers `None`.
-/// The table holds at most half as many names as it has slots, so a probe always reaches
-/// an empty slot, and the key is random for each instance, so no input can choose names
-/// that collide: the expected probes per lookup are constant. The consumer
-/// charges the table, the hash of the name and every probe and comparison it makes.
-#[derive(Clone, Debug)]
-pub struct HtmlPiPseudoAttributeNameKey {
-    state: std::hash::RandomState,
-}
-impl Default for HtmlPiPseudoAttributeNameKey {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl HtmlPiPseudoAttributeNameKey {
-    /// Creates a key that is random for this instance.
-    pub fn new() -> Self {
-        Self {
-            state: std::hash::RandomState::new(),
-        }
-    }
-    /// The number of slots, a power of two, that holds the names of any valid pseudo-attribute
-    /// string of `data_len` code units at most half full. A pair needs at least four code units
-    /// (a name, `=` and two quotes) and consecutive pairs are separated by at least one more, so a
-    /// string holds at most `data_len / 4 + 1` pairs. The count never exceeds 2^(usize::BITS - 1),
-    /// so the arithmetic cannot overflow; a table of that size is the consumer's reservation to
-    /// refuse.
-    pub fn table_slots(data_len: usize) -> usize {
-        ((data_len / 4 + 1) * 2).next_power_of_two()
-    }
-    /// The probe sequence of `name` over a table of `slots` entries. `None` when `slots` is
-    /// not a power of two.
-    pub fn probe(&self, name: &[u16], slots: usize) -> Option<HtmlPiPseudoAttributeNameProbe> {
-        use std::hash::BuildHasher;
-        if !slots.is_power_of_two() {
-            return None;
-        }
-        let mask = slots - 1;
-        Some(HtmlPiPseudoAttributeNameProbe {
-            slot: (self.state.hash_one(name) as usize) & mask,
-            mask,
-            remaining: slots,
-        })
-    }
-}
-/// The slots that a name visits in a table, from its hash onward and wrapping around once.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlPiPseudoAttributeNameProbe {
-    slot: usize,
-    mask: usize,
-    remaining: usize,
-}
-impl HtmlPiPseudoAttributeNameProbe {
-    /// The slot to inspect now.
-    pub fn slot(&self) -> usize {
-        self.slot
-    }
-    /// Moves to the next slot. Returns false, leaving the probe unchanged, once every slot has
-    /// been visited.
-    pub fn advance(&mut self) -> bool {
-        if self.remaining <= 1 {
-            return false;
-        }
-        self.remaining -= 1;
-        self.slot = (self.slot + 1) & self.mask;
-        true
-    }
-}
 fn xml_char(cp: u32) -> bool {
     matches!(cp,9|10|13|0x20..=0xd7ff|0xe000..=0xfffd|0x10000..=0x10ffff)
 }
@@ -925,38 +867,20 @@ mod tests {
         );
     }
     #[test]
-    fn name_probes_visit_every_slot_once_and_tables_hold_all_pairs_at_most_half_full() {
-        let key = HtmlPiPseudoAttributeNameKey::new();
-        assert!(key.probe(&[97], 0).is_none());
-        assert!(key.probe(&[97], 6).is_none());
-        for slots in [1_usize, 2, 8, 64] {
-            let mut probe = key.probe(&[97, 98], slots).unwrap();
-            let mut seen = vec![probe.slot()];
-            while probe.advance() {
-                seen.push(probe.slot());
-            }
-            assert!(!probe.advance());
-            seen.sort_unstable();
-            assert_eq!(seen, (0..slots).collect::<Vec<_>>());
-        }
-        assert_eq!(
-            [0, 3, 4, 8, 12, 1000].map(HtmlPiPseudoAttributeNameKey::table_slots),
-            [2, 2, 4, 8, 8, 512]
-        );
-        assert_eq!(
-            HtmlPiPseudoAttributeNameKey::table_slots(usize::MAX),
-            1 << (usize::BITS - 1)
-        );
-        // The densest string, one-unit names with empty values, has len / 4 + 1 pairs at most.
+    fn name_index_slots_hold_every_pair_count_at_most_half_full() {
+        // The densest string, short names with empty values, has at most len / 4 + 1 pairs.
         for pairs in 1..40_usize {
-            let names: Vec<String> = (0..pairs).map(|n| format!("n{n}")).collect();
-            let source: String = names
-                .iter()
-                .map(|n| format!("{n}=''"))
+            let source: String = (0..pairs)
+                .map(|n| format!("n{n}=''"))
                 .collect::<Vec<_>>()
                 .join(" ");
-            let slots = HtmlPiPseudoAttributeNameKey::table_slots(source.encode_utf16().count());
-            assert!(2 * pairs <= slots, "{pairs} pairs in {slots} slots");
+            let len = source.encode_utf16().count();
+            let slots = HtmlPiPseudoAttributeCursor::name_index_slots(len);
+            assert!(
+                2 * pairs <= slots.get(),
+                "{pairs} pairs in {} slots",
+                slots.get()
+            );
         }
     }
 }

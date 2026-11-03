@@ -3,8 +3,12 @@ use std::sync::atomic::AtomicBool;
 use surgeist_html::bounded::lexical::{
     HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
     HtmlPiPseudoAttributeError as CursorError, HtmlPiPseudoAttributeField as Field,
-    HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeNameKey as NameKey,
-    HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point, is_xml_name_start_code_point,
+    HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point,
+    is_xml_name_start_code_point,
+};
+use surgeist_html::bounded::values::{
+    HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
+    HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
 };
 
 use crate::store::source::{
@@ -13,6 +17,7 @@ use crate::store::source::{
 };
 use crate::{DomError, store::SharedVec};
 use std::mem::size_of;
+use std::num::NonZeroUsize;
 use surgeist_html::values::DocumentString;
 
 /// Canonical PI target, CharacterData and the map derived from that exact data.
@@ -285,17 +290,20 @@ fn release_scratch(buffer: Vec<u16>, budget: Option<&Formation>) -> Result<(), D
     Ok(())
 }
 
-/// Cursor requests served by `parse_attributes` on this thread, for work-growth tests.
+// Cursor requests served by `parse_attributes` on this thread, for work-growth tests.
 #[cfg(test)]
 thread_local! {
     static PI_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-fn release_table(table: Vec<usize>, budget: Option<&Formation>) -> Result<(), DomError> {
+fn release_table(
+    table: Vec<Option<NonZeroUsize>>,
+    budget: Option<&Formation>,
+) -> Result<(), DomError> {
     let payload = Payload {
         bytes: table
             .capacity()
-            .checked_mul(size_of::<usize>())
+            .checked_mul(size_of::<Option<NonZeroUsize>>())
             .ok_or(DomError::RepresentationExhausted)?,
         units: 0,
     };
@@ -320,9 +328,9 @@ fn parse_attributes(
     // The index of committed names: a table at most half full of pair numbers plus one, probed from
     // a randomly keyed hash of the name, so that no input can choose names that collide. It is
     // reserved when the first name is complete, under the same custody as the other banks.
-    let key = NameKey::new();
-    let slots = NameKey::table_slots(data.len());
-    let mut table: Vec<usize> = Vec::new();
+    let hasher = NameHasher::new();
+    let slots = Cursor::name_index_slots(data.len());
+    let mut table: Vec<Option<NonZeroUsize>> = Vec::new();
     while let Some(action) = cursor.action() {
         formation::step(budget, cancelled)?;
         #[cfg(test)]
@@ -368,48 +376,51 @@ fn parse_attributes(
                     #[cfg(test)]
                     let observed =
                         source_observation::before(&name, &value, &pairs, budget.is_some());
-                    formation::reserve(&mut table, slots, budget, cancelled)?;
-                    table.resize(slots, 0);
+                    formation::reserve(&mut table, slots.get(), budget, cancelled)?;
+                    for _ in 0..slots.get() {
+                        formation::step(budget, cancelled)?;
+                    }
+                    table.resize(slots.get(), None);
                     #[cfg(test)]
                     source_observation::grew(
                         observed,
-                        table.capacity() * std::mem::size_of::<usize>(),
+                        table.capacity() * std::mem::size_of::<Option<NonZeroUsize>>(),
                         0,
                     );
                 }
                 for _ in 0..name.len() {
                     formation::step(budget, cancelled)?;
                 }
-                let mut probe = key
-                    .probe(&name, slots)
-                    .expect("the table has a power-of-two slot count");
-                let found = loop {
-                    formation::step(budget, cancelled)?;
-                    let entry = table[probe.slot()];
-                    if entry == 0 {
-                        table[probe.slot()] = pairs.len() + 1;
-                        break None;
-                    }
-                    let existing = pairs[entry - 1].0.code_units();
-                    let mut equal = existing.len() == name.len();
-                    if equal {
-                        for (left, right) in existing.iter().zip(&name) {
+                let mut index = NameTable::new(slots, &mut table)
+                    .map_err(|_| DomError::RepresentationExhausted)?;
+                let lookup = index.find_or_insert(
+                    hasher.hash(&name),
+                    pairs.len(),
+                    &mut (),
+                    |_| formation::step(budget, cancelled),
+                    |_, pair| {
+                        let Some((existing, _)) = pairs.get(pair) else {
+                            return Ok(false);
+                        };
+                        if existing.len() != name.len() {
+                            return Ok(false);
+                        }
+                        for (left, right) in existing.code_units().iter().zip(&name) {
                             formation::step(budget, cancelled)?;
                             if left != right {
-                                equal = false;
-                                break;
+                                return Ok(false);
                             }
                         }
-                    }
-                    if equal {
-                        break Some(entry - 1);
-                    }
-                    assert!(
-                        probe.advance(),
-                        "a table at most half full has an empty slot"
-                    );
-                };
-                Reply::Pair(found)
+                        Ok(true)
+                    },
+                );
+                Reply::Pair(match lookup {
+                    Ok(Lookup::Found(pair)) => Some(pair),
+                    Ok(Lookup::Inserted) => None,
+                    Err(IndexError::Consumer(error)) => return Err(error),
+                    // The table is sized from the data length, which bounds its pairs.
+                    Err(IndexError::Full) => return Err(DomError::RepresentationExhausted),
+                })
             }
             Action::NameLength(index) => Reply::Length(pairs[index].0.len()),
             Action::NameUnit(which, offset) => Reply::Unit(Some(match which {
