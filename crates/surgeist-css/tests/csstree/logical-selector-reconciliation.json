@@ -10,7 +10,7 @@
     "crates/surgeist-css/src/parser/recovery.rs comma_member_span: nonempty member own span; empty member following comma else preceding comma; zero-width only when no adjacent comma exists",
     "crates/surgeist-css/tests/support/csstree_adapters.rs:116-130 raw selector adapters have empty prefix/suffix; :515 payload is prefix length through prefix plus original byte length; :1300-1370 is/where/not/has registry routes select raw Selector front door",
     "crates/surgeist-css/tests/support/csstree.rs:2197 observation_from_report computes relation against complete payload; :2251 each raw diagnostic multiplicity is 1; :2707 relation contract demands offset strictly before payload end for intersects, not before recovery-span end",
-    "cssparser-0.37.0 parser.rs:646 stop-before and nested block EOF; rules_and_declarations are not used to wrap these selector fragments"
+    "CSS Syntax 3 (2026-10-01) sections 5.5.9 and 5.5.10 (consume a simple block, consume a function) end a nested block at <EOF-token> without its closing token; the rule and declaration algorithms (sections 5.5.2 to 5.5.6) are not used to wrap these selector fragments"
   ],
   "rows": [
     {

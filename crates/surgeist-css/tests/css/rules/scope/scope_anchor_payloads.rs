@@ -303,7 +303,8 @@ fn scope_boundary_parenthesis_and_functions_share_the_structural_ceiling() {
         };
         assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
         assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        // cssparser's function token starts after the pseudo-class colon.
+        // The `is(` function token starts after the colon token (CSS Syntax 3
+        // sections 4.3.1 and 4.3.4).
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
             prefix.len() + 255 * 4 + 1

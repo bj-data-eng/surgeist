@@ -14,7 +14,7 @@
     "queries.rs:98-193 recovers one media list member as Never and preserves member_start/member_end; :567 resets failed keyword probes, preserving trivia in spans; :633 identifies unsupported operand token origin.",
     "mod.rs:2710 and :2802 select import clauses using detached probes and replay recovery only for the selected candidate. Invalid trailing string uses no optional clauses, at the original target-end cursor 14; recovery spans 14..21 and identifies string byte 15.",
     "recovery.rs:413 creates UnexpectedEnd at EOF with zero-width EOF span for retained implicit block closures.",
-    "cssparser-0.37.0 parser.rs expect macro saves pre-token location, next skips whitespace, and stop-before delimiters report bounded EOF; rules_and_declarations.rs:424/455 implement single-rule and missing-block handling."
+    "CSS Syntax 3 (2026-10-01) section 5.4.6 (parse a rule) discards leading whitespace before it reads the next token, so a failed unit starts at that token, and makes anything after the one rule a syntax error; sections 5.5.2 and 5.5.3 (consume an at-rule, consume a qualified rule) reach <EOF-token> before a block, which ends the unit at the end of the input."
   ],
   "rows": [
     {

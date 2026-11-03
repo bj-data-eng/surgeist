@@ -580,4 +580,4 @@ impl Drop for Control<'_> {
 }
 
 #[cfg(test)]
-mod frozen_meter_tests;
+mod meter_tests;

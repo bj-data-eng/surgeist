@@ -36,7 +36,7 @@
         "src/parser/recovery.rs scan_nested_tokens, finish_report",
         "src/error.rs selector_basic, invalid_selector_at, resolve_source, next_authored_token_at",
         "src/component_values/parse.rs collect_one",
-        "locked cssparser0.37.0 src/parser.rs expect! macro, expect_exhausted",
+        "Selectors 4 (WD 2026-01-22) sections 7.1 and 7.2 (the :dir() and :lang() arguments end the function); CSS Syntax 3 (2026-10-01) section 4.3.1 (whitespace is a token)",
         "tests/support/csstree.rs ExpectedClass, ExpectedUnsupportedPolicy, UnsupportedReason, observation_from_report, payload_relation_holds",
         "tests/support/csstree_adapters.rs Adapter::wrap"
       ],
@@ -3001,7 +3001,7 @@
       "diagnostic_count": 1,
       "static_source_rationale": [
         "Raw parse_selector, single=true, applies the unmodified complete source with the named ns namespace. selector_fragment rejects atomically; fragments::reject spans bytes 0..input.len(), emits RejectInput and does not retain EOF-closure diagnostics on failure. All inputs are ASCII.",
-        "One identifier component is retained internally, then parse_function_pseudo_class::expect_exhausted rejects the adjacent identifier. cssparser initially records the cursor before whitespace; Error::resolve_source/next_authored_token_at skips that whitespace and pairs the encountered Ident with the second identifier at byte9. No outer syntax is retained."
+        "One identifier component is retained internally, then parse_function_pseudo_class requires the argument to end: the :dir() argument is a single identifier (Selectors 4 (WD 2026-01-22) section 7.1), so the adjacent identifier is rejected. Whitespace is a token of its own (CSS Syntax 3 (2026-10-01) section 4.3.1), so the encountered token is the second identifier at byte9, after the whitespace token at byte8. No outer syntax is retained."
       ],
       "uncertainties": [],
       "original_expectation": {
@@ -3516,7 +3516,7 @@
       "diagnostic_count": 1,
       "static_source_rationale": [
         "Raw parse_selector, single=true, applies the unmodified complete source with the named ns namespace. selector_fragment rejects atomically; fragments::reject spans bytes 0..input.len(), emits RejectInput and does not retain EOF-closure diagnostics on failure. All inputs are ASCII.",
-        "One identifier component is retained internally, then parse_function_pseudo_class::expect_exhausted rejects the adjacent identifier. cssparser initially records the cursor before whitespace; Error::resolve_source/next_authored_token_at skips that whitespace and pairs the encountered Ident with the second identifier at byte9. No outer syntax is retained."
+        "One identifier component is retained internally, then parse_function_pseudo_class requires the argument to end: the :lang() arguments are language ranges separated by commas (Selectors 4 (WD 2026-01-22) section 7.2), so the adjacent identifier is rejected. Whitespace is a token of its own (CSS Syntax 3 (2026-10-01) section 4.3.1), so the encountered token is the second identifier at byte9, after the whitespace token at byte8. No outer syntax is retained."
       ],
       "uncertainties": [],
       "original_expectation": {
