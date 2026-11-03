@@ -10,11 +10,17 @@
 /// nullable result of get-the-focusable-area; the adapter retains the exact value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusingFallback {
+    /// The invocation was run without a fallback target.
     Omitted,
+    /// The invocation was run with a fallback target, which is used when getting the
+    /// focusable area returns null.
     Supplied,
 }
+/// The read, effect or called algorithm that the adapter must fulfill next for
+/// the focusing steps of HTML 6.6.4 (Processing model).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusingAction {
+    /// Read whether the new focus target is already a focusable area.
     ReadInitialTargetFocusableArea,
     /// Complete get-the-focusable-area for the actual current target, forwarding
     /// the original trigger IF supplied. Omission remains omission and therefore
@@ -24,7 +30,9 @@ pub enum HtmlFocusingAction {
     /// Set the current target to the exact original fallback once. Do not run
     /// get-the-focusable-area again or normalize/re-resolve that supplied value.
     UseFallbackTarget,
+    /// Read whether the new focus target is a navigable container.
     ReadTargetIsNavigableContainer,
+    /// Read whether the navigable container's content navigable is nonnull.
     ReadContentNavigable,
     /// Replace the current target with the actual content navigable's active
     /// Document; do not substitute a viewport or preserve the old area kind.
@@ -52,27 +60,45 @@ pub enum HtmlFocusingAction {
     /// and actual current target. Its callbacks/publications are not implemented
     /// by producing this action or by reaching a previous source stage.
     RunFocusUpdate,
+    /// The focusing steps are finished, whether or not focus changed. No reply is
+    /// accepted afterward.
     Complete,
 }
+/// Observations and acknowledgments for the focusing cursor. Each reply answers
+/// exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusingReply {
+    /// Whether the new focus target is a focusable area.
     InitialTargetFocusableArea(bool),
     /// The actual completed get-area call's nullable return, retained as target.
     ResolvedTargetPresent(bool),
+    /// Whether the new focus target is a navigable container.
     TargetIsNavigableContainer(bool),
+    /// Whether the container's content navigable is nonnull.
     ContentNavigablePresent(bool),
+    /// Whether the new focus target, after any resolution, fallback or replacement,
+    /// is a focusable area.
     ReplacementTargetFocusableArea(bool),
+    /// Whether the DOM anchor of the new focus target is inert.
     ActualAnchorInert(bool),
     /// Existing current-area child completed and its actual nullable result is
     /// retained by the original adapter. This does not answer the identity test.
     CurrentlyFocusedAreaReady,
+    /// Whether the new focus target is the currently focused area of the
+    /// top-level traversable.
     SameTarget(bool),
+    /// The current focus chain was produced and retained as the old chain.
     CurrentFocusChainReady,
+    /// The focus chain of the new focus target was produced and retained as the new
+    /// chain.
     FocusChainReady,
+    /// The focus update steps finished.
     FocusUpdateCompleted,
     /// Actual fallback installation or content-Document replacement completed.
     Applied,
 }
+/// Why a focusing cursor refused a reply, queried through `is_*` predicates. The
+/// cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFocusingError {
     kind: HtmlFocusingErrorKind,
@@ -133,12 +159,16 @@ pub struct HtmlFocusingCursor {
     fallback: HtmlFocusingFallback,
 }
 impl HtmlFocusingCursor {
+    /// Starts the focusing steps. `fallback` records whether the invocation supplied
+    /// a fallback target.
     pub const fn new(fallback: HtmlFocusingFallback) -> Self {
         Self {
             pending: HtmlFocusingAction::ReadInitialTargetFocusableArea,
             fallback,
         }
     }
+    /// Returns the read, effect or called algorithm that must be fulfilled before
+    /// the next reply.
     pub const fn action(&self) -> HtmlFocusingAction {
         self.pending
     }

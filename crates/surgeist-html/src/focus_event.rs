@@ -9,10 +9,13 @@
 /// original event-name operand of fire-a-focus-event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventName {
+    /// The `blur` event, fired at an entry of the old focus chain.
     Blur,
+    /// The `focus` event, fired at an entry of the new focus chain.
     Focus,
 }
 impl HtmlFocusEventName {
+    /// Returns the exact event name, `"blur"` or `"focus"`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Blur => "blur",
@@ -25,20 +28,27 @@ impl HtmlFocusEventName {
 /// not classify a focusable area's anchor in place of that event target.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventTargetKind {
+    /// The event target is an element.
     Element,
+    /// The event target is a `Window` object.
     Window,
 }
+/// Where the `view` attribute of the event comes from.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventView {
+    /// The target itself, a `Window` object.
     TargetWindow,
+    /// The relevant global object of the target element's node document.
     ElementDocumentGlobal,
 }
 /// Required interface of the source event constructor, distinct from Event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventInterface {
+    /// The event uses the `FocusEvent` interface.
     FocusEvent,
 }
 
+/// The capture or dispatch the adapter must fulfill next for fire a focus event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventAction {
     /// Retain the actual original Window target itself as view.
@@ -52,14 +62,24 @@ pub enum HtmlFocusEventAction {
     /// and its callbacks before replying Dispatched. Flags are source values,
     /// including the false bubbles/cancelable defaults.
     Dispatch {
+        /// The interface to construct the event with.
         interface: HtmlFocusEventInterface,
+        /// The source of the event's `view` attribute.
         view: HtmlFocusEventView,
+        /// The `bubbles` attribute of the event. The algorithm does not set it, so it is
+        /// `false`.
         bubbles: bool,
+        /// The `cancelable` attribute of the event. The algorithm does not set it, so it
+        /// is `false`.
         cancelable: bool,
+        /// The `composed` flag of the event, which the algorithm sets.
         composed: bool,
     },
+    /// Fire a focus event is finished. No reply is accepted afterward.
     Complete,
 }
+/// Acknowledgments for the fire a focus event cursor. Each reply answers exactly
+/// the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusEventReply {
     /// Only the pending view capture actually completed.
@@ -67,6 +87,8 @@ pub enum HtmlFocusEventReply {
     /// The exact actual event dispatch and its incurred work completed.
     Dispatched,
 }
+/// Why a fire-a-focus-event cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFocusEventError {
     kind: HtmlFocusEventErrorKind,
@@ -126,6 +148,8 @@ pub struct HtmlFocusEventCursor {
     pending: HtmlFocusEventAction,
 }
 impl HtmlFocusEventCursor {
+    /// Starts fire a focus event of HTML 6.6.4 (Processing model). The target kind
+    /// selects how `view` is captured.
     pub const fn new(target_kind: HtmlFocusEventTargetKind) -> Self {
         Self {
             pending: match target_kind {
@@ -136,6 +160,7 @@ impl HtmlFocusEventCursor {
             },
         }
     }
+    /// Returns the capture or dispatch that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlFocusEventAction {
         self.pending
     }

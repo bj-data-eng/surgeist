@@ -12,7 +12,10 @@ pub struct HtmlCspOwner {
 /// Why a distinct Document association shares an existing immutable artifact.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCspAssociationCause {
+    /// The adapter installed the source association's policy artifact into a distinct
+    /// Document.
     Installation,
+    /// The distinct Document inherited the source association's policy artifact.
     Inheritance,
 }
 
@@ -27,9 +30,14 @@ pub struct HtmlCspAssociationOrigin {
     )>,
 }
 impl HtmlCspAssociationOrigin {
+    /// Returns the Document whose initial association this association descends
+    /// from. It is unchanged by any number of transfers.
     pub fn original_document(&self) -> &HtmlCspDocumentId {
         &self.original
     }
+    /// Returns the Document and association generation that the artifact was taken
+    /// from, with the transfer cause, or `None` for an initial association. Only the
+    /// latest transfer is kept, not a chain.
     pub fn transferred_from(
         &self,
     ) -> Option<(
@@ -54,21 +62,35 @@ pub struct HtmlCspAssociation {
     origin: HtmlCspAssociationOrigin,
 }
 impl HtmlCspAssociation {
+    /// Returns the Document this association belongs to.
     pub fn document(&self) -> &HtmlCspDocumentId {
         &self.document
     }
+    /// Returns the current generation of this association. It starts at 0 and
+    /// advances by one for every published meta change, so a stale generation
+    /// identifies an outdated request.
     pub fn generation(&self) -> &HtmlCspAssociationGeneration {
         &self.generation
     }
+    /// Returns the immutable policy state in force for this Document.
     pub fn policy(&self) -> &HtmlCspPolicyState {
         &self.policy
     }
+    /// Returns the qualification of the latest published meta insertion, or `None`
+    /// when none has been published.
     pub fn latest(&self) -> Option<&HtmlMetaCspQualification> {
         self.latest.as_ref()
     }
+    /// Returns the bounded provenance of this association.
     pub fn origin(&self) -> &HtmlCspAssociationOrigin {
         &self.origin
     }
+    /// Returns the native storage and disposal bounds that this association retains,
+    /// including its policy state and latest qualification.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when the sum overflows `usize`.
     pub fn retained_layout(&self) -> Result<HtmlCspArtifactLayout, HtmlCspProtocolError> {
         association_layout(&self.policy, self.latest.as_ref())
     }
@@ -88,20 +110,35 @@ fn association_layout(
 /// Fixed HTML Meta processing vocabulary; callers cannot select other modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaCspSource {
+    /// The policy came from a `meta` element, the source that the Content security
+    /// policy state of HTML 4.2.5.3 (Pragma directives) passes to Content Security
+    /// Policy parsing.
     Meta,
 }
+/// The disposition that the Content security policy state of HTML 4.2.5.3 (Pragma
+/// directives) passes to Content Security Policy parsing of a `meta` element.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaCspDisposition {
+    /// The parsed policy is enforced on the Document.
     Enforce,
 }
+/// A directive that the Content security policy state of HTML 4.2.5.3 (Pragma
+/// directives) removes from a policy parsed from a `meta` element before it is
+/// enforced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaCspRemovedDirective {
+    /// The `report-uri` directive.
     ReportUri,
+    /// The `frame-ancestors` directive.
     FrameAncestors,
+    /// The `sandbox` directive.
     Sandbox,
 }
+/// What caused a meta policy request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaCspTrigger {
+    /// The `meta` element was inserted into a Document, the only trigger this
+    /// protocol attests.
     Insertion,
 }
 
@@ -120,36 +157,52 @@ struct QualificationRecord {
     content: DocumentString,
 }
 impl HtmlMetaCspQualification {
+    /// Returns the Document that the `meta` element was inserted into.
     pub fn document(&self) -> &HtmlCspDocumentId {
         &self.0.document
     }
+    /// Returns the association generation that was current when the insertion was
+    /// reached. A publication against any other generation is stale.
     pub fn generation(&self) -> &HtmlCspAssociationGeneration {
         &self.0.generation
     }
+    /// Returns the identity of the policy state that was in force at the insertion.
     pub fn prior_policy(&self) -> &HtmlCspPolicyId {
         &self.0.prior_policy
     }
+    /// Returns the revision of the policy state that was in force at the insertion.
     pub fn prior_revision(&self) -> HtmlCspPolicyRevision {
         self.0.prior_revision
     }
+    /// Returns the profile of the processor this request was qualified for.
     pub fn processor(&self) -> &HtmlCspProcessorProfile {
         &self.0.processor
     }
+    /// Returns the unique identity of the reached insertion. It is never reused and
+    /// is not execution authority by itself.
     pub fn occurrence(&self) -> &HtmlMetaCspOccurrence {
         &self.0.occurrence
     }
+    /// Returns the exact `content` attribute value in UTF-16 code units, never
+    /// trimmed or normalized. It is nonempty, because the Content security policy
+    /// state returns without a policy for an empty value.
     pub fn content(&self) -> &DocumentString {
         &self.0.content
     }
+    /// Returns the fixed policy source, always `meta`.
     pub fn source(&self) -> HtmlMetaCspSource {
         HtmlMetaCspSource::Meta
     }
+    /// Returns the fixed disposition, always enforce.
     pub fn disposition(&self) -> HtmlMetaCspDisposition {
         HtmlMetaCspDisposition::Enforce
     }
+    /// Returns the fixed trigger, always insertion.
     pub fn trigger(&self) -> HtmlMetaCspTrigger {
         HtmlMetaCspTrigger::Insertion
     }
+    /// Returns the directives that the processor must remove from the parsed policy
+    /// before enforcing it, in source order.
     pub fn removed_directives(&self) -> [HtmlMetaCspRemovedDirective; 3] {
         [
             HtmlMetaCspRemovedDirective::ReportUri,
@@ -176,12 +229,21 @@ pub struct HtmlMetaCspRequest {
     prior: HtmlCspPolicyState,
 }
 impl HtmlMetaCspRequest {
+    /// Returns the qualification that binds this request to its reached insertion
+    /// and exact content.
     pub fn qualification(&self) -> &HtmlMetaCspQualification {
         &self.qualification
     }
+    /// Returns the policy state in force at the insertion. The processor reads it,
+    /// and an unchanged result shares it.
     pub fn prior_policy(&self) -> &HtmlCspPolicyState {
         &self.prior
     }
+    /// Returns the native storage and disposal bounds that this request retains.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when the sum overflows `usize`.
     pub fn retained_layout(&self) -> Result<HtmlCspArtifactLayout, HtmlCspProtocolError> {
         HtmlCspArtifactLayout::inline::<Self>(10)
             .add(self.prior.retained_layout())?
@@ -197,12 +259,21 @@ pub struct HtmlMetaCspPrepared {
     policy: HtmlCspPolicyState,
 }
 impl HtmlMetaCspPrepared {
+    /// Returns the qualification of the request that was processed. Publication
+    /// requires it to be the request's own qualification.
     pub fn qualification(&self) -> &HtmlMetaCspQualification {
         &self.qualification
     }
+    /// Returns the resulting policy state, which is the prior state when the
+    /// processing left the policy unchanged.
     pub fn policy(&self) -> &HtmlCspPolicyState {
         &self.policy
     }
+    /// Returns the native storage and disposal bounds that this result retains.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when the sum overflows `usize`.
     pub fn retained_layout(&self) -> Result<HtmlCspArtifactLayout, HtmlCspProtocolError> {
         prepared_layout(&self.policy, &self.qualification)
     }
@@ -224,6 +295,13 @@ pub struct HtmlCspProcessorAuthority {
     policy_serial: u64,
 }
 impl HtmlCspProcessorAuthority {
+    /// Creates an issuer for one external backend after `admit` accepts its retained
+    /// layout.
+    ///
+    /// # Errors
+    ///
+    /// Returns the interruption when `admit` refuses, or the protocol cause when the
+    /// layout is not representable.
     pub fn new_with<E>(
         admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
     ) -> Result<Self, HtmlCspError<E>> {
@@ -356,6 +434,14 @@ impl HtmlCspProcessorAuthority {
 }
 
 impl HtmlCspOwner {
+    /// Creates an owner after `admit` accepts its retained layout. It has no
+    /// Documents until [`initial_document_with`](Self::initial_document_with) or
+    /// [`associate_document_with`](Self::associate_document_with) issues them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the interruption when `admit` refuses, or the protocol cause when the
+    /// layout is not representable.
     pub fn new_with<E>(
         admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
     ) -> Result<Self, HtmlCspError<E>> {
@@ -373,6 +459,8 @@ impl HtmlCspOwner {
             occurrence_serial: 0,
         })
     }
+    /// Returns the identity that every Document, occurrence and association issued by
+    /// this owner carries. Tokens from another owner are refused as foreign.
     pub fn identity(&self) -> &HtmlCspOwnerId {
         &self.identity
     }
@@ -639,12 +727,19 @@ pub struct HtmlMetaCspReceipt {
     policy: HtmlCspPolicyState,
 }
 impl HtmlMetaCspReceipt {
+    /// Returns the qualification of the insertion that this publication processed.
     pub fn qualification(&self) -> &HtmlMetaCspQualification {
         &self.qualification
     }
+    /// Returns the policy state that the publication installed.
     pub fn policy(&self) -> &HtmlCspPolicyState {
         &self.policy
     }
+    /// Returns the native storage and disposal bounds that this receipt retains.
+    ///
+    /// # Errors
+    ///
+    /// Returns the representation-exhausted cause when the sum overflows `usize`.
     pub fn retained_layout(&self) -> Result<HtmlCspArtifactLayout, HtmlCspProtocolError> {
         receipt_layout(&self.policy, &self.qualification)
     }
@@ -682,9 +777,11 @@ pub struct HtmlMetaCspCompletion {
     prepared: HtmlMetaCspPrepared,
 }
 impl HtmlMetaCspCompletion {
+    /// Returns the receipt describing the published change.
     pub fn receipt(&self) -> &HtmlMetaCspReceipt {
         &self.receipt
     }
+    /// Returns the association that the publication replaced.
     pub fn retired(&self) -> &HtmlCspAssociation {
         &self.retired
     }
@@ -721,11 +818,30 @@ impl HtmlMetaCspPublication<'_> {
             prepared,
         }
     }
+    /// Discards the prepared change and returns the request and prepared result
+    /// unchanged. The association is not modified.
     pub fn abort(self) -> (HtmlMetaCspRequest, HtmlMetaCspPrepared) {
         (self.request, self.prepared)
     }
 }
 impl HtmlCspOwner {
+    /// Validates that the request and prepared result still apply to `current` and
+    /// admits, through `admit`, the storage that publishing retains, without changing
+    /// `current`.
+    ///
+    /// The prepared change holds both borrows, so nothing can change the owner or
+    /// association before [`publish`](HtmlMetaCspPublication::publish) or
+    /// [`abort`](HtmlMetaCspPublication::abort).
+    ///
+    /// # Errors
+    ///
+    /// On refusal the request and prepared result come back in
+    /// [`HtmlCspRejected::retained`]. The cause is a protocol violation when the
+    /// request, result or association belong to different owners or Documents, when
+    /// the prepared result does not answer this request, when `current` is a newer
+    /// generation than the request saw, when the policy in force is no longer the
+    /// request's prior policy, when a profile differs, or when the generation cannot
+    /// advance. It is the interruption when `admit` refuses.
     pub fn prepare_publication_with<'a, E>(
         &'a mut self,
         current: &'a mut HtmlCspAssociation,

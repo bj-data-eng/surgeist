@@ -8,7 +8,10 @@
 /// identity returned by FindFocusDelegate; this value carries no Node identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogFocusControl {
+    /// The dialog itself is the control: it has the `autofocus` attribute, or it has
+    /// no focus delegate.
     Subject,
+    /// The dialog's focus delegate is the control.
     Delegate,
 }
 
@@ -17,28 +20,33 @@ pub enum HtmlDialogFocusControl {
 pub enum HtmlDialogFocusingAction {
     /// Fulfill the allow-focus steps for the subject's actual node Document.
     ReadAllowFocus,
+    /// Read whether the dialog has the `autofocus` attribute.
     ReadAutofocus,
     /// Find the actual focus delegate of the subject, retaining it when nonnull.
     FindFocusDelegate,
     /// Run the called focusing steps for the selected actual control, with no
     /// fallback target or focus trigger supplied by this Dialog algorithm.
     RunFocusingSteps {
+        /// The control that the focusing steps run for.
         control: HtmlDialogFocusControl,
     },
     /// After focusing returns, retain the selected control's node navigable's
     /// top-level traversable's actual active Document as topDocument.
     CaptureControlTopDocument {
+        /// The control whose node navigable's top-level traversable supplies `topDocument`.
         control: HtmlDialogFocusControl,
     },
     /// Compare the selected control's then-current node Document origin with
     /// the retained topDocument origin, using actual same-origin semantics.
     ReadSameOrigin {
+        /// The control whose node document origin is compared with `topDocument`'s.
         control: HtmlDialogFocusControl,
     },
     /// Empty the retained topDocument's actual autofocus candidates.
     EmptyAutofocusCandidates,
     /// Set the retained topDocument's autofocus processed flag to literal true.
     SetAutofocusProcessed,
+    /// The dialog focusing steps are finished. No reply is accepted afterward.
     Complete,
 }
 
@@ -46,13 +54,21 @@ pub enum HtmlDialogFocusingAction {
 /// acknowledges completed called focusing or autofocus writes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogFocusingReply {
+    /// Whether the allow focus steps return true for the subject's node document.
     AllowFocus(bool),
+    /// Whether the dialog has the `autofocus` attribute.
     Autofocus(bool),
+    /// Whether the dialog's focus delegate is nonnull.
     FocusDelegatePresent(bool),
+    /// Whether the control's node document's origin is the same as the origin of
+    /// `topDocument`.
     SameOrigin(bool),
+    /// The pending focusing or autofocus write was fulfilled.
     Applied,
 }
 
+/// Why a Dialog focusing cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlDialogFocusingError {
     kind: HtmlDialogFocusingErrorKind,
@@ -113,12 +129,15 @@ pub struct HtmlDialogFocusingCursor {
     control: HtmlDialogFocusControl,
 }
 impl HtmlDialogFocusingCursor {
+    /// Starts at the allow focus read, the first of the dialog focusing steps of HTML
+    /// 4.11.4 (The dialog element).
     pub const fn new() -> Self {
         Self {
             pending: HtmlDialogFocusingAction::ReadAllowFocus,
             control: HtmlDialogFocusControl::Subject,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlDialogFocusingAction {
         self.pending
     }
@@ -177,6 +196,8 @@ pub struct HtmlDialogSubjectFocusFacts {
     /// Actual inert attribute interpretation on the subject itself. Ancestor
     /// inertness is insufficient: a modal Dialog escapes its ancestors' inertness.
     pub own_inert: Option<bool>,
+    /// Whether the subject is its Document's document element. `None` means
+    /// unavailable.
     pub is_document_element: Option<bool>,
     /// Whether the subject has a shadow root whose delegates-focus flag is true.
     pub has_delegating_focus_root: Option<bool>,
@@ -186,7 +207,11 @@ pub struct HtmlDialogSubjectFocusFacts {
 /// Dialog focusing: control topDocument/origin/autofocus steps still remain.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDialogSubjectFocusingDecision {
+    /// Focusing the subject cannot change focus, so the called focusing steps need
+    /// not run.
     NoChange,
+    /// The facts do not prove that focusing is a no-op, so an actual focusing service
+    /// must run.
     NeedsActualFocusing,
 }
 

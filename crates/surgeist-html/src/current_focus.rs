@@ -10,8 +10,13 @@
 /// about the separately reached final focused-area read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusedAreaKind {
+    /// The candidate Document has no focused area.
     Null,
+    /// The candidate Document's focused area is a navigable container, so the loop
+    /// may descend into its content navigable.
     NavigableContainer,
+    /// The candidate Document's focused area is non-null and is not a navigable
+    /// container.
     OtherArea,
 }
 
@@ -19,8 +24,12 @@ pub enum HtmlFocusedAreaKind {
 /// CandidateDocument is a real result, not a fabricated nullable Element.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCurrentlyFocusedAreaOutcome {
+    /// The traversable lacks system focus, so the result is null.
     Null,
+    /// The candidate Document has no focused area, so the Document itself is the
+    /// result.
     CandidateDocument,
+    /// The candidate Document's focused area is non-null, so that area is the result.
     CandidateFocusedArea,
 }
 
@@ -46,6 +55,7 @@ pub enum HtmlCurrentlyFocusedAreaAction {
     /// actual nonnull area for the result; never reuse the loop predicate or
     /// project this observation to an Element/DOM anchor.
     ReadResultFocusedArea,
+    /// The query is finished with this result. No reply is accepted afterward.
     Complete(HtmlCurrentlyFocusedAreaOutcome),
 }
 
@@ -53,13 +63,20 @@ pub enum HtmlCurrentlyFocusedAreaAction {
 /// False is an actual negative, never an unavailable observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCurrentlyFocusedAreaReply {
+    /// Whether the traversable has system focus.
     SystemFocus(bool),
+    /// The classification of the candidate Document's focused area at the loop test.
     LoopFocusedArea(HtmlFocusedAreaKind),
+    /// Whether the container's content navigable is nonnull.
     ContentNavigablePresent(bool),
+    /// Whether the candidate's focused area at the final test is nonnull.
     ResultFocusedAreaPresent(bool),
+    /// The pending capture was fulfilled.
     Applied,
 }
 
+/// Why a currently-focused-area cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCurrentlyFocusedAreaError {
     kind: HtmlCurrentlyFocusedAreaErrorKind,
@@ -120,11 +137,14 @@ pub struct HtmlCurrentlyFocusedAreaCursor {
     pending: HtmlCurrentlyFocusedAreaAction,
 }
 impl HtmlCurrentlyFocusedAreaCursor {
+    /// Starts the currently focused area algorithm of HTML 6.6.2 (Data model) for a
+    /// top-level traversable. The first action reads system focus.
     pub const fn new() -> Self {
         Self {
             pending: HtmlCurrentlyFocusedAreaAction::ReadSystemFocus,
         }
     }
+    /// Returns the read or capture that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlCurrentlyFocusedAreaAction {
         self.pending
     }

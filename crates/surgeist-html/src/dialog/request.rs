@@ -56,26 +56,38 @@ impl std::error::Error for HtmlCloseWatcherStateError {}
 /// retains identities and admits/executes each effect before acknowledging it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCloseWatcherRequestAction {
+    /// Read whether the close watcher is active, that is, whether its Window's close
+    /// watcher manager contains it in some group.
     ReadActive,
+    /// Read the result of the close watcher's get enabled state.
     ReadEnabled,
+    /// Read the close watcher's is running cancel action flag.
     ReadRunningCancelAction,
     /// Retain the request's actual Window for group/history reads and consumption.
     CaptureWindow,
     /// Request uses its captured Window; called Close reads the watcher's Window
     /// afresh. Neither observation can reuse a pre-dispatch activity result.
     ReadWindowFullyActive,
+    /// Read the size of the Window's close watcher manager groups and its allowed
+    /// number of groups.
     ReadManagerGroups,
+    /// Read whether the captured Window has history-action activation.
     ReadHistoryActionActivation,
     /// Use checked begin/finish on the original invocation's retained state,
     /// even when its manager membership was removed during cancel dispatch.
     SetRunningCancelAction(bool),
     /// Run the actual cancel action and report its actual shouldContinue value.
     RunCancelAction {
+        /// The `canPreventClose` argument: whether the cancel action's result can stop
+        /// the close.
         can_prevent_close: bool,
     },
+    /// Consume history-action user activation for the captured Window, as the
+    /// request does when the cancel action prevents the close.
     ConsumeHistoryActionActivation,
     /// Remove this watcher from all actual manager groups and remove empty groups.
     DestroyMembership,
+    /// Run the watcher's close action after it has been destroyed.
     RunCloseAction,
     /// True is the source return, not evidence that RunCloseAction was reached.
     Complete(bool),
@@ -84,18 +96,32 @@ pub enum HtmlCloseWatcherRequestAction {
 /// Known source observations. Allowed groups is intrinsically at least one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCloseWatcherRequestReply {
+    /// Whether the close watcher is active.
     Active(bool),
+    /// Whether the close watcher's get enabled state returned true.
     Enabled(bool),
+    /// Whether the close watcher's is running cancel action flag is set.
     RunningCancelAction(bool),
+    /// Whether the Window's associated Document is fully active.
     WindowFullyActive(bool),
+    /// The size of the close watcher manager's groups and its allowed number of
+    /// groups.
     ManagerGroups {
+        /// The number of groups in the Window's close watcher manager.
         groups: usize,
+        /// The manager's allowed number of groups, which is at least 1.
         allowed_groups: NonZeroUsize,
     },
+    /// Whether the Window has history-action activation.
     HistoryActionActivation(bool),
+    /// The cancel action's `shouldContinue` result. `false` is only valid when
+    /// `canPreventClose` was `true`.
     CancelActionResult(bool),
+    /// The pending effect was fulfilled.
     Applied,
 }
+/// Why a close-watcher request cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCloseWatcherRequestError {
     kind: HtmlCloseWatcherRequestErrorKind,
@@ -171,6 +197,8 @@ pub struct HtmlCloseWatcherRequestCursor {
     should_continue: bool,
 }
 impl HtmlCloseWatcherRequestCursor {
+    /// Starts a request to close with the given `requireHistoryActionActivation`
+    /// argument. The first pending action is the active read.
     pub const fn new(require_history_action_activation: bool) -> Self {
         Self {
             pending: HtmlCloseWatcherRequestAction::ReadActive,
@@ -180,6 +208,8 @@ impl HtmlCloseWatcherRequestCursor {
             should_continue: false,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
+    /// After `Complete`, it returns the final result.
     pub const fn action(&self) -> HtmlCloseWatcherRequestAction {
         self.pending
     }
