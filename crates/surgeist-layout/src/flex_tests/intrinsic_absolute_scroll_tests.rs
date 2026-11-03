@@ -781,60 +781,102 @@ fn fri07_c01_intrinsic_recomputation_tree<S: LayoutScalar>(
         .measured(2)
 }
 
-fn assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation<S: LayoutScalar>() {
-    let scenarios = [
-        (
-            FlexBasisOf::<S>::MIN_CONTENT,
-            MeasurementAvailableOf::MIN_CONTENT,
-        ),
-        (
-            FlexBasisOf::<S>::MAX_CONTENT,
-            MeasurementAvailableOf::MAX_CONTENT,
-        ),
-    ];
-    let observed = scenarios
-        .iter()
-        .map(|(flex_basis, _)| {
-            let tree = fri07_c01_intrinsic_recomputation_tree(flex_basis.clone());
-            let batch = compute_layout(&tree, 1, fri07_c01_intrinsic_request())
-                .expect("intrinsic flex basis remains supported through final layout");
-            let requests = tree
-                .leaf_requests(2)
-                .into_iter()
-                .map(|input| {
-                    (
-                        input.known_content_size().width,
-                        input.available_content_size().width,
-                    )
-                })
-                .collect::<Vec<_>>();
-            (requests, fri07_c01_intrinsic_output(&batch, 2).size.width)
-        })
-        .collect::<Vec<_>>();
-    let expected = scenarios
-        .into_iter()
-        .map(|(_, expected)| {
-            (
-                vec![
-                    (None, expected),
-                    (Some(S::from_f64(200.0)), expected),
-                    (None, expected),
-                ],
-                S::from_f64(200.0),
-            )
-        })
-        .collect::<Vec<_>>();
-
+fn assert_fri07_c01_allocated_provider_space<S: LayoutScalar>(
+    flex_basis: FlexBasisOf<S>,
+    intrinsic: MeasurementAvailableOf<S>,
+    known_width: Option<S>,
+) {
+    let tree = fri07_c01_intrinsic_recomputation_tree(flex_basis);
+    let batch = compute_layout(&tree, 1, fri07_c01_intrinsic_request())
+        .expect("a genuine intrinsic basis supports actual grown allocation");
+    let requests = tree.leaf_requests(2);
+    assert!(
+        requests.iter().any(|input| {
+            input.known_content_size().width.is_none()
+                && input.available_content_size().width == intrinsic
+        }),
+        "the authored basis still issues a genuine {intrinsic:?} native query; requests={requests:?}"
+    );
     assert_eq!(
-        observed, expected,
-        "the provider must receive each selected intrinsic main-axis constraint for initial, cross-recomputation, and final requests while grown final geometry remains 200px",
+        fri07_c01_intrinsic_output(&batch, 2).size.width,
+        S::from_f64(200.0),
+        "actual Flex growth allocates child2 width200 independently of its basis"
+    );
+    // An intrinsic basis selects the base. Actual allocated width200 supplies
+    // normal content space even when the leaf's known-content field is cleared.
+    let allocated = MeasurementAvailableOf::definite(S::from_f64(200.0)).unwrap();
+    assert!(
+        requests.iter().any(|input| {
+            input.known_content_size().width == known_width
+                && input.available_content_size().width == allocated
+        }),
+        "allocated200 with known-content width{known_width:?} must issue normal definite200 space; basis={intrinsic:?}; requests={requests:?}"
     );
 }
 
 #[test]
-fn fri07_c01_intrinsic_public_layout_retains_provider_constraint_through_final_layout() {
-    assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation::<f32>();
-    assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation::<f64>();
+fn fri07_c01_min_basis_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MIN_CONTENT,
+        MeasurementAvailableOf::MIN_CONTENT,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_min_basis_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MIN_CONTENT,
+        MeasurementAvailableOf::MIN_CONTENT,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_max_basis_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MAX_CONTENT,
+        MeasurementAvailableOf::MAX_CONTENT,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_max_basis_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MAX_CONTENT,
+        MeasurementAvailableOf::MAX_CONTENT,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_min_basis_without_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MIN_CONTENT,
+        MeasurementAvailableOf::MIN_CONTENT,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_min_basis_without_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MIN_CONTENT,
+        MeasurementAvailableOf::MIN_CONTENT,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_max_basis_without_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MAX_CONTENT,
+        MeasurementAvailableOf::MAX_CONTENT,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_max_basis_without_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MAX_CONTENT,
+        MeasurementAvailableOf::MAX_CONTENT,
+        None,
+    );
 }
 
 fn assert_fri07_c01_intrinsic_leaf_geometry<S: LayoutScalar>() {
