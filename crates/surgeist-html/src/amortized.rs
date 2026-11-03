@@ -109,6 +109,22 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_larger_target_still_makes_room_for_the_needed_record() {
+        // A target of `usize::MAX` records of eight bytes exceeds `isize::MAX` bytes, so
+        // `try_reserve_exact` refuses it as a capacity overflow before any allocator call. The
+        // single record that is needed must still be reserved.
+        let mut values: Vec<u64> = vec![1, 2, 3];
+        values.resize(values.capacity(), 0);
+        let before = values.clone();
+        let full = values.len();
+        assert!(values.try_reserve_exact(usize::MAX - full).is_err());
+        assert_eq!(values.capacity(), full);
+        assert_eq!(reserve_to(&mut values, usize::MAX), Ok(()));
+        assert!(values.capacity() > full);
+        assert_eq!(values, before);
+    }
+
+    #[test]
     fn reserving_the_next_record_grows_exactly() {
         let mut values: Vec<u8> = Vec::new();
         reserve_to(&mut values, 1).unwrap();
