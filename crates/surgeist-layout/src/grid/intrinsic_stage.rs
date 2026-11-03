@@ -927,6 +927,7 @@ pub(super) enum GridIntrinsicProbeKind {
 #[derive(Clone, Debug)]
 pub(super) struct IntrinsicSubgridSource<'input, Node, S: LayoutScalar> {
     item: SubgridItemReport<Node>,
+    parent_baseline_references: crate::GridBaselineReferences,
     child_style: GridItemProjection<'input, S>,
     container: GridContainerProjection<'input, S>,
     area: GridArea<S>,
@@ -970,6 +971,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             .map_err(SubgridChildContextError::MinimumFunctions)?;
         Ok(Self {
             item: source.item,
+            parent_baseline_references: source.parent_baseline_references,
             child_style: source.child_style.clone(),
             container: source
                 .child_container_style
@@ -1004,6 +1006,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
     {
         let source = SubgridChildParentContextInput {
             item: self.item,
+            parent_baseline_references: self.parent_baseline_references,
             child_style: &self.child_style,
             child_container_style: Some(self.container),
             area: self.area,

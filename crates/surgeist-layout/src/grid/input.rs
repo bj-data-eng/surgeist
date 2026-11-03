@@ -34,6 +34,7 @@ impl<S: LayoutScalar> GridOverflowFacts for GridContainerProjection<'_, S> {
 pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) baseline_references: crate::GridBaselineReferences,
     pub(super) item_is_replaced: bool,
     pub(super) item_is_table: bool,
     pub(super) box_sizing: BoxSizing,
@@ -100,6 +101,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            baseline_references: input.grid_baseline_references,
             item_is_replaced: input.item_is_replaced,
             item_is_table: input.item_is_table,
             box_sizing: input.box_sizing,

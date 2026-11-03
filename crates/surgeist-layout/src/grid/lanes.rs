@@ -1364,6 +1364,10 @@ where
                     GridTrackSpan::new(start + 1, start + wrapper_span + 1),
                     gap,
                     SubgridInheritedAxisSource {
+                        baseline_reference: grid_baseline_reference(
+                            grid.style.baseline_references,
+                            axis,
+                        ),
                         geometry: Some(&geometry),
                         allocated: match axis {
                             GridAxisKind::Column => grid.query.columns,
@@ -2389,6 +2393,7 @@ where
             .nested_container_input(source_index)
             .map(GridContainerInput::projection);
         let child_context_input = SubgridChildParentContextInput {
+            parent_baseline_references: style.baseline_references,
             minimum_functions,
             item: *subgrid_report
                 .items
@@ -2449,6 +2454,8 @@ where
             SizingRequestOf::new(available, constants.child_orthogonal_fallback),
         )
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
+        let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
+            .map_err(|error| grid_baseline_error(node, child, error))?;
         let (mut output, executed_baselines) = if child_context_input.item.column.can_inherit()
             || child_context_input.item.row.can_inherit()
         {
@@ -2534,14 +2541,20 @@ where
             || child_flow_axes
                 .line_under_edge(item.unresolved_margin)
                 .is_none();
-        let baseline_participation = baseline_participation_for_container(
+        let baseline_participation = grid_baseline_participation(
+            if grid_axis_for_grid_lanes(style) == GridAxisKind::Row {
+                style.baseline_references.rows
+            } else {
+                crate::GridBaselineReference::Physical
+            },
             item.align_self,
             block_auto_margins,
             false,
-            baselines,
+            output,
             child_flow_axes,
-            constants.flow_axes,
-        );
+            constants.flow_axes.block_axis(),
+        )
+        .map_err(|error| grid_baseline_error(node, child, error))?;
         pending_items.push(PendingGridItem {
             node: child,
             style: child_style.clone(),
@@ -2591,6 +2604,15 @@ where
     };
     let executed_inventory =
         capture_executed_baselines(node, executed_frame, &mut pending_items, subgrid_report)?;
+    // This owner has no local baseline-placement algorithm. Real inherited
+    // references/census can be transported, but cannot certify named placement.
+    if let Some((subject, axis)) = executed_inventory.named_lane_participant() {
+        return Err(grid_baseline_error(
+            node,
+            subject,
+            GridBaselineSelectionError::UnsupportedLane(axis),
+        ));
+    }
 
     for item in &mut pending_items {
         // Grid-lanes keeps its container baseline selection attached to the

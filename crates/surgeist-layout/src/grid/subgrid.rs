@@ -265,6 +265,7 @@ impl<'a, S: LayoutScalar> GridMinimumParentFunctions<'a, S> {
 
 #[derive(Clone, Copy)]
 pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
+    pub(super) baseline_references: crate::GridBaselineReferences,
     pub(super) flow_axes: FlowAxes,
     pub(super) gap: Size<S>,
     pub(super) columns: Option<&'a UsedGridAxisGeometryOf<S>>,
@@ -277,6 +278,7 @@ pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
 
 #[derive(Clone, Copy)]
 pub(super) struct SubgridInheritedAxisSource<'a, S: LayoutScalar> {
+    pub(super) baseline_reference: crate::GridBaselineReference,
     pub(super) geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
     pub(super) allocated: Option<&'a [S]>,
     pub(super) minimum_functions: Option<GridMinimumTrackFunctions<'a, S>>,
@@ -1008,6 +1010,7 @@ pub(super) struct InheritedCurrentGridBaselinePlacement<Node, S: LayoutScalar = 
 #[derive(Clone, Debug)]
 pub(super) struct InheritedCurrentGridBaselinePlacementInput<Node, S: LayoutScalar = Scalar> {
     pub(super) axis: GridAxisKind,
+    pub(super) reference: crate::GridBaselineReference,
     pub(super) physical_axis: PhysicalAxis,
     pub(super) mapping: CheckedOwnerToCurrentPlacementMap<Node, S>,
     pub(super) direct_witness: CurrentGridDirectWitness<Node>,
@@ -1027,6 +1030,8 @@ pub(super) enum InheritedCurrentGridBaselinePlacementError {
     NonFinite,
     MissingExecutedSource,
     ExecutedSourceMismatch,
+    ReferenceMismatch,
+    Selection(GridBaselineSelectionError),
 }
 
 impl<Node: Copy + PartialEq, S: LayoutScalar> InheritedCurrentGridBaselinePlacement<Node, S> {
@@ -1034,6 +1039,9 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> InheritedCurrentGridBaselinePlacem
         group: &AncestorBaselineGroup<Node, S>,
         input: InheritedCurrentGridBaselinePlacementInput<Node, S>,
     ) -> Result<Self, InheritedCurrentGridBaselinePlacementError> {
+        if group.reference() != input.reference {
+            return Err(InheritedCurrentGridBaselinePlacementError::ReferenceMismatch);
+        }
         let owner_axis_matches = group.axis() == input.mapping.owner_axis();
         let current_axis_matches = input.mapping.current_axis() == input.axis;
         if owner_axis_matches != current_axis_matches {
@@ -1409,6 +1417,7 @@ where
             continue;
         };
         let minimum_source = SubgridParentTrackSource {
+            baseline_references: input.grid.style.baseline_references,
             flow_axes: input.containing_flow_axes,
             gap: input.parent_gap,
             columns: column_geometry.as_ref(),
@@ -1629,6 +1638,7 @@ where
         let parent_columns = parent_column_geometry.map_or(&[][..], |geometry| geometry.sizes());
         let parent_rows = parent_row_geometry.map_or(&[][..], |geometry| geometry.sizes());
         let probe_source = SubgridChildParentContextInput {
+            parent_baseline_references: minimum_source.baseline_references,
             item: item_report,
             child_style: style,
             child_container_style: Some(gutter_style),
@@ -1698,6 +1708,7 @@ where
         let parent_rows = parent_row_geometry.map_or(&[][..], |geometry| geometry.sizes());
         let standalone_parent_context = IntrinsicSubgridSource::new(
             SubgridChildParentContextInput {
+                parent_baseline_references: minimum_source.baseline_references,
                 item: item_report,
                 child_style: style,
                 child_container_style: Some(nested_container_style),
@@ -1760,6 +1771,7 @@ where
     );
     let subgrid_axis_gap = axis_size(subgrid_gap, queried_axis);
     let wrapper_source = SubgridChildParentContextInput {
+        parent_baseline_references: minimum_source.baseline_references,
         item: item_report,
         child_style: style,
         child_container_style: Some(nested_container_style),
@@ -1976,7 +1988,9 @@ where
         query,
     } = request;
     let available = prepared.sizing_request().axes();
-    let container_style = nested_container.projection();
+    let mut container_style = nested_container.projection();
+    container_style.baseline_references =
+        effective_grid_baseline_references(container_style.baseline_references, parent_context);
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(
         &container_style,
         LogicalSizeOf::new(
@@ -1987,7 +2001,8 @@ where
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let mut traversal_input = *nested_container;
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
-    let traversal_style = traversal_input.projection();
+    let mut traversal_style = traversal_input.projection();
+    traversal_style.baseline_references = container_style.baseline_references;
     let constants = Constants::with_intrinsic_minimum::<Tree, M>(
         tree,
         node,
@@ -2168,6 +2183,7 @@ where
             ..query
         };
         let minimum_source = SubgridParentTrackSource {
+            baseline_references: container_style.baseline_references,
             flow_axes: constants.flow_axes,
             gap,
             columns: Some(&traversal_column_geometry),
@@ -2350,6 +2366,10 @@ pub(super) fn intrinsic_subgrid_axis_parent_context<Node, S: LayoutScalar>(
         GridTrackSpan::new(parent_start + 1, parent_end + 1),
         parent_gap,
         SubgridInheritedAxisSource {
+            baseline_reference: grid_baseline_reference(
+                parent_source.baseline_references,
+                mapping.parent_axis,
+            ),
             geometry: source_geometry,
             allocated: match mapping.parent_axis {
                 GridAxisKind::Column => parent_source.allocated.inline,
@@ -2462,6 +2482,7 @@ pub(super) fn intrinsic_subgrid_axis_parent_context_for_span<Node, S: LayoutScal
             .cloned(),
         template_area_expanded: false,
         owner_baseline_targets: None,
+        baseline_reference: source.baseline_reference,
         parent_start,
         parent_end,
         reversed: mapping.reversed,
@@ -2903,6 +2924,7 @@ mod tests {
             Size::ZERO,
             IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent),
             SubgridParentTrackSource {
+                baseline_references: crate::GridBaselineReferences::default(),
                 flow_axes: parent_axes,
                 gap: Size::ZERO,
                 columns: None,
@@ -2917,6 +2939,7 @@ mod tests {
             prepared,
             Size::new(None, Some(f32::MAX)),
             SubgridChildParentContextInput {
+                parent_baseline_references: crate::GridBaselineReferences::default(),
                 item: item_report,
                 child_style: child_input.item(),
                 child_container_style: Some(container.projection()),

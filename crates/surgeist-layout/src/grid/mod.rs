@@ -29,6 +29,7 @@ use crate::sizing::resolve::{
 
 mod alignment;
 mod axis;
+mod baseline_reference;
 mod child;
 mod input;
 mod intrinsic_stage;
@@ -45,6 +46,7 @@ mod tracks;
 use alignment::*;
 pub use axis::GridAxisKind;
 use axis::{GridAxisMappingInput, GridAxisMappingReport, map_grid_axis};
+use baseline_reference::*;
 use child::*;
 use input::{
     GridChildInput, GridContainerInput, GridContainerProjection, GridItemProjection,
@@ -620,6 +622,9 @@ where
     )?;
 
     let parent_context = parent_context(&constants)?;
+    let mut style = style;
+    style.baseline_references =
+        effective_grid_baseline_references(style.baseline_references, &parent_context);
 
     if input.run_mode() == RunMode::ComputeSize
         && let Size {
@@ -1281,6 +1286,8 @@ struct InheritedGridAxis<S: LayoutScalar = Scalar, Node = ()> {
     area_facts: Option<GridAreaNameFacts>,
     template_area_expanded: bool,
     owner_baseline_targets: Option<InheritedGridOwnerBaselineTargets<Node, S>>,
+    // Retained independently of whether any actual owner target exists yet.
+    baseline_reference: crate::GridBaselineReference,
     parent_start: usize,
     parent_end: usize,
     reversed: bool,
@@ -1298,6 +1305,7 @@ impl<S: LayoutScalar, Node> InheritedGridAxis<S, Node> {
             area_facts: self.area_facts.clone(),
             template_area_expanded: self.template_area_expanded,
             owner_baseline_targets: None,
+            baseline_reference: self.baseline_reference,
             parent_start: self.parent_start,
             parent_end: self.parent_end,
             reversed: self.reversed,

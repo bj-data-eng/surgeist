@@ -24,7 +24,7 @@ struct ExecutedBaselineBody<Node, S: LayoutScalar> {
     size: Size<S>,
     first: Option<S>,
     last: Option<S>,
-    selected_port: S,
+    selected: GridBaselineSelection<S>,
     margin: SubgridAxisEdges<S>,
     cycle: bool,
 }
@@ -43,6 +43,7 @@ pub(in crate::grid) struct ExecutedBaselineInventory<Node, S: LayoutScalar> {
     owner: Node,
     axes: FlowAxes,
     size: Size<S>,
+    references: crate::GridBaselineReferences,
     execution_input: ComputeInputOf<S>,
     stage: GridSizingStage,
     counts: LogicalSizeOf<Option<usize>>,
@@ -132,6 +133,7 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> ExecutedBaselineInventory<Node, S>
             owner,
             axes: frame.axes(),
             size: frame.size,
+            references: frame.style.baseline_references,
             execution_input: frame.execution_input,
             stage: frame.stage,
             counts: LogicalSizeOf::new(
@@ -147,6 +149,18 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> ExecutedBaselineInventory<Node, S>
             GridAxisKind::Column => self.counts.inline,
             GridAxisKind::Row => self.counts.block,
         }
+    }
+
+    pub(in crate::grid) fn named_lane_participant(&self) -> Option<(Node, GridAxisKind)> {
+        self.constraints
+            .iter()
+            .find(|constraint| {
+                matches!(
+                    constraint.source.selected.reference,
+                    crate::GridBaselineReference::Named(_)
+                )
+            })
+            .map(|constraint| (constraint.source.node, constraint.projection.axis()))
     }
 
     pub(in crate::grid) fn validate_execution(
@@ -239,6 +253,13 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
             let source = child_source.ok_or_else(|| {
                 fail(InheritedCurrentGridBaselinePlacementError::MissingExecutedSource)
             })?;
+            if grid_baseline_reference(source.references, child_axis)
+                != grid_baseline_reference(frame.style.baseline_references, axis)
+            {
+                return Err(fail(
+                    InheritedCurrentGridBaselinePlacementError::ReferenceMismatch,
+                ));
+            }
             let child_count = source.count(child_axis).ok_or_else(|| {
                 fail(InheritedCurrentGridBaselinePlacementError::MissingExecutedSource)
             })?;
@@ -275,11 +296,15 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
                 .iter()
                 .filter(|constraint| constraint.projection.axis() == child_axis)
             {
+                if constraint.source.selected.reference != constraint.projection.reference()
+                    || constraint.source.selected.set != constraint.projection.selected_port()
+                {
+                    return Err(fail(
+                        InheritedCurrentGridBaselinePlacementError::ReferenceMismatch,
+                    ));
+                }
                 let span = constraint.projection.span();
-                let absent_selected = match constraint.projection.selected_port() {
-                    AncestorBaselineRole::First => constraint.source.first.is_none(),
-                    AncestorBaselineRole::Last => constraint.source.last.is_none(),
-                };
+                let absent_selected = constraint.source.selected.synthesized;
                 // Preserve the existing flattened final-census cycle guard;
                 // direct Column nomination remains its separate native lane.
                 if span.end > span.start.saturating_add(1) && absent_selected {
@@ -330,7 +355,7 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
                             .source
                             .axes
                             .block_axis_extent(constraint.source.size),
-                        physical_port: constraint.source.selected_port,
+                        physical_port: constraint.source.selected.coordinate,
                     })
                     .map_err(fail)?;
                 if projection.selected_track() != mapped_track {
@@ -373,32 +398,15 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
                 track_basis,
             } => {
                 axis == GridAxisKind::Row
-                    && synthesized_baseline_would_cycle(
-                        alignment,
-                        item.output.baselines(),
-                        item.child_flow_axes,
+                    && grid_baseline_span_would_cycle(
                         row_tracks.get(start..end).unwrap_or(&[]),
                         track_basis.block,
                     )
             }
-            ExecutedBaselineNomination::LaneInherited => {
-                end > start.saturating_add(1)
-                    && match alignment {
-                        AlignItems::Baseline => item
-                            .output
-                            .baselines()
-                            .first_block(item.child_flow_axes)
-                            .is_none(),
-                        AlignItems::LastBaseline => item
-                            .output
-                            .baselines()
-                            .last_block(item.child_flow_axes)
-                            .is_none(),
-                        _ => false,
-                    }
-            }
+            ExecutedBaselineNomination::LaneInherited => end > start.saturating_add(1),
         };
         let Some(projection) = ancestor_baseline_member(AncestorBaselineMemberInput {
+            reference: grid_baseline_reference(frame.style.baseline_references, axis),
             source: item.node,
             axis,
             ancestor_span: GridTrackSpan::new(start + 1, end + 1),
@@ -412,7 +420,9 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
             containing_flow_axes: parent_axes,
             start_adjustment: S::ZERO,
             end_adjustment: S::ZERO,
-        }) else {
+        })
+        .map_err(|error| grid_baseline_error(owner, item.node, error))?
+        else {
             continue;
         };
         let (selected_start, selected_end) =
@@ -424,15 +434,15 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
         if !point.is_finite() {
             return Err(fail(InheritedCurrentGridBaselinePlacementError::NonFinite));
         }
-        let baselines = item.output.baselines();
-        let selected_port = match projection.selected_port() {
-            AncestorBaselineRole::First => {
-                baselines.first_or_synthesize_block(item.child_flow_axes, item.output.size)
-            }
-            AncestorBaselineRole::Last => {
-                baselines.last_or_synthesize_block(item.child_flow_axes, item.output.size)
-            }
-        };
+        let selected = select_grid_baseline(
+            grid_baseline_reference(frame.style.baseline_references, axis),
+            alignment,
+            item.child_flow_axes,
+            grid_axis_physical_axis(parent_axes, axis),
+            item.output,
+        )
+        .map_err(|error| grid_baseline_error(owner, item.node, error))?
+        .ok_or_else(|| fail(InheritedCurrentGridBaselinePlacementError::ExecutedSourceMismatch))?;
         let margin = match item.child_flow_axes.block_axis() {
             PhysicalAxis::Horizontal => SubgridAxisEdges {
                 start: item.margin.left,
@@ -454,9 +464,9 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
                     local_span: GridTrackSpan::new(start + 1, end + 1),
                     axes: item.child_flow_axes,
                     size: item.output.size,
-                    first: baselines.first_block(item.child_flow_axes),
-                    last: baselines.last_block(item.child_flow_axes),
-                    selected_port,
+                    first: item.output.baselines().first_block(item.child_flow_axes),
+                    last: item.output.baselines().last_block(item.child_flow_axes),
+                    selected,
                     margin,
                     cycle,
                 },
@@ -935,14 +945,12 @@ pub(super) fn baseline_aligned_axis_offset<'input, Node: Copy + PartialEq, S: La
         GridAxisKind::Row => (item.area.row, item.area.row_end),
     };
     let synthesized_baseline_cycle = axis == GridAxisKind::Row
-        && synthesized_baseline_would_cycle(
-            alignment,
-            item.output.baselines(),
-            item.child_flow_axes,
+        && grid_baseline_span_would_cycle(
             row_tracks.get(start..end).unwrap_or(&[]),
             track_basis.block,
         );
     let Some(member) = ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: group.reference(),
         source: item.node,
         axis,
         ancestor_span: GridTrackSpan::new(start + 1, end + 1),
@@ -956,7 +964,9 @@ pub(super) fn baseline_aligned_axis_offset<'input, Node: Copy + PartialEq, S: La
         containing_flow_axes: container_flow_axes,
         start_adjustment: S::ZERO,
         end_adjustment: S::ZERO,
-    }) else {
+    })
+    .map_err(InheritedCurrentGridBaselinePlacementError::Selection)?
+    else {
         return Ok(None);
     };
     let selected_track = member.selected_track();
@@ -983,6 +993,7 @@ pub(super) fn baseline_aligned_axis_offset<'input, Node: Copy + PartialEq, S: La
         let placement = InheritedCurrentGridBaselinePlacement::try_derive(
             &owner_targets.group,
             InheritedCurrentGridBaselinePlacementInput {
+                reference: member.reference(),
                 axis,
                 physical_axis: grid_axis_physical_axis(container_flow_axes, axis),
                 mapping: owner_targets.mapping.clone(),
@@ -1089,6 +1100,7 @@ pub(super) fn final_ancestor_baseline_groups<Node: Copy + PartialEq, S: LayoutSc
             inventory.owner,
             axis,
             physical,
+            grid_baseline_reference(inventory.references, axis),
             inventory.count(axis).unwrap_or(0),
             inventory
                 .constraints
@@ -1388,77 +1400,4 @@ fn grid_area_end_key<S: LayoutScalar>(area: GridArea<S>) -> (usize, usize) {
         area.row_end.saturating_sub(1),
         area.column_end.saturating_sub(1),
     )
-}
-
-pub(in crate::grid) fn baseline_participation<S: LayoutScalar>(
-    align_self: AlignItems,
-    block_auto_margins: bool,
-    synthesized_baseline_would_cycle: bool,
-    baselines: BaselinesOf<S>,
-    flow_axes: FlowAxes,
-) -> BaselineParticipation {
-    let (mut group, synthesized, fallback_alignment) = match align_self {
-        AlignItems::Baseline => (
-            Some(BaselineGroupKind::Major),
-            baselines.first_block(flow_axes).is_none(),
-            Some(AlignItems::Start),
-        ),
-        AlignItems::LastBaseline => (
-            Some(BaselineGroupKind::Minor),
-            baselines.last_block(flow_axes).is_none(),
-            Some(AlignItems::End),
-        ),
-        _ => (None, false, None),
-    };
-    if synthesized && synthesized_baseline_would_cycle {
-        group = None;
-    }
-
-    BaselineParticipation {
-        participates: group.is_some() && !block_auto_margins,
-        group,
-        synthesized,
-        fallback_alignment,
-    }
-}
-
-pub(in crate::grid) fn baseline_participation_for_container<S: LayoutScalar>(
-    align_self: AlignItems,
-    block_auto_margins: bool,
-    synthesized_baseline_would_cycle: bool,
-    baselines: BaselinesOf<S>,
-    child_flow_axes: FlowAxes,
-    container_flow_axes: FlowAxes,
-) -> BaselineParticipation {
-    let mut participation = baseline_participation(
-        align_self,
-        block_auto_margins,
-        synthesized_baseline_would_cycle,
-        baselines,
-        child_flow_axes,
-    );
-    if child_flow_axes.block_axis() != container_flow_axes.block_axis() {
-        participation.participates = false;
-        participation.group = None;
-    }
-    participation
-}
-
-pub(in crate::grid) fn synthesized_baseline_would_cycle<S: LayoutScalar>(
-    align_self: AlignItems,
-    baselines: BaselinesOf<S>,
-    flow_axes: FlowAxes,
-    row_span_tracks: &[TrackSizingOf<S>],
-    track_basis: Option<S>,
-) -> bool {
-    let synthesizes = match align_self {
-        AlignItems::Baseline => baselines.first_block(flow_axes).is_none(),
-        AlignItems::LastBaseline => baselines.last_block(flow_axes).is_none(),
-        _ => false,
-    };
-    synthesizes
-        && row_span_tracks.len() > 1
-        && row_span_tracks
-            .iter()
-            .any(|track| track_accepts_intrinsic_contribution(track, track_basis))
 }

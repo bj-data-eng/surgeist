@@ -5350,6 +5350,7 @@ fn vertical_intrinsic_subgrid_final_sizing_keeps_definite_physical_height() {
     let parent_context = GridParentContext {
         columns: None,
         rows: Some(InheritedGridAxis {
+            baseline_reference: crate::GridBaselineReference::Physical,
             offset: 0.0,
             gap: 0.0,
             tracks: vec![100.0],
@@ -5730,6 +5731,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
         1_u32,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         4,
         [owner_member],
     );
@@ -5752,6 +5754,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
+            crate::GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
@@ -5825,6 +5828,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
     let placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &transported.group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: transported.mapping.clone(),
@@ -5855,6 +5859,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
                 7_u32,
                 GridAxisKind::Row,
                 PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
                 4,
                 Vec::<AncestorBaselineMember<u32>>::new(),
             ),
@@ -5862,6 +5867,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
                 7_u32,
                 GridAxisKind::Column,
                 PhysicalAxis::Horizontal,
+                crate::GridBaselineReference::Physical,
                 1,
                 Vec::<AncestorBaselineMember<u32>>::new(),
             ),
@@ -5923,6 +5929,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
     let nested_placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &nested_transport.group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: nested_transport.mapping.clone(),
@@ -7711,6 +7718,7 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
         },
         Size::<Scalar>::ZERO,
         SubgridParentTrackSource {
+            baseline_references: crate::GridBaselineReferences::default(),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             gap: Size::ZERO,
             columns: None,
@@ -8150,6 +8158,7 @@ fn test_inherited_axis(
 ) -> InheritedGridAxis {
     let track_count = parent_end - parent_start;
     InheritedGridAxis {
+        baseline_reference: crate::GridBaselineReference::Physical,
         offset: 0.0,
         gap: 0.0,
         tracks: vec![0.0; track_count],

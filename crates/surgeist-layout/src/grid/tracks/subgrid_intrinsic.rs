@@ -151,6 +151,13 @@ pub(in crate::grid) fn compute_prepared_intrinsic_grid_child<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let input = grid_item_baseline_demand(
+        args.grid.style,
+        args.child_style,
+        args.grid.query.axis,
+        input,
+    )
+    .map_err(|error| grid_baseline_error_at_site(LayoutErrorSiteOf::Node(child), error))?;
     let IntrinsicGridChildInput {
         child_style,
         child_container,
@@ -253,6 +260,7 @@ where
             .max(Size::ZERO);
     let child_context_input = SubgridChildParentContextInput {
         minimum_functions: grid.minimum_functions,
+        parent_baseline_references: grid.style.baseline_references,
         item: subgrid_item,
         child_style,
         child_container_style: Some(child_container_style),
@@ -685,7 +693,13 @@ pub(super) struct SubgridIntrinsicContributionReport<Node, S: LayoutScalar = Sca
 }
 
 impl<Node: Copy, S: LayoutScalar> SubgridIntrinsicContributionReport<Node, S> {
-    pub(super) fn empty(owner: Node, axis: GridAxisKind, count: usize, flow: FlowAxes) -> Self {
+    pub(super) fn empty(
+        owner: Node,
+        axis: GridAxisKind,
+        count: usize,
+        flow: FlowAxes,
+        reference: crate::GridBaselineReference,
+    ) -> Self {
         Self {
             row_contributions: Vec::new(),
             receipts: Vec::new(),
@@ -693,6 +707,7 @@ impl<Node: Copy, S: LayoutScalar> SubgridIntrinsicContributionReport<Node, S> {
                 owner,
                 axis,
                 grid_axis_physical_axis(flow, axis),
+                reference,
                 count,
                 core::iter::empty(),
             ),
@@ -718,6 +733,7 @@ where
                 input.owner,
                 input.axis,
                 grid_axis_physical_axis(input.constants.flow_axes, input.axis),
+                grid_baseline_reference(input.grid.style.baseline_references, input.axis),
                 input.tracks.len(),
                 core::iter::empty::<AncestorBaselineMember<<Tree as Traverse>::Node, Tree::Scalar>>(
                 ),
@@ -769,6 +785,7 @@ where
                 input.owner,
                 input.axis,
                 grid_axis_physical_axis(input.constants.flow_axes, input.axis),
+                grid_baseline_reference(input.grid.style.baseline_references, input.axis),
                 input.tracks.len(),
                 core::iter::empty::<AncestorBaselineMember<<Tree as Traverse>::Node, Tree::Scalar>>(
                 ),
@@ -840,6 +857,35 @@ where
                 RunMode::ComputeSize
             },
         );
+        let child_input =
+            child_input.with_named_baseline_demand(crate::output::NamedBaselineDemand::None);
+        let leaf_flow = FlowAxes::new(child_style.writing_mode, child_style.direction);
+        let child_input = if matches!(
+            leaf_flow.line_over_edge(child_style.margin),
+            LengthAutoOf::Auto
+        ) || matches!(
+            leaf_flow.line_under_edge(child_style.margin),
+            LengthAutoOf::Auto
+        ) {
+            child_input
+        } else {
+            grid_baseline_demand(
+                input.grid.style.baseline_references,
+                input.constants.flow_axes,
+                leaf_flow,
+                if input.axis == GridAxisKind::Column {
+                    leaf.align_self
+                } else {
+                    AlignItems::Stretch
+                },
+                if input.axis == GridAxisKind::Row {
+                    leaf.align_self
+                } else {
+                    AlignItems::Stretch
+                },
+                child_input,
+            )
+        };
         let child_input_projection = GridChildInput::from_node(tree.node_input(leaf.node));
         let subgrid_requests = Size::new(
             child_input_projection.subgrid_requested(GridAxisKind::Column),
@@ -902,16 +948,14 @@ where
         )
         .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
         let member = ancestor_baseline_member(AncestorBaselineMemberInput {
+            reference: grid_baseline_reference(input.grid.style.baseline_references, input.axis),
             source: leaf.node,
             axis: input.axis,
             ancestor_span: leaf.ancestor_span,
             alignment_context_reversed: leaf.alignment_context_reversed,
             alignment: leaf.align_self,
             block_auto_margins,
-            synthesized_baseline_cycle: synthesized_baseline_would_cycle(
-                leaf.align_self,
-                output.baselines(),
-                child_flow_axes,
+            synthesized_baseline_cycle: grid_baseline_span_would_cycle(
                 span_tracks,
                 match input.axis {
                     GridAxisKind::Column => input.grid.track_basis.inline,
@@ -924,7 +968,8 @@ where
             containing_flow_axes: input.constants.flow_axes,
             start_adjustment: baseline_adjustments.start,
             end_adjustment: baseline_adjustments.end,
-        });
+        })
+        .map_err(|error| grid_baseline_error(input.owner, leaf.node, error))?;
         if let Some(member) = member {
             ancestor_baseline_members.push(member);
         }
@@ -1006,16 +1051,17 @@ where
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
             if let Some(member) = ancestor_baseline_member(AncestorBaselineMemberInput {
+                reference: grid_baseline_reference(
+                    input.grid.style.baseline_references,
+                    GridAxisKind::Column,
+                ),
                 source: child,
                 axis: GridAxisKind::Column,
                 ancestor_span: GridTrackSpan::new(start + 1, end + 1),
                 alignment_context_reversed: false,
                 alignment,
                 block_auto_margins,
-                synthesized_baseline_cycle: synthesized_baseline_would_cycle(
-                    alignment,
-                    output.baselines(),
-                    child_flow_axes,
+                synthesized_baseline_cycle: grid_baseline_span_would_cycle(
                     span_tracks,
                     input.grid.track_basis.inline,
                 ),
@@ -1025,7 +1071,9 @@ where
                 containing_flow_axes: input.constants.flow_axes,
                 start_adjustment: Tree::Scalar::ZERO,
                 end_adjustment: Tree::Scalar::ZERO,
-            }) {
+            })
+            .map_err(|error| grid_baseline_error(input.owner, child, error))?
+            {
                 ancestor_baseline_members.push(member);
             }
         }
@@ -1035,6 +1083,7 @@ where
         input.owner,
         input.axis,
         grid_axis_physical_axis(input.constants.flow_axes, input.axis),
+        grid_baseline_reference(input.grid.style.baseline_references, input.axis),
         input.tracks.len(),
         ancestor_baseline_members,
     );

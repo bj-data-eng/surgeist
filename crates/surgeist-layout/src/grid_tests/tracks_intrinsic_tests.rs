@@ -1986,6 +1986,7 @@ fn owner_to_current_placement_map_composes_two_boundaries_by_track_and_role() {
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
             3,
             [inherited_placement_member(
                 91,
@@ -1998,6 +1999,7 @@ fn owner_to_current_placement_map_composes_two_boundaries_by_track_and_role() {
         let placement = InheritedCurrentGridBaselinePlacement::try_derive(
             &group,
             InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
                 axis: GridAxisKind::Row,
                 physical_axis: PhysicalAxis::Vertical,
                 mapping: second.clone(),
@@ -2110,6 +2112,7 @@ fn owner_to_current_placement_map_preserves_points_through_mbp_and_gutters() {
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
             3,
             [inherited_placement_member(
                 91,
@@ -2122,6 +2125,7 @@ fn owner_to_current_placement_map_preserves_points_through_mbp_and_gutters() {
         let placement = InheritedCurrentGridBaselinePlacement::try_derive(
             &group,
             InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
                 axis: GridAxisKind::Row,
                 physical_axis: PhysicalAxis::Vertical,
                 mapping: map.clone(),
@@ -7691,6 +7695,7 @@ fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
         let column_geometry =
             UsedGridAxisGeometryOf::new(tracks.clone(), vec![false; tracks.len()], S::ZERO);
         let source = SubgridParentTrackSource {
+            baseline_references: crate::GridBaselineReferences::default(),
             flow_axes: axes,
             gap: Size::ZERO,
             columns: Some(&column_geometry),
@@ -7723,6 +7728,7 @@ fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
     let tracks = [n(30.0), n(46.0)];
     let geometry = UsedGridAxisGeometryOf::new(tracks.to_vec(), vec![false; 2], n(10.0));
     let source = SubgridParentTrackSource {
+        baseline_references: crate::GridBaselineReferences::default(),
         flow_axes: axes,
         gap: Size::new(n(10.0), S::ZERO),
         columns: Some(&geometry),
@@ -7748,6 +7754,7 @@ fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
         Size::new(n(30.0), n(7.0)),
     );
     let provisional = SubgridParentTrackSource {
+        baseline_references: crate::GridBaselineReferences::default(),
         allocated: LogicalSizeOf::new(None, Some(&rows)),
         ..source
     };

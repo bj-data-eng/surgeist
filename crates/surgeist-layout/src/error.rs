@@ -125,6 +125,7 @@ pub enum LayoutTextNumericError {
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InlineBaseline(crate::InlineBaselineError),
+    GridBaseline(crate::GridBaselineError),
     RootContext(crate::RootContextMismatch),
     MeasurementOutput(InvalidMeasurementOutputOf<S>),
     InvalidNumeric {
@@ -192,6 +193,8 @@ pub enum FloatExclusionRoleError {
 #[non_exhaustive]
 pub enum LayoutMissingContext {
     NamedInlineBaseline,
+    /// An eligible Grid participant did not establish the requested named set.
+    NamedGridBaseline,
     RequiredBasis,
     FloatExclusionProvider,
     TextCapture,
@@ -329,6 +332,10 @@ impl UnsupportedSizingBehavior {
 #[non_exhaustive]
 pub enum LayoutUnsupportedCapability {
     LaterFriBehavior,
+    /// Named Grid baseline placement is not supplied by the Lane owner.
+    NamedGridLanesBaseline {
+        axis: crate::GridAxisKind,
+    },
     SizingBehavior(UnsupportedSizingBehavior),
     /// The actual Text-backed run needs an unsupported physical writing-mode adapter.
     TextWritingMode(crate::WritingMode),

@@ -107,6 +107,7 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
         .expect("test subgrid child must retain its container projection input")
         .projection();
     consume(super::child::SubgridChildParentContextInput {
+        parent_baseline_references: crate::GridBaselineReferences::default(),
         item: input.item,
         child_style: child_input.item(),
         child_container_style: Some(child_container_style),
@@ -2999,6 +3000,7 @@ pub(super) fn inherited_placement_member(
         (GridAxisKind::Row, AncestorBaselineRole::Last) => Point::new(None, Some(100.0 - target)),
     };
     ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source,
         axis,
         alignment_context_reversed: false,
@@ -3031,6 +3033,7 @@ pub(super) fn inherited_placement_member(
         start_adjustment: 0.0,
         end_adjustment: 0.0,
     })
+    .unwrap()
     .expect("placement fixture member participates")
 }
 
@@ -3047,6 +3050,7 @@ pub(super) fn inherited_placement_group(
             GridAxisKind::Column => PhysicalAxis::Horizontal,
             GridAxisKind::Row => PhysicalAxis::Vertical,
         },
+        crate::GridBaselineReference::Physical,
         4,
         [inherited_placement_member(
             91,
@@ -3226,6 +3230,7 @@ pub(super) fn derive_inherited_placement(
     InheritedCurrentGridBaselinePlacement::try_derive(
         group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis,
             physical_axis: frames.physical_axis,
             mapping: inherited_placement_mapping(axis, frames),

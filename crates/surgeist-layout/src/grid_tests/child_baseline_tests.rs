@@ -768,6 +768,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
+            crate::GridBaselineReference::Physical,
             4,
             [owner_member],
         );
@@ -776,6 +777,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
                 1_u32,
                 GridAxisKind::Row,
                 PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
                 1,
                 Vec::<AncestorBaselineMember<u32>>::new(),
             ),
@@ -850,6 +852,7 @@ fn fri08_c02_auto_fit_inherited_baseline_crosses_collapsed_boundary_without_unif
         let placement = InheritedCurrentGridBaselinePlacement::try_derive(
             &transported.group,
             InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
                 axis: GridAxisKind::Column,
                 physical_axis: PhysicalAxis::Horizontal,
                 mapping: transported.mapping.clone(),
@@ -899,6 +902,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
     };
     let owner_flow = FlowAxes::new(parent_style.writing_mode, parent_style.direction);
     let owner_member = ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source: 91_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -920,11 +924,13 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
         start_adjustment: 0.0,
         end_adjustment: 0.0,
     })
+    .unwrap()
     .unwrap();
     let owner_group = AncestorBaselineGroup::reduce(
         1_u32,
         GridAxisKind::Column,
         PhysicalAxis::Horizontal,
+        crate::GridBaselineReference::Physical,
         4,
         [owner_member],
     );
@@ -933,6 +939,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
@@ -998,6 +1005,7 @@ fn fri08_c02_auto_fit_checked_decreasing_frame_uses_collapsed_boundary_gutter() 
     let placement = InheritedCurrentGridBaselinePlacement::try_derive(
         &transported.group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Horizontal,
             mapping: transported.mapping.clone(),
@@ -3949,6 +3957,7 @@ fn inherited_current_grid_baseline_placement_uses_typed_owner_and_current_identi
     let owner_direct = InheritedCurrentGridBaselinePlacement::try_derive(
         &group,
         InheritedCurrentGridBaselinePlacementInput {
+            reference: crate::GridBaselineReference::Physical,
             axis: GridAxisKind::Row,
             physical_axis: PhysicalAxis::Vertical,
             mapping: CheckedOwnerToCurrentPlacementMap::identity(
@@ -4056,6 +4065,7 @@ fn inherited_current_grid_baseline_placement_repeat_is_identical_and_mutates_no_
     let mapping_before = mapping.clone();
     let witness_before = witness;
     let input = || InheritedCurrentGridBaselinePlacementInput {
+        reference: crate::GridBaselineReference::Physical,
         axis: GridAxisKind::Column,
         physical_axis: PhysicalAxis::Horizontal,
         mapping: mapping.clone(),
@@ -4086,6 +4096,7 @@ fn inherited_placement_input(
         },
     );
     InheritedCurrentGridBaselinePlacementInput {
+        reference: crate::GridBaselineReference::Physical,
         axis,
         physical_axis: match axis {
             GridAxisKind::Column => PhysicalAxis::Horizontal,
@@ -4631,14 +4642,16 @@ fn fri06_c12_t08_equal_parent_and_nested_last_baselines_need_no_intrinsic_shim()
 #[test]
 fn fri06_c12_t08_synthesized_intrinsic_cycle_is_disqualified_from_the_baseline_group() {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let participation = baseline_participation_for_container(
+    let participation = grid_baseline_participation(
+        crate::GridBaselineReference::Physical,
         AlignItems::Baseline,
         false,
         true,
-        Baselines::NONE,
+        ComputeOutputOf::from_sizes_and_baselines(Size::ZERO, Size::ZERO, Baselines::NONE),
         flow_axes,
-        flow_axes,
-    );
+        (flow_axes).block_axis(),
+    )
+    .unwrap();
 
     assert!(!participation.participates);
     assert_eq!(participation.group, None);
@@ -7672,6 +7685,7 @@ fn horizontal_row_member_input<S: LayoutScalar>(
 ) -> AncestorBaselineMemberInput<u32, S> {
     let coordinate = Point::new(None, physical_port);
     AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source,
         axis: GridAxisKind::Row,
         alignment_context_reversed: false,
@@ -7717,6 +7731,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
         30.0_f64,
         Some(12.5),
     ))
+    .unwrap()
     .unwrap();
     let competitor = ancestor_baseline_member(horizontal_row_member_input(
         3,
@@ -7724,11 +7739,13 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
         30.0_f64,
         Some(20.0),
     ))
+    .unwrap()
     .unwrap();
     let shared = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8310,6 +8327,7 @@ fn ancestor_baseline_first_shim_grows_before_item() {
         30.0_f32,
         Some(6.0),
     ))
+    .unwrap()
     .unwrap();
     let competitor = ancestor_baseline_member(horizontal_row_member_input(
         3,
@@ -8317,11 +8335,13 @@ fn ancestor_baseline_first_shim_grows_before_item() {
         30.0_f32,
         Some(18.0),
     ))
+    .unwrap()
     .unwrap();
     let group = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8344,6 +8364,7 @@ fn ancestor_baseline_last_shim_grows_after_item() {
         30.0_f32,
         Some(28.0),
     ))
+    .unwrap()
     .unwrap();
     let competitor = ancestor_baseline_member(horizontal_row_member_input(
         3,
@@ -8351,11 +8372,13 @@ fn ancestor_baseline_last_shim_grows_after_item() {
         30.0_f32,
         Some(18.0),
     ))
+    .unwrap()
     .unwrap();
     let group = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8373,7 +8396,7 @@ fn ancestor_baseline_nonparticipant_has_no_shim() {
     let mut input =
         horizontal_row_member_input(2, AncestorBaselineRole::First, 30.0_f32, Some(6.0));
     input.block_auto_margins = true;
-    let member = ancestor_baseline_member(input);
+    let member = ancestor_baseline_member(input).unwrap();
     assert!(
         member.is_none(),
         "actual Auto block margins exclude this subject"
@@ -8384,11 +8407,13 @@ fn ancestor_baseline_nonparticipant_has_no_shim() {
         30.0_f32,
         Some(18.0),
     ))
+    .unwrap()
     .unwrap();
     let group = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [competitor],
     );
@@ -8402,27 +8427,32 @@ fn ancestor_baseline_nonparticipant_has_no_shim() {
 #[test]
 fn ancestor_baseline_synthesized_port_participates() {
     let input = horizontal_row_member_input(2, AncestorBaselineRole::First, 30.0_f32, None);
-    let participation = baseline_participation(
+    let participation = grid_baseline_participation(
+        crate::GridBaselineReference::Physical,
         AlignItems::Baseline,
         false,
         false,
-        input.output.baselines(),
+        ComputeOutputOf::from_sizes_and_baselines(Size::ZERO, Size::ZERO, input.output.baselines()),
         input.child_flow_axes,
-    );
+        (input.child_flow_axes).block_axis(),
+    )
+    .unwrap();
     assert!(participation.participates && participation.synthesized);
     // Htb line-under synthesis is30; supplied competitor42 in E50 demands12.
-    let member = ancestor_baseline_member(input).unwrap();
+    let member = ancestor_baseline_member(input).unwrap().unwrap();
     let competitor = ancestor_baseline_member(horizontal_row_member_input(
         3,
         AncestorBaselineRole::First,
         50.0_f32,
         Some(42.0),
     ))
+    .unwrap()
     .unwrap();
     let group = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [member, competitor],
     );
@@ -8747,13 +8777,16 @@ fn baseline_aligned_block_offset_returns_none_without_group_baseline() {
 
 #[test]
 fn baseline_participation_rejects_block_auto_margins() {
-    let participation = baseline_participation(
+    let participation = grid_baseline_participation(
+        crate::GridBaselineReference::Physical,
         AlignItems::Baseline,
         true,
         false,
-        Baselines::NONE,
+        ComputeOutputOf::from_sizes_and_baselines(Size::ZERO, Size::ZERO, Baselines::NONE),
         crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-    );
+        (crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)).block_axis(),
+    )
+    .unwrap();
 
     assert_eq!(
         participation,
@@ -8768,13 +8801,16 @@ fn baseline_participation_rejects_block_auto_margins() {
 
 #[test]
 fn baseline_participation_accepts_synthesized_baselines() {
-    let participation = baseline_participation(
+    let participation = grid_baseline_participation(
+        crate::GridBaselineReference::Physical,
         AlignItems::LastBaseline,
         false,
         false,
-        Baselines::NONE,
+        ComputeOutputOf::from_sizes_and_baselines(Size::ZERO, Size::ZERO, Baselines::NONE),
         crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-    );
+        (crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)).block_axis(),
+    )
+    .unwrap();
 
     assert_eq!(
         participation,
@@ -8930,6 +8966,7 @@ fn assert_baseline_group_axis_preserves_compatible_application<S: LayoutScalar>(
 
 fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScalar>() {
     let x_member = ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source: 2_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -8951,8 +8988,10 @@ fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScala
         start_adjustment: S::ZERO,
         end_adjustment: S::ZERO,
     })
+    .unwrap()
     .unwrap();
     let y_member = ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source: 3_u32,
         axis: GridAxisKind::Column,
         alignment_context_reversed: false,
@@ -8974,11 +9013,13 @@ fn assert_baseline_group_axis_rejects_incompatible_intrinsic_shim<S: LayoutScala
         start_adjustment: S::ZERO,
         end_adjustment: S::ZERO,
     })
+    .unwrap()
     .unwrap();
     let y_group = AncestorBaselineGroup::reduce(
         1,
         GridAxisKind::Column,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [y_member],
     );
@@ -9872,6 +9913,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
                 40.0 - distance
             };
             ancestor_baseline_member(AncestorBaselineMemberInput {
+                reference: crate::GridBaselineReference::Physical,
                 source: 91_u32 + u32::try_from(index).unwrap(),
                 axis: GridAxisKind::Column,
                 alignment_context_reversed: false,
@@ -9906,12 +9948,14 @@ fn column_subgrid_context_preserves_checked_owner_points() {
                 end_adjustment: 0.0,
             })
             .unwrap()
+            .unwrap()
         });
     let ancestor_groups = final_ancestor_baseline_groups_for_transport_test(
         AncestorBaselineGroup::reduce(
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
             1,
             Vec::<AncestorBaselineMember<u32>>::new(),
         ),
@@ -9919,6 +9963,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
             1_u32,
             GridAxisKind::Column,
             PhysicalAxis::Horizontal,
+            crate::GridBaselineReference::Physical,
             2,
             members,
         ),
@@ -9971,6 +10016,7 @@ fn column_subgrid_context_preserves_checked_owner_points() {
         let placed = InheritedCurrentGridBaselinePlacement::try_derive(
             &transported.group,
             InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
                 axis: GridAxisKind::Column,
                 physical_axis: PhysicalAxis::Horizontal,
                 mapping: transported.mapping.clone(),
@@ -10083,3 +10129,6 @@ mod native_coordinate_alignment;
 
 #[path = "child_baseline/standalone_query_frame.rs"]
 mod standalone_query_frame;
+
+#[path = "child_baseline/named_reference.rs"]
+mod named_reference;

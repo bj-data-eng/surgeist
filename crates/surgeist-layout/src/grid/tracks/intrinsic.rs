@@ -421,6 +421,7 @@ impl<Node, S: LayoutScalar> FlattenedScalarContribution<Node, S> {
 /// body port or another track in a spanning item's alignment context.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct AncestorBaselineMember<Node, S: LayoutScalar = Scalar> {
+    reference: crate::GridBaselineReference,
     source: Node,
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
@@ -447,6 +448,9 @@ pub(in crate::grid) struct FinalBaselineProjectionInput<S: LayoutScalar> {
 }
 
 impl<Node: Copy, S: LayoutScalar> AncestorBaselineMember<Node, S> {
+    pub(in crate::grid) const fn reference(self) -> crate::GridBaselineReference {
+        self.reference
+    }
     pub(in crate::grid) fn role(self) -> AncestorBaselineRole {
         self.selected_port
             .in_progression(self.subject_progression, self.containing_progression)
@@ -519,20 +523,28 @@ pub(in crate::grid) struct AncestorBaselineGroup<Node, S: LayoutScalar = Scalar>
     owner: Node,
     axis: GridAxisKind,
     physical_axis: PhysicalAxis,
+    reference: crate::GridBaselineReference,
     targets: Vec<TrackAncestorBaselineTargets<S>>,
 }
 
 impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
+    pub(in crate::grid) const fn reference(&self) -> crate::GridBaselineReference {
+        self.reference
+    }
     pub(in crate::grid) fn reduce(
         owner: Node,
         axis: GridAxisKind,
         physical_axis: PhysicalAxis,
+        reference: crate::GridBaselineReference,
         track_count: usize,
         members: impl IntoIterator<Item = AncestorBaselineMember<Node, S>>,
     ) -> Self {
         let mut targets = vec![TrackAncestorBaselineTargets::default(); track_count];
         for member in members {
-            if member.axis != axis || member.physical_axis != physical_axis {
+            if member.axis != axis
+                || member.physical_axis != physical_axis
+                || member.reference != reference
+            {
                 continue;
             }
             let use_start = (member.selected_port == AncestorBaselineRole::First)
@@ -558,6 +570,7 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
             owner,
             axis,
             physical_axis,
+            reference,
             targets,
         }
     }
@@ -582,7 +595,10 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
         }
     }
     pub(in crate::grid) fn target_for(&self, member: AncestorBaselineMember<Node, S>) -> Option<S> {
-        if member.axis != self.axis || member.physical_axis != self.physical_axis {
+        if member.axis != self.axis
+            || member.physical_axis != self.physical_axis
+            || member.reference != self.reference
+        {
             return None;
         }
         self.target_record(member.role(), member.selected_track)
@@ -781,6 +797,7 @@ where
             GridAxisKind::Column,
             column_count,
             constants.flow_axes,
+            grid_baseline_reference(grid.style.baseline_references, GridAxisKind::Column),
         )
     };
     column_receipts.extend(column_subgrid_contributions.receipts.iter().copied());
@@ -823,6 +840,7 @@ where
             GridAxisKind::Row,
             row_count,
             constants.flow_axes,
+            grid_baseline_reference(grid.style.baseline_references, GridAxisKind::Row),
         )
     };
     row_receipts.extend(row_subgrid_contributions.receipts.iter().copied());
@@ -960,6 +978,10 @@ where
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
             let column_baseline_member = ancestor_baseline_member(AncestorBaselineMemberInput {
+                reference: grid_baseline_reference(
+                    grid.style.baseline_references,
+                    GridAxisKind::Column,
+                ),
                 source: child,
                 axis: GridAxisKind::Column,
                 ancestor_span: GridTrackSpan::new(column_start + 1, column_end + 1),
@@ -967,13 +989,7 @@ where
                 alignment: justify_self,
                 block_auto_margins,
                 synthesized_baseline_cycle: column_span_tracks.is_some_and(|tracks| {
-                    synthesized_baseline_would_cycle(
-                        justify_self,
-                        output.baselines(),
-                        child_flow_axes,
-                        tracks,
-                        grid.track_basis.inline,
-                    )
+                    grid_baseline_span_would_cycle(tracks, grid.track_basis.inline)
                 }),
                 output,
                 margin,
@@ -981,7 +997,8 @@ where
                 containing_flow_axes: constants.flow_axes,
                 start_adjustment: Tree::Scalar::ZERO,
                 end_adjustment: Tree::Scalar::ZERO,
-            });
+            })
+            .map_err(|error| grid_baseline_error(node, child, error))?;
             let column_baseline_shim =
                 column_baseline_member.map_or(BaselineShim::default(), |member| {
                     column_subgrid_contributions
@@ -1014,6 +1031,10 @@ where
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
             let baseline_member = ancestor_baseline_member(AncestorBaselineMemberInput {
+                reference: grid_baseline_reference(
+                    grid.style.baseline_references,
+                    GridAxisKind::Row,
+                ),
                 source: child,
                 axis: GridAxisKind::Row,
                 ancestor_span: GridTrackSpan::new(row_start + 1, row_end + 1),
@@ -1021,13 +1042,7 @@ where
                 alignment: align_self,
                 block_auto_margins,
                 synthesized_baseline_cycle: row_span_tracks.is_some_and(|tracks| {
-                    synthesized_baseline_would_cycle(
-                        align_self,
-                        output.baselines(),
-                        child_flow_axes,
-                        tracks,
-                        grid.track_basis.block,
-                    )
+                    grid_baseline_span_would_cycle(tracks, grid.track_basis.block)
                 }),
                 output,
                 margin,
@@ -1035,7 +1050,8 @@ where
                 containing_flow_axes: constants.flow_axes,
                 start_adjustment: Tree::Scalar::ZERO,
                 end_adjustment: Tree::Scalar::ZERO,
-            });
+            })
+            .map_err(|error| grid_baseline_error(node, child, error))?;
             row_contributions.push(RowIntrinsicContribution {
                 source: child,
                 start: row_start,
@@ -1052,6 +1068,7 @@ where
         &row_contributions,
         row_count,
         constants.flow_axes.block_axis(),
+        grid.style.baseline_references.rows,
     );
     for item in row_contributions {
         if !item.contributes_to_row_size {
@@ -1095,11 +1112,13 @@ fn ancestor_baseline_group_for_intrinsic_contributions<Node: Copy, S: LayoutScal
     contributions: &[RowIntrinsicContribution<Node, S>],
     row_count: usize,
     expected_axis: crate::geometry::PhysicalAxis,
+    reference: crate::GridBaselineReference,
 ) -> AncestorBaselineGroup<Node, S> {
     AncestorBaselineGroup::reduce(
         owner,
         GridAxisKind::Row,
         expected_axis,
+        reference,
         row_count,
         contributions
             .iter()
@@ -1119,6 +1138,7 @@ fn row_baseline_shim<Node: Copy, S: LayoutScalar>(
 
 pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = Scalar> {
     pub(in crate::grid) source: Node,
+    pub(in crate::grid) reference: crate::GridBaselineReference,
     pub(in crate::grid) axis: GridAxisKind,
     pub(in crate::grid) ancestor_span: GridTrackSpan,
     pub(in crate::grid) alignment_context_reversed: bool,
@@ -1135,42 +1155,35 @@ pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = S
 
 pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
     input: AncestorBaselineMemberInput<Node, S>,
-) -> Option<AncestorBaselineMember<Node, S>> {
+) -> Result<Option<AncestorBaselineMember<Node, S>>, GridBaselineSelectionError> {
     let physical_axis = grid_axis_physical_axis(input.containing_flow_axes, input.axis);
-    let baselines = input.output.baselines();
-    let mut participation = baseline_participation(
+    if input.block_auto_margins {
+        return Ok(None);
+    }
+    let Some(selection) = select_grid_baseline(
+        input.reference,
         input.alignment,
-        input.block_auto_margins,
-        input.synthesized_baseline_cycle,
-        baselines,
         input.child_flow_axes,
-    );
-    if input.child_flow_axes.block_axis() != physical_axis {
-        participation.participates = false;
-        participation.group = None;
-    }
-    if !participation.participates {
-        return None;
-    }
-
-    let (selected_port, baseline) = match participation.group? {
-        BaselineGroupKind::Major => (
-            AncestorBaselineRole::First,
-            baselines.first_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
-        ),
-        BaselineGroupKind::Minor => (
-            AncestorBaselineRole::Last,
-            baselines.last_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
-        ),
+        physical_axis,
+        input.output,
+    )?
+    else {
+        return Ok(None);
     };
+    if selection.synthesized && input.synthesized_baseline_cycle {
+        return Ok(None);
+    }
+    let selected_port = selection.set;
     let use_start =
         (selected_port == AncestorBaselineRole::First) != input.alignment_context_reversed;
-    let selected_track = if use_start {
-        input.ancestor_span.start.checked_sub(1)?
+    let Some(selected_track) = (if use_start {
+        input.ancestor_span.start.checked_sub(1)
     } else {
-        input.ancestor_span.end.checked_sub(2)?
+        input.ancestor_span.end.checked_sub(2)
+    }) else {
+        return Ok(None);
     };
-    let physical_coordinate = baseline.coordinate_on(physical_axis)?;
+    let physical_coordinate = selection.coordinate;
     let physical_extent = grid_axis_size(input.containing_flow_axes, input.output.size, input.axis);
     let subject_progression = input
         .child_flow_axes
@@ -1197,7 +1210,15 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
             input.end_adjustment + end_margin + physical_extent - border_logical_baseline
         }
     };
-    Some(AncestorBaselineMember {
+    if input.reference != crate::GridBaselineReference::Physical
+        && (!containing_logical_distance.is_finite() || !border_logical_baseline.is_finite())
+    {
+        return Err(GridBaselineSelectionError::Invalid(
+            crate::GridBaselineError::UnrepresentableCoordinate,
+        ));
+    }
+    Ok(Some(AncestorBaselineMember {
+        reference: input.reference,
         source: input.source,
         axis: input.axis,
         physical_axis,
@@ -1209,7 +1230,7 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
         alignment_context_reversed: input.alignment_context_reversed,
         containing_logical_distance,
         border_logical_baseline,
-    })
+    }))
 }
 
 #[cfg(test)]

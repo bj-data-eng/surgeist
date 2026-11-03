@@ -285,6 +285,40 @@ name and first/last set before child computation; that demand is part of cache
 identity. It does not change the child's own alignment context or grant an
 unsupported producer named authority.
 
+#### Grid alignment baseline references
+
+`NodeInputOf::grid_baseline_references` supplies resolved references for this
+Grid container's local Column and Row alignment contexts. Both default to
+`GridBaselineReference::Physical`. A `Named(BaselineName)` value is an explicit
+normalized choice; writing mode does not choose a name. An inherited shared
+subgrid context retains the actual owning axis's reference, including before
+that context has any baseline target. A standalone context keeps its own input.
+
+Grid chooses First or Last from its actual baseline-alignment preference. The
+child's inline reference and `baseline_source` do not select Grid's set or name.
+Available named facts retain their actual physical border-frame coordinate and
+axis; a wrong axis is `LayoutInvalidInputOf::GridBaseline`. An unknown demanded
+fact is `LayoutMissingContext::NamedGridBaseline`, not evidence of absence.
+Genuine Absent facts allow Grid to synthesize alphabetic at the border line-under
+edge and central at the border-box midpoint. Actual margins enter the owning
+Grid contribution once, separately from this border point. Inline atomic
+margin-edge synthesis remains a different operation.
+
+The same selected source governs intrinsic contributions, performed census and
+placement. First/Last selection, including Available Last0, remains distinct
+from owner-relative role reversal. Actual subgrid maps transport the selected
+point once; a reference change cannot reuse another context's target or cached
+named demand. Existing scroll-container Last-set export and clamping remain
+producer facts as specified above; they do not make Grid use inline set selection.
+
+GridLanes retains its existing physical placement operation. Its actual inherited
+Grid-axis reference and census can be transported, but this does not establish
+a local named baseline-placement algorithm or a named container export. A real
+participant requiring named Lane placement, or a named stacking-axis baseline
+operation, returns `LayoutUnsupportedCapability::NamedGridLanesBaseline` with
+the actual axis. An unused selector does not reject unrelated physical layout.
+A generic Lane output with unavailable named facts remains Unknown.
+
 #### Prepared Text and inline flow
 
 Prepared Text participation carries actual issued origin, atomic, control and scope

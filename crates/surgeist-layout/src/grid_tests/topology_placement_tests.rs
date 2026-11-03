@@ -1759,6 +1759,7 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
             ),
         };
         ancestor_baseline_member(AncestorBaselineMemberInput {
+            reference: crate::GridBaselineReference::Physical,
             source,
             axis,
             ancestor_span: GridTrackSpan::new(1, 2),
@@ -1789,6 +1790,7 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
             start_adjustment: 0.0,
             end_adjustment: 0.0,
         })
+        .unwrap()
         .expect("last-baseline item participates")
     };
     for (axis, physical_axis) in [
@@ -1797,7 +1799,14 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
     ] {
         let direct = member(1_u32, axis, 25.0);
         let nested = member(2_u32, axis, 10.0);
-        let group = AncestorBaselineGroup::reduce(1_u32, axis, physical_axis, 1, [direct, nested]);
+        let group = AncestorBaselineGroup::reduce(
+            1_u32,
+            axis,
+            physical_axis,
+            crate::GridBaselineReference::Physical,
+            1,
+            [direct, nested],
+        );
         match axis {
             GridAxisKind::Row => {
                 // Htb Last: distances from E50 end are 25 and40.
@@ -1838,6 +1847,7 @@ fn owner_to_current_placement_map_identity_has_zero_translation() {
                 1_u32,
                 GridAxisKind::Row,
                 PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
                 3,
                 [super::fixtures::inherited_placement_member(
                     91,
@@ -1850,6 +1860,7 @@ fn owner_to_current_placement_map_identity_has_zero_translation() {
             let placement = InheritedCurrentGridBaselinePlacement::try_derive(
                 &group,
                 InheritedCurrentGridBaselinePlacementInput {
+                    reference: crate::GridBaselineReference::Physical,
                     axis: GridAxisKind::Row,
                     physical_axis: PhysicalAxis::Vertical,
                     mapping: map.clone(),
@@ -1910,6 +1921,7 @@ fn owner_to_current_placement_map_composes_reversal_and_physical_progression() {
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
             3,
             [super::fixtures::inherited_placement_member(
                 91,
@@ -1971,6 +1983,7 @@ fn owner_to_current_placement_map_uses_actual_positive_zero_and_negative_gap_fra
                 1_u32,
                 GridAxisKind::Row,
                 PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
                 3,
                 [super::fixtures::inherited_placement_member(
                     91,
@@ -4624,6 +4637,7 @@ fn auto_repeat_count_uses_f64_saturating_floor() {
 fn shared_grid_contexts_accept_non_default_scalar() {
     let named_lines = named::NamedGridLines::new(GridAxisKind::Column, 1);
     let inherited_axis = InheritedGridAxis::<f64, usize> {
+        baseline_reference: crate::GridBaselineReference::Physical,
         minimum_functions: None,
         offset: 0.25,
         gap: 1.5,

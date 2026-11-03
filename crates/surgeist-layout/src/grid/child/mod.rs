@@ -348,11 +348,14 @@ where
                 orthogonal_fallback: constants.child_orthogonal_fallback,
             },
         )?;
+        let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
+            .map_err(|error| grid_baseline_error(node, child, error))?;
         let child_container_style = placements
             .nested_container_input(source_index)
             .map(GridContainerInput::projection);
         let child_context_input = SubgridChildParentContextInput {
             item: *subgrid_item,
+            parent_baseline_references: style.baseline_references,
             child_style: &child_style,
             child_container_style,
             area,
@@ -454,20 +457,16 @@ where
         let block_auto_margins = logical_unresolved_margin.block_start.is_none()
             || logical_unresolved_margin.block_end.is_none();
         let row_span_tracks = row_tracks.get(area.row..area.row_end).unwrap_or(&[]);
-        let baseline_participation = baseline_participation_for_container(
+        let baseline_participation = grid_baseline_participation(
+            style.baseline_references.rows,
             item.align_self,
             block_auto_margins,
-            synthesized_baseline_would_cycle(
-                item.align_self,
-                baselines,
-                child_flow_axes,
-                row_span_tracks,
-                track_basis.block,
-            ),
-            baselines,
+            grid_baseline_span_would_cycle(row_span_tracks, track_basis.block),
+            output,
             child_flow_axes,
-            constants.flow_axes,
-        );
+            constants.flow_axes.block_axis(),
+        )
+        .map_err(|error| grid_baseline_error(node, child, error))?;
         pending_items.push(PendingGridItem {
             executed_baselines: PendingExecutedBaselines::Uncaptured(executed_baselines),
             node: child,

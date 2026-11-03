@@ -8,6 +8,7 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     S: LayoutScalar = Scalar,
 > {
     pub(in crate::grid) item: SubgridItemReport<Node>,
+    pub(in crate::grid) parent_baseline_references: crate::GridBaselineReferences,
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
     pub(in crate::grid) child_container_style: Option<GridContainerProjection<'input, S>>,
     pub(in crate::grid) area: GridArea<S>,
@@ -168,6 +169,7 @@ fn subgrid_child_axis_context_input<'input, 'a, Node: Copy, S: LayoutScalar>(
 ) -> SubgridChildAxisContextInput<'input, 'a, Node, S> {
     SubgridChildAxisContextInput {
         parent_grid: None,
+        parent_baseline_references: input.parent_baseline_references,
         current_grid: input.item.node,
         axis,
         report: match axis {
@@ -199,6 +201,7 @@ fn subgrid_child_axis_context_input<'input, 'a, Node: Copy, S: LayoutScalar>(
 #[derive(Clone, Copy)]
 struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     parent_grid: Option<Node>,
+    parent_baseline_references: crate::GridBaselineReferences,
     current_grid: Node,
     axis: GridAxisKind,
     report: SubgridAxisReport,
@@ -308,12 +311,24 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
     let mut owner_baseline_targets = None;
     if let Some(ancestor_groups) = input.ancestor_baseline_groups {
         let current_group = ancestor_groups.for_axis(mapping.parent_axis);
+        if current_group.reference()
+            != grid_baseline_reference(input.parent_baseline_references, mapping.parent_axis)
+        {
+            return Err(SubgridChildContextError::BaselineInheritance(
+                InheritedCurrentGridBaselinePlacementError::ReferenceMismatch,
+            ));
+        }
         if current_group.axis() != mapping.parent_axis {
             return Err(SubgridChildContextError::BaselineInheritance(
                 InheritedCurrentGridBaselinePlacementError::AxisMismatch,
             ));
         }
         if let Some(transported) = ancestor_groups.inherited_targets_for_axis(mapping.parent_axis) {
+            if transported.group.reference() != current_group.reference() {
+                return Err(SubgridChildContextError::BaselineInheritance(
+                    InheritedCurrentGridBaselinePlacementError::ReferenceMismatch,
+                ));
+            }
             if transported.mapping.physical_axis() != physical_axis {
                 return Err(SubgridChildContextError::BaselineInheritance(
                     InheritedCurrentGridBaselinePlacementError::PhysicalAxisMismatch,
@@ -401,6 +416,10 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
             .parent_template_area_expanded_axes
             .for_axis(mapping.parent_axis),
         owner_baseline_targets,
+        baseline_reference: grid_baseline_reference(
+            input.parent_baseline_references,
+            mapping.parent_axis,
+        ),
         parent_start: start_line - 1,
         parent_end: end_line - 1,
         reversed: mapping.reversed,
@@ -434,6 +453,9 @@ where
             LayoutOperation::ChildLayout,
             LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
         ),
+        SubgridChildContextError::BaselineInheritance(
+            InheritedCurrentGridBaselinePlacementError::Selection(error),
+        ) => grid_baseline_error_at_site(LayoutErrorSiteOf::Node(subject), error),
         SubgridChildContextError::BaselineInheritance(_) => LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(subject),
             LayoutOperation::ChildLayout,
@@ -475,6 +497,9 @@ where
             LayoutOperation::ChildLayout,
             LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
         ),
+        SubgridChildContextError::BaselineInheritance(
+            InheritedCurrentGridBaselinePlacementError::Selection(error),
+        ) => grid_baseline_error(container, subject, error),
         SubgridChildContextError::BaselineInheritance(_) => LayoutErrorOf::new(
             LayoutErrorSiteOf::ContainerSubject { container, subject },
             LayoutOperation::ChildLayout,
@@ -716,12 +741,16 @@ where
                 orthogonal_fallback: input.orthogonal_fallback,
             },
         )?;
+        let child_input =
+            grid_item_baseline_demand(input.container_style, &child_style, None, child_input)
+                .map_err(|error| grid_baseline_error(input.node, item.node, error))?;
         let child_container_style = item
             .nested_container
             .as_ref()
             .map(GridContainerInput::projection);
         let child_context_input = SubgridChildParentContextInput {
             item: subgrid_item,
+            parent_baseline_references: input.container_style.baseline_references,
             child_style: &child_style,
             child_container_style,
             area: item.area,
@@ -864,23 +893,16 @@ where
             .row_tracks
             .get(item.area.row..item.area.row_end)
             .unwrap_or(&[]);
-        let baseline_participation = baseline_participation_for_container(
+        let baseline_participation = grid_baseline_participation(
+            input.container_style.baseline_references.rows,
             sizing.align_self,
             block_auto_margins,
-            synthesized_baseline_would_cycle(
-                sizing.align_self,
-                baselines,
-                child_flow_axes,
-                row_span_tracks,
-                input.track_basis.block,
-            ),
-            baselines,
+            grid_baseline_span_would_cycle(row_span_tracks, input.track_basis.block),
+            output,
             child_flow_axes,
-            FlowAxes::new(
-                input.container_style.writing_mode,
-                input.container_style.direction,
-            ),
-        );
+            container_flow_axes.block_axis(),
+        )
+        .map_err(|error| grid_baseline_error(input.node, item.node, error))?;
         item.output = output;
         item.horizontal_axis = horizontal_axis;
         item.vertical_axis = vertical_axis;
