@@ -6,7 +6,10 @@ use std::mem::{align_of, size_of};
 pub(crate) mod attribute_edit;
 
 pub(crate) mod operations;
-pub use operations::*;
+use operations::{
+    HtmlConstructionActionDescription, HtmlConstructionCommand, HtmlConstructionOperation,
+    HtmlConstructionRetirement,
+};
 
 pub(crate) mod text_append;
 
@@ -15,6 +18,7 @@ pub(crate) mod text_append;
 #[cfg(test)]
 mod slots {
     use super::attribute_edit::*;
+    use super::operations::HtmlConstructionReadyOperation;
     use super::text_append::*;
     use super::*;
 

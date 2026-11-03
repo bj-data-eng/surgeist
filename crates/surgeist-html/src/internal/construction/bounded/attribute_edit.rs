@@ -1,5 +1,6 @@
 //! Complete, exclusive edits of the actual ordered attribute backing.
 
+use super::operations::attribute_units;
 use super::*;
 use crate::internal::values::Attribute;
 use crate::internal::values::bounded::{
@@ -1638,6 +1639,7 @@ impl HtmlConstructionAttributeRetirementAction<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
 
     fn attribute(name: impl Into<DocumentString>, value: &str) -> Attribute {
         Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)

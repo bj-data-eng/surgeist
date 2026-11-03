@@ -1050,6 +1050,7 @@ impl HtmlConstructionTextAppendReady {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
 
     fn make(kind: HtmlNodeKind) -> (HtmlConstructionStorage, HtmlBuilderNode) {
         let mut initialization = Some(HtmlConstructionStorage::begin());

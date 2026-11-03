@@ -1206,9 +1206,9 @@ impl Builder {
         builder.admit(1, 0, 0, 0, 0)?;
         let command = match kind {
             HtmlNodeKind::Document(mode) => {
-                bounded::HtmlConstructionCommand::CreateDocument { mode }
+                bounded::operations::HtmlConstructionCommand::CreateDocument { mode }
             }
-            HtmlNodeKind::Fragment => bounded::HtmlConstructionCommand::CreateFragment,
+            HtmlNodeKind::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
             _ => unreachable!("native root kind"),
         };
         builder.apply(command)?;
@@ -1283,7 +1283,7 @@ impl Builder {
 
     fn apply(
         &mut self,
-        command: bounded::HtmlConstructionCommand,
+        command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         let storage = self.storage.take().expect("native storage retained");
         let mut operation = storage.prepare(command);
@@ -1306,11 +1306,11 @@ impl Builder {
             .map_err(|refusal| refusal.into_parts().1)?
             .commit()
         {
-            bounded::HtmlConstructionCommit::Changed { storage, created } => {
+            bounded::operations::HtmlConstructionCommit::Changed { storage, created } => {
                 self.storage = Some(storage);
                 Ok(created)
             }
-            bounded::HtmlConstructionCommit::Published { .. } => {
+            bounded::operations::HtmlConstructionCommit::Published { .. } => {
                 unreachable!("native mutation is not publication")
             }
         }
@@ -1342,7 +1342,7 @@ impl Builder {
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-        let (attributes, units) = bounded::created_usage(&kind)?;
+        let (attributes, units) = bounded::operations::created_usage(&kind)?;
         self.admit(
             1 + usize::from(template),
             1 + usize::from(template),
@@ -1353,9 +1353,9 @@ impl Builder {
         let previous_usage = self.storage().usage();
         let previous_len = self.storage().len();
         let created = self
-            .apply(bounded::HtmlConstructionCommand::Create { kind })?
+            .apply(bounded::operations::HtmlConstructionCommand::Create { kind })?
             .expect("created native record");
-        if let Err(error) = self.apply(bounded::HtmlConstructionCommand::Insert {
+        if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::Insert {
             node: created.clone(),
             parent: parent.clone(),
             before: None,
@@ -1399,9 +1399,11 @@ impl Builder {
         let previous_usage = self.storage().usage();
         let previous_len = self.storage().len();
         let contents = self
-            .apply(bounded::HtmlConstructionCommand::CreateShadowContents { properties })?
+            .apply(
+                bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
+            )?
             .expect("created shadow contents");
-        if let Err(error) = self.apply(bounded::HtmlConstructionCommand::AttachShadow {
+        if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::AttachShadow {
             host: host.clone(),
             contents: contents.clone(),
         }) {
@@ -1426,15 +1428,15 @@ impl Builder {
                 .expect("native construction publication")
                 .accept();
         }
-        match bounded::HtmlConstructionOperation::try_ready(operation)
+        match bounded::operations::HtmlConstructionOperation::try_ready(operation)
             .expect("native publication ready")
             .commit()
         {
-            bounded::HtmlConstructionCommit::Published { result, lease } => {
+            bounded::operations::HtmlConstructionCommit::Published { result, lease } => {
                 drop(lease);
                 result.into_arena().0
             }
-            bounded::HtmlConstructionCommit::Changed { .. } => {
+            bounded::operations::HtmlConstructionCommit::Changed { .. } => {
                 unreachable!("native finish publishes")
             }
         }
