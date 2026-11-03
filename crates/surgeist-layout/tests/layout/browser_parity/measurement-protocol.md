@@ -51,10 +51,19 @@ Other static/offset profiles refuse.
 The public Native `PositionedRootContext` remains separate for genuine
 containing-frame placement; see the [Native root contexts](../../../src/output.rs).
 V4 has no `positioned-auto-insets` wire alias. Native root-local padding/border
-admission requires a definite preferred width under its sizing resolver. It does
-not expand browser source admission: current browser roots still require zero margin/padding/border and
-the retained non-collapsing boundary check. Padded roots and visible-overflow
-Block roots require their own qualification.
+admission requires a definite preferred width under its sizing resolver. Browser
+absolute-local source admission permits padding/border only when the actual
+preferred inline projection is finite nonnegative pixels, or a percentage that
+resolves finitely against the full authenticated containing width. Margins stay
+zero. Auto, intrinsic and general calc preferred widths do not acquire an
+edge-sensitive shrink-to-fit formula through this profile.
+
+The non-collapsing initial-origin check remains with BlockFlow's placement
+certificate. An actual absolute root establishes its own formatting context,
+including visible-overflow Block; absolute-local admission instead requires the
+complete subtree translation-independence proof below. It does not certify a
+hypothetical block origin or derive one from zero. Source-frame admission alone
+does not establish Native font or geometry parity.
 
 ### Source and stylesheet custody
 

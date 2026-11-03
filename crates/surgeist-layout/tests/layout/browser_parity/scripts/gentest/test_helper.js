@@ -273,9 +273,10 @@ function captureRootContext(root) {
     if (JSON.stringify(rules) !== JSON.stringify(proof.rules)) fail('StylesheetChanged');
   }
   const zero = value => /^[-+]?0(?:\.0+)?px$/.test(value);
-  const edgeProperties = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  const marginProperties = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'];
+  const paddingBorderProperties = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  const edgeProperties = [...marginProperties, ...paddingBorderProperties];
   const unshifted = style => style.transform === 'none' && style.perspective === 'none' &&
     style.filter === 'none' && style.contain === 'none' && style.willChange === 'auto' &&
     ['normal', '1'].includes(style.zoom) && style.contentVisibility === 'visible' &&
@@ -302,9 +303,18 @@ function captureRootContext(root) {
       body.clientWidth !== width) fail('ViewportExtentAuthority');
   const style = getComputedStyle(root);
   if (root.tagName !== 'DIV' || !['normal', 'none'].includes(style.content)) fail('RootBoxRole');
-  if (edgeProperties.some(property => root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]))) fail('AuthoredRootEdges');
+  if (marginProperties.some(property => root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]))) fail('AuthoredRootEdges');
   if (!unshifted(style) || style.cssFloat !== 'none' || style.clear !== 'none' ||
-      edgeProperties.some(property => !zero(style[property]))) fail('RootEdgesOrDisplacement');
+      marginProperties.some(property => !zero(style[property]))) fail('RootEdgesOrDisplacement');
+  const authoredPaddingBorder = paddingBorderProperties.some(property =>
+    root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]));
+  const usedPaddingBorder = paddingBorderProperties.some(property => !zero(style[property]));
+  // The in-flow certificate still promises the initial normal-flow origin.
+  // Only the separate absolute-local capability can admit nonzero box edges.
+  if (style.position !== 'absolute') {
+    if (authoredPaddingBorder) fail('AuthoredRootEdges');
+    if (usedPaddingBorder) fail('RootEdgesOrDisplacement');
+  }
   const physicalInsets = ['top', 'right', 'bottom', 'left'];
   const logicalInsets = ['inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end'];
   if (physicalInsets.some(property => root.style[property] && root.style[property] !== 'auto') ||
@@ -313,7 +323,6 @@ function captureRootContext(root) {
   if (!['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootDisplay');
   const nonCollapsingBoundary = ['flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display) ||
     (style.display === 'block' && [style.overflowX, style.overflowY].some(value => ['hidden', 'auto', 'scroll'].includes(value)));
-  if (!nonCollapsingBoundary) fail('UnqualifiedInitialBlockOrigin');
   const fallback = { initialContainingBlock: { width, height }, nearestScrollport: 'none',
     containingLimits: { width: 'unbounded', height: 'unbounded' } };
   if (style.position === 'absolute') {
@@ -321,6 +330,20 @@ function captureRootContext(root) {
         style.aspectRatio !== 'auto' || style.alignSelf !== 'auto' ||
         style.justifySelf !== 'auto' || ['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED', 'INPUT'].includes(root.tagName)) {
       fail('PositionedRootProfile');
+    }
+    if (authoredPaddingBorder || usedPaddingBorder) {
+      // Reuse the descriptor's physical/logical preferred-size projection.
+      // Computed used width and the observed root rectangle are not proof of a
+      // fixed own preferred size. The full authenticated CB, not W-s, supplies
+      // a percentage width's basis. General calc/intrinsic/Auto edge-sensitive
+      // shrink-to-fit has not been qualified by this source profile.
+      const preferred = parseElementSize(property => {
+        const input = root.style[property];
+        return requireSizingProjection(input, parseSizeDimension(input));
+      }, style)?.width;
+      const definite = preferred?.unit === 'px' ? preferred.value :
+        preferred?.unit === 'percent' ? preferred.value * width : undefined;
+      if (!Number.isFinite(definite) || definite < 0) fail('AuthoredRootEdges');
     }
     const hypotheticalDisplay = proof.hypotheticalDisplay;
     const blockified = { 'inline-flex': 'flex', 'inline-grid': 'grid' };
@@ -332,6 +355,10 @@ function captureRootContext(root) {
     if (parentStyle.whiteSpace !== 'normal' || parentStyle.textAlign !== 'start' ||
         !zero(parentStyle.textIndent) ||
         ![parentStyle.unicodeBidi, style.unicodeBidi].every(value => ['normal', 'isolate'].includes(value))) fail('HypotheticalInlineStartUnavailable');
+    // Actual absolute positioning supplies the root's independent formatting
+    // context even for visible-overflow Block. Local observation does not
+    // promise its hypothetical block origin; complete subtree independence
+    // below remains mandatory before that translation can be omitted.
     qualifyRootLocalSubtree(root, unshifted);
     return { kind: 'absolute-root-local', containingWidth: width,
       containingHeight: height, containingDirection: htmlStyle.direction,
@@ -339,6 +366,7 @@ function captureRootContext(root) {
       hypotheticalAnchor: 'inline-start', hypotheticalInlineOffset: 0, fallback };
   }
   if (style.position === 'static' || style.position === 'relative') {
+    if (!nonCollapsingBoundary) fail('UnqualifiedInitialBlockOrigin');
     return { kind: 'block-flow-auto', parentInlineExtent: width,
       parentDirection: parentStyle.direction, fallback };
   }
