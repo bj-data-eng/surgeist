@@ -433,10 +433,11 @@ impl ParserArenaSession {
 
     /// Ordered, individually atomic moves. Each committed prefix has coherent
     /// backlinks; a stopped suffix remains owned by its original parent. Each
-    /// move takes the first child of the source, which the owner finds and
-    /// removes at the front of its child order without visiting or shifting
-    /// the entries behind it, so the work is linear in the children moved
-    /// (plus the work of each child's subtree).
+    /// move takes the first child of the source. The owner probes the last
+    /// entry of the order and then the first, which it removes at the front
+    /// without visiting or shifting the entries between, so each move costs a
+    /// constant and the work is linear in the children moved (plus the work of
+    /// each child's subtree).
     pub(crate) fn reparent_children(
         &mut self,
         control: &mut ParseControl,
