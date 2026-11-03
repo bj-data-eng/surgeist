@@ -9,7 +9,8 @@
 //
 // Adapted from html5ever/src/tree_builder/rules.rs at
 // d7232d746d3112f08926d169591576bd12fe2fdf: BeforeHead, ordinary InHead,
-// Disabled InHeadNoscript, Text and constructor-proved Disabled ScriptData. HTML
+// InHeadNoscript for Disabled scripting, the noscript raw text rule for every
+// other scripting mode, Text and constructor-proved Disabled ScriptData. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs behavior and PI.
 
 use super::{
@@ -1283,6 +1284,13 @@ impl HeadState<'_> {
         self.kernel().push(&node, c)?;
         self.set_head(&node, c)
     }
+    /// Whether the parser's scripting mode is not Disabled, so a `noscript`
+    /// start tag is raw text rather than an ordinary element (HTML877d
+    /// "in head" and "in body").
+    pub(super) fn scripting_enabled(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
+        use surgeist_html::parsing::HtmlParserScriptingMode;
+        Ok(self.before.kernel.session.scripting_mode(c)? != HtmlParserScriptingMode::Disabled)
+    }
     pub(super) fn raw_text(
         &mut self,
         raw: HtmlTokenizerRawState,
@@ -1936,6 +1944,12 @@ impl HeadState<'_> {
                     return self.raw_text(HtmlTokenizerRawState::Rawtext, close, c);
                 }
                 Class::Start(Name::Noscript, close) => {
+                    // HTML877d "in head": a scripting mode other than
+                    // Disabled (Normal, Inert, Fragment) follows the generic
+                    // raw text element parsing algorithm.
+                    if self.scripting_enabled(c)? {
+                        return self.raw_text(HtmlTokenizerRawState::Rawtext, close, c);
+                    }
                     self.insert_tag(c)?;
                     self.set_mode(HtmlInsertionMode::InHeadNoscript, c)?;
                     if close {

@@ -16,7 +16,7 @@
 // retained boundaries rather than imported implementations. Origin: html5ever
 // d7232d746d3112f08926d169591576bd12fe2fdf. HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs PI, exact units,
-// scope/special/implied/EOF sets and the actual Disabled scripting rules.
+// scope/special/implied/EOF sets and the actual scripting-mode rules.
 
 use super::{
     KernelError, Scope, copy_node,
@@ -1446,6 +1446,15 @@ impl HeadState<'_> {
             if self.token_in(&["xmp", "iframe"], c)?.is_some() {
                 self.frameset(false, c)?;
             }
+            return Ok(Some(self.raw_text(
+                HtmlTokenizerRawState::Rawtext,
+                close,
+                c,
+            )?));
+        } else if self.token_in(&["noscript"], c)?.is_some() && self.scripting_enabled(c)? {
+            // HTML877d "in body": a scripting mode other than Disabled
+            // follows the generic raw text element parsing algorithm, with
+            // no formatting reconstruction or frameset-ok change.
             return Ok(Some(self.raw_text(
                 HtmlTokenizerRawState::Rawtext,
                 close,

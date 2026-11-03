@@ -5,10 +5,13 @@
 //! ordinary documents through [`check`], and every `#document-fragment` case
 //! through the real captured-context fragment owner with its corpus context,
 //! including SVG and MathML contexts, and then against the tree the public
-//! fragment request returns, rendered in the corpus dump shape. `#script-on`
-//! cases select Enabled scripting construction, an unsupported public profile,
-//! and are not run; cases without a scripting marker run with Disabled
-//! scripting.
+//! fragment request returns, rendered in the corpus dump shape. Cases without
+//! a scripting marker run with Disabled scripting.
+//!
+//! The eight `#script-on` cases are all ordinary documents and are excluded
+//! (see [`SCRIPT_ON_REASON`]). The scripting-mode `noscript` rules they
+//! exercise are covered through the fragment API, whose Inert mode is not
+//! Disabled: `tests/parser/parse/frameset_noscript.rs`.
 //!
 //! The corpus format does not carry document mode. A case binds its mode from
 //! the hand-derived HTML877d table below, otherwise from the Initial rules the
@@ -53,6 +56,19 @@ const PI_REASON: &str = "HTML877d tag open state: U+003F enters processing-instr
 /// corpus revision still inserts it.
 const SELECT_INPUT_REASON: &str =
     "HTML877d in body: an input start tag in a select fragment context is ignored";
+
+/// Why the `#script-on` cases are not run. HTML877d "other parsing state
+/// flags" (`references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`
+/// line 1347) gives a Document parser the scripting mode Normal when scripting
+/// is enabled for its Document, and Normal means "Scripts are processed when
+/// inserted" (line 1353 onward). The public document profile is Disabled only:
+/// `HtmlDocumentParseRequest::scripting_mode` is fixed Disabled,
+/// `HtmlDocumentParseRequest::captured` rejects an Enabled document with
+/// `UnsupportedExecution(Normal)`, and `docs/reference/html-operations.md`
+/// ("The document execution profile is a fresh ordinary document with
+/// Disabled scripting") records that boundary. No public or private entry
+/// constructs a Normal document parse to replay them against.
+const SCRIPT_ON_REASON: &str = "Document scripting mode Normal requires script processing, which the document profile does not support";
 
 const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
     (
@@ -558,7 +574,8 @@ fn replay(kind_filter: fn(&Fixture<'_>) -> bool) -> Tally {
 #[test]
 fn every_retained_ordinary_case_matches_its_corpus_tree_after_real_completion() {
     let tally = replay(|f| f.fragment.is_none());
-    // 1583 retained ordinary cases; the eight `#script-on` cases are not run.
+    // 1583 retained ordinary cases; the eight `#script-on` cases are excluded
+    // for SCRIPT_ON_REASON.
     assert_eq!(
         (tally.documents, tally.fragments, tally.enabled),
         (1575, 0, 8)
@@ -659,4 +676,40 @@ fn empty_fragment_renders_equal_to_an_empty_expectation() {
         );
     }
     assert_eq!(expected_dump("| <head>"), "| <head>\n");
+}
+
+#[test]
+fn script_on_cases_are_exactly_the_documents_the_disabled_only_profile_excludes() {
+    let mut script_on = Vec::new();
+    for (file, raw) in DATA {
+        for fixture in decode(raw).unwrap() {
+            if fixture.scripting == FixtureScripting::Enabled {
+                assert!(
+                    fixture.fragment.is_none(),
+                    "{file}/{}: a fragment case selects its mode from the context \
+                     document, not a marker",
+                    fixture.ordinal
+                );
+                script_on.push((*file, fixture.ordinal));
+            }
+        }
+    }
+    assert_eq!(
+        script_on,
+        [
+            ("tests5.dat", 16),
+            ("tests16.dat", 84),
+            ("tests16.dat", 86),
+            ("tests16.dat", 88),
+            ("tests16.dat", 181),
+            ("tests16.dat", 183),
+            ("tests16.dat", 185),
+            ("webkit02.dat", 2),
+        ],
+        "{SCRIPT_ON_REASON}"
+    );
+    assert_eq!(
+        document_request("x", false).scripting_mode(),
+        surgeist_html::parsing::HtmlParserScriptingMode::Disabled
+    );
 }
