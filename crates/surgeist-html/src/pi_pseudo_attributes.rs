@@ -5,13 +5,17 @@
 /// The caller-owned field affected by a cursor action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Field {
+    /// The pseudo-attribute name being scanned.
     Name,
+    /// The quoted pseudo-attribute value being scanned, including its references.
     Value,
 }
 /// A name in the caller's current field or committed pair bank.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Name {
+    /// The name of the pair still being scanned, before it is committed.
     Current,
+    /// The name of the committed pair at this zero-based index.
     Pair(usize),
 }
 /// The next concrete read, field-bank mutation, or grammar transition.
@@ -22,29 +26,54 @@ pub enum Name {
 /// `Ready(false)` follows cleanup of all committed pairs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
+    /// Read the original input's UTF-16 code unit at this index; reply with `Reply::Unit`,
+    /// `None` exactly when the index equals the input length.
     Read(usize),
+    /// Run the grammar transition for the scalar value already read. The reply is `Reply::Ack`
+    /// and needs no caller read.
     Step,
+    /// Start a fresh caller-owned field. The reply is `Reply::Ack` once the bank is ready.
     Begin(Field),
+    /// Append one decoded scalar value to a field of the pair being scanned.
     Emit {
+        /// The field that receives the scalar value.
         field: Field,
+        /// The scalar value as UTF-16 code units; only the first `len` are meaningful.
         units: [u16; 2],
+        /// How many of `units` are meaningful: one for a BMP value, two for a surrogate pair.
         len: usize,
+        /// UTF-16 offset in the original input where the source text for this value begins.
         start: usize,
+        /// UTF-16 offset one past the last source code unit of this value.
         end: usize,
+        /// Whether the value came from a character or predefined entity reference, so
+        /// `start..end` spans the whole reference rather than one literal scalar.
         reference: bool,
     },
+    /// Report the length, in UTF-16 code units, of the committed pair at this index, to compare
+    /// it with the pair being scanned for a duplicate name. Reply with `Reply::Length`.
     NameLength(usize),
+    /// Report one UTF-16 code unit at this index of the named field, for the same duplicate
+    /// comparison. Reply with `Reply::Unit(Some(unit))`.
     NameUnit(Name, usize),
+    /// The pair is complete and its name is not a duplicate: record it as a committed pair.
     Commit,
+    /// Drop the unfinished pair after an error; the scan is invalid.
     Discard,
+    /// Remove the most recently committed pair; repeated until none remain after an error.
     Pop,
+    /// The scan finished: `true` if the whole input is valid pseudo-attributes, `false` if it
+    /// was invalid and all pairs were cleaned up.
     Ready(bool),
 }
 /// The actual read result, or acknowledgement after performing a pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Reply {
+    /// Answer to `Read` or `NameUnit`: the requested code unit, or `None` at the input's end.
     Unit(Option<u16>),
+    /// Answer to `NameLength`: the requested name's length in UTF-16 code units.
     Length(usize),
+    /// The pending write or transition was performed; carries no data.
     Ack,
 }
 /// A refused protocol transition; the cursor retains its previous state.

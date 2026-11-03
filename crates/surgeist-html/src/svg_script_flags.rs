@@ -28,6 +28,7 @@ impl SvgScriptFlags {
         Self { already_processed }
     }
 
+    /// Whether the script has been processed and must not be processed again.
     pub const fn already_processed(self) -> bool {
         self.already_processed
     }

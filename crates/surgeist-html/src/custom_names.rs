@@ -32,6 +32,7 @@ impl HtmlCustomElementName {
         Ok(Self { value })
     }
 
+    /// The exact checked local name, with every UTF-16 code unit unchanged.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
@@ -56,13 +57,19 @@ impl HtmlCustomElementName {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlCustomElementNameError {
+    /// The name has no code units.
     Empty,
+    /// The first code unit is not an ASCII lowercase letter (`a` to `z`), so the name does not
+    /// start a valid custom element name.
     FirstCodePointNotLowercaseAscii,
     /// A code unit forbidden by HTML or the selected DOM ASCII-first branch.
     ForbiddenCodeUnit {
+        /// Offset of the first forbidden code unit, in UTF-16 code units.
         code_unit_offset: usize,
+        /// The forbidden UTF-16 code unit found at `code_unit_offset`.
         code_unit: u16,
     },
+    /// The name contains no hyphen (U+002D), which every valid custom element name requires.
     MissingHyphen,
     /// One of HTML's eight reserved hyphen-containing names.
     ReservedName,
@@ -108,11 +115,22 @@ pub fn validate_custom_element_name(
 /// each action before the indicated dereference; native validation remains
 /// explicitly unbudgeted and uses the same grammar.
 pub enum CustomNameScanAction {
+    /// The fixed per-name step, admitted once before any unit of the name is inspected.
     Header,
+    /// One unit read of the name, charged before that unit is dereferenced.
     Unit,
+    /// Starting the comparison against one of the eight reserved names.
     ReservedHeader,
+    /// One unit pair compared against a reserved name, charged before the name's unit is read.
     ReservedPair,
 }
+/// Validates `name` like [`validate_custom_element_name`] while admitting each scan step first.
+///
+/// `admit` is called with the [`CustomNameScanAction`] about to be performed, before the
+/// corresponding read of `name`. The outer `Err(E)` is the first refusal from `admit`; the scan
+/// stops there and nothing further is read. The inner result is the validation outcome, with
+/// the first reached rejection as in [`HtmlCustomElementName::new`]. The grammar is identical to
+/// the unbudgeted scan; this adds no allocation.
 pub fn validate_custom_element_name_with<E>(
     name: &DocumentString,
     mut admit: impl FnMut(CustomNameScanAction) -> Result<(), E>,
