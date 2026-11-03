@@ -350,7 +350,13 @@ fn a_child_order_allocation_reports_the_deque_that_holds_the_entries() {
         assert_eq!(snapshot.capacity(), capacity);
         assert_eq!(snapshot.element_size(), word);
         assert_eq!(snapshot.payload_bytes(), capacity * word);
-        assert_eq!(snapshot.wrapper_payload_bytes(), 4 * word);
+        // The wrapper is the deque header. Its layout is not a std guarantee, so compare with
+        // the deque's own size and require it to differ from a `Vec` header.
+        assert_eq!(
+            snapshot.wrapper_payload_bytes(),
+            std::mem::size_of::<std::collections::VecDeque<usize>>()
+        );
+        assert!(snapshot.wrapper_payload_bytes() > std::mem::size_of::<Vec<usize>>());
     }
 }
 
