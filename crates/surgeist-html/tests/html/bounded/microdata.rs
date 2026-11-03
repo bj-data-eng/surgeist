@@ -304,3 +304,25 @@ fn duplicate_of_names_the_first_identical_earlier_token_for_prefixes_nuls_and_su
         assert_eq!(actual, expected, "round {round}: {units:?}");
     }
 }
+
+/// The cost of one token follows that token's own length, whatever the earlier tokens look like.
+/// A prefix-sharing chain `b`, `ab`, `aab`, ... makes the deepest possible index for its size, and
+/// short probes that follow the chain are the worst case for a search that skips shared bits
+/// without checking them. Per token the search compares at most `L + 1` code units and descends
+/// at most 17 levels per unit, three work units each; scanning charges at most 5 per unit and
+/// 24 per token for the loop, punctuation, reservation and commit steps. Every token therefore
+/// costs at most `3 * 18 * (L + 1) + 5 * L + 24 <= 80 * (L + 1)`.
+#[test]
+fn charged_work_stays_within_a_constant_of_total_length_for_deep_prefix_chains() {
+    let mut words: Vec<String> = (0..400).map(|i| format!("{}b", "a".repeat(i))).collect();
+    // Probes of length 2 that agree with the chain's long `a` runs where they can.
+    words.extend((0..2_000).map(|i| format!("a{}", char::from_u32(0x100 + i).unwrap())));
+    let text = DocumentString::from(words.join(" ").as_str());
+    let weight: usize = words.iter().map(|w| w.encode_utf16().count() + 1).sum();
+    let (work, duplicates) = interpret(HtmlMicrodataTokenKind::ItemRef, &text);
+    assert!(duplicates.iter().all(Option::is_none));
+    assert!(
+        work <= 80 * weight,
+        "charged {work} units for {weight} units of length and tokens"
+    );
+}
