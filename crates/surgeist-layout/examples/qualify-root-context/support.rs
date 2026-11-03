@@ -350,6 +350,7 @@ fn qualify(
             .filter(|case| case.historical.is_some())
             .count()
     );
+    let mut native_errors = Vec::new();
     for artifact in report.generated() {
         let case = inventory
             .cases
@@ -357,9 +358,15 @@ fn qualify(
             .find(|case| case.case.id() == artifact.name())
             .expect("declared generated case");
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
+        // Source certificates and parsing remain fatal. Only an actual strict
+        // Native comparison failure is retained so later cases still execute.
         qualify_xml(&xml, case)?;
         let golden = crate::parity_support::Golden::parse(&xml)?;
-        crate::parity_support::assert_surgeist_matches(&golden)?;
+        if let Err(error) = crate::parity_support::assert_surgeist_matches(&golden) {
+            let diagnostic = format!("{}: {error}", case.case.id());
+            eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
+            native_errors.push(diagnostic);
+        }
     }
     qualify_pairs(root, &inventory.cases)?;
     let tamper_count = if let Some(first) = inventory
@@ -376,6 +383,19 @@ fn qualify(
         browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
+    if !native_errors.is_empty() {
+        eprintln!(
+            "qualify-root-context: {} Native comparison failures across {} Generated cases; declared pairs, source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; Native conformance failed",
+            native_errors.len(),
+            report.summary().generated(),
+        );
+        return Err(format!(
+            "{} strict Native comparisons failed:\n{}",
+            native_errors.len(),
+            native_errors.join("\n"),
+        )
+        .into());
+    }
     eprintln!(
         "qualify-root-context: {} Generated and {} Unsupported V4 cases, declared pairs, historical geometry and {tamper_count} filesystem tamper refusals qualified",
         report.summary().generated(),
