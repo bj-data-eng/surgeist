@@ -326,3 +326,97 @@ fn reallocation_requests_for_n_occurrences_grow_at_most_logarithmically() {
         }
     }
 }
+
+/// Sums the charges, and reserves like an allocation-admitting consumer.
+#[derive(Default)]
+struct SumMeter {
+    work: usize,
+}
+impl HtmlRelMeter for SumMeter {
+    type Error = std::convert::Infallible;
+    fn work(&mut self, n: usize) -> Result<(), Self::Error> {
+        self.work += n;
+        Ok(())
+    }
+    fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        guard.try_reserve().unwrap();
+        Ok(())
+    }
+}
+
+fn duplicates_and_work(text: &str) -> (Vec<Option<usize>>, usize) {
+    let raw = DocumentString::from(text);
+    let mut owner = HtmlRelInterpretation::new(
+        HtmlRelInputs::new(Some(HtmlRelRole::Link)).with_rel(Some(&raw)),
+    );
+    let mut meter = SumMeter::default();
+    owner.interpret(&mut meter).unwrap();
+    let duplicates = owner
+        .occurrences()
+        .unwrap()
+        .iter()
+        .map(|occurrence| occurrence.duplicate_of())
+        .collect();
+    (duplicates, meter.work)
+}
+
+/// The `rel` value must be an unordered set of unique space-separated tokens
+/// (references/html-language-elements-text-links--877d6146487f--8833a85fd242.md:8471), an
+/// author conformance finding, so finding the earlier twin of each token must not compare
+/// every pair of tokens.
+#[test]
+fn rel_duplicate_detection_charge_grows_linearly_with_distinct_tokens() {
+    let charges: Vec<usize> = [512, 1024, 2048, 4096]
+        .into_iter()
+        .map(|tokens| {
+            let text: Vec<String> = (0..tokens).map(|n| format!("t{n}")).collect();
+            let (duplicates, work) = duplicates_and_work(&text.join(" "));
+            assert_eq!(duplicates.len(), tokens);
+            assert!(duplicates.iter().all(Option::is_none));
+            work
+        })
+        .collect();
+    for pair in charges.windows(2) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 22,
+            "doubling the tokens grew the charge from {} to {}: {charges:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+/// The first earlier token equal under ASCII case folding, by a quadratic oracle that shares
+/// nothing with the implementation. Non-ASCII letters keep their case: U+00C9 and U+00E9 differ.
+#[test]
+fn rel_duplicate_of_names_the_first_ascii_case_insensitive_twin() {
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut next = move |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    let letters = ['a', 'A', 'b', 'B', '\u{c9}', '\u{e9}', 'z', '0'];
+    let separators = [" ", "  ", "\t", "\n", "\u{c}", "\r\n", " \t "];
+    for _ in 0..400 {
+        let tokens: Vec<String> = (0..next(30))
+            .map(|_| {
+                (0..1 + next(3))
+                    .map(|_| letters[next(letters.len())])
+                    .collect()
+            })
+            .collect();
+        let mut text = separators[next(separators.len())].repeat(next(2));
+        for token in &tokens {
+            text.push_str(token);
+            text.push_str(separators[next(separators.len())]);
+        }
+        let (duplicates, _) = duplicates_and_work(&text);
+        let folded: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
+        let expected: Vec<Option<usize>> = (0..folded.len())
+            .map(|i| (0..i).find(|&j| folded[j] == folded[i]))
+            .collect();
+        assert_eq!(duplicates, expected, "{text:?}");
+    }
+}
