@@ -1499,3 +1499,6 @@ fn negative_outer_demands_preserve_signed_first_and_last_targets_f32() {
 fn negative_outer_demands_preserve_signed_first_and_last_targets_f64() {
     negative_outer_demands_keep_signed_native_targets::<f64>();
 }
+
+#[path = "native_coordinate_alignment/executed_inventory_custody.rs"]
+mod executed_inventory_custody;
