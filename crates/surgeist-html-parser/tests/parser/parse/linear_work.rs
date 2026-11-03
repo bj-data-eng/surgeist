@@ -8,6 +8,9 @@
 use surgeist_html::{
     construction::HtmlDocumentMode,
     parsing::HtmlParserScriptingMode,
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+    },
     values::{Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
@@ -896,4 +899,187 @@ fn work_of_one_long_input_value_at_most_doubles_with_its_length() {
     assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
         format!("<!doctype html><input value='{}'>", "x".repeat(n))
     });
+}
+
+/// Requires `visits(n)` to be at most 2.2 times `visits(m)` for each pair of
+/// consecutive `sizes`: a lookup that scans the payload registry for each of n
+/// repeated nodes makes the record visits quadruple with each doubling.
+fn assert_visits_each_doubling_at_most_two_point_two_times(
+    sizes: [usize; 4],
+    what: &str,
+    visits: impl Fn(usize) -> u64,
+) {
+    let measured: Vec<u64> = sizes.iter().map(|&n| visits(n)).collect();
+    for (pair, window) in sizes.windows(2).zip(measured.windows(2)) {
+        assert!(
+            window[1].saturating_mul(10) <= window[0].saturating_mul(22),
+            "{what}: {} repeats cost {} record visits, {} repeats cost {} \
+             (all measured: {measured:?})",
+            pair[0],
+            window[0],
+            pair[1],
+            window[1],
+        );
+    }
+}
+
+const REPEAT_SIZES: [usize; 4] = [500, 1_000, 2_000, 4_000];
+
+#[test]
+fn record_visits_of_one_processing_instruction_with_many_pairs_at_most_double_with_the_pairs() {
+    // XML-stylesheet 20101028 section 3: each pseudo-attribute name and value is
+    // read once, and the origins of the instruction's data that cover them are
+    // consumed in source order, so no unit of a name or value may walk the
+    // origins of all the others again.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        [50, 100, 200, 400],
+        "one processing instruction with many pairs",
+        |pairs| {
+            let attributes: Vec<String> = (0..pairs).map(|n| format!("n{n}=''")).collect();
+            parse_fragment_work(format!("<?marker {}?>", attributes.join(" "))).visited
+        },
+    );
+}
+
+#[test]
+fn record_visits_of_repeated_processing_instructions_with_a_pair_at_most_double_with_their_number()
+{
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated processing instructions",
+        |n| {
+            parse_work(format!(
+                "<!doctype html><body>{}",
+                "<?a name='q'?>".repeat(n)
+            ))
+            .visited
+        },
+    );
+}
+
+#[test]
+fn record_visits_a_template_for_adds_over_repeated_processing_instructions_at_most_double() {
+    // `template for` looks for a marker among the instructions that precede it;
+    // none is named `x`, so the lookup reads the `name` pair of each one.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "a template for over repeated processing instructions",
+        |n| {
+            let instructions = "<?a name='q'?>".repeat(n);
+            let with = parse_work(format!(
+                "<!doctype html><body>{instructions}<template for=x></template>"
+            ));
+            let without = parse_work(format!("<!doctype html><body>{instructions}"));
+            with.visited.saturating_sub(without.visited)
+        },
+    );
+}
+
+#[test]
+fn record_visits_of_repeated_svg_scripts_at_most_double_with_their_number() {
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated svg scripts",
+        |n| {
+            parse_work(format!(
+                "<!doctype html><body>{}",
+                "<svg><script></script></svg>".repeat(n)
+            ))
+            .visited
+        },
+    );
+}
+
+#[test]
+fn record_visits_of_repeated_open_details_at_most_double_with_their_number() {
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated open details",
+        |n| {
+            parse_work(format!(
+                "<!doctype html><body>{}",
+                "<details open></details>".repeat(n)
+            ))
+            .visited
+        },
+    );
+}
+
+/// A `div` in a document with a browsing context and a header-delivered CSP
+/// policy, captured as the context element of a fragment parse.
+fn connected_div_context() -> HtmlFragmentContext {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &document,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    builder
+        .establish_document_nonce_environment(
+            &document,
+            HtmlNonceDocumentEnvironment::new(
+                HtmlBrowsingContextPresence::Present,
+                HtmlHeaderDeliveredCsp::Present,
+            ),
+        )
+        .unwrap();
+    let host = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_children(&document, std::slice::from_ref(&host))
+        .unwrap();
+    builder.establish_no_shadow_root(&host).unwrap();
+    let capture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&host).unwrap()).unwrap()
+}
+
+#[test]
+fn record_visits_of_nonce_elements_hidden_by_a_header_policy_at_most_double_with_their_number() {
+    // Content Security Policy (nonce hiding): an inserted element with a nonce in a connected
+    // shadow tree under a header-delivered policy has its `nonce` attribute emptied, which
+    // replaces one attribute of each such element.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated nonce elements hidden by a header policy",
+        |n| {
+            let request = HtmlFragmentParseRequest::with_options(
+                HtmlSource::utf8(format!(
+                    "<template shadowrootmode=open>{}</template>",
+                    "<p nonce=A></p>".repeat(n)
+                )),
+                connected_div_context(),
+                deep_limits(),
+                HtmlParserScriptingMode::Inert,
+                true,
+            )
+            .unwrap();
+            work_of(
+                request
+                    .parse()
+                    .unwrap_or_else(|_| panic!("the fragment parses"))
+                    .usage(),
+            )
+            .visited
+        },
+    );
 }
