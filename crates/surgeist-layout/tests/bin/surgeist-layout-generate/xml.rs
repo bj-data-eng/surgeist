@@ -4,7 +4,7 @@ use crate::measurement::{Attributes, Node, NodeKind, Observation, ValidatedMeasu
 
 pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> String {
     let mut lines = vec![format!(
-        "<test name=\"{}\" measurement-version=\"2\" use-rounding=\"{}\">",
+        "<test name=\"{}\" measurement-version=\"3\" observation-frame=\"root-border\" use-rounding=\"{}\">",
         escape_attr(name),
         measurement.use_rounding()
     )];

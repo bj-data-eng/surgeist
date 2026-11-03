@@ -224,27 +224,6 @@ fn validate_dimension_use(
 }
 
 impl Dimension {
-    pub fn validate_viewport_wire(
-        &self,
-        context: &Context<'_>,
-        field: &str,
-    ) -> Result<(), MeasurementError> {
-        self.validate(context, field)?;
-        context.ensure(
-            matches!(self.unit, Unit::Px | Unit::MinContent | Unit::MaxContent),
-            field,
-            "viewport dimension must be px, min-content, or max-content",
-        )
-    }
-
-    pub fn validate_viewport_semantic(
-        &self,
-        context: &Context<'_>,
-        field: &str,
-    ) -> Result<(), MeasurementError> {
-        self.validate_nonnegative(context, field)
-    }
-
     fn validate_xml_strings(
         &self,
         context: &Context<'_>,

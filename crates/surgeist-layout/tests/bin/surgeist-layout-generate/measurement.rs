@@ -5,9 +5,15 @@ mod prepared_text;
 #[path = "measurement/style.rs"]
 mod style;
 
+#[path = "measurement/root_context.rs"]
+mod root_context;
+use root_context::WireViewport;
+
 use serde::Deserialize;
 use std::fmt;
-use style::{Dimension, Style};
+#[cfg(test)]
+use style::Dimension;
+use style::Style;
 
 pub(super) type Attributes = Vec<(&'static str, String)>;
 
@@ -189,25 +195,6 @@ enum LayoutInput {
 #[serde(rename_all = "kebab-case")]
 enum BrowserBrObservation {
     FontBand,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WireViewport {
-    width: Dimension,
-    height: Dimension,
-    root_context: RootContext,
-    #[serde(default, deserialize_with = "present")]
-    parent_writing_mode: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    parent_direction: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    host_inline_size: Option<f64>,
-}
-#[derive(Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum RootContext {
-    Root,
-    FlexItem,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -683,12 +670,6 @@ impl WireNode {
             style.validate_wire(context)?;
         }
         if let Some(viewport) = &self.viewport {
-            viewport
-                .width
-                .validate_viewport_wire(context, "viewport.width")?;
-            viewport
-                .height
-                .validate_viewport_wire(context, "viewport.height")?;
             viewport.validate_alternative(context)?;
         }
         if let Some(boundary) = &self.inline_boundary {
@@ -1276,78 +1257,6 @@ impl WireGeometry {
             }
         }
         Ok(())
-    }
-}
-impl WireViewport {
-    fn validate_alternative(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
-        if self.root_context == RootContext::FlexItem {
-            let mode = context.required(
-                self.parent_writing_mode.as_deref(),
-                "viewport.parentWritingMode",
-            )?;
-            style::validate_writing_mode(mode, context, "viewport.parentWritingMode")?;
-            let direction =
-                context.required(self.parent_direction.as_deref(), "viewport.parentDirection")?;
-            context.ensure(
-                matches!(direction, "ltr" | "rtl"),
-                "viewport.parentDirection",
-                "unknown direction",
-            )?;
-            context.required(self.host_inline_size, "viewport.hostInlineSize")?;
-        } else {
-            context.compatible(
-                self.parent_writing_mode.is_none()
-                    && self.parent_direction.is_none()
-                    && self.host_inline_size.is_none(),
-                "viewport.rootContext",
-                "root context cannot carry flex host metadata",
-            )?;
-        }
-        Ok(())
-    }
-    fn validate(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
-        self.width
-            .validate_viewport_semantic(context, "viewport.width")?;
-        self.height
-            .validate_viewport_semantic(context, "viewport.height")?;
-        let mut attrs = vec![
-            ("width", self.width.validate(context, "viewport.width")?),
-            ("height", self.height.validate(context, "viewport.height")?),
-        ];
-        if self.root_context == RootContext::FlexItem {
-            let mode = context.required(
-                self.parent_writing_mode.as_deref(),
-                "viewport.parentWritingMode",
-            )?;
-            style::validate_writing_mode(mode, context, "viewport.parentWritingMode")?;
-            let direction =
-                context.required(self.parent_direction.as_deref(), "viewport.parentDirection")?;
-            context.ensure(
-                matches!(direction, "ltr" | "rtl"),
-                "viewport.parentDirection",
-                "unknown direction",
-            )?;
-            let host = nonnegative(
-                context.required(self.host_inline_size, "viewport.hostInlineSize")?,
-                context,
-                "viewport.hostInlineSize",
-            )?;
-            attrs.extend([
-                ("root-context", "flex-item".into()),
-                ("parent-writing-mode", mode.into()),
-                ("parent-direction", direction.into()),
-                ("host-inline-size", format!("{}px", number(host))),
-            ]);
-        } else {
-            context.compatible(
-                self.parent_writing_mode.is_none()
-                    && self.parent_direction.is_none()
-                    && self.host_inline_size.is_none(),
-                "viewport.rootContext",
-                "root context cannot carry flex host metadata",
-            )?;
-        }
-        Ok(attrs)
     }
 }
 impl WireBoundary {

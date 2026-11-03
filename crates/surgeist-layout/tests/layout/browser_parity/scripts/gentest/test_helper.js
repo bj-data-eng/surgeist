@@ -155,34 +155,172 @@ class TrackSizingParser {
 
 }
 
-function parseViewportConstraint(e, boundingRect) {
-  if (e.parentNode.classList.contains('viewport')) {
-    const parentStyle = getComputedStyle(e.parentElement);
-    const hostInlineSize = parentStyle.writingMode === 'horizontal-tb'
-      ? boundingRect.width
-      : boundingRect.height;
-    return {
-      width: parseDimension(e.parentNode.style.width || 'max-content'),
-      height: parseDimension(e.parentNode.style.height || 'max-content'),
-      rootContext: 'flex-item',
-      parentWritingMode: parentStyle.writingMode,
-      parentDirection: parentStyle.direction,
-      hostInlineSize,
-    }
-  } else {
-    return {
-      width: rootFillsBrowserViewport(e, boundingRect) ? px(window.innerWidth) : { unit: 'max-content' },
-      height: { unit: 'max-content' },
-      rootContext: 'root',
-    }
+
+// The capture profile is source-qualified, not a CSS cascade implementation.
+// Its producer is the adapter holding the exact HTML/base/helper input bytes.
+let rootContextCapture;
+
+function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
+  const reject = reason => { rootContextCapture = { reason }; };
+  try {
+    const parsed = new DOMParser().parseFromString(source, 'text/html');
+    if (parsed.doctype?.name.toLowerCase() !== 'html' ||
+        parsed.querySelectorAll('#test-root').length !== 1 ||
+        parsed.querySelectorAll('body').length !== 1) return reject('SourceDocument');
+    if (parsed.documentElement.style.length || parsed.body.style.length) return reject('AuthoredBodyOrHtmlStyle');
+    if ([parsed.documentElement, parsed.body].some(node =>
+        Array.from(node.attributes).some(attribute => !['lang', 'dir', 'class'].includes(attribute.name)))) return reject('SourceAncestorAttribute');
+    if (parsed.querySelector('style, iframe, frame, object, embed, base')) return reject('SourceFrameOrStyle');
+    if (Array.from(parsed.querySelectorAll('*')).some(node =>
+        Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
+    const scripts = Array.from(parsed.querySelectorAll('script'));
+    const links = Array.from(parsed.querySelectorAll('link'));
+    const helperUrl = new URL(helperReference, document.baseURI).href;
+    const styleUrl = new URL(styleReference, document.baseURI).href;
+    if (scripts.length !== 1 || scripts[0].textContent.trim() ||
+        new URL(scripts[0].getAttribute('src') || '', document.baseURI).href !== helperUrl ||
+        links.length !== 1 || links[0].rel !== 'stylesheet' ||
+        new URL(links[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
+    const sourceRoot = parsed.getElementById('test-root');
+    if (sourceRoot.parentElement !== parsed.body) return reject('SourceParent');
+    if (Array.from(parsed.body.childNodes).some(node => node !== sourceRoot &&
+        node.nodeType !== Node.COMMENT_NODE &&
+        !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) return reject('SourceBodySiblings');
+    const expectedSheet = new CSSStyleSheet();
+    expectedSheet.replaceSync(baseStyle);
+    const rules = Array.from(expectedSheet.cssRules, rule => rule.cssText);
+    rootContextCapture = { sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
+      body: parsed.body, rules, helperUrl, styleUrl };
+  } catch (_) {
+    reject('SourceQualificationUnavailable');
   }
 }
 
-function rootFillsBrowserViewport(e, boundingRect) {
-  if (e.style.width) return false;
-  if (e.style.display === 'inline-grid' || e.style.display === 'inline-flex' || e.style.display === 'inline-block') return false;
-  return Math.round(boundingRect.width) === window.innerWidth;
+function captureRootContext(root) {
+  const fail = reason => { throw new Error('Root context: ' + reason); };
+  const proof = rootContextCapture;
+  if (!proof || proof.reason) fail(proof?.reason || 'MissingSourceAuthority');
+  const html = document.documentElement, body = document.body;
+  if (document.compatMode !== 'CSS1Compat' || window.top !== window ||
+      document.scrollingElement !== html || root.parentElement !== body ||
+      document.querySelectorAll('#test-root').length !== 1 ||
+      root.outerHTML !== proof.sourceRoot) fail('DocumentFrameChanged');
+  for (const [live, original] of [[html, proof.html], [body, proof.body]]) {
+    // Body class is the generator-owned four-variant switch. Everything else
+    // affecting the ancestor source must remain the captured original.
+    const attrs = element => Array.from(element.attributes)
+      .filter(attribute => live === body ? attribute.name !== 'class' : true)
+      .map(attribute => [attribute.name, attribute.value]).sort();
+    if (JSON.stringify(attrs(live)) !== JSON.stringify(attrs(original))) fail('AncestorSourceChanged');
+  }
+  if (Array.from(body.childNodes).some(node => node !== root &&
+      node.nodeType !== Node.COMMENT_NODE &&
+      !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) fail('BodySiblings');
+  const scripts = Array.from(document.scripts);
+  if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
+  const sheets = Array.from(document.styleSheets);
+  if (document.adoptedStyleSheets.length !== 0) fail('AdoptedStylesheet');
+  if (sheets.length !== 2) fail('StylesheetInventory');
+  for (const sheet of sheets) {
+    const owner = sheet.ownerNode;
+    if ((owner?.tagName === 'LINK' && (owner.href !== proof.styleUrl || owner.disabled)) ||
+        (owner?.tagName === 'STYLE' && owner.getAttribute('data-surgeist-root-source') !== 'true') ||
+        !['LINK', 'STYLE'].includes(owner?.tagName) || sheet.disabled) fail('StylesheetSource');
+    let rules;
+    try { rules = Array.from(sheet.cssRules, rule => rule.cssText); }
+    catch (_) { fail('OpaqueStylesheet'); }
+    if (JSON.stringify(rules) !== JSON.stringify(proof.rules)) fail('StylesheetChanged');
+  }
+  const zero = value => /^[-+]?0(?:\.0+)?px$/.test(value);
+  const edgeProperties = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  const unshifted = style => style.transform === 'none' && style.perspective === 'none' &&
+    style.filter === 'none' && style.contain === 'none' && style.willChange === 'auto' &&
+    ['normal', '1'].includes(style.zoom) && style.contentVisibility === 'visible' &&
+    style.animationName === 'none' && style.transitionProperty === 'all' &&
+    style.transitionDuration.split(',').every(value => parseFloat(value) === 0);
+  const parentStyle = getComputedStyle(body), htmlStyle = getComputedStyle(html);
+  for (const style of [parentStyle, htmlStyle]) {
+    if (style.writingMode !== 'horizontal-tb' || style.display !== 'block' ||
+        style.position !== 'static' || style.cssFloat !== 'none' || style.clear !== 'none' ||
+        style.overflowX !== 'visible' || style.overflowY !== 'visible' ||
+        style.scrollbarGutter !== 'auto' || !unshifted(style) ||
+        edgeProperties.some(property => !zero(style[property]))) fail('ContainingFrame');
+  }
+  // The exact admitted base stylesheet and empty html/body declaration lists
+  // establish Auto body dimensions. Used CSSOM body height is deliberately unread.
+  if (body.style.length || html.style.length) fail('AncestorInlineStyleChanged');
+  if (!['ltr', 'rtl'].includes(parentStyle.direction)) fail('ContainingDirection');
+  if (window.scrollX !== 0 || window.scrollY !== 0) fail('ScrolledFrame');
+  const visual = window.visualViewport;
+  if (!visual || visual.scale !== 1 || visual.offsetLeft !== 0 || visual.offsetTop !== 0) fail('ViewportScale');
+  const width = html.clientWidth, height = html.clientHeight;
+  if (![width, height].every(value => Number.isFinite(value) && value >= 0) ||
+      width !== visual.width || height !== visual.height ||
+      body.clientWidth !== width) fail('ViewportExtentAuthority');
+  const style = getComputedStyle(root);
+  if (root.tagName !== 'DIV' || !['normal', 'none'].includes(style.content)) fail('RootBoxRole');
+  if (edgeProperties.some(property => root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]))) fail('AuthoredRootEdges');
+  if (!unshifted(style) || style.cssFloat !== 'none' || style.clear !== 'none' ||
+      edgeProperties.some(property => !zero(style[property]))) fail('RootEdgesOrDisplacement');
+  const physicalInsets = ['top', 'right', 'bottom', 'left'];
+  const logicalInsets = ['inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end'];
+  if (physicalInsets.some(property => root.style[property] && root.style[property] !== 'auto') ||
+      logicalInsets.some(property => root.style.getPropertyValue(property) &&
+        root.style.getPropertyValue(property) !== 'auto')) fail('AuthoredInsets');
+  if (!['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootDisplay');
+  const nonCollapsingBoundary = ['flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display) ||
+    (style.display === 'block' && [style.overflowX, style.overflowY].some(value => ['hidden', 'auto', 'scroll'].includes(value)));
+  if (!nonCollapsingBoundary) fail('UnqualifiedInitialBlockOrigin');
+  const fallback = { initialContainingBlock: { width, height }, nearestScrollport: 'none',
+    containingLimits: { width: 'unbounded', height: 'unbounded' } };
+  if (style.position === 'absolute') {
+    if (style.writingMode !== 'horizontal-tb' ||
+        style.aspectRatio !== 'auto' || style.alignSelf !== 'auto' ||
+        style.justifySelf !== 'auto' || ['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED', 'INPUT'].includes(root.tagName)) {
+      fail('PositionedRootProfile');
+    }
+    return { kind: 'positioned-auto-insets', containingWidth: width,
+      containingHeight: height, containingDirection: parentStyle.direction, fallback };
+  }
+  if (style.position === 'static' || style.position === 'relative') {
+    return { kind: 'block-flow-auto', parentInlineExtent: width,
+      parentDirection: parentStyle.direction, fallback };
+  }
+  fail('UnsupportedPosition');
 }
+
+
+function qualifyAnalyticCaptureText(node, containingMode, inheritedOrthogonal = false) {
+  // A genuine Prepared paragraph retains its own font/source/control authority.
+  if (node.preparedParagraph) return;
+  const mode = node.style?.writingMode || containingMode;
+  const orthogonal = inheritedOrthogonal ||
+    ((mode === 'horizontal-tb') !== (containingMode === 'horizontal-tb'));
+  if (orthogonal && typeof node.textContent === 'string' && node.textContent.length) {
+    throw new Error('Root context: UnsupportedAnalyticOrthogonalTextProfile');
+  }
+  for (const child of node.children || []) qualifyAnalyticCaptureText(child, mode, orthogonal);
+}
+
+function captureRootVariant(root, className) {
+  document.body.className = className;
+  try {
+    const before = captureRootContext(root);
+    const data = describeElement(root);
+    // Base-CSS positioning is real normalized input, not an omitted authored value.
+    data.style.position = getComputedStyle(root).position;
+    qualifyAnalyticCaptureText(data, getComputedStyle(document.body).writingMode);
+    const after = captureRootContext(root);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Root context: UnstableContainingFrame');
+    data.viewport = { rootContext: before };
+    return data;
+  } catch (error) {
+    return unsupportedTestData(error.message);
+  }
+}
+
 
 function parseRepetition(input) {
   if (input === "auto-fill") return { unit: 'auto-fill' };
@@ -1129,7 +1267,7 @@ function describeElement(e, expectedElement = null) {
     // Whether the test should enable rounding
     useRounding: e.getAttribute("data-test-rounding") !== "false",
 
-    viewport: parseViewportConstraint(e, boundingRect),
+    viewport: undefined,
 
     shapeBands: layoutReadyShapeBands(e),
 
@@ -2224,7 +2362,7 @@ function getTestData() {
   if (!root) {
     const reason = "Unsupported missing #test-root fixture root";
     return JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       borderBoxLtrData: unsupportedTestData(reason),
       contentBoxLtrData: unsupportedTestData(reason),
       borderBoxRtlData: unsupportedTestData(reason),
@@ -2232,16 +2370,12 @@ function getTestData() {
     });
   }
 
-  document.body.className = "border-box ltr";
-  const borderBoxLtrData = describeElement(root);
-  document.body.className = "content-box ltr";
-  const contentBoxLtrData = describeElement(root);
-  document.body.className = "border-box rtl";
-  const borderBoxRtlData = describeElement(root);
-  document.body.className = "content-box rtl";
-  const contentBoxRtlData = describeElement(root);
+  const borderBoxLtrData = captureRootVariant(root, "border-box ltr");
+  const contentBoxLtrData = captureRootVariant(root, "content-box ltr");
+  const borderBoxRtlData = captureRootVariant(root, "border-box rtl");
+  const contentBoxRtlData = captureRootVariant(root, "content-box rtl");
 
-  return JSON.stringify({ schemaVersion: 2, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
+  return JSON.stringify({ schemaVersion: 3, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
 }
 
 // Useful when developing this script. Logs the parsed style to the console when any test fixture is opened in a browser.
