@@ -111,20 +111,19 @@ fn association_layout(
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspSource {
     /// The policy came from a `meta` element, the source that the Content security
-    /// policy state of HTML 4.2.5.3 (Pragma directives) passes to Content Security
+    /// policy state of HTML877d #pragma-directives passes to Content Security
     /// Policy parsing.
     Meta,
 }
-/// The disposition that the Content security policy state of HTML 4.2.5.3 (Pragma
-/// directives) passes to Content Security Policy parsing of a `meta` element.
+/// The disposition that the Content security policy state (HTML877d #pragma-directives) passes to
+/// Content Security Policy parsing of a `meta` element.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspDisposition {
     /// The parsed policy is enforced on the Document.
     Enforce,
 }
-/// A directive that the Content security policy state of HTML 4.2.5.3 (Pragma
-/// directives) removes from a policy parsed from a `meta` element before it is
-/// enforced.
+/// A directive that the Content security policy state (HTML877d #pragma-directives) removes from a
+/// policy parsed from a `meta` element before it is enforced.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspRemovedDirective {
     /// The `report-uri` directive.

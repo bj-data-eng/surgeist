@@ -10,11 +10,11 @@ use super::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputColorSpace {
     /// The `limited-srgb` keyword: the serialized CSS color is converted to
-    /// sRGB and limited to 8 bits per component (HTML §4.10.5.1.14). It is also
+    /// sRGB and limited to 8 bits per component (HTML877d #color-state-(type=color)). It is also
     /// the missing and invalid default.
     LimitedSrgb,
     /// The `display-p3` keyword: the serialized CSS color is converted to the
-    /// Display P3 color space (HTML §4.10.5.1.14).
+    /// Display P3 color space (HTML877d #color-state-(type=color)).
     DisplayP3,
 }
 

@@ -178,7 +178,7 @@ pub struct HtmlGetFocusableAreaCursor {
     pending: HtmlGetFocusableAreaAction,
 }
 impl HtmlGetFocusableAreaCursor {
-    /// Starts get the focusable area of HTML 6.6.4 (Processing model), which tests the
+    /// Starts get the focusable area of HTML877d #focus-processing-model, which tests the
     /// target's cases in source order.
     pub const fn new() -> Self {
         Self {

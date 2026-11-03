@@ -54,7 +54,7 @@ pub struct HtmlDialogFreshState {
 }
 impl HtmlDialogFreshState {
     /// Returns the creation values of a new Dialog. Each accessor reports the
-    /// initial value that HTML 4.11.4 (The dialog element) gives its field.
+    /// initial value that HTML877d #the-dialog-element gives its field.
     pub const fn fresh() -> Self {
         Self { _private: () }
     }
@@ -118,7 +118,7 @@ impl HtmlDialogOpenChange {
 /// adapter for their original lifetime; supplied empty text is still present.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogOperation {
-    /// The `show()` method steps of HTML 4.11.4 (The dialog element).
+    /// The `show()` method steps of HTML877d #the-dialog-element.
     Show,
     /// Standard showModal method with null source.
     ShowModal,
@@ -878,7 +878,7 @@ pub enum HtmlCloseWatcherPlacement {
     LastGroup,
 }
 impl HtmlCloseWatcherManager {
-    /// Returns the Window defaults of HTML 6.10.2 (Close watcher infrastructure): one
+    /// Returns the Window defaults of HTML877d #close-watcher-infrastructure: one
     /// allowed group and a next user interaction that allows a new group.
     pub const fn fresh() -> Self {
         Self {

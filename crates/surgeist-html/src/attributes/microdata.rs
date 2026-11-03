@@ -2,19 +2,19 @@
 use super::*;
 use crate::HtmlSpaceToken;
 
-/// Which of the three microdata token-list attributes is being read (HTML §5.2). The kind decides
-/// the attribute name and the nonemptiness and duplicate rules that apply.
+/// Which of the three microdata token-list attributes is being read (HTML877d #encoding-microdata).
+/// The kind decides the attribute name and the nonemptiness and duplicate rules that apply.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenKind {
-    /// The `itemtype` attribute (HTML §5.2.2): the item types of an item. The standard requires at
-    /// least one token and no identical tokens.
+    /// The `itemtype` attribute (HTML877d #items): the item types of an item. The standard requires
+    /// at least one token and no identical tokens.
     ItemType,
-    /// The `itemprop` attribute (HTML §5.2.3): the property names an element adds. The standard
-    /// requires at least one token and no identical tokens. Repeated tokens are skipped when
-    /// processing.
+    /// The `itemprop` attribute (HTML877d #names:-the-itemprop-attribute): the property names an
+    /// element adds. The standard requires at least one token and no identical tokens. Repeated
+    /// tokens are skipped when processing.
     ItemProp,
-    /// The `itemref` attribute (HTML §5.2.2): element IDs to crawl for additional properties. It
-    /// may be empty, but identical tokens are still forbidden.
+    /// The `itemref` attribute (HTML877d #items): element IDs to crawl for additional properties.
+    /// It may be empty, but identical tokens are still forbidden.
     ItemRef,
 }
 impl HtmlMicrodataTokenKind {
@@ -51,8 +51,8 @@ impl HtmlMicrodataToken {
         self.duplicate_of
     }
     /// Whether the token contains U+002E FULL STOP or U+003A COLON, which the standard excludes
-    /// from non-URL property names (HTML §5.2.3). This is a fact about the code units, not a
-    /// verdict on the token.
+    /// from non-URL property names (HTML877d #names:-the-itemprop-attribute). This is a fact about
+    /// the code units, not a verdict on the token.
     pub fn contains_dot_or_colon(&self) -> bool {
         self.dot_or_colon
     }
@@ -95,8 +95,8 @@ impl HtmlMicrodataTokenReport {
             .map(|t| &self.units()[t.start..t.end])
     }
     /// The tokens that processing uses, in source order. For `itemprop` the standard keeps only the
-    /// first occurrence of each name (HTML §5.2.3), so repeated tokens are skipped. For `itemtype`
-    /// and `itemref` every token is yielded.
+    /// first occurrence of each name (HTML877d #names:-the-itemprop-attribute), so repeated tokens
+    /// are skipped. For `itemtype` and `itemref` every token is yielded.
     pub fn processing_tokens(&self) -> impl Iterator<Item = &[u16]> {
         self.tokens
             .iter()

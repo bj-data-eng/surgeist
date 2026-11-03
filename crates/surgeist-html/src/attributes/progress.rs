@@ -18,7 +18,7 @@ pub enum HtmlProgressNumberAuthorError {
     /// failure.
     Syntax(HtmlValueSyntaxError),
     /// The `value` attribute is a valid number below zero. The standard requires it to be zero or
-    /// greater (HTML §4.10.13).
+    /// greater (HTML877d #the-progress-element).
     NegativeValue,
     /// The `max` attribute is a valid number that is zero or below. The standard requires it to be
     /// greater than zero.

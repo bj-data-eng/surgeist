@@ -148,7 +148,7 @@ pub struct HtmlFocusEventCursor {
     pending: HtmlFocusEventAction,
 }
 impl HtmlFocusEventCursor {
-    /// Starts fire a focus event of HTML 6.6.4 (Processing model). The target kind
+    /// Starts fire a focus event of HTML877d #focus-processing-model. The target kind
     /// selects how `view` is captured.
     pub const fn new(target_kind: HtmlFocusEventTargetKind) -> Self {
         Self {

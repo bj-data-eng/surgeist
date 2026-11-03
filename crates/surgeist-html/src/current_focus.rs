@@ -137,7 +137,7 @@ pub struct HtmlCurrentlyFocusedAreaCursor {
     pending: HtmlCurrentlyFocusedAreaAction,
 }
 impl HtmlCurrentlyFocusedAreaCursor {
-    /// Starts the currently focused area algorithm of HTML 6.6.2 (Data model) for a
+    /// Starts the currently focused area algorithm of HTML877d #data-model for a
     /// top-level traversable. The first action reads system focus.
     pub const fn new() -> Self {
         Self {

@@ -48,7 +48,7 @@ impl<'a, A: HtmlAttributeInput> HtmlMeterAttributeInput<'a, A> {
 /// The six authored content-number roles, distinct from processed quantities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMeterNumberRole {
-    /// The `value` attribute, the only one the standard requires (HTML §4.10.14).
+    /// The `value` attribute, the only one the standard requires (HTML877d #the-meter-element).
     Value,
     /// The `min` attribute; absent, the authoring inequalities use 0.
     Minimum,

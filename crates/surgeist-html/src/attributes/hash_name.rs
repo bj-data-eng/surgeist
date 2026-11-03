@@ -79,12 +79,12 @@ impl HtmlHashNameReferenceReport {
                 [self.first_hash.expect("recognized hash") + 1..]
         })
     }
-    /// The clause that defines a valid hash-name reference (HTML §2.3.9).
+    /// The clause that defines a valid hash-name reference (HTML877d #syntax-references).
     pub fn author_source_clause(&self) -> &'static str {
         AUTHOR_SOURCE
     }
     /// The clause that defines the rules for parsing a hash-name reference
-    /// (HTML §2.3.9).
+    /// (HTML877d #syntax-references).
     pub fn processing_source_clause(&self) -> &'static str {
         PROCESSING_SOURCE
     }

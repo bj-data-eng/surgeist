@@ -49,7 +49,7 @@ pub enum HtmlSrcsetUrlTokenError {
     /// The text contains an ASCII whitespace code unit, which would end the token.
     AsciiWhitespace,
     /// The text starts or ends with U+002C COMMA, which the standard forbids for candidate URLs
-    /// (HTML §4.8.4.2.1).
+    /// (HTML877d #srcset-attributes).
     EdgeComma,
 }
 impl fmt::Display for HtmlSrcsetUrlTokenError {
@@ -84,7 +84,8 @@ impl HtmlSrcsetWidth {
         &self.value
     }
 }
-/// A width descriptor must be greater than zero (HTML §4.8.4.2.1), and zero was supplied.
+/// A width descriptor must be greater than zero (HTML877d #srcset-attributes), and zero was
+/// supplied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetWidthError;
 impl fmt::Display for HtmlSrcsetWidthError {
@@ -174,7 +175,7 @@ impl fmt::Display for HtmlSrcsetDensityProjectionError {
 }
 impl Error for HtmlSrcsetDensityProjectionError {}
 
-/// The optional descriptor of one image candidate string (HTML §4.8.4.2.1).
+/// The optional descriptor of one image candidate string (HTML877d #srcset-attributes).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetDescriptor {
     /// No descriptor is written. For uniqueness checks the standard treats this as a `1x` density.
@@ -417,7 +418,8 @@ impl HtmlSrcsetRawRange {
         self.end
     }
 }
-/// The descriptor of a candidate recovered by the standard's parsing algorithm (HTML §4.8.4.3.10).
+/// The descriptor of a candidate recovered by the standard's parsing algorithm (HTML877d
+/// #parsing-a-srcset-attribute).
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlParsedSrcsetDescriptor {
     /// No descriptor was recovered.
@@ -454,8 +456,8 @@ impl HtmlParsedImageCandidate {
         self.url_range
     }
 }
-/// A parse error that the standard's algorithm for parsing a srcset attribute reports (HTML
-/// §4.8.4.3.10), plus one recovery rule for density overflow. The enum is `#[non_exhaustive]`.
+/// A parse error that the standard's algorithm for parsing a srcset attribute reports ( HTML877d
+/// #parsing-a-srcset-attribute), plus one recovery rule for density overflow. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetParseError {
@@ -631,8 +633,8 @@ impl HtmlSrcsetContext {
         }
     }
 }
-/// A requirement that surrounding attributes or elements place on a `srcset` or `imagesrcset` (HTML
-/// §4.8.4.2.1). The enum is `#[non_exhaustive]`.
+/// A requirement that surrounding attributes or elements place on a `srcset` or `imagesrcset` ( HTML877d
+/// #srcset-attributes). The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetContextViolation {

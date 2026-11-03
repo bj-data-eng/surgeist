@@ -192,7 +192,7 @@ pub struct HtmlFocusDelegateCursor {
     target_kind: HtmlFocusDelegateTargetKind,
 }
 impl HtmlFocusDelegateCursor {
-    /// Starts the focus delegate of HTML 6.6.4 (Processing model). The target kind
+    /// Starts the focus delegate of HTML877d #focus-processing-model. The target kind
     /// selects the descendant test that applies to a `dialog` element.
     pub const fn new(target_kind: HtmlFocusDelegateTargetKind) -> Self {
         Self {
@@ -364,7 +364,7 @@ pub struct HtmlAutofocusDelegateCursor {
     trigger_kind: HtmlFocusTriggerKind,
 }
 impl HtmlAutofocusDelegateCursor {
-    /// Starts the autofocus delegate of HTML 6.6.4 (Processing model). Only a `click`
+    /// Starts the autofocus delegate of HTML877d #focus-processing-model. Only a `click`
     /// trigger requires the selected area to be click focusable.
     pub const fn new(trigger_kind: HtmlFocusTriggerKind) -> Self {
         Self {

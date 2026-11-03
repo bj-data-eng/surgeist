@@ -302,7 +302,7 @@ pub struct HtmlFocusUpdateCursor {
     entry_kind: HtmlFocusUpdateEntryKind,
 }
 impl HtmlFocusUpdateCursor {
-    /// Starts the focus update steps of HTML 6.6.4 (Processing model) with the trim
+    /// Starts the focus update steps of HTML877d #focus-processing-model with the trim
     /// of the last entries of both chains.
     pub const fn new() -> Self {
         Self {

@@ -5,18 +5,18 @@ use super::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaPragma {
     /// The `content-type` keyword: the Encoding declaration state, an
-    /// alternative form of the `charset` attribute (HTML §4.2.5.3).
+    /// alternative form of the `charset` attribute (HTML877d #pragma-directives).
     ContentType,
     /// The `default-style` keyword: sets the name of the default CSS style sheet
-    /// set (HTML §4.2.5.3).
+    /// set (HTML877d #pragma-directives).
     DefaultStyle,
-    /// The `refresh` keyword: a timed redirect or reload (HTML §4.2.5.3).
+    /// The `refresh` keyword: a timed redirect or reload (HTML877d #pragma-directives).
     Refresh,
     /// The `x-ua-compatible` keyword, whose `content` must be `IE=edge`
-    /// compared ASCII case-insensitively (HTML §4.2.5.3).
+    /// compared ASCII case-insensitively (HTML877d #pragma-directives).
     XUaCompatible,
     /// The `content-security-policy` keyword, whose `content` must be a valid
-    /// Content Security Policy (HTML §4.2.5.3).
+    /// Content Security Policy (HTML877d #pragma-directives).
     ContentSecurityPolicy,
 }
 impl HtmlMetaPragma {
@@ -44,16 +44,16 @@ impl HtmlMetaPragma {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaPragmaState {
     /// The `content-language` keyword. Nonconforming; it sets the pragma-set
-    /// default language (HTML §4.2.5.3).
+    /// default language (HTML877d #pragma-directives).
     ContentLanguage,
     /// The `content-type` keyword, the Encoding declaration state, which is a
-    /// character encoding declaration (HTML §4.2.5.3).
+    /// character encoding declaration (HTML877d #pragma-directives).
     EncodingDeclaration,
     /// The `default-style` keyword.
     DefaultStyle,
     /// The `refresh` keyword.
     Refresh,
-    /// The `set-cookie` keyword. Nonconforming (HTML §4.2.5.3).
+    /// The `set-cookie` keyword. Nonconforming (HTML877d #pragma-directives).
     SetCookie,
     /// The `x-ua-compatible` keyword.
     XUaCompatible,

@@ -13,7 +13,7 @@ use std::{error::Error, fmt};
 
 macro_rules! sandbox_flags {
     ($($(#[$meta:meta])* $variant:ident => $anchor:literal),+ $(,)?) => {
-        /// The sixteen source-defined restrictions in a sandboxing flag set (HTML §7.1.5).
+        /// The sixteen source-defined restrictions in a sandboxing flag set (HTML877d #sandboxing).
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         pub enum HtmlSandboxFlag { $($(#[$meta])* $variant),+ }
 
@@ -161,7 +161,8 @@ struct KeywordDefinition {
 
 macro_rules! sandbox_keywords {
     ($($(#[$meta:meta])* $variant:ident => $spelling:literal [$first:ident $(, $flag:ident)*]),+ $(,)?) => {
-        /// The thirteen allowed keywords of the selected HTML sandbox edition (HTML §4.8.5).
+        /// The thirteen allowed keywords of the selected HTML sandbox edition (HTML877d
+        /// #the-iframe-element).
         ///
         /// Each keyword relaxes the restriction flags listed in its variant documentation.
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -270,7 +271,8 @@ fn keyword_with<E>(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSandboxRedundancy {
     /// Both `allow-top-navigation` and `allow-top-navigation-by-user-activation` are listed. The
-    /// standard forbids the pair because the first already implies the second (HTML §4.8.5).
+    /// standard forbids the pair because the first already implies the second (HTML877d
+    /// #the-iframe-element).
     TopNavigationAndByUserActivation,
     /// Both `allow-top-navigation-to-custom-protocols` and `allow-top-navigation` are listed. The
     /// standard forbids the pair because the second already relaxes the custom-protocols

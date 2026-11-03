@@ -16,13 +16,13 @@ pub struct HtmlLinkFlags {
     explicitly_enabled: bool,
 }
 impl HtmlLinkFlags {
-    /// Creates the initial flags, in which the link has not been explicitly enabled (HTML §4.2.4:
-    /// the boolean is initially false).
+    /// Creates the initial flags, in which the link has not been explicitly enabled (HTML877d
+    /// #the-link-element: the boolean is initially false).
     pub fn fresh() -> Self {
         Self::default()
     }
     /// Whether the `disabled` attribute has ever been removed from the link. Once true it stays
-    /// true; the stylesheet's alternate flag depends on it (HTML §4.2.4).
+    /// true; the stylesheet's alternate flag depends on it (HTML877d #the-link-element).
     pub fn explicitly_enabled(self) -> bool {
         self.explicitly_enabled
     }
@@ -104,83 +104,84 @@ impl HtmlRelRole {
 /// The pinned standard keywords; registry extensions do not extend this enum.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelKeyword {
-    /// `alternate` (HTML §4.6.8.1): alternate representations of the current document, or, with
-    /// `stylesheet` on a `link`, an alternative style sheet.
+    /// `alternate` (HTML877d #rel-alternate): alternate representations of the current document,
+    /// or, with `stylesheet` on a `link`, an alternative style sheet.
     Alternate,
-    /// `author` (HTML §4.6.8.2): a link to the author of the current document or of the nearest
-    /// `article` ancestor. A `rev` attribute value of `made` counts as this keyword.
+    /// `author` (HTML877d #link-type-author): a link to the author of the current document or of
+    /// the nearest `article` ancestor. A `rev` attribute value of `made` counts as this keyword.
     Author,
-    /// `bookmark` (HTML §4.6.8.3): the permalink for the nearest ancestor section; allowed on `a`
-    /// and `area` only.
+    /// `bookmark` (HTML877d #link-type-bookmark): the permalink for the nearest ancestor section;
+    /// allowed on `a` and `area` only.
     Bookmark,
-    /// `canonical` (HTML §4.6.8.4): the preferred URL for the current document; allowed on `link`
-    /// only.
+    /// `canonical` (HTML877d #link-type-canonical): the preferred URL for the current document;
+    /// allowed on `link` only.
     Canonical,
-    /// `dns-prefetch` (HTML §4.6.8.5): preemptive DNS resolution for the target resource's origin;
-    /// body-ok.
+    /// `dns-prefetch` (HTML877d #link-type-dns-prefetch): preemptive DNS resolution for the target
+    /// resource's origin; body-ok.
     DnsPrefetch,
-    /// `expect` (HTML §4.6.8.6): expects an element with the target ID to appear in the current
-    /// document; an internal resource link on `link` only.
+    /// `expect` (HTML877d #link-type-expect): expects an element with the target ID to appear in
+    /// the current document; an internal resource link on `link` only.
     Expect,
-    /// `external` (HTML §4.6.8.7): the referenced document is not part of the same site; an
-    /// annotation on `a`, `area` and `form`.
+    /// `external` (HTML877d #link-type-external): the referenced document is not part of the same
+    /// site; an annotation on `a`, `area` and `form`.
     External,
-    /// `help` (HTML §4.6.8.8): context-sensitive help.
+    /// `help` (HTML877d #link-type-help): context-sensitive help.
     Help,
-    /// `icon` (HTML §4.6.8.9): an icon that represents the current document; `link` only. The
+    /// `icon` (HTML877d #rel-icon): an icon that represents the current document; `link` only. The
     /// historical `shortcut icon` form is classified separately.
     Icon,
-    /// `license` (HTML §4.6.8.10): the main content of the current document is covered by the
-    /// license the referenced document describes. `copyright` is a forbidden synonym.
+    /// `license` (HTML877d #link-type-license): the main content of the current document is covered
+    /// by the license the referenced document describes. `copyright` is a forbidden synonym.
     License,
-    /// `manifest` (HTML §4.6.8.11): an application manifest; `link` only.
+    /// `manifest` (HTML877d #link-type-manifest): an application manifest; `link` only.
     Manifest,
-    /// `modulepreload` (HTML §4.6.8.12): preemptively fetches a module script into the document's
-    /// module map; body-ok.
+    /// `modulepreload` (HTML877d #link-type-modulepreload): preemptively fetches a module script
+    /// into the document's module map; body-ok.
     ModulePreload,
-    /// `next` (HTML §4.6.8.26.1): the referenced document is the next one in a series that includes
-    /// the current document.
+    /// `next` (HTML877d #link-type-next): the referenced document is the next one in a series that
+    /// includes the current document.
     Next,
-    /// `nofollow` (HTML §4.6.8.13): the current document's author or publisher does not endorse the
-    /// referenced document; an annotation.
+    /// `nofollow` (HTML877d #link-type-nofollow): the current document's author or publisher does
+    /// not endorse the referenced document; an annotation.
     NoFollow,
-    /// `noopener` (HTML §4.6.8.14): creates a top-level traversable with a non-auxiliary browsing
-    /// context when the hyperlink would otherwise create an auxiliary one; an annotation.
-    NoOpener,
-    /// `noreferrer` (HTML §4.6.8.15): sends no `Referer` header and has the effect of `noopener`;
+    /// `noopener` (HTML877d #link-type-noopener): creates a top-level traversable with a
+    /// non-auxiliary browsing context when the hyperlink would otherwise create an auxiliary one;
     /// an annotation.
+    NoOpener,
+    /// `noreferrer` (HTML877d #link-type-noreferrer): sends no `Referer` header and has the effect
+    /// of `noopener`; an annotation.
     NoReferrer,
-    /// `opener` (HTML §4.6.8.16): creates an auxiliary browsing context when the hyperlink would
-    /// otherwise create a non-auxiliary top-level traversable; an annotation.
+    /// `opener` (HTML877d #link-type-opener): creates an auxiliary browsing context when the
+    /// hyperlink would otherwise create a non-auxiliary top-level traversable; an annotation.
     Opener,
-    /// `pingback` (HTML §4.6.8.17): the address of the pingback server for the current document;
-    /// body-ok.
+    /// `pingback` (HTML877d #link-type-pingback): the address of the pingback server for the
+    /// current document; body-ok.
     Pingback,
-    /// `preconnect` (HTML §4.6.8.18): preemptively connects to the target resource's origin;
-    /// body-ok.
+    /// `preconnect` (HTML877d #link-type-preconnect): preemptively connects to the target
+    /// resource's origin; body-ok.
     Preconnect,
-    /// `prefetch` (HTML §4.6.8.19): preemptively fetches and caches the target for a likely
-    /// follow-up navigation; body-ok.
+    /// `prefetch` (HTML877d #link-type-prefetch): preemptively fetches and caches the target for a
+    /// likely follow-up navigation; body-ok.
     Prefetch,
-    /// `preload` (HTML §4.6.8.20): preemptively fetches and caches the target for the current
-    /// navigation according to the preload destination of the `as` attribute; body-ok.
+    /// `preload` (HTML877d #link-type-preload): preemptively fetches and caches the target for the
+    /// current navigation according to the preload destination of the `as` attribute; body-ok.
     Preload,
-    /// `prev` (HTML §4.6.8.26.2): the referenced document is the previous one in a series that
-    /// includes the current document. `previous` is a forbidden synonym.
+    /// `prev` (HTML877d #link-type-prev): the referenced document is the previous one in a series
+    /// that includes the current document. `previous` is a forbidden synonym.
     Prev,
-    /// `privacy-policy` (HTML §4.6.8.21): information about the data collection and usage practices
-    /// that apply to the current document.
+    /// `privacy-policy` (HTML877d #link-type-privacy-policy): information about the data collection
+    /// and usage practices that apply to the current document.
     PrivacyPolicy,
-    /// `search` (HTML §4.6.8.22): a resource that can search the current document and its related
-    /// pages.
+    /// `search` (HTML877d #link-type-search): a resource that can search the current document and
+    /// its related pages.
     Search,
-    /// `stylesheet` (HTML §4.6.8.23): imports a style sheet; body-ok.
+    /// `stylesheet` (HTML877d #link-type-stylesheet): imports a style sheet; body-ok.
     Stylesheet,
-    /// `tag` (HTML §4.6.8.24): a tag, identified by the given address, that applies to the current
-    /// document; allowed on `a` and `area` only.
+    /// `tag` (HTML877d #link-type-tag): a tag, identified by the given address, that applies to the
+    /// current document; allowed on `a` and `area` only.
     Tag,
-    /// `terms-of-service` (HTML §4.6.8.25): the agreements between the current document's provider
-    /// and its users.
+    /// `terms-of-service` (HTML877d #link-type-terms-of-service): the agreements between the
+    /// current document's provider and its users.
     TermsOfService,
 }
 impl HtmlRelKeyword {
@@ -216,7 +217,7 @@ impl HtmlRelKeyword {
         Self::TermsOfService,
     ];
     /// The keyword's lowercase spelling. Documents compare keywords ASCII case-insensitively, so
-    /// this is the canonical spelling, not the only accepted one (HTML §4.6.8).
+    /// this is the canonical spelling, not the only accepted one (HTML877d #linkTypes).
     pub fn keyword(self) -> &'static str {
         match self {
             Self::Alternate => "alternate",
@@ -250,7 +251,7 @@ impl HtmlRelKeyword {
     }
     /// Whether the keyword is body-ok: the standard lists exactly `dns-prefetch`, `modulepreload`,
     /// `pingback`, `preconnect`, `prefetch`, `preload` and `stylesheet`, and a `link` carrying only
-    /// such keywords is allowed in the body (HTML §4.6.8).
+    /// such keywords is allowed in the body (HTML877d #linkTypes).
     pub fn body_ok(self) -> bool {
         matches!(
             self,
@@ -286,8 +287,8 @@ impl HtmlRelKeyword {
             matches!(self, Self::NoOpener | Self::NoReferrer | Self::Opener)
         }
     }
-    /// The effect the link-type table of HTML §4.6.8 assigns this keyword on an element of `role`,
-    /// or `None` where the table says the keyword is not allowed there. This never returns
+    /// The effect the link-type table of HTML877d #linkTypes assigns this keyword on an element of
+    /// `role`, or `None` where the table says the keyword is not allowed there. This never returns
     /// `StylesheetModifier`, which interpretation assigns to `alternate` beside `stylesheet`; it
     /// also does not consult the registry for extensions.
     pub fn effect(self, role: HtmlRelRole) -> Option<HtmlRelEffect> {
@@ -326,9 +327,9 @@ impl HtmlRelKeyword {
         }
     }
 }
-/// What a recognised link type does to the element that carries it (HTML §4.6.1 and the table in
-/// §4.6.8). The type names the effect and leaves fetching, navigation and annotation processing to
-/// consumers.
+/// What a recognised link type does to the element that carries it (HTML877d #introduction-2 and
+/// the table in HTML877d #linkTypes). The type names the effect and leaves fetching, navigation and
+/// annotation processing to consumers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelEffect {
     /// The keyword creates a hyperlink to the referenced document.
@@ -343,7 +344,7 @@ pub enum HtmlRelEffect {
     /// of its own.
     Annotation,
     /// `alternate` beside `stylesheet` on a `link` modifies that style sheet to be an alternative
-    /// style sheet and does not create a hyperlink (HTML §4.6.8.23).
+    /// style sheet and does not create a hyperlink (HTML877d #link-type-stylesheet).
     StylesheetModifier,
 }
 /// How a `rel` token (or the historical `rev` value) is spelled relative to the standard's keyword
@@ -353,10 +354,10 @@ pub enum HtmlRelSpelling {
     /// The token matches a standard keyword.
     Standard,
     /// The token is `copyright` or `previous`, synonyms the standard requires user agents to handle
-    /// as `license` and `prev` but forbids authors to use (HTML §4.6.8).
+    /// as `license` and `prev` but forbids authors to use (HTML877d #linkTypes).
     ForbiddenSynonym,
     /// The token is `shortcut` on a `link` whose whole `rel` value is `shortcut icon`, the
-    /// historical spelling that the standard allows before `icon` (HTML §4.6.8.9).
+    /// historical spelling that the standard allows before `icon` (HTML877d #rel-icon).
     ShortcutException,
     /// The token is `shortcut` but the exception does not hold, because the element is not a `link`
     /// or the whole value is not `shortcut icon`.
@@ -365,7 +366,7 @@ pub enum HtmlRelSpelling {
     /// extension; resolving that needs a registry, which this crate does not hold.
     Unknown,
     /// The occurrence is not a token: it stands for a `rev` attribute whose value is exactly
-    /// `made`, which the standard treats as the `author` keyword (HTML §4.6.8.2).
+    /// `made`, which the standard treats as the `author` keyword (HTML877d #link-type-author).
     HistoricalRev,
 }
 /// The attribute an occurrence came from.
@@ -377,7 +378,7 @@ pub enum HtmlRelOccurrenceSource {
     /// entire value.
     Rev,
 }
-/// Whether a token's keyword may be used on the element's role, as the table of HTML §4.6.8
+/// Whether a token's keyword may be used on the element's role, as the table of HTML877d #linkTypes
 /// decides.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelTokenApplicability {
@@ -431,8 +432,8 @@ impl HtmlRelOccurrence {
     }
     /// The index of the earlier occurrence that this token repeats under ASCII case-insensitive
     /// comparison, or `None` for the first spelling. The standard forbids repeating a keyword
-    /// within one `rel` (HTML §4.6.8), and this finding coexists with the spelling and effect
-    /// findings.
+    /// within one `rel` (HTML877d #linkTypes), and this finding coexists with the spelling and
+    /// effect findings.
     pub fn duplicate_of(&self) -> Option<usize> {
         self.duplicate_of
     }
@@ -456,8 +457,8 @@ impl HtmlRelOccurrence {
         }
     }
 }
-/// The author requirement that a `link` has exactly one of `rel` and `itemprop` (HTML §4.2.4).
-/// Elements other than `link` have no such requirement.
+/// The author requirement that a `link` has exactly one of `rel` and `itemprop` (HTML877d
+/// #the-link-element). Elements other than `link` have no such requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelPresenceAuthor {
     /// The element is not a `link`.
@@ -513,15 +514,17 @@ pub enum HtmlRelLinks {
 pub enum HtmlRelAlternate {
     /// No `alternate` token with an effect exists.
     NotSelected,
-    /// On a `link` beside `stylesheet`: the link is an alternative style sheet (HTML §4.6.8.23).
+    /// On a `link` beside `stylesheet`: the link is an alternative style sheet (HTML877d
+    /// #link-type-stylesheet).
     StylesheetModifier,
     /// The `type` attribute is exactly `application/rss+xml` or `application/atom+xml`, so the link
-    /// refers to a feed (HTML §4.6.8.1).
+    /// refers to a feed (HTML877d #rel-alternate).
     Feed,
     /// Any other use: an alternate representation of the current document.
     Representation,
 }
-/// The author requirement that an alternative style sheet has a nonempty `title` (HTML §4.6.8.23).
+/// The author requirement that an alternative style sheet has a nonempty `title` (HTML877d
+/// #link-type-stylesheet).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelTitleAuthor {
     /// The link is not an alternative style sheet.
@@ -531,10 +534,10 @@ pub enum HtmlRelTitleAuthor {
     /// The alternative style sheet's `title` is absent or empty.
     MissingOrEmpty,
 }
-/// The reason a `link` is or is not allowed in the body (HTML §4.2.4): it is when it has
-/// `itemprop` or a `rel` containing only body-ok keywords (HTML §4.6.8). The variants `Itemprop`
-/// and `AllKeywordsBodyOk` allow it, `RelAbsent` and `ContainsNonBodyOkKeyword` do not, and
-/// `NotLink` marks an element the rule does not govern.
+/// The reason a `link` is or is not allowed in the body (HTML877d #the-link-element): it is when it
+/// has `itemprop` or a `rel` containing only body-ok keywords (HTML877d #linkTypes). The variants
+/// `Itemprop` and `AllKeywordsBodyOk` allow it, `RelAbsent` and `ContainsNonBodyOkKeyword` do not,
+/// and `NotLink` marks an element the rule does not govern.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelBodyAllowance {
     /// The element is not a `link`, so the rule does not apply.

@@ -17,7 +17,7 @@ pub enum HtmlFocusingFallback {
     Supplied,
 }
 /// The read, effect or called algorithm that the adapter must fulfill next for
-/// the focusing steps of HTML 6.6.4 (Processing model).
+/// the focusing steps of HTML877d #focus-processing-model.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusingAction {
     /// Read whether the new focus target is already a focusable area.

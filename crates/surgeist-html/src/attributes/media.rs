@@ -16,7 +16,7 @@ pub enum HtmlMediaElementRole {
     /// A `source` element.
     Source,
     /// A `meta` element, whose `media` attribute is only allowed when its
-    /// `name` is `theme-color` (HTML §4.2.5).
+    /// `name` is `theme-color` (HTML877d #the-meta-element).
     Meta,
 }
 impl HtmlMediaElementRole {

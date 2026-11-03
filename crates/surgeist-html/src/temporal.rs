@@ -534,25 +534,25 @@ impl HtmlDateWithOptionalTime {
 /// represents an element's human-readable contents or select child-text fallback.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlTimeElementValue {
-    /// A valid month string (HTML §2.3.5.1).
+    /// A valid month string (HTML877d #months).
     Month(HtmlMonth),
-    /// A valid date string (HTML §2.3.5.2).
+    /// A valid date string (HTML877d #dates).
     Date(HtmlDate),
-    /// A valid yearless date string (HTML §2.3.5.3).
+    /// A valid yearless date string (HTML877d #yearless-dates).
     YearlessDate(HtmlYearlessDate),
-    /// A valid time string (HTML §2.3.5.4).
+    /// A valid time string (HTML877d #times).
     Time(HtmlTime),
-    /// A valid local date and time string (HTML §2.3.5.5).
+    /// A valid local date and time string (HTML877d #local-dates-and-times).
     LocalDateTime(HtmlLocalDateTime),
-    /// A valid time-zone offset string (HTML §2.3.5.6).
+    /// A valid time-zone offset string (HTML877d #time-zones).
     TimeZoneOffset(HtmlTimeZoneOffset),
-    /// A valid global date and time string (HTML §2.3.5.7).
+    /// A valid global date and time string (HTML877d #global-dates-and-times).
     GlobalDateTime(HtmlGlobalDateTime),
-    /// A valid week string (HTML §2.3.5.8).
+    /// A valid week string (HTML877d #weeks).
     Week(HtmlWeek),
     /// A positive exact year, serialized with at least four digits.
     Year(HtmlYear),
-    /// A valid duration string (HTML §2.3.5.9).
+    /// A valid duration string (HTML877d #durations).
     Duration(HtmlDuration),
 }
 
@@ -591,29 +591,29 @@ impl HtmlTimeElementValue {
 /// consulted. Raw spelling remains in the value interpreter's report.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMachineReadableTime {
-    /// The processed value of a valid month string (HTML §2.3.5.1).
+    /// The processed value of a valid month string (HTML877d #months).
     Month(HtmlMonth),
-    /// The processed value of a valid date string (HTML §2.3.5.2).
+    /// The processed value of a valid date string (HTML877d #dates).
     Date(HtmlDate),
-    /// The processed value of a valid yearless date string (HTML §2.3.5.3).
+    /// The processed value of a valid yearless date string (HTML877d #yearless-dates).
     YearlessDate(HtmlYearlessDate),
-    /// The processed value of a valid time string (HTML §2.3.5.4). Its fraction keeps every
+    /// The processed value of a valid time string (HTML877d #times). Its fraction keeps every
     /// authored digit.
     Time(HtmlParsedTime),
-    /// The processed value of a valid local date and time string (HTML §2.3.5.5). Its time keeps
-    /// every authored fraction digit.
+    /// The processed value of a valid local date and time string (HTML877d #local-dates-and-times).
+    /// Its time keeps every authored fraction digit.
     LocalDateTime(HtmlParsedLocalDateTime),
-    /// The processed value of a valid time-zone offset string (HTML §2.3.5.6).
+    /// The processed value of a valid time-zone offset string (HTML877d #time-zones).
     TimeZoneOffset(HtmlTimeZoneOffset),
-    /// The processed value of a valid global date and time string (HTML §2.3.5.7). It keeps the
-    /// explicit source offset and the exact UTC instant.
+    /// The processed value of a valid global date and time string (HTML877d
+    /// #global-dates-and-times). It keeps the explicit source offset and the exact UTC instant.
     GlobalDateTime(HtmlParsedGlobalDateTime),
-    /// The processed value of a valid week string (HTML §2.3.5.8).
+    /// The processed value of a valid week string (HTML877d #weeks).
     Week(HtmlWeek),
     /// The processed value of a string of ASCII digits read as a positive year; unlike the authored
     /// form it accepts fewer than four digits.
     Year(HtmlYear),
-    /// The processed value of a valid duration string (HTML §2.3.5.9). Its seconds keep every
+    /// The processed value of a valid duration string (HTML877d #durations). Its seconds keep every
     /// authored fraction digit.
     Duration(HtmlParsedDuration),
 }

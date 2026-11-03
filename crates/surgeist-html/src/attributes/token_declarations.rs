@@ -204,7 +204,7 @@ impl HtmlBitmapIconSize {
         .expect("positive integer digits and x form one space token")
     }
 }
-/// One icon size keyword (HTML §4.6.8.9).
+/// One icon size keyword (HTML877d #rel-icon).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlIconSize {
     /// The `any` keyword: the resource is a scalable icon such as an SVG image.

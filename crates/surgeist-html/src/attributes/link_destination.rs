@@ -9,10 +9,10 @@ const FETCH_VOCABULARY: &str = concat!(
 );
 
 // Each variant is a Fetch request destination named by the `as` attribute. A
-// preload destination is Fetch, Font, Image, Script, Style or Track (HTML
-// §4.6.8.20). A module preload destination is Json, Style, Text or a script-like
+// preload destination is Fetch, Font, Image, Script, Style or Track (HTML877d
+// #link-type-preload). A module preload destination is Json, Style, Text or a script-like
 // destination: AudioWorklet, PaintWorklet, Script, ServiceWorker, SharedWorker or
-// Worker (HTML §4.6.8.12).
+// Worker (HTML877d #link-type-modulepreload).
 keyword_type!(HtmlLinkDestination, As, [
     /// The `audioworklet` destination, for audio worklet modules. A script-like
     /// destination, so it is a module preload destination only.
@@ -111,7 +111,7 @@ pub enum HtmlLinkDestinationContextAuthorState {
 /// A requirement that ties the `as` attribute to the link's `rel` keywords.
 ///
 /// The requirements come from the `preload` and `modulepreload` link types
-/// (HTML §4.6.8.20 and §4.6.8.12) and the `as` attribute of `link`.
+/// (HTML877d #link-type-preload and #link-type-modulepreload) and the `as` attribute of `link`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlLinkDestinationContextError {
@@ -224,19 +224,19 @@ impl HtmlLinkDestinationReport {
     pub fn rel_source_clause(&self) -> &'static str {
         source!("attr-link-rel")
     }
-    /// The clause that defines a preload destination (HTML §4.6.8.20).
+    /// The clause that defines a preload destination (HTML877d #link-type-preload).
     pub fn preload_source_clause(&self) -> &'static str {
         source!("preload-destination")
     }
-    /// The clause that defines a module preload destination (HTML §4.6.8.12).
+    /// The clause that defines a module preload destination (HTML877d #link-type-modulepreload).
     pub fn modulepreload_source_clause(&self) -> &'static str {
         source!("module-preload-destination")
     }
-    /// The clause that defines the `modulepreload` link type (HTML §4.6.8.12).
+    /// The clause that defines the `modulepreload` link type (HTML877d #link-type-modulepreload).
     pub fn modulepreload_processing_source_clause(&self) -> &'static str {
         source!("link-type-modulepreload")
     }
-    /// The clause that defines the `preload` link type (HTML §4.6.8.20).
+    /// The clause that defines the `preload` link type (HTML877d #link-type-preload).
     pub fn preload_processing_source_clause(&self) -> &'static str {
         source!("link-type-preload")
     }

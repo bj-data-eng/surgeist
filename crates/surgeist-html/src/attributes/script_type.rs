@@ -9,7 +9,7 @@ use crate::{HtmlScriptKind, script_type::HtmlScriptTypeCursor};
 /// omission; data blocks retain an authored MIME string rather than a keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeKeyword {
-    /// The `module` keyword: the script is a module script (HTML §4.12.1).
+    /// The `module` keyword: the script is a module script (HTML877d #the-script-element).
     Module,
     /// The `importmap` keyword: the script body is an import map.
     ImportMap,
@@ -39,7 +39,7 @@ pub enum HtmlScriptTypeMeaning {
     /// type essence match.
     Script(HtmlScriptKind),
     /// The `type` value is any other nonempty string, so the element is a data block that the user
-    /// agent does not process (HTML §4.12.1).
+    /// agent does not process (HTML877d #the-script-element).
     DataBlock,
 }
 /// Local author checking, independent of content meaning and processing.

@@ -100,7 +100,7 @@ pub enum HtmlControlGetterOrigin {
 
 /// The content effect of an applicable input `size` attribute.
 ///
-/// The `size` attribute is defined in HTML §4.10.5.3.2.
+/// The `size` attribute is defined in HTML877d #the-size-attribute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlInputSizeValue {
     /// A positive number of characters was requested. The number is the exact
@@ -214,7 +214,7 @@ macro_rules! integer_observation_accessors {
                 self.integer.attribute.source_clause()
             }
             /// The clause that defines reflecting a content attribute in an IDL
-            /// attribute (HTML §2.6.1).
+            /// attribute (HTML877d #reflecting-content-attributes-in-idl-attributes).
             pub fn getter_source_clause(&self) -> &'static str {
                 source!("reflecting-content-attributes-in-idl-attributes")
             }
@@ -318,7 +318,7 @@ impl HtmlControlLengthReport {
         }
     }
     /// The clause that defines the `ReflectNonNegative` limitation applied by
-    /// the getter (HTML §2.6.1).
+    /// the getter (HTML877d #reflecting-content-attributes-in-idl-attributes).
     pub fn getter_limitation_source_clause(&self) -> &'static str {
         source!("xattr-reflectnonnegative")
     }
@@ -344,7 +344,7 @@ impl HtmlControlLengthReport {
         self.integer.getter(false).map(|(_, origin)| origin)
     }
     /// The clause that defines how the form control `minlength` or `maxlength`
-    /// attribute is processed (HTML §4.10.19.3 and §4.10.19.4).
+    /// attribute is processed (HTML877d #attr-fe-maxlength and #attr-fe-minlength).
     pub fn processing_source_clause(&self) -> &'static str {
         if self.attribute() == KnownHtmlAttribute::Minlength {
             source!("attr-fe-minlength")

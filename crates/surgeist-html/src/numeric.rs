@@ -1766,17 +1766,17 @@ impl HtmlDimensionList {
 #[non_exhaustive]
 pub enum NumericParseError {
     /// The value does not match the HTML grammar the entry point implements: author mode rejects
-    /// what recovery would skip or truncate, and a value with no digits is always invalid (HTML
-    /// §2.3.4).
+    /// what recovery would skip or truncate, and a value with no digits is always invalid ( HTML877d
+    /// #numbers).
     InvalidSyntax,
-    /// A minus sign precedes a nonzero value where a non-negative integer is required (HTML
-    /// §2.3.4.2). `-0` is accepted as zero.
+    /// A minus sign precedes a nonzero value where a non-negative integer is required ( HTML877d
+    /// #non-negative-integers). `-0` is accepted as zero.
     Negative,
-    /// The value is grammatical but too large to convert to a finite binary64 number (HTML
-    /// §2.3.4.3), which differs from invalid syntax.
+    /// The value is grammatical but too large to convert to a finite binary64 number ( HTML877d
+    /// #floating-point-numbers), which differs from invalid syntax.
     FloatingPointOverflow,
-    /// A percentage, absolute or relative length is zero where a nonzero one is required (HTML
-    /// §2.3.4.5).
+    /// A percentage, absolute or relative length is zero where a nonzero one is required ( HTML877d
+    /// #nonzero-percentages-and-lengths).
     ZeroDimension,
 }
 
@@ -1863,8 +1863,8 @@ pub struct ScannedIntegerPrefix {
 impl IntegerPrefixScanner {
     /// Starts a scan. With `recover` false it follows the author grammar: an optional `-`, then
     /// ASCII digits to the end of input. With `recover` true it follows the recovery algorithm of
-    /// HTML §2.3.4.1: leading ASCII whitespace is skipped, `+` or `-` may precede the digits, and
-    /// the prefix of digits ends at the first other unit.
+    /// HTML877d #signed-integers: leading ASCII whitespace is skipped, `+` or `-` may precede the
+    /// digits, and the prefix of digits ends at the first other unit.
     pub fn new(recover: bool) -> Self {
         Self {
             recover,
@@ -2137,8 +2137,8 @@ pub(crate) fn parse_floating_point_number(
 pub enum FloatingPointParseMode {
     /// Follows the author grammar: no leading whitespace, no `+`, and no trailing garbage.
     Author,
-    /// Follows the user-agent recovery rules of HTML §2.3.4.3: leading whitespace and `+` are
-    /// skipped and an incomplete exponent or trailing text ends the number.
+    /// Follows the user-agent recovery rules of HTML877d #floating-point-numbers: leading
+    /// whitespace and `+` are skipped and an incomplete exponent or trailing text ends the number.
     Recovery,
 }
 

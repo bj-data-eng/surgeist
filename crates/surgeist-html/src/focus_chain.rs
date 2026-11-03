@@ -100,9 +100,9 @@ pub struct HtmlCurrentFocusChainCursor {
     pending: HtmlCurrentFocusChainAction,
 }
 impl HtmlCurrentFocusChainCursor {
-    /// Starts the current focus chain of a top-level traversable, which HTML 6.6.2
-    /// (Data model) defines as the focus chain of its currently focused area, or an
-    /// empty list for a null traversable. The first action reads the traversable.
+    /// Starts the current focus chain of a top-level traversable, which HTML877d #data-model
+    /// defines as the focus chain of its currently focused area, or an empty list for a null
+    /// traversable. The first action reads the traversable.
     pub const fn new() -> Self {
         Self {
             pending: HtmlCurrentFocusChainAction::ReadTraversable,
@@ -281,7 +281,7 @@ pub struct HtmlFocusChainCursor {
     pending: HtmlFocusChainAction,
 }
 impl HtmlFocusChainCursor {
-    /// Starts the focus chain of a focusable area subject (HTML 6.6.2, Data model)
+    /// Starts the focus chain of a focusable area subject (HTML877d #data-model)
     /// with the empty output list.
     pub const fn new() -> Self {
         Self {

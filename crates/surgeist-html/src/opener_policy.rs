@@ -3,10 +3,10 @@
 
 use crate::DocumentString;
 
-/// An opener policy value of HTML §7.1.3, which lets a document navigated to in a
-/// top-level browsing context force a new top-level browsing context and group.
-/// The set is the five values the pinned edition lists; the type records the
-/// value only and applies no navigation or grouping effect.
+/// An opener policy value of HTML877d #cross-origin-opener-policies, which lets a document
+/// navigated to in a top-level browsing context force a new top-level browsing context and group.
+/// The set is the five values the pinned edition lists; the type records the value only and applies
+/// no navigation or grouping effect.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOpenerPolicyValue {
     /// `unsafe-none`, the default: the document shares its predecessor's

@@ -239,7 +239,7 @@ pub enum HtmlInputNumericBoundOrigin {
     /// applies as for an absent one.
     ParseFailureFallback,
 }
-/// Why the allowed value step is what it is, following HTML §4.10.5.3.8.
+/// Why the allowed value step is what it is, following HTML877d #the-step-attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericStepOrigin {
     /// The value is the keyword `any`, so there is no allowed value step.
@@ -256,7 +256,7 @@ pub enum HtmlInputNumericStepOrigin {
     /// step applies.
     NonPositiveDefault,
 }
-/// Where the step base comes from, following HTML §4.10.5.3.8.
+/// Where the step base comes from, following HTML877d #the-step-attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputNumericStepBaseOrigin {
     /// The `min` content converted, and it is the step base.
@@ -281,7 +281,7 @@ pub enum HtmlInputNumericLimitAuthorState {
     /// the domain is periodic and a reversed range is allowed.
     Conforming,
     /// The domain is not periodic and the minimum exceeds the maximum, which
-    /// the source forbids (HTML §4.10.5.3.7).
+    /// the source forbids (HTML877d #the-min-and-max-attributes).
     MinimumExceedsMaximum,
 }
 
@@ -324,7 +324,7 @@ impl HtmlInputNumericConstraints {
     pub fn step_origin(&self) -> HtmlInputNumericStepOrigin {
         self.step_origin
     }
-    /// The step base of HTML §4.10.5.3.8.
+    /// The step base of HTML877d #the-step-attribute.
     pub fn step_base(&self) -> HtmlFloatingPointNumber {
         self.step_base
     }
@@ -386,7 +386,7 @@ impl HtmlInputTemporalConstraints {
     pub fn step_origin(&self) -> HtmlInputNumericStepOrigin {
         self.step_origin
     }
-    /// The step base of HTML §4.10.5.3.8, in the state's coordinates.
+    /// The step base of HTML877d #the-step-attribute, in the state's coordinates.
     pub fn step_base(&self) -> &HtmlInputTemporalCoordinate {
         &self.step_base
     }
@@ -400,12 +400,12 @@ impl HtmlInputTemporalConstraints {
         self.limit_author
     }
     /// Whether the state's domain is periodic, so that ranges may span its
-    /// boundary (HTML §4.10.5.3.7).
+    /// boundary (HTML877d #the-min-and-max-attributes).
     pub fn has_periodic_domain(&self) -> bool {
         self.step_base.has_periodic_domain()
     }
     /// Whether the domain is periodic and the maximum is less than the minimum,
-    /// which the source calls a reversed range (HTML §4.10.5.3.7).
+    /// which the source calls a reversed range (HTML877d #the-min-and-max-attributes).
     pub fn has_reversed_range(&self) -> bool {
         self.reversed_range
     }
@@ -469,11 +469,12 @@ impl HtmlInputNumericConstraintsReport {
     pub fn input_code_units(&self) -> usize {
         self.input_code_units
     }
-    /// The clause that defines the `min` and `max` attributes (HTML §4.10.5.3.7).
+    /// The clause that defines the `min` and `max` attributes (HTML877d
+    /// #the-min-and-max-attributes).
     pub fn limits_source_clause(&self) -> &'static str {
         source!("the-min-and-max-attributes")
     }
-    /// The clause that defines the `step` attribute (HTML §4.10.5.3.8).
+    /// The clause that defines the `step` attribute (HTML877d #the-step-attribute).
     pub fn step_source_clause(&self) -> &'static str {
         source!("the-step-attribute")
     }

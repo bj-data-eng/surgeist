@@ -31,8 +31,9 @@ pub enum HtmlImageAttributeAuthorState {
 
 /// The local author rule that an image string or dimension value violates.
 ///
-/// The causes are the nonempty `alt` and `src` requirements of the Image Button
-/// state (HTML §4.10.5.1.19) and the dimension attribute grammar (HTML §4.8.17).
+/// The causes are the nonempty `alt` and `src` requirements of the Image Button state (HTML877d
+/// #image-button-state-(type=image)) and the dimension attribute grammar (HTML877d
+/// #dimension-attributes).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlImageAttributeConformanceError {
@@ -231,7 +232,7 @@ impl HtmlInputImageAttributeReport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlImageSourceParent {
     /// The `source` element has a parent with this expanded name. Only an HTML
-    /// `picture` parent makes the dimension attributes apply (HTML §4.8.17).
+    /// `picture` parent makes the dimension attributes apply (HTML877d #dimension-attributes).
     Parent(QualifiedName),
     /// The `source` element has no parent, which is established fact.
     NoParent,
@@ -271,7 +272,7 @@ impl HtmlEmbeddedDimensionReport {
     ) -> Option<&HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>> {
         self.common.as_ref()
     }
-    /// Whether the value is a valid non-negative integer, per HTML §4.8.17.
+    /// Whether the value is a valid non-negative integer, per HTML877d #dimension-attributes.
     /// `Unchecked` means the input state or source parent has not selected the
     /// rule; `Missing` means the optional attribute is absent.
     pub fn author(&self) -> HtmlImageAttributeAuthorState {
@@ -368,7 +369,7 @@ pub enum EmbeddedDimensionApplicability {
     DifferentContext,
 }
 /// Decides whether `width` and `height` apply to `element`, from the HTML
-/// element list of HTML §4.8.17 and the role evidence in `context`.
+/// element list of HTML877d #dimension-attributes and the role evidence in `context`.
 ///
 /// `None` for `element` is a non-HTML or unknown element and is inapplicable.
 pub fn embedded_dimension_applicability(

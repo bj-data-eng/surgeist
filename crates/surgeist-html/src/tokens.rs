@@ -72,7 +72,7 @@ impl HtmlCommaToken {
 #[non_exhaustive]
 pub enum HtmlTokenError {
     /// The candidate for a space-separated token has no UTF-16 code units, and a
-    /// space-separated token is nonempty (HTML §2.3.7).
+    /// space-separated token is nonempty (HTML877d #space-separated-tokens).
     EmptySpaceToken,
     /// A space-separated token candidate contains an ASCII whitespace code unit
     /// (U+0009, U+000A, U+000C, U+000D or U+0020), which would have split it.
@@ -81,8 +81,8 @@ pub enum HtmlTokenError {
         code_unit_offset: usize,
     },
     /// A comma-separated token candidate begins or ends with ASCII whitespace,
-    /// but a comma-separated token neither begins nor ends with it (HTML
-    /// §2.3.8). Leading whitespace is checked first.
+    /// but a comma-separated token neither begins nor ends with it ( HTML877d
+    /// #comma-separated-tokens). Leading whitespace is checked first.
     CommaTokenBoundaryWhitespace {
         /// Zero-based UTF-16 code-unit offset of the offending boundary unit:
         /// 0 for leading whitespace, otherwise the offset of the final unit.
@@ -437,7 +437,7 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
 /// The cursor performs one fixed step per call and never allocates, so a driver
 /// that charges `BEGIN_WORK` once and `STEP_WORK` per step
 /// accounts for all of its work. The `Token` spans index into the supplied
-/// slice, split on ASCII whitespace with each token nonempty (HTML §2.3.7).
+/// slice, split on ASCII whitespace with each token nonempty (HTML877d #space-separated-tokens).
 #[derive(Clone, Debug)]
 pub struct SpaceTokenCursor<'a> {
     units: &'a [u16],
