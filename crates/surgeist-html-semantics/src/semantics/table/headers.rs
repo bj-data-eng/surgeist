@@ -324,16 +324,23 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(count.saturating_mul(1 + bits))?;
             scan.specials.sort_unstable();
             scan.specials.dedup();
-            if scan.specials.len() < here.length {
-                let cells = Occupants {
-                    long,
-                    short: List::EMPTY,
-                };
-                self.table_scan_line(model, scan, principal, cells, from, vertical, false)?;
-            }
+            // The lines are taken top to bottom (or left to right), so that
+            // headers are found in the order the specification lists them:
+            // the shared scan stands in for the first line that has no cell of
+            // its own before the scanning cell.
+            let mut shared = Some(here.start);
             for position in 0..scan.specials.len() {
                 self.charge(1)?;
                 let line = scan.specials[position];
+                if let Some(first) = shared
+                    && first < line
+                {
+                    self.table_scan_shared(model, scan, principal, long, from, vertical)?;
+                    shared = None;
+                }
+                if shared == Some(line) {
+                    shared = Some(line + 1);
+                }
                 let short =
                     axis.short_of(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
                 let irregular = axis
@@ -341,8 +348,31 @@ impl<'a> HtmlSemanticSession<'a> {
                 let cells = Occupants { long, short };
                 self.table_scan_line(model, scan, principal, cells, from, vertical, irregular)?;
             }
+            if let Some(first) = shared
+                && first < here.end()
+            {
+                self.table_scan_shared(model, scan, principal, long, from, vertical)?;
+            }
         }
         Ok(())
+    }
+
+    /// The scan the lines without a cell of their own before the scanning cell
+    /// share: the run's long cells alone.
+    fn table_scan_shared(
+        &mut self,
+        model: &HtmlTableModel,
+        scan: &mut Scan<'_>,
+        principal: usize,
+        long: List<'_>,
+        from: usize,
+        vertical: bool,
+    ) -> TableResult<()> {
+        let cells = Occupants {
+            long,
+            short: List::EMPTY,
+        };
+        self.table_scan_line(model, scan, principal, cells, from, vertical, false)
     }
 
     /// One scan of one line, whose cells are the two lists. Visiting a cell
