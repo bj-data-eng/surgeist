@@ -155,7 +155,9 @@ impl HtmlConstructionCaptureFacts {
 /// attaching template contents revises only the subtrees it attaches. Each
 /// supplied fact and each mapped node holds one scratch entry for the whole
 /// import, in addition to the worklist and one container's temporary lists, so
-/// scratch is a constant number of entries per node.
+/// scratch is a constant number of entries per node. The node lookup of a
+/// successful import is not released but retained by the returned
+/// [`HtmlConstructionCaptureMap`]; its entries then stop counting as scratch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionCaptureLimits {
     mapping_entries: usize,
@@ -307,14 +309,16 @@ impl Control {
         self.poll()
     }
 }
-/// Position lookup for one import, keyed by source node identity.
+/// Position lookup keyed by source node identity.
 ///
 /// The standard randomly keyed hash map is used because `HtmlNodeId` offers
 /// equality and hashing but neither an order nor a public dense index. It is
 /// only ever probed, never iterated, so no outcome depends on hash seeds or
-/// bucket order. Each probe is charged one work credit (expected constant); each
-/// new entry is admitted as one scratch entry before its allocation, and the
-/// rare growth that rehashes the existing entries is charged for them.
+/// bucket order. During an import each probe is charged one work credit
+/// (expected constant); each new entry is admitted as one scratch entry before
+/// its allocation, and the rare growth that rehashes the existing entries is
+/// charged for them. The node index of a successful import is then moved into
+/// the mapping, which keeps it for uncharged `probe`s.
 #[derive(Debug)]
 struct Positions<K> {
     slots: HashMap<K, usize>,
@@ -335,6 +339,13 @@ impl<K: Eq + std::hash::Hash> Positions<K> {
     {
         control.work(1)?;
         Ok(self.slots.get(node).copied())
+    }
+    /// Uncharged lookup for the retained mapping, outside any import.
+    fn probe(&self, node: &HtmlNodeId) -> Option<usize>
+    where
+        K: std::borrow::Borrow<HtmlNodeId>,
+    {
+        self.slots.get(node).copied()
     }
     /// Admits and allocates room for one more entry without recording it.
     fn reserve_one(&mut self, control: &mut Control) -> Result<(), HtmlConstructionCaptureError> {
@@ -377,12 +388,32 @@ struct Entry {
     expanded: bool,
 }
 /// Result-qualified mapping; its handles remain builder/capture qualified.
-#[derive(Debug)]
+///
+/// The mapping retains, for every mapped node, one entry (the source node
+/// identity and its checked handle) and one slot of a hash index from that
+/// identity, a second clone of it, to the entry's position. The index is the
+/// import's own node index, moved here when the import succeeds, so
+/// `builder_subject` and `subject` take expected constant time and no lookup
+/// scans the mapping. Both are bounded by the import's mapping-entry limit; the
+/// index may hold spare capacity from its growth. The index is only probed,
+/// never iterated, so no outcome depends on hash seeds or bucket order. The
+/// mapping has no equality, and its `Debug` output lists the entries only.
 pub struct HtmlConstructionCaptureMap {
     root: HtmlNodeId,
     revision: HtmlHostFactsRevision,
     capture: HtmlCaptureId,
     entries: Vec<Entry>,
+    index: Positions<HtmlNodeId>,
+}
+impl fmt::Debug for HtmlConstructionCaptureMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HtmlConstructionCaptureMap")
+            .field("root", &self.root)
+            .field("revision", &self.revision)
+            .field("capture", &self.capture)
+            .field("entries", &self.entries)
+            .finish_non_exhaustive()
+    }
 }
 impl HtmlConstructionCaptureMap {
     pub fn root(&self) -> &HtmlNodeId {
@@ -400,14 +431,11 @@ impl HtmlConstructionCaptureMap {
             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)
     }
     fn entry(&self, node: &HtmlNodeId) -> Option<&Entry> {
-        for entry in &self.entries {
-            #[cfg(test)]
-            lookup_steps::count();
-            if &entry.node == node {
-                return Some(entry);
-            }
-        }
-        None
+        #[cfg(test)]
+        lookup_steps::count();
+        self.index
+            .probe(node)
+            .and_then(|position| self.entries.get(position))
     }
     pub fn subject(
         &self,
@@ -629,6 +657,7 @@ impl HtmlConstructionCaptureAdapter {
             revision: facts.revision.clone(),
             capture: builder.data.identity.clone(),
             entries: Vec::new(),
+            index: Positions::new(),
         };
         let result = import(&mut builder, &source, &facts, &mut mapping, &mut control);
         if let Err(reason) = result {
@@ -792,10 +821,17 @@ fn import(
         &mut node_index,
         control,
     );
-    // The lookups are scratch of this import only. Release them explicitly,
-    // whatever the outcome, and keep the first refusal.
-    drop(node_index);
+    // The fact lookup is scratch of this import only. Release it explicitly,
+    // whatever the outcome. The node lookup is released on refusal, so no
+    // partial mapping is published; after success it becomes the mapping's
+    // retained index. Its entries then stop counting as live scratch. The first
+    // refusal is kept.
     drop(fact_index);
+    if result.is_ok() {
+        map.index = node_index;
+    } else {
+        drop(node_index);
+    }
     control.scratch_live = mark;
     result
 }
@@ -1155,6 +1191,43 @@ mod tests {
         )
         .unwrap();
         (import.finish().unwrap(), ids)
+    }
+    #[test]
+    fn every_mapped_node_finds_its_own_distinct_subject() {
+        let (result, ids) = imported_siblings(50);
+        let mut seen = Vec::new();
+        for id in &ids {
+            let subject = result.mapping().subject(id, result.capture()).unwrap();
+            assert!(!seen.contains(&subject));
+            seen.push(subject);
+        }
+        assert_eq!(seen.len(), 51);
+    }
+    #[test]
+    fn unmapped_nodes_and_foreign_captures_are_refused_in_order() {
+        let (result, ids) = imported_siblings(8);
+        let (other, other_ids) = imported_siblings(8);
+        let outside = &other_ids[3];
+        lookup_steps::take();
+        assert_eq!(
+            result.mapping().builder_subject(outside),
+            Err(HtmlConstructionCaptureError::OutsideImportedClosure)
+        );
+        assert!(lookup_steps::take() <= 1, "a refused lookup is one probe");
+        assert_eq!(
+            result.mapping().subject(outside, result.capture()),
+            Err(HtmlConstructionCaptureError::OutsideImportedClosure)
+        );
+        // The capture is checked first, so a foreign capture is refused even for
+        // a node the mapping does not contain.
+        assert_eq!(
+            result.mapping().subject(outside, other.capture()),
+            Err(HtmlConstructionCaptureError::ForeignBuilder)
+        );
+        assert_eq!(
+            result.mapping().subject(&ids[3], other.capture()),
+            Err(HtmlConstructionCaptureError::ForeignBuilder)
+        );
     }
     #[test]
     fn looking_up_every_mapped_subject_costs_constant_steps_per_node() {
