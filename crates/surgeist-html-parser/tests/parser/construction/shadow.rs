@@ -12,8 +12,8 @@ use surgeist_html_semantics::{
     HtmlTemplateDocumentRole,
 };
 
-/// The generous limits with the token-attribute and auxiliary-entry caps
-/// lowered to the node cap.
+/// The generous limits with the token-attribute cap raised, and the
+/// auxiliary-entry cap lowered, to the node cap.
 fn limits() -> HtmlParseLimits {
     limits_builder()
         .token_attributes(100_000)
