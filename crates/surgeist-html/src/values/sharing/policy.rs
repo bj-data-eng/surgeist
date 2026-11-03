@@ -125,7 +125,7 @@ impl<T: Value> Root<T> {
             .map(|(_, index)| index);
     }
 }
-struct Prepared<T: Value> {
+pub(super) struct Prepared<T: Value> {
     entry: Entry<T>,
     page: Option<Vec<Slot<T>>>,
     undo_page: Option<UndoPage<T>>,
@@ -152,6 +152,39 @@ pub(super) struct Pool<T: Value> {
     #[cfg(test)]
     refuse_checkpoint_reserve: bool,
 }
+/// Where an operation is, with the data that only that step holds. An acquired candidate lives
+/// from its upgrade until the operation finishes with a hit or releases it; a prepared mutation
+/// lives from preparation until commit.
+pub(super) enum State<T: Value> {
+    Hash,
+    Inspect,
+    Upgrade,
+    Compare(T),
+    Touch(T),
+    Prepare,
+    Commit(Prepared<T>),
+    Hit(T),
+    Miss,
+    Offered,
+    Bypassed,
+}
+impl<T: Value> State<T> {
+    pub(super) fn phase(&self) -> Phase {
+        match self {
+            Self::Hash => Phase::Hash,
+            Self::Inspect => Phase::Inspect,
+            Self::Upgrade => Phase::Upgrade,
+            Self::Compare(_) => Phase::Compare,
+            Self::Touch(_) => Phase::Touch,
+            Self::Prepare => Phase::Prepare,
+            Self::Commit(_) => Phase::Commit,
+            Self::Hit(_) => Phase::Hit,
+            Self::Miss => Phase::Miss,
+            Self::Offered => Phase::Offered,
+            Self::Bypassed => Phase::Bypassed,
+        }
+    }
+}
 pub(super) struct Operation<'a, T: Value> {
     input: &'a T,
     owner: u64,
@@ -159,7 +192,7 @@ pub(super) struct Operation<'a, T: Value> {
     id: u64,
     serial: u64,
     offer: bool,
-    pub(super) phase: Phase,
+    pub(super) state: State<T>,
     hash: u64,
     payload: HtmlValuePoolUsage,
     left: Cursor,
@@ -169,8 +202,6 @@ pub(super) struct Operation<'a, T: Value> {
     generation: Option<u64>,
     vacant: Option<usize>,
     clear_hot: u128,
-    prepared: Option<Prepared<T>>,
-    pub(super) candidate: Option<T>,
     candidate_usage: HtmlValuePoolUsage,
     pub(super) change: HtmlValuePoolChange,
 }
@@ -277,10 +308,10 @@ impl<T: Value> Pool<T> {
             id: id.unwrap_or(0),
             serial: 0,
             offer,
-            phase: if id.is_some() {
-                Phase::Hash
+            state: if id.is_some() {
+                State::Hash
             } else {
-                Phase::Bypassed
+                State::Bypassed
             },
             hash: 0xcbf2_9ce4_8422_2325,
             payload: HtmlValuePoolUsage::default(),
@@ -291,8 +322,6 @@ impl<T: Value> Pool<T> {
             generation: None,
             vacant: None,
             clear_hot: 0,
-            prepared: None,
-            candidate: None,
             candidate_usage: HtmlValuePoolUsage::default(),
             change: HtmlValuePoolChange::default(),
         }
@@ -304,7 +333,7 @@ impl<T: Value> Pool<T> {
         // Completed results grant no mutation authority. In particular an
         // optional owner-ID exhaustion already produced Bypassed (owner 0),
         // and immutable Hits survive later operation supersession.
-        if matches!(op.phase, Phase::Hit | Phase::Offered | Phase::Bypassed) {
+        if matches!(op.state, State::Hit(_) | State::Offered | State::Bypassed) {
             return if op.owner == self.owner.unwrap_or(0) {
                 Ok(false)
             } else {
@@ -315,11 +344,11 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(false);
         }
-        if op.phase != Phase::Miss {
+        if !matches!(op.state, State::Miss) {
             return Err(HtmlValuePoolError::NotReady);
         }
         op.offer = true;
-        op.phase = Phase::Prepare;
+        op.state = State::Prepare;
         Ok(true)
     }
     fn remember_hot(&mut self, mask: u128) {
@@ -332,8 +361,8 @@ impl<T: Value> Pool<T> {
         op: &mut Operation<'_, T>,
     ) -> Result<Option<HtmlValuePoolAction>, HtmlValuePoolError> {
         if matches!(
-            op.phase,
-            Phase::Hit | Phase::Miss | Phase::Offered | Phase::Bypassed
+            op.state,
+            State::Hit(_) | State::Miss | State::Offered | State::Bypassed
         ) {
             return Ok(None);
         }
@@ -342,10 +371,10 @@ impl<T: Value> Pool<T> {
             return Ok(None);
         }
         #[cfg(test)]
-        if self.collision && matches!(op.phase, Phase::Inspect | Phase::Prepare) {
+        if self.collision && matches!(op.state, State::Inspect | State::Prepare) {
             op.hash = 0;
         }
-        if op.phase == Phase::Touch
+        if matches!(op.state, State::Touch(_))
             && !self
                 .root
                 .as_ref()
@@ -353,7 +382,7 @@ impl<T: Value> Pool<T> {
         {
             // The acquired immutable value is still a Hit. Retention hints are
             // mutations and require the same active authority as insertion.
-            op.phase = Phase::Hit;
+            op.hit();
             return Ok(None);
         }
         let Some(serial) = self.issue() else {
@@ -366,14 +395,14 @@ impl<T: Value> Pool<T> {
             candidate: op.candidate_usage,
             ..HtmlValuePoolLayout::default()
         };
-        let reads = match op.phase {
+        let reads = match op.state.phase() {
             Phase::Hash => read_count(op.left),
             Phase::Compare if op.left.units && op.right.units => {
                 read_count(op.left).min(read_count(op.right))
             }
             _ => 1,
         };
-        match op.phase {
+        match op.state.phase() {
             Phase::Hash => layout.work = read_work(op.left, reads),
             Phase::Compare => {
                 let left = read_work(op.left, reads);
@@ -391,10 +420,10 @@ impl<T: Value> Pool<T> {
             }
             Phase::Inspect => {
                 if op.candidate_index == CANDIDATES {
-                    op.phase = if op.offer {
-                        Phase::Prepare
+                    op.state = if op.offer {
+                        State::Prepare
                     } else {
-                        Phase::Miss
+                        State::Miss
                     };
                     return self.next(op);
                 }
@@ -495,11 +524,10 @@ impl<T: Value> Pool<T> {
                 };
             }
             Phase::Commit => {
-                layout.pool = op
-                    .prepared
-                    .as_ref()
-                    .ok_or(HtmlValuePoolError::NotReady)?
-                    .usage;
+                let State::Commit(prepared) = &op.state else {
+                    return Err(HtmlValuePoolError::NotReady);
+                };
+                layout.pool = prepared.usage;
                 layout.work.copied_bytes = size_of::<Before<T>>() + size_of::<Slot<T>>();
                 // A first-before cell can move through at most MARKS older
                 // surviving checkpoints before restoration or final seal.
@@ -523,7 +551,7 @@ impl<T: Value> Pool<T> {
             serial,
             slot: op.slot,
             generation: op.generation,
-            phase: op.phase,
+            phase: op.state.phase(),
             reads,
             layout,
         }))
@@ -558,7 +586,7 @@ impl<T: Value> Pool<T> {
         match action.phase {
             Phase::Inspect => {
                 match self.entry(action.slot) {
-                    Some(entry) if entry.hash == op.hash => op.phase = Phase::Upgrade,
+                    Some(entry) if entry.hash == op.hash => op.state = State::Upgrade,
                     Some(_) => op.advance_candidate(),
                     None => {
                         op.vacant.get_or_insert(action.slot);
@@ -580,10 +608,14 @@ impl<T: Value> Pool<T> {
                 };
                 let same = Arc::ptr_eq(&shared, op.input.shared());
                 op.candidate_usage = entry.payload;
-                op.candidate = Some(T::from_shared(shared));
+                let candidate = T::from_shared(shared);
                 op.left = Cursor::default();
                 op.right = Cursor::default();
-                op.phase = if same { Phase::Touch } else { Phase::Compare };
+                op.state = if same {
+                    State::Touch(candidate)
+                } else {
+                    State::Compare(candidate)
+                };
                 Ok(HtmlValuePoolProgress::CandidateAcquired)
             }
             Phase::Touch => {
@@ -595,7 +627,7 @@ impl<T: Value> Pool<T> {
                     self.remember_hot(1 << action.slot);
                     self.hot |= 1 << action.slot;
                 }
-                op.phase = Phase::Hit;
+                op.hit();
                 Ok(HtmlValuePoolProgress::Continue)
             }
             Phase::Prepare => self.prepare(op),
@@ -679,7 +711,7 @@ impl<T: Value> Pool<T> {
         })?;
         // No strong alias is created here. The actual Weak occurrence and known
         // target allocation space were included in the preparation layout.
-        op.prepared = Some(Prepared {
+        op.state = State::Commit(Prepared {
             entry: Entry {
                 weak: Arc::downgrade(op.input.shared()),
                 hash: op.hash,
@@ -692,7 +724,6 @@ impl<T: Value> Pool<T> {
             frame,
             usage,
         });
-        op.phase = Phase::Commit;
         Ok(HtmlValuePoolProgress::Continue)
     }
     fn commit(
@@ -707,8 +738,9 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         }
-        let Some(prepared) = op.prepared.take() else {
-            // Only the prepare step enters commit, and it stores what commit consumes.
+        // Only the prepare step enters commit, and the state it stores is what commit consumes.
+        // Whatever ends the commit leaves the operation finished.
+        let State::Commit(prepared) = std::mem::replace(&mut op.state, State::Bypassed) else {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         };
@@ -774,7 +806,7 @@ impl<T: Value> Pool<T> {
             moved_to_undo: if first { old_occurrence } else { None },
             released,
         };
-        op.phase = Phase::Offered;
+        op.state = State::Offered;
         Ok(HtmlValuePoolProgress::Finished)
     }
     pub(super) fn begin_root(&mut self) -> Option<HtmlValuePoolRoot> {
@@ -1138,7 +1170,7 @@ impl<T: Value> Operation<'_, T> {
         if action.serial < self.serial {
             return Ok(false);
         }
-        if action.serial != self.serial || action.phase != self.phase {
+        if action.serial != self.serial || action.phase != self.state.phase() {
             return Err(HtmlValuePoolError::WrongAction);
         }
         Ok(true)
@@ -1146,14 +1178,19 @@ impl<T: Value> Operation<'_, T> {
     fn bypass(&mut self) {
         // Data owners are destroyed before the caller releases the action's
         // separately held reservation. Input remains borrowed and untouched.
-        self.prepared = None;
-        self.candidate = None;
+        self.state = State::Bypassed;
         self.candidate_usage = HtmlValuePoolUsage::default();
-        self.phase = Phase::Bypassed;
+    }
+    /// Finishes with the acquired candidate as an exact match.
+    fn hit(&mut self) {
+        self.state = match std::mem::replace(&mut self.state, State::Bypassed) {
+            State::Touch(candidate) => State::Hit(candidate),
+            other => other,
+        };
     }
     fn advance_candidate(&mut self) {
         self.candidate_index += 1;
-        self.phase = Phase::Inspect;
+        self.state = State::Inspect;
     }
     pub(super) fn read(
         &mut self,
@@ -1197,11 +1234,15 @@ impl<T: Value> Operation<'_, T> {
                     }
                 }
                 if self.left.done {
-                    self.phase = Phase::Inspect;
+                    self.state = State::Inspect;
                 }
                 Ok(HtmlValuePoolProgress::Continue)
             }
             Phase::Compare => {
+                // Compare follows the upgrade that stored the candidate.
+                let State::Compare(candidate) = &self.state else {
+                    return Err(HtmlValuePoolError::NotReady);
+                };
                 let mut equal = true;
                 // Execute the entire length-qualified prepaid run, including
                 // its suffix after a mismatch: inspected-byte work is literal.
@@ -1213,12 +1254,7 @@ impl<T: Value> Operation<'_, T> {
                     tests::observe_execution_compare_input(left_unit);
                     #[cfg(test)]
                     let right_unit = self.right.units;
-                    // Compare follows the upgrade that stored the candidate.
-                    let right = self
-                        .candidate
-                        .as_ref()
-                        .ok_or(HtmlValuePoolError::NotReady)?
-                        .read(&mut self.right)?;
+                    let right = candidate.read(&mut self.right)?;
                     #[cfg(test)]
                     {
                         tests::observe_execution_compare_candidate(right_unit);
@@ -1227,13 +1263,15 @@ impl<T: Value> Operation<'_, T> {
                     equal &= left.word == right.word;
                 }
                 if !equal {
-                    self.candidate = None;
                     self.candidate_usage = HtmlValuePoolUsage::default();
                     self.advance_candidate();
                     return Ok(HtmlValuePoolProgress::CandidateReleased);
                 }
                 if self.left.done && self.right.done {
-                    self.phase = Phase::Touch;
+                    self.state = match std::mem::replace(&mut self.state, State::Bypassed) {
+                        State::Compare(candidate) => State::Touch(candidate),
+                        other => other,
+                    };
                 }
                 Ok(HtmlValuePoolProgress::Continue)
             }
