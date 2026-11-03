@@ -394,8 +394,9 @@ struct Entry {
 /// identity, a second clone of it, to the entry's position. The index is the
 /// import's own node index, moved here when the import succeeds, so
 /// `builder_subject` and `subject` take expected constant time and no lookup
-/// scans the mapping. Both are bounded by the import's mapping-entry limit; the
-/// index may hold spare capacity from its growth. The index is only probed,
+/// scans the mapping. Their logical sizes are bounded by the import's
+/// mapping-entry limit; the entry list and the index may also hold spare
+/// capacity from their growth. The index is only probed,
 /// never iterated, so no outcome depends on hash seeds or bucket order. The
 /// mapping has no equality, and its `Debug` output lists the entries only.
 pub struct HtmlConstructionCaptureMap {
@@ -1234,6 +1235,9 @@ mod tests {
         // Independent oracle: each lookup of one node must cost a bounded number
         // of steps whatever the number of mapped nodes, so n lookups cost O(n);
         // a scan examines up to n entries per lookup, about n^2 / 2 in total.
+        // Against the index the counter in `entry` counts calls, not the work
+        // inside them, so after the fix this shows only that each lookup is one
+        // `entry` call; the quadratic scan it replaced was counted per entry.
         let n = 200;
         let (result, ids) = imported_siblings(n);
         lookup_steps::take();

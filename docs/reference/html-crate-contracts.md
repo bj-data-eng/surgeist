@@ -1484,7 +1484,8 @@ of the map.
 The map therefore retains, for every mapped node, one entry (the source
 `HtmlNodeId` and its checked handle) and one slot of a hash index from a second
 clone of that identity to the entry's position, plus whatever spare capacity the
-index grew. Both are bounded by the import's mapping-entry limit.
+entry list and the index grew. Their logical sizes are bounded by the import's
+mapping-entry limit.
 `mapping.builder_subject` and `mapping.subject` probe that index, taking
 expected constant time rather than scanning; a node outside the imported closure
 is one failed probe and still returns `OutsideImportedClosure`, and `subject`
