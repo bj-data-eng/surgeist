@@ -42,3 +42,6 @@ mod used_main_floor;
 
 #[path = "flex_tests/named_empty_absence.rs"]
 mod named_empty_absence;
+
+#[path = "flex_tests/inline_percentage_completion.rs"]
+mod inline_percentage_completion;
