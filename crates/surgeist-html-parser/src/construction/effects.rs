@@ -226,7 +226,7 @@ impl ConstructionEffects {
     ) -> Result<(), SessionError> {
         // Tasks carry no nested allocation; failed push returns the finite value.
         self.tasks
-            .try_push_recover(c, Some(QueuedTask { task, cause }))
+            .try_push_recover_geometric(c, Some(QueuedTask { task, cause }))
             .map_err(|(stop, _)| SessionError::Stop(stop))
     }
 }
@@ -279,7 +279,7 @@ impl SessionStorage {
             let parent = parent.clone();
             self.effects
                 .frames
-                .try_push_recover(c, parent)
+                .try_push_recover_geometric(c, parent)
                 .map_err(|(stop, _)| SessionError::Stop(stop))?;
             self.effects.current = None;
         }
@@ -287,7 +287,7 @@ impl SessionStorage {
             payload_write::<Option<FormEffects>>(c, 1)?;
             self.effects
                 .frames
-                .try_push_recover(c, EffectFrame::Topology(parent))
+                .try_push_recover_geometric(c, EffectFrame::Topology(parent))
                 .map_err(|(stop, _)| SessionError::Stop(stop))?;
             self.effects.form = None;
         }
@@ -859,7 +859,7 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(c));
                 };
-                list.try_push_recover(c, node)
+                list.try_push_recover_geometric(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
                 c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
                 next = self.next_view_node(c, root, node, None)?;

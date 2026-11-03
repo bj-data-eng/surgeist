@@ -579,7 +579,7 @@ impl SessionStorage {
         ])?;
         self.construction.reserve_records(c, native)?;
         self.construction.reserve_child_tickets(c, native)?;
-        c.reserve_vector(
+        c.reserve_vector_geometric(
             &mut self.payloads.values,
             &mut self.payloads.allocation,
             facts,
@@ -927,7 +927,7 @@ impl ParserArenaSession {
             else {
                 return Err(latch_registry_row(c));
             };
-            nodes.try_push(c, current)?;
+            nodes.try_push_geometric(c, current)?;
             payload_write::<Option<usize>>(c, 1)?;
             next = storage.next_sibling(c, current)?;
         }

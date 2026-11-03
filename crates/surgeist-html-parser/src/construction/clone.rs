@@ -49,7 +49,7 @@ impl SessionStorage {
                     .child_at(ordinal)
                     .ok_or_else(|| latch_registry_row(c))?
                     .position();
-                pending.try_push(c, child)?;
+                pending.try_push_geometric(c, child)?;
             }
             while let Some(node) = pending.try_pop(c)? {
                 self.node_document_ref(c, node)?;
@@ -98,7 +98,7 @@ impl SessionStorage {
                                 .child_at(ordinal)
                                 .ok_or_else(|| latch_registry_row(c))?
                                 .position();
-                            pending.try_push(c, child)?;
+                            pending.try_push_geometric(c, child)?;
                         }
                     }
                 }
@@ -208,7 +208,7 @@ impl SessionStorage {
                             .child_at(ordinal)
                             .ok_or_else(|| latch_registry_row(c))?
                             .position();
-                        pending.try_push(c, child)?;
+                        pending.try_push_geometric(c, child)?;
                     }
                 }
                 for ordinal in 0..self
@@ -225,7 +225,7 @@ impl SessionStorage {
                         .child_at(ordinal)
                         .ok_or_else(|| latch_registry_row(c))?
                         .position();
-                    pending.try_push(c, child)?;
+                    pending.try_push_geometric(c, child)?;
                 }
             }
             Ok(())
