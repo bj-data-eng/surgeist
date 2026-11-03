@@ -5,6 +5,7 @@
 //! contextual color-input operations are separate contracts.
 
 use crate::DocumentString;
+use crate::tokens::ascii_whitespace;
 
 /// An opaque sRGB color with exact eight-bit red, green and blue components.
 ///
@@ -63,10 +64,6 @@ impl HtmlLegacyColor {
 pub(crate) enum LegacyColorParseError {
     EmptyInput,
     Transparent,
-}
-
-fn ascii_whitespace(unit: u16) -> bool {
-    matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20)
 }
 
 fn hex_value(code_point: u32) -> Option<u8> {

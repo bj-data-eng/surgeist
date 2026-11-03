@@ -1,5 +1,6 @@
 //! Shared HTML877d intrinsic Meta processing. No Document/URL/CSS/UI controller.
 use super::*;
+use crate::tokens::ascii_whitespace;
 use std::ops::Range;
 
 /// Caller admission before a shared refresh operation.
@@ -57,10 +58,6 @@ pub fn meta_referrer_policy_with<E>(
         .filter(|policy| *policy != HtmlReferrerPolicy::Empty))
 }
 
-fn whitespace(unit: u16) -> bool {
-    matches!(unit, 9 | 10 | 12 | 13 | 32)
-}
-
 /// Exact first nonempty token, unless any comma occurs anywhere in the input.
 /// Output borrows an original UTF-16 range; the caller owns materialization.
 pub fn meta_language_token_with<E>(
@@ -77,7 +74,7 @@ pub fn meta_language_token_with<E>(
     let mut pos = 0;
     loop {
         admit()?;
-        if !units.get(pos).copied().is_some_and(whitespace) {
+        if !units.get(pos).copied().is_some_and(ascii_whitespace) {
             break;
         }
         pos += 1;
@@ -88,7 +85,7 @@ pub fn meta_language_token_with<E>(
         if !units
             .get(pos)
             .copied()
-            .is_some_and(|unit| !whitespace(unit))
+            .is_some_and(|unit| !ascii_whitespace(unit))
         {
             break;
         }
@@ -115,7 +112,7 @@ fn refresh_space<E>(
     pos: &mut usize,
     admit: &mut impl FnMut(HtmlMetaRefreshAction) -> Result<(), E>,
 ) -> Result<(), E> {
-    while refresh_unit(units, *pos, admit)?.is_some_and(whitespace) {
+    while refresh_unit(units, *pos, admit)?.is_some_and(ascii_whitespace) {
         *pos += 1;
     }
     Ok(())
@@ -145,7 +142,7 @@ pub fn meta_refresh_syntax_with<E>(
     admit(HtmlMetaRefreshAction::Step)?;
     if pos != units.len() {
         if !refresh_unit(units, pos, &mut admit)?
-            .is_some_and(|u| u == 59 || u == 44 || whitespace(u))
+            .is_some_and(|u| u == 59 || u == 44 || ascii_whitespace(u))
         {
             return Ok(None);
         }

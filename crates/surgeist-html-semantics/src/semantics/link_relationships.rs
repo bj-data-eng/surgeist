@@ -586,7 +586,7 @@ impl FactsAdmission {
         }
         for (a, b) in a.code_units().iter().zip(b.code_units()) {
             self.work(3)?;
-            if rel::fold_rel_ascii(*a) != rel::fold_rel_ascii(*b) {
+            if rel::ascii_lowercase(*a) != rel::ascii_lowercase(*b) {
                 return Ok(false);
             }
         }
@@ -772,7 +772,7 @@ impl HtmlRelFacts {
                         || !units
                             .iter()
                             .zip(canonical)
-                            .all(|(a, b)| rel::fold_rel_ascii(*a) == rel::fold_rel_ascii(*b))
+                            .all(|(a, b)| rel::ascii_lowercase(*a) == rel::ascii_lowercase(*b))
                     {
                         return Err(HtmlRelFactsError::CanonicalMismatch);
                     }
@@ -829,15 +829,14 @@ impl HtmlRelFacts {
                     if role == HtmlRelRole::Form {
                         return Err(HtmlRelFactsError::InvalidRole);
                     }
-                    if role == HtmlRelRole::Link && o.valid {
-                        let mut nonspace = false;
-                        for &u in actual.code_units() {
-                            a.work(6)?;
-                            nonspace |= !matches!(u, 9 | 10 | 12 | 13 | 32);
-                        }
-                        if !nonspace {
-                            return Err(HtmlRelFactsError::GrammarContradiction);
-                        }
+                    if role == HtmlRelRole::Link
+                        && o.valid
+                        && rel::rel_href_is_empty_or_ascii_whitespace_with(
+                            actual.code_units(),
+                            |n| a.work(n),
+                        )?
+                    {
+                        return Err(HtmlRelFactsError::GrammarContradiction);
                     }
                 }
             }

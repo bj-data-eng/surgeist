@@ -37,13 +37,7 @@ pub(crate) fn blocking_token_is_render_with<E>(
     }
     for (actual, expected) in units.iter().zip(b"render") {
         step()?;
-        let actual = *actual;
-        let actual = if (65..=90).contains(&actual) {
-            actual + 32
-        } else {
-            actual
-        };
-        if actual != u16::from(*expected) {
+        if !crate::tokens::ascii_case_insensitive_unit(*actual, *expected) {
             return Ok(false);
         }
     }
@@ -329,14 +323,9 @@ pub fn style_type_allows_css_with<E>(
     if value.len() != 8 {
         return Ok(false);
     }
-    for (&actual, expected) in value.code_units().iter().zip("text/css".encode_utf16()) {
+    for (&actual, expected) in value.code_units().iter().zip("text/css".bytes()) {
         step()?;
-        let actual = if (65..=90).contains(&actual) {
-            actual + 32
-        } else {
-            actual
-        };
-        if actual != expected {
+        if !crate::tokens::ascii_case_insensitive_unit(actual, expected) {
             return Ok(false);
         }
     }

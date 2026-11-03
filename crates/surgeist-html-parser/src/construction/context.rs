@@ -1126,29 +1126,6 @@ fn shadow_host_name(
     }
     Ok((false, false))
 }
-fn insensitive(
-    value: &DocumentString,
-    literal: &str,
-    c: &mut ParseControl,
-) -> Result<bool, SessionError> {
-    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    if value.len() != literal.len() {
-        return Ok(false);
-    }
-    // The lengths are equal, so the pairs cover both sequences exactly.
-    for (&left, right) in value.code_units().iter().zip(literal.bytes()) {
-        c.charge_unit_literal_comparison()?;
-        let left = if matches!(left, 65..=90) {
-            left | 0x20
-        } else {
-            left
-        };
-        if left != u16::from(right) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
 impl FragmentContextStorage {
     pub(super) fn release(
         self,
@@ -1221,9 +1198,9 @@ impl ParserArenaSession {
             }
             let name = attr.name().local_name();
             if exact_ascii(c, Some(name), "shadowrootmode")? {
-                if insensitive(attr.value(), "open", c)? {
+                if c.ascii_case_insensitive_literal_matches(attr.value(), "open")? {
                     mode = Some(crate::HtmlShadowRootMode::Open);
-                } else if insensitive(attr.value(), "closed", c)? {
+                } else if c.ascii_case_insensitive_literal_matches(attr.value(), "closed")? {
                     mode = Some(crate::HtmlShadowRootMode::Closed);
                 }
             } else if exact_ascii(c, Some(name), "shadowrootdelegatesfocus")? {
@@ -1233,7 +1210,7 @@ impl ParserArenaSession {
             } else if exact_ascii(c, Some(name), "shadowrootserializable")? {
                 serializable = true;
             } else if exact_ascii(c, Some(name), "shadowrootslotassignment")? {
-                manual = insensitive(attr.value(), "manual", c)?;
+                manual = c.ascii_case_insensitive_literal_matches(attr.value(), "manual")?;
             } else if exact_ascii(c, Some(name), "shadowrootcustomelementregistry")? {
                 keep_null = true;
             }

@@ -670,13 +670,86 @@ impl HtmlRelMeter for OrdinaryRelMeter {
     }
 }
 
-/// ASCII case folding used by the relationship grammar's comparisons.
-pub fn fold_rel_ascii(unit: u16) -> u16 {
-    super::fold(unit)
+/// Tests whether a link `href` is empty or made only of ASCII whitespace (the Infra definition),
+/// which the relationship grammar treats as the empty-or-only-ASCII-spaces case. The scan is
+/// caller-metered: it never stops early on content, so every unit is inspected, and `work(6)` is
+/// called once before inspecting each one. The first `work` error is returned unchanged and ends
+/// the scan. The meter's units are abstract, and this per-unit weight is fixed by this scan.
+pub fn rel_href_is_empty_or_ascii_whitespace_with<E>(
+    units: &[u16],
+    mut work: impl FnMut(usize) -> Result<(), E>,
+) -> Result<bool, E> {
+    let mut only_whitespace = true;
+    for &unit in units {
+        work(6)?;
+        only_whitespace &= super::ascii_whitespace(unit);
+    }
+    Ok(only_whitespace)
 }
 /// Exact-length, ASCII-insensitive comparison against one grammar keyword.
 pub fn rel_ascii_keyword(units: &[u16], keyword: &str) -> bool {
     super::ascii_keyword(units, keyword)
+}
+
+#[cfg(test)]
+mod ascii_helper_tests {
+    use super::{rel_ascii_keyword, rel_href_is_empty_or_ascii_whitespace_with};
+
+    /// Runs the scan with a meter that records each requested charge and refuses the call
+    /// numbered `refuse_at` (one-based), when given.
+    fn scan(units: &[u16], refuse_at: Option<usize>) -> (Result<bool, &'static str>, Vec<usize>) {
+        let mut charges = Vec::new();
+        let result = rel_href_is_empty_or_ascii_whitespace_with(units, |n| {
+            charges.push(n);
+            if Some(charges.len()) == refuse_at {
+                Err("refused")
+            } else {
+                Ok(())
+            }
+        });
+        (result, charges)
+    }
+
+    /// The documented charge is six per inspected unit, with no early exit on content; Infra
+    /// ASCII whitespace excludes U+000B and U+00A0.
+    #[test]
+    fn every_unit_is_charged_six_and_content_never_ends_the_scan() {
+        assert_eq!(scan(&[], None), (Ok(true), vec![]));
+        assert_eq!(
+            scan(&[0x20, 0x09, 0x0A, 0x0C, 0x0D], None),
+            (Ok(true), vec![6; 5])
+        );
+        assert_eq!(
+            scan(&[0x20, 0x41, 0x20, 0x20], None),
+            (Ok(false), vec![6; 4])
+        );
+        assert_eq!(scan(&[0x41], None), (Ok(false), vec![6]));
+        assert_eq!(scan(&[0x0B, 0x20], None), (Ok(false), vec![6; 2]));
+        assert_eq!(scan(&[0xA0], None), (Ok(false), vec![6]));
+        assert_eq!(scan(&[0xD800, 0x20], None), (Ok(false), vec![6; 2]));
+    }
+
+    /// Infra "ASCII case-insensitive": both sides lowercase, so an uppercase keyword byte matches
+    /// either case of the unit, and a non-ASCII unit never folds.
+    #[test]
+    fn keyword_comparison_is_symmetric_ascii_case_insensitive() {
+        assert!(rel_ascii_keyword(&[0x41, 0x62], "aB"));
+        assert!(rel_ascii_keyword(&[0x61, 0x42], "Ab"));
+        assert!(rel_ascii_keyword(&[0x61], "A"));
+        assert!(!rel_ascii_keyword(&[0x212A], "k"));
+        assert!(!rel_ascii_keyword(&[0x61], "ab"));
+    }
+
+    #[test]
+    fn the_first_refused_charge_is_returned_unchanged_and_ends_the_scan() {
+        assert_eq!(scan(&[0x20; 5], Some(3)), (Err("refused"), vec![6; 3]));
+        assert_eq!(
+            scan(&[0x41, 0x20, 0x20], Some(1)),
+            (Err("refused"), vec![6])
+        );
+        // A refusal on the last unit still wins over the otherwise-known answer.
+        assert_eq!(scan(&[0x41, 0x42], Some(2)), (Err("refused"), vec![6; 2]));
+    }
 }
 
 #[cfg(test)]
