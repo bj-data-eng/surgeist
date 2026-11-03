@@ -1054,15 +1054,21 @@ value outcomes are the report's author/recovery states, not a failed publication
 transition.
 No public report constructor accepts caller-asserted raw/attempt pairs.
 
-All consuming fallible boundaries in this contract follow one of two concrete
-forms: a guarded `&mut Option<Owner>` transition that leaves `Some` unchanged
-on refusal, or an error value containing the complete unconsumed owner/input.
-Borrowing action failure leaves ownership in its enclosing operation. There is
-no infallible consuming `commit` or `finish` on a pending/failed owner, and no
-ready-proof constructor outside the owner. This applies to initialization,
-attribute validation, complete attribute edits and slot commits, tree
-mutation/publication, interpretation, lease recovery
-and semantic import/finalization; it does not add a generic public typestate
+All consuming fallible boundaries in this contract follow one of three concrete
+forms. The construction owners (initialization, tree mutation and publication,
+text append, complete attribute edits with their candidates and slots, and lease
+recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
+holds the complete unconsumed owner and the cause, so a refusal loses nothing and
+a consumed owner cannot be presented again. The other owner families
+(attribute validation, interpretation and the value pools) keep a guarded
+`&mut Option<Owner>` transition that leaves `Some` unchanged on refusal. The
+remaining boundaries return an error value containing the complete unconsumed
+owner/input. Borrowing action failure leaves ownership in its enclosing
+operation. There is no infallible consuming `commit` or `finish` on a
+pending/failed owner, and no ready-proof constructor outside the owner. This
+applies to initialization, attribute validation, complete attribute edits and
+slot commits, tree mutation/publication, interpretation, lease recovery and
+semantic import/finalization; it does not add a generic public typestate
 framework.
 
 The input-type semantic adapter required by #1173 performs one HTML-owned rule
