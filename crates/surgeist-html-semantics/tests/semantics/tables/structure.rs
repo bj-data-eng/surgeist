@@ -721,11 +721,11 @@ fn exact_work_cutoff_and_duplicate_requests_preserve_atomic_batch_results() {
     let cx = context(&c);
     let req =
         HtmlSemanticRequest::new(c.subject_id(&table).unwrap(), HtmlSemanticQuery::TableModel);
-    // Scratch frames are only needed to defer footers (see the footer
-    // admission test), so a table without one uses none. The model's cell,
-    // slot and edge vectors are private layout, so work, nested records and
-    // bytes are required to be charged without pinning their amounts; the
-    // single result record is pinned.
+    // Scratch holds the deferred footers (see the footer admission test) and
+    // the slot index and header scans of the query, whose layout is private.
+    // The model's cell, slot and edge vectors are private layout too, so work,
+    // scratch, nested records and bytes are required to be charged without
+    // pinning their amounts; the single result record is pinned.
     let baseline = assert_exact_and_one_short_caps(
         "table model",
         &c,
@@ -735,6 +735,7 @@ fn exact_work_cutoff_and_duplicate_requests_preserve_atomic_batch_results() {
         std::slice::from_ref(&req),
         ExpectedUsage {
             output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
             nested_output_records: Charge::Charged,
             ..ExpectedUsage::none()
         },

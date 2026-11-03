@@ -2185,6 +2185,37 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   also steps to the table (1, lookup 1, `K(5)`). The collection walk is the
   one above, stopping at the target: every collection row costs 2, the target
   included.
+- **TableModel** ([code](../../crates/surgeist-html-semantics/src/semantics/table.rs)).
+  The model is formed and its headers assigned through slot indexes, so a slot
+  question never scans every cell. Only the growth is stated; the charges that
+  make it up are not pinned. Let `C` be the cells, `W` the columns, `H` the
+  rows and `L` the total number of lines the cells cross, in both axes
+  together. Consecutive rows (or columns) that the same cells cover alike are
+  one line, so a cell adds one record per line it crosses, not one per row or
+  column it spans; a table of unit-span cells has `L = 2C`. Placing the cells
+  costs `O(C log C + W + H)` plus the cells each new cell overlaps (and their
+  sort into model order). The row and column indexes cost `O(C + W + H + L)`
+  and are admitted from the spans as scratch records before they are
+  allocated; they are released with the rest of the query's scratch, so the
+  retained model is unchanged. Assigning headers then costs, for each cell
+  without a `headers` attribute, a binary search per line it scans, one visit
+  per header cell met in that line, and one step for each run of data cells,
+  however long. A table without row or column groups whose header cells lie in
+  a first row and first column therefore costs `O(C log C)` in all, the work of
+  an `n` by `n` grid growing by about four for each quadrupling of the cells; a
+  line made only of header cells costs a visit per header for each cell that
+  scans it, up to `O(C * (W + H))`. A cell in a row group (or column group)
+  also tests the header cells above it, and left of its far edge, in the group
+  for the `scope` that group names, reading each header's `scope` once and
+  taking one step per header tested, so a grid with such headers inside one
+  group grows a little faster than the cell count (the same grids under a
+  `tbody` grow by about 4.4 to 5.3 for each quadrupling from 1,600 to 40,000
+  cells, measured in a debug build). A line in which cells overlap is scanned
+  one slot at a time, `O(log)` per slot. The `headers` attribute is outside this
+  bound: each token searches the document, and each resolved token searches the
+  cells. [The model work test](../../crates/surgeist-html-semantics/tests/semantics/tables/model_work.rs)
+  pins the growth for `n` by `n` grids of data cells and of data cells under a
+  first row and column of header cells.
 - **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
   for two shapes. The query prefix, a lookup (1), `D` and `K(6)` come first.
   With a sectioning ancestor, each ancestor costs one parent step (1) and a
