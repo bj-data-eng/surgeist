@@ -334,10 +334,15 @@ fn page_restrictions_reject_inapplicable_properties_logical_sides_and_invalid_un
 
 #[test]
 fn page_excludes_invalid_margin_preludes_and_nested_rules_but_retains_later_margin() {
-    for child in [
-        "@top-left invalid{content:\"title\"}",
-        "@media all{margin-top:9px}",
-        ".nested{color:blue}",
+    // Only an at-keyword begins an at-rule; `.nested{color:blue}` is a
+    // qualified rule (Syntax 3 §5.5.5).
+    for (child, action) in [
+        (
+            "@top-left invalid{content:\"title\"}",
+            CssRecoveryAction::DropAtRule,
+        ),
+        ("@media all{margin-top:9px}", CssRecoveryAction::DropAtRule),
+        (".nested{color:blue}", CssRecoveryAction::DropQualifiedRule),
     ] {
         let source = format!("{{margin-top:1px;{child}margin-bottom:2px}}");
         let report = CssBlockFragment::<CssPageBody>::parse(
@@ -349,7 +354,7 @@ fn page_excludes_invalid_margin_preludes_and_nested_rules_but_retains_later_marg
             page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
         );
-        recovered(&report, CssRecoveryAction::DropAtRule);
+        recovered(&report, action);
     }
 }
 

@@ -165,3 +165,51 @@ fn a_unit_that_begins_with_no_break_space_is_not_judged_as_an_at_rule_in_every_d
         );
     }
 }
+
+#[test]
+fn a_dropped_unit_that_does_not_begin_with_an_at_keyword_is_never_reported_as_an_at_rule() {
+    // Syntax 3 §5.5.5: only an <at-keyword-token> begins an at-rule; any other
+    // unit that is not a declaration is consumed as a qualified rule. The
+    // block bodies that drive their own units (`@counter-style`, `@page` and
+    // its margin boxes) report the unit as the qualified rule it is, and an
+    // at-rule unit stays an at-rule.
+    let actions_at = |source: &str, at: usize| {
+        CssParser::default()
+            .parse_sheet(source)
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.span().start().byte_offset().value() == at)
+            .map(|diagnostic| (diagnostic.error().code(), diagnostic.action()))
+            .collect::<Vec<_>>()
+    };
+    for template in [
+        "@counter-style x { @@ }",
+        "@page { @@ }",
+        "@page { @top-left { @@ } }",
+        "@page :first { margin: 1px; @@ ; size: a4 }",
+    ] {
+        for unit in [
+            ".a {}", "1 {}", "& a {}", "#a {}", ":a {}", ".a;", ":x;", "1;",
+        ] {
+            let source = template.replace("@@", unit);
+            let at = source.find(unit).unwrap();
+            let found = actions_at(&source, at);
+            let [(code, action)] = found.as_slice() else {
+                panic!("{source:?}: {found:?}");
+            };
+            assert_eq!(*action, CssRecoveryAction::DropQualifiedRule, "{source:?}");
+            if template.starts_with("@counter-style") && unit.ends_with("{}") {
+                assert_eq!(*code, CssErrorCode::InvalidQualifiedRule, "{source:?}");
+            }
+        }
+        let unit = "@x {}";
+        let source = template.replace("@@", unit);
+        let at = source.find(unit).unwrap();
+        let found = actions_at(&source, at);
+        assert_eq!(
+            found.iter().map(|(_, action)| *action).collect::<Vec<_>>(),
+            [CssRecoveryAction::DropAtRule],
+            "{source:?}"
+        );
+    }
+}

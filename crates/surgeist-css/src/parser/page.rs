@@ -222,10 +222,14 @@ pub(super) fn drive_margin_body<'i>(
             UnitKind::AtRule => (dropped.text(), dropped.end),
             _ => dropped.text_to_block(),
         };
+        // Only an at-keyword begins an at-rule (Syntax 3 §5.5.5); a unit that
+        // is neither a declaration nor an at-rule is a qualified rule.
         let action = if is_declaration_recovery_unit(text) {
             crate::diagnostic::CssRecoveryAction::DropDeclaration
-        } else {
+        } else if crate::diagnostic::error::begins_with_at_keyword(text) {
             crate::diagnostic::CssRecoveryAction::DropAtRule
+        } else {
+            crate::diagnostic::CssRecoveryAction::DropQualifiedRule
         };
         // The span starts where the dropped unit does, whatever part of it the
         // text names: a rejected prelude names less than the unit, which runs
