@@ -255,3 +255,81 @@ fn tall_cells_beside_rows_placed_to_their_left_cost_the_size_of_the_input() {
 fn growing_cells_beside_rows_cost_the_size_of_the_input() {
     assert_input_linear_work(Later::GrowingRight);
 }
+
+/// Tall header cells with data cells between them are not scanned once per row
+/// they cross, and a row's own cell at their right does not copy them.
+///
+/// `tall` cells of `rows + 1` rows start the table in row 0, alternately `th`
+/// and `td`, and each of the `rows` rows after holds one `td`, which lands right
+/// of them. A cell scans the rows it crosses leftward for headers (HTML 877d
+/// internal algorithm for scanning and assigning header cells), but every row
+/// it crosses holds the same cells to its left, so its scans find the same
+/// headers: the work is that of the input, not `tall * rows`.
+///
+/// By the algorithm: a tall `td` (odd position `k`) meets the `th` before it,
+/// a row header since no data cell shares its column, and then a `td` that
+/// closes the block, so it takes that `th` alone; a tall `th` meets a `td`
+/// first, which closes its own block, and the `th` beyond is hidden by it. The
+/// `td` of a later row meets the last two cells: a `td`, then the `th` before
+/// it, so it takes the `th` at position `tall - 2`.
+fn tall_headers_work(tall: usize, rows: usize) -> usize {
+    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
+        1_000_000,
+        10_000_000,
+        1_000_000,
+        100_000_000,
+        1000,
+        0,
+        0,
+        16_777_216,
+    ));
+    let table = element(&mut b, &d, "table", &[]);
+    let span = (rows + 1).to_string();
+    let first: Vec<_> = (0..tall)
+        .map(|k| {
+            let kind = if k % 2 == 0 { "th" } else { "td" };
+            cell(&mut b, &d, kind, &[("rowspan", &span)])
+        })
+        .collect();
+    let mut trs = Vec::new();
+    let row = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&row, &first).unwrap();
+    trs.push(row);
+    for _ in 0..rows {
+        let row = element(&mut b, &d, "tr", &[]);
+        let td = cell(&mut b, &d, "td", &[]);
+        b.establish_children(&row, &[td]).unwrap();
+        trs.push(row);
+    }
+    b.establish_children(&table, &trs).unwrap();
+    let capture = b.finish().unwrap();
+    let report = query(&capture, &table, limits()).0.unwrap();
+    let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
+    else {
+        panic!("expected a complete table model");
+    };
+    assert_eq!(
+        (model.width(), model.height(), model.cells().len()),
+        (tall + 1, rows + 1, tall + rows)
+    );
+    assert!(model.errors().is_empty());
+    assert_eq!(model.headers().len(), tall / 2 + rows);
+    report.usage().work()
+}
+
+#[test]
+fn tall_header_cells_beside_rows_cost_the_size_of_the_input() {
+    let sizes = [50, 100, 200, 400];
+    let measured: Vec<usize> = sizes.iter().map(|n| tall_headers_work(*n, *n)).collect();
+    for (pair, sizes) in measured.windows(2).zip(sizes.windows(2)) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 26,
+            "{0} tall cells and {0} rows cost {1} but {2} for {3} of each \
+             (input x2 may cost at most x2.6)",
+            sizes[0],
+            pair[0],
+            pair[1],
+            sizes[1],
+        );
+    }
+}
