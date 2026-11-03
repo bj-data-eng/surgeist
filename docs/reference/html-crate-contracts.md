@@ -109,6 +109,14 @@ its public view is immutable. A validation cursor compares expanded names in
 the existing duplicate-major/first-minor order and compares exact namespace URI
 before exact local name. Prefix and value never affect duplicate identity.
 
+`HtmlAttributeStorage::validate` compares every pair of names, which is quadratic in the
+attribute count and suits a bounded count. `validate_indexed(HtmlAttributeNameIndex)` reaches
+the same verdict, the first attribute whose expanded name repeats an earlier one with that
+earlier attribute's index, in work linear in the count and the total length of the names: see
+[name index](#attribute-name-index). The cursor's layouts then also report the index slots a step
+writes and bytes it copies (`record_writes()`, `copied_bytes()`). `take_index()` gives the index
+back before `try_finish`, which consumes the cursor.
+
 The cursor exposes `next_action()` and an action's `layout()`/`advance()` pair.
 The parser admits each record/string comparison before advancing it.
 `HtmlAttributeValidation::try_finish(&mut Option<Self>) ->
@@ -297,10 +305,46 @@ repair or choose a lexical recovery. The normal parser retains its source-define
 duplicate recovery before installation. Native, foreign/adjusted and generated
 producers must each either supply actual HTML-owned evidence for those exact
 operands and current prefix or execute these checks. A tokenizer assertion or an
-earlier check before a name-changing effect is insufficient. Checking successive
-prefixes may require quadratic name-pair work; document and measure the bound
-from the real input size and exact-name comparison actions. Do not claim linear
-work, hide a batch scan or raise a blanket limit to accommodate the change.
+earlier check before a name-changing effect is insufficient. Without a lent name
+index, checking successive prefixes costs quadratic name-pair work, measured from the
+real input size and exact-name comparison actions. With one, the check is a probe of the
+few names that share a hash: see [name index](#attribute-name-index). Do not hide a batch
+scan or raise a blanket limit to accommodate the change.
+
+<a id="attribute-name-index"></a>
+
+##### Name index
+
+`bounded::values::HtmlAttributeNameIndex` is an open-addressed table of attribute positions
+keyed by a per-instance random hash of the exact expanded name (namespace URI units, then
+local-name units; prefix and value never count). It is insert-only between rebuilds and at most
+half full, so a probe always reaches an empty slot and no input can choose names that collide.
+Each entry also keeps 32 bits of the name's hash, so a probe reads a name only where those bits
+equal the sought name's. The table never decides equality: a probe step hands the occupant back,
+and the cursor compares the two names through its own admitted comparison actions, so every step
+and comparison is admitted before it runs and a refusal leaves state at an exact step.
+
+The consumer allocates and accounts the slots (`Vec<HtmlNameIndexSlot>`; its capacity must be at
+least `HtmlAttributeNameIndex::slots_required(entries)`), adopts them with `new`, lends the index
+to an edit with `adopt_index`, and takes it back with `HtmlConstructionAttributeCompletion::
+take_index` (or `HtmlAttributeValidation::take_index`) and `into_storage` to release it. The owner
+never allocates the table. Without enough capacity a step compares every name as before; the verdict
+is the same and the work quadratic. Verdicts equal the pairwise ones, including the first reached
+failure: a repeat is reported against the single earlier attribute that owns the name, at the
+attribute that repeats it.
+
+Three steps use the index:
+
+| Step | Use |
+| --- | --- |
+| Checked append in `Slots` mode | Looks the appended name up and, at the empty slot its probe reaches, enters the new position at commit. The index keeps describing the element across edits while only such appends change it. Replacement, swap, pop and merge appends make it describe nothing, and the next append clears and refills it from the stored attributes before looking the name up. An edit of another element does the same. |
+| Named-merge planning | The first candidate clears and fills the index with the installed null-namespace names. A candidate probes it, a match with an installed name or an earlier kept candidate (whose name the consumer supplies for the comparison as before) marks it not kept, and a candidate with no match is entered. |
+| `HtmlAttributeStorage::validate_indexed` | Enters each name in order after probing for it. |
+
+Clearing, hashing, probing and inserting are `Inspect`/`Compare` descriptions with their own work
+(slots written and bytes copied per 256-slot clearing chunk, record visits and inspected bytes of
+the lengths and units hashed, one slot read and one admitted write per probe slot), so a consumer
+that admits `description().work()` generically needs no new case.
 
 Named merge replaces the existing parser `missing: OwnedVec<bool>` allocation
 with one HTML-owned plan allocation of private decision/name records. It is the
@@ -319,7 +363,7 @@ order, inspect installed attributes until the first null-namespace/local-name
 match, then inspect earlier lexical names in source order until the first match.
 The earlier-lexical loop still runs when an installed match was found. Exact
 UTF-16 comparison and short-circuit order remain the original order. Prefixes
-and values do not determine duplicate identity. The owner derives each keep
+and values do not determine duplicate identity. With a lent name index the planner reaches the same decision by probing instead of inspecting every installed attribute and earlier lexical name; the decisions are identical. The owner derives each keep
 decision; parser may observe it for staging but cannot use that boolean to
 authorize a later append.
 

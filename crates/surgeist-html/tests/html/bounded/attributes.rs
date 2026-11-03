@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use surgeist_html::{
     bounded::values::{
-        HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
-        HtmlValidatedAttributes,
+        HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidation,
+        HtmlAttributeValidationError, HtmlNameIndexSlot, HtmlValidatedAttributes,
     },
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -274,5 +274,66 @@ fn exact_namespace_and_local_name_pairs_match_native_duplicate_identity() {
                 assert_eq!(controlled.unwrap().into_attributes(), native.unwrap());
             }
         }
+    }
+}
+
+#[test]
+fn indexed_validation_matches_pairwise_validation_and_returns_the_borrowed_slots() {
+    // Names that differ only in namespace, case and prefix, with a repeat of the second.
+    let cases: [Vec<Attribute>; 3] = [
+        vec![
+            attribute(Namespace::none(), None, "a"),
+            attribute(Namespace::from_uri("urn:n"), Some("p"), "a"),
+            attribute(Namespace::none(), Some("q"), "A"),
+        ],
+        vec![
+            attribute(Namespace::none(), None, "a"),
+            attribute(Namespace::from_uri("urn:n"), Some("p"), "a"),
+            attribute(Namespace::from_uri("urn:n"), Some("q"), "a"),
+        ],
+        (0..200)
+            .map(|i| attribute(Namespace::none(), None, format!("n{i}")))
+            .collect(),
+    ];
+    for attributes in cases {
+        let pairwise = {
+            let mut owner = Some(
+                HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes.clone()))
+                    .validate(),
+            );
+            drive(&mut owner).map(|validated| validated.as_slice().len())
+        };
+        let slots = HtmlAttributeNameIndex::slots_required(attributes.len()).unwrap();
+        let storage = Vec::<HtmlNameIndexSlot>::with_capacity(slots);
+        let capacity = storage.capacity();
+        let mut owner = Some(
+            HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes))
+                .validate_indexed(HtmlAttributeNameIndex::new(storage)),
+        );
+        let mut outcome = Ok(());
+        loop {
+            match owner.as_mut().unwrap().next_action() {
+                Ok(Some(action)) => {
+                    if let Err(error) = action.advance() {
+                        outcome = Err(error);
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    outcome = Err(error);
+                    break;
+                }
+            }
+        }
+        let index = owner.as_mut().unwrap().take_index().expect("lent index");
+        assert_eq!(index.capacity(), capacity, "the borrowed slots do not grow");
+        assert!(owner.as_mut().unwrap().take_index().is_none());
+        let indexed = outcome.and_then(|()| {
+            HtmlAttributeValidation::try_finish(&mut owner)
+                .map(|validated| validated.as_slice().len())
+        });
+        assert_eq!(indexed, pairwise);
+        drop(index.into_storage());
     }
 }

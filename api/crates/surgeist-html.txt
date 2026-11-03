@@ -2446,9 +2446,11 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity::
 pub struct surgeist_html::bounded::construction::HtmlConstructionAttributeCompletion
 impl surgeist_html::bounded::construction::HtmlConstructionAttributeCompletion
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeCompletion::into_parts(self) -> (surgeist_html::bounded::construction::HtmlConstructionStorage, surgeist_html::bounded::construction::HtmlConstructionAttributePlanRetirement)
+pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeCompletion::take_index(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>
 pub struct surgeist_html::bounded::construction::HtmlConstructionAttributeEdit
 impl surgeist_html::bounded::construction::HtmlConstructionAttributeEdit
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeEdit::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionAttributeCompletion
+pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeEdit::adopt_index(&mut self, index: surgeist_html::bounded::values::HtmlAttributeNameIndex)
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeEdit::append<'a>(&'a mut self, incoming: &'a mut alloc::vec::Vec<surgeist_html::values::Attribute>) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAttributeSlot<'a>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeEdit::begin(storage: surgeist_html::bounded::construction::HtmlConstructionStorage, element: surgeist_html::construction::HtmlBuilderNode, mode: surgeist_html::bounded::construction::HtmlConstructionAttributeEditMode) -> Self
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeEdit::candidate<'e, 'n>(&'e mut self, index: usize, name: &'n surgeist_html::values::DocumentString) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAttributeCandidate<'e, 'n>, surgeist_html::construction::HtmlConstructionError>
@@ -3597,6 +3599,7 @@ pub surgeist_html::bounded::values::HtmlAttributeValidationError::Consumed
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate::duplicate: usize
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate::first: usize
+pub surgeist_html::bounded::values::HtmlAttributeValidationError::IndexUnavailable
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::NotReady
 impl core::error::Error for surgeist_html::bounded::values::HtmlAttributeValidationError
 impl core::fmt::Display for surgeist_html::bounded::values::HtmlAttributeValidationError
@@ -3622,6 +3625,12 @@ pub surgeist_html::bounded::values::HtmlValuePoolProgress::CandidateAcquired
 pub surgeist_html::bounded::values::HtmlValuePoolProgress::CandidateReleased
 pub surgeist_html::bounded::values::HtmlValuePoolProgress::Continue
 pub surgeist_html::bounded::values::HtmlValuePoolProgress::Finished
+pub struct surgeist_html::bounded::values::HtmlAttributeNameIndex
+impl surgeist_html::bounded::values::HtmlAttributeNameIndex
+pub fn surgeist_html::bounded::values::HtmlAttributeNameIndex::capacity(&self) -> usize
+pub fn surgeist_html::bounded::values::HtmlAttributeNameIndex::into_storage(self) -> alloc::vec::Vec<surgeist_html::bounded::values::HtmlNameIndexSlot>
+pub fn surgeist_html::bounded::values::HtmlAttributeNameIndex::new(storage: alloc::vec::Vec<surgeist_html::bounded::values::HtmlNameIndexSlot>) -> Self
+pub fn surgeist_html::bounded::values::HtmlAttributeNameIndex::slots_required(entries: usize) -> core::option::Option<usize>
 pub struct surgeist_html::bounded::values::HtmlAttributePool
 impl surgeist_html::bounded::values::HtmlAttributePool
 pub fn surgeist_html::bounded::values::HtmlAttributePool::abort_root(&mut self, root: surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
@@ -3667,10 +3676,12 @@ pub fn surgeist_html::bounded::values::HtmlAttributeStorage::from_shared_attribu
 pub fn surgeist_html::bounded::values::HtmlAttributeStorage::into_shared_attributes(self) -> alloc::sync::Arc<alloc::vec::Vec<surgeist_html::values::Attribute>>
 pub fn surgeist_html::bounded::values::HtmlAttributeStorage::shared_attributes(&self) -> &alloc::sync::Arc<alloc::vec::Vec<surgeist_html::values::Attribute>>
 pub fn surgeist_html::bounded::values::HtmlAttributeStorage::validate(self) -> surgeist_html::bounded::values::HtmlAttributeValidation
+pub fn surgeist_html::bounded::values::HtmlAttributeStorage::validate_indexed(self, index: surgeist_html::bounded::values::HtmlAttributeNameIndex) -> surgeist_html::bounded::values::HtmlAttributeValidation
 pub struct surgeist_html::bounded::values::HtmlAttributeValidation
 impl surgeist_html::bounded::values::HtmlAttributeValidation
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::abort(self) -> surgeist_html::bounded::values::HtmlAttributeStorage
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>>, surgeist_html::bounded::values::HtmlAttributeValidationError>
+pub fn surgeist_html::bounded::values::HtmlAttributeValidation::take_index(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::values::HtmlValidatedAttributes, surgeist_html::bounded::values::HtmlAttributeValidationError>
 pub struct surgeist_html::bounded::values::HtmlAttributeValidationAction<'a>
 impl surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>
@@ -3678,8 +3689,11 @@ pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::advanc
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::layout(&self) -> surgeist_html::bounded::values::HtmlAttributeValidationLayout
 pub struct surgeist_html::bounded::values::HtmlAttributeValidationLayout
 impl surgeist_html::bounded::values::HtmlAttributeValidationLayout
+pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::copied_bytes(self) -> u64
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_visits(self) -> u64
+pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_writes(self) -> u64
+pub struct surgeist_html::bounded::values::HtmlNameIndexSlot(_)
 pub struct surgeist_html::bounded::values::HtmlStringPool
 impl surgeist_html::bounded::values::HtmlStringPool
 pub fn surgeist_html::bounded::values::HtmlStringPool::abort_root(&mut self, root: surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>

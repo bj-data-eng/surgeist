@@ -4,6 +4,7 @@ pub use crate::internal::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
+pub use crate::internal::values::name_index::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
 pub use crate::internal::values::sharing::{
     HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,
     HtmlAttributePoolResult, HtmlStringPool, HtmlStringPoolCandidate, HtmlStringPoolOperation,
