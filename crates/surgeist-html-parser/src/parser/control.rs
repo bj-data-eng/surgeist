@@ -3545,6 +3545,52 @@ mod tests {
     }
 
     #[test]
+    fn copying_a_policy_string_into_a_document_string_reserves_work_linear_in_its_length() {
+        // Each doubling of the policy's length may at most double (with a tenth more for the
+        // fixed cost and capacity steps) the bytes reserved and the total credits.
+        let roomy = HtmlParseLimits::builder()
+            .source_units(1_000_000)
+            .buffered_utf16_units(1_000_000)
+            .token_attributes(1_000)
+            .auxiliary_entries(1_000)
+            .managed_nodes(1_000)
+            .managed_edges(1_000)
+            .managed_attributes(1_000)
+            .managed_utf16_units(1_000_000)
+            .source_map_entries(1_000)
+            .source_map_payload_units(1_000)
+            .diagnostics(1_000)
+            .diagnostic_payload_units(1_000)
+            .context_effects(1_000)
+            .open_elements(1_000)
+            .tree_depth(1_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(1_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .work_credits(100_000_000_000)
+            .finish()
+            .unwrap();
+        let mut reserved = Vec::new();
+        let mut total = Vec::new();
+        for units in [1_000_usize, 2_000, 4_000, 8_000] {
+            let mut c = ParseControl::new(roomy, HtmlParseCancellation::new());
+            let policy = DocumentString::from_utf16(vec![0x61; units]);
+            let (copy, ..) = c.csp_document_string(&policy).unwrap();
+            assert_eq!(copy.code_units(), policy.code_units());
+            reserved.push(c.usage().work(HtmlParseWorkCategory::ReserveByte));
+            total.push(c.usage().resource(HtmlParseResource::WorkCredits).current);
+        }
+        for (name, work) in [("reservation work", reserved), ("total work", total)] {
+            for window in work.windows(2) {
+                assert!(
+                    window[1] * 10 <= window[0] * 22,
+                    "{name} grew faster than linearly with the policy length: {work:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn bounded_geometric_push_ends_at_exactly_the_known_final_length() {
         let mut c = control();
         let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
