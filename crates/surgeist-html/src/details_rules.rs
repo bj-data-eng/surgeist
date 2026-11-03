@@ -17,7 +17,7 @@ pub enum HtmlDetailsAttribute {
 pub enum HtmlDetailsExclusivity {
     /// HTML's "ensure details exclusivity by closing the given element if needed"
     /// (#ensure-details-exclusivity-by-closing-the-given-element-if-needed), run when `name`
-    /// changes.
+    /// changes and by the details element's insertion steps.
     CloseGiven,
     /// HTML's "ensure details exclusivity by closing other elements if needed"
     /// (#ensure-details-exclusivity-by-closing-other-elements-if-needed), run when `open` is

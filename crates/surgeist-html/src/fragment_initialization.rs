@@ -25,7 +25,8 @@ pub enum HtmlParserScriptingMode {
 /// See [`fragment_tokenizer_state`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentTokenizerState {
-    /// The data state: the context is not a text-like HTML element.
+    /// The data state: the context is an HTML element that is not text-like, a `noscript` while
+    /// the scripting mode is Disabled, or any context outside the HTML namespace.
     Data,
     /// The RCDATA state, for `title` and `textarea` contexts.
     Rcdata,

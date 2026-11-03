@@ -281,8 +281,9 @@ pub struct HtmlFocusChainCursor {
     pending: HtmlFocusChainAction,
 }
 impl HtmlFocusChainCursor {
-    /// Starts the focus chain of a focusable area subject (HTML877d #data-model)
-    /// with the empty output list.
+    /// Starts the focus chain of a subject (HTML877d #data-model) with the empty output list. The
+    /// subject is a focusable area or the actual non-area Document returned by current-area
+    /// resolution.
     pub const fn new() -> Self {
         Self {
             pending: HtmlFocusChainAction::InitializeEmptyChain,

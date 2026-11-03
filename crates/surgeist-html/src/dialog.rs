@@ -175,8 +175,9 @@ impl HtmlDialogState {
 /// A source operand role; this contains no actual Element identity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogEventSource {
-    /// The source is null, as for the `show()`, `showModal()` and `requestClose()`
-    /// methods.
+    /// The source is null, as for the toggle events of the `show()` and `showModal()` methods.
+    /// `requestClose()` does not use this value; it writes its own null source through
+    /// `WriteNullRequestCloseSource`.
     Null,
     /// Use the original nullable close source retained by the adapter.
     OperationSource,
@@ -916,8 +917,8 @@ impl HtmlCloseWatcherState {
             running_cancel_action: false,
         }
     }
-    /// Returns whether the watcher's cancel action is running, which makes a nested
-    /// request to close refuse.
+    /// Returns whether the watcher's cancel action is running. A nested request to close then
+    /// completes with `true` without running either its cancel or its close action.
     pub const fn running_cancel_action(self) -> bool {
         self.running_cancel_action
     }

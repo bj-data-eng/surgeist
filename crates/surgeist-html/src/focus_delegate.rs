@@ -9,10 +9,12 @@
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateTargetKind {
     /// The focus target is a `dialog` element, so a descendant is chosen when it is
-    /// sequentially focusable.
+    /// sequentially focusable. A descendant that is not is still resolved through get the
+    /// focusable area and chosen if that yields an area.
     Dialog,
     /// The focus target is not a `dialog` element, so a descendant is chosen when it
-    /// is a focusable area or resolves to one.
+    /// is a focusable area. A descendant that is not is still resolved through get the
+    /// focusable area and chosen if that yields an area.
     Other,
 }
 /// Only the branch classification of the original trigger. Other includes every

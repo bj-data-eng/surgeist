@@ -9,8 +9,10 @@ use crate::DocumentString;
 /// This value alone does not establish preparation, saved metadata or execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptKind {
-    /// A classic script: the type string is a JavaScript MIME type essence match
-    /// (#prepare-the-script-element step 9).
+    /// A classic script: the type string matches a JavaScript MIME type essence, ignoring ASCII
+    /// case (#prepare-the-script-element step 9). In preparation an explicit `type` also matches
+    /// after leading and trailing ASCII whitespace is stripped. An absent or empty selection is
+    /// Classic as well.
     Classic,
     /// A module script: the type string is ASCII case-insensitively `module`.
     Module,
@@ -50,7 +52,9 @@ const KEYWORDS: [(&[u8], HtmlScriptKind); 3] = [
 /// map these concrete credits to their existing categories; no controller is held.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeWork {
-    /// Charge this many visits for the comparison's length step, before any unit is compared.
+    /// Charge this many visits before a read: two for the initial selection of the input, and one
+    /// for starting each candidate comparison, which includes its length step before any unit
+    /// is compared.
     RecordVisit(u64),
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),

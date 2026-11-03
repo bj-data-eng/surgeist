@@ -132,9 +132,9 @@ impl std::error::Error for HtmlCspProtocolError {}
 /// Original-controller interruption remains distinct from protocol misuse.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCspError<E> {
-    /// The request violated the CSP protocol: an input was foreign, stale or
-    /// mismatched, or checked accounting could not be represented. The wrapped error
-    /// names the cause.
+    /// The request violated the CSP protocol: an input was foreign, stale or mismatched, the
+    /// content was empty, the native artifact had the wrong type, the policy storage was invalid,
+    /// or checked accounting could not be represented. The wrapped error names the cause.
     Protocol(HtmlCspProtocolError),
     /// The caller's own admission callback refused the next admission, or the
     /// caller's controller stopped the call. `E` is that callback's error, returned

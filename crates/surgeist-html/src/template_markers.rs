@@ -1,7 +1,8 @@
 //! HTML877d find-markers decisions; topology and identities stay with adapters.
-/// What a descendant or sibling is, for HTML's "find markers" algorithm
-/// (#find-markers). Callers classify only processing instructions whose `name` pseudo-attribute
-/// matches the sought marker name.
+/// What a descendant or sibling is, for HTML's "find markers" algorithm (#find-markers). In the
+/// descendant pass callers classify only processing instructions whose `name` pseudo-attribute
+/// matches the sought name, and `first` further requires that match. In the sibling scan after a
+/// `start`, every processing instruction is classified by its target alone, whatever its `name`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Target {
     /// A processing instruction whose target is `marker`.

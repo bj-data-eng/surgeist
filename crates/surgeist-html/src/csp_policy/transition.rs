@@ -76,8 +76,9 @@ impl HtmlCspAssociation {
     pub fn policy(&self) -> &HtmlCspPolicyState {
         &self.policy
     }
-    /// Returns the qualification of the latest published meta insertion, or `None`
-    /// when none has been published.
+    /// Returns the qualification of the latest published meta insertion, or `None` when none has
+    /// been published. An association created by a transfer inherits its source's value, so it
+    /// can be `Some` before this association publishes anything.
     pub fn latest(&self) -> Option<&HtmlMetaCspQualification> {
         self.latest.as_ref()
     }
@@ -110,20 +111,22 @@ fn association_layout(
 /// Fixed HTML Meta processing vocabulary; callers cannot select other modes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspSource {
-    /// The policy came from a `meta` element, the source that the Content security
-    /// policy state of HTML877d #pragma-directives passes to Content Security
-    /// Policy parsing.
+    /// The policy came from a `meta` element, the source that the Content security policy state
+    /// (HTML877d #attr-meta-http-equiv-content-security-policy) passes to Content Security Policy
+    /// parsing.
     Meta,
 }
-/// The disposition that the Content security policy state (HTML877d #pragma-directives) passes to
-/// Content Security Policy parsing of a `meta` element.
+/// The disposition that the Content security policy state (HTML877d
+/// #attr-meta-http-equiv-content-security-policy) passes to Content Security Policy parsing of a
+/// `meta` element.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspDisposition {
     /// The parsed policy is enforced on the Document.
     Enforce,
 }
-/// A directive that the Content security policy state (HTML877d #pragma-directives) removes from a
-/// policy parsed from a `meta` element before it is enforced.
+/// A directive that the Content security policy state (HTML877d
+/// #attr-meta-http-equiv-content-security-policy) removes from a policy parsed from a `meta`
+/// element before it is enforced.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspRemovedDirective {
     /// The `report-uri` directive.
@@ -201,7 +204,7 @@ impl HtmlMetaCspQualification {
         HtmlMetaCspTrigger::Insertion
     }
     /// Returns the directives that the processor must remove from the parsed policy
-    /// before enforcing it, in source order.
+    /// before enforcing it, in the order the Standard lists them.
     pub fn removed_directives(&self) -> [HtmlMetaCspRemovedDirective; 3] {
         [
             HtmlMetaCspRemovedDirective::ReportUri,
@@ -837,10 +840,10 @@ impl HtmlCspOwner {
     /// On refusal the request and prepared result come back in
     /// [`HtmlCspRejected::retained`]. The cause is a protocol violation when the
     /// request, result or association belong to different owners or Documents, when
-    /// the prepared result does not answer this request, when `current` is a newer
-    /// generation than the request saw, when the policy in force is no longer the
-    /// request's prior policy, when a profile differs, or when the generation cannot
-    /// advance. It is the interruption when `admit` refuses.
+    /// the prepared result does not answer this request, when `current` is any generation other
+    /// than the one the request saw, when the policy in force is no longer the request's prior
+    /// policy, when a profile differs, or when the generation or a checked layout sum cannot be
+    /// represented. It is the interruption when `admit` refuses.
     pub fn prepare_publication_with<'a, E>(
         &'a mut self,
         current: &'a mut HtmlCspAssociation,

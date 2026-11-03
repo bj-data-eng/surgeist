@@ -138,8 +138,9 @@ impl HtmlStyleState {
             StyleCreation::DocumentParser { on_stack: true }
         )
     }
-    /// Whether a document parser created the Style, which makes it implicitly potentially
-    /// render-blocking. This persists after the parser pops the element.
+    /// Whether a document parser created the Style. Implicit render blocking also needs that
+    /// parser to be the Style's node document's parser, a relation `style_is_potentially_render_blocking`
+    /// takes from the tree owner. This fact persists after the parser pops the element.
     pub const fn created_by_document_parser(self) -> bool {
         matches!(self.creation, StyleCreation::DocumentParser { .. })
     }
@@ -205,7 +206,8 @@ pub enum HtmlStyleUpdateAction {
     CheckInlineCsp,
     /// Create the CSS style sheet for the element.
     CreateSheet,
-    /// Read whether the element is script-blocking.
+    /// Read whether the element is script-blocking. Under `NoExecutableJavaScript` the answer is
+    /// `ScriptBookkeepingExcluded` instead of a boolean.
     ReadScriptBlocking,
     /// Register the element as script-blocking.
     RegisterScriptBlocking,

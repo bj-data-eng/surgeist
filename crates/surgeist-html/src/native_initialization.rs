@@ -32,8 +32,10 @@ pub enum HtmlElementClass {
     CommonMathml,
     /// An HTML element that also needs form-association state of the carried kind.
     FormAssociated(HtmlNativeFormAssociationKind),
-    /// A built-in HTML element named in the pinned vocabulary that is not form-associated. The
-    /// consumer owns any element-specific slot, such as `template` or `slot` freshness.
+    /// A built-in HTML element named in the pinned vocabulary that is neither form-associated nor
+    /// one of the roughly eighty elements whose interface needs only the common state, which are
+    /// `CommonHtml`. It is the remainder that needs element-specific state. The consumer owns
+    /// any such slot, for example `template` or `slot` freshness.
     KnownHtml(KnownHtmlElement),
     /// The obsolete HTML `marquee`, which also needs [`HtmlMarqueeState`](crate::HtmlMarqueeState).
     HtmlMarquee,
