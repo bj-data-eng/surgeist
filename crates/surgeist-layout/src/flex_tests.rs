@@ -39,3 +39,6 @@ mod maximum_cross_authority;
 
 #[path = "flex_tests/used_main_floor.rs"]
 mod used_main_floor;
+
+#[path = "flex_tests/named_empty_absence.rs"]
+mod named_empty_absence;
