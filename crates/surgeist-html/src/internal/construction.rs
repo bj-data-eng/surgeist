@@ -569,7 +569,7 @@ impl HtmlDoctype {
 /// for a native builder. [`HtmlAuthoredProcessingInstruction`] owns that check.
 ///
 /// ```compile_fail,E0308
-/// use surgeist_html::{HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
+/// use surgeist_html::construction::{HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
 ///     HtmlFragment, HtmlProcessingInstruction};
 /// let stored: HtmlProcessingInstruction =
 ///     HtmlAuthoredProcessingInstruction::new("x", "data").unwrap().into();
