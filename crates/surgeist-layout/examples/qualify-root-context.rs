@@ -23,13 +23,79 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return result.map_err(Into::into);
     }
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    let (fixture, stylesheet_custody) = match arguments.as_slice() {
-        [] => (None, false),
-        [flag, source] if flag == "--fixture" => (Some(source.as_str()), false),
-        [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
-            (Some(source.as_str()), true)
+    let (fixture, mode) = parse_arguments(&arguments)?;
+    support::run(fixture, mode)
+}
+
+fn parse_arguments(
+    arguments: &[String],
+) -> Result<(Option<&str>, support::QualificationMode), &'static str> {
+    use support::QualificationMode;
+    match arguments {
+        [] => Ok((None, QualificationMode::Regular)),
+        [flag, source] if flag == "--fixture" => {
+            Ok((Some(source.as_str()), QualificationMode::Regular))
         }
-        _ => return Err("usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source>".into()),
-    };
-    support::run(fixture, stylesheet_custody)
+        [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
+            Ok((Some(source.as_str()), QualificationMode::StylesheetCustody))
+        }
+        [mode, flag, source] if mode == "--numeric-diagnostics" && flag == "--fixture" => {
+            Ok((Some(source.as_str()), QualificationMode::NumericDiagnostics))
+        }
+        _ => Err(
+            "usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use support::QualificationMode;
+
+    fn arguments(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn numeric_diagnostics_cli_requires_one_explicit_declared_fixture() {
+        let args = arguments(&["--numeric-diagnostics", "--fixture", "html/grid/case.html"]);
+        assert_eq!(
+            parse_arguments(&args),
+            Ok((
+                Some("html/grid/case.html"),
+                QualificationMode::NumericDiagnostics
+            ))
+        );
+        for values in [
+            vec!["--numeric-diagnostics"],
+            vec!["--fixture", "html/grid/case.html", "--numeric-diagnostics"],
+            vec![
+                "--numeric-diagnostics",
+                "--stylesheet-custody",
+                "--fixture",
+                "html/grid/case.html",
+            ],
+        ] {
+            assert!(parse_arguments(&arguments(&values)).is_err());
+        }
+    }
+
+    #[test]
+    fn numeric_diagnostics_cli_preserves_regular_and_stylesheet_modes() {
+        assert_eq!(parse_arguments(&[]), Ok((None, QualificationMode::Regular)));
+        let args = arguments(&["--fixture", "html/grid/case.html"]);
+        assert_eq!(
+            parse_arguments(&args),
+            Ok((Some("html/grid/case.html"), QualificationMode::Regular))
+        );
+        let args = arguments(&["--stylesheet-custody", "--fixture", "html/grid/case.html"]);
+        assert_eq!(
+            parse_arguments(&args),
+            Ok((
+                Some("html/grid/case.html"),
+                QualificationMode::StylesheetCustody
+            ))
+        );
+    }
 }

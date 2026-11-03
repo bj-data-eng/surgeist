@@ -3,10 +3,11 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use surgeist_generator::browser::{
     self, AcquisitionMode, BrowserCorpus, BrowserCorpusAdapter, BrowserLocation,
     BrowserReportSummary, CaseOutcome, CaseSpec, FixtureInput, FixtureSpec, FixtureStatus,
@@ -18,6 +19,57 @@ use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum QualificationMode {
+    Regular,
+    StylesheetCustody,
+    NumericDiagnostics,
+}
+
+fn select_records(
+    declaration: &mut Declaration,
+    fixture: Option<&str>,
+    mode: QualificationMode,
+) -> Result<()> {
+    match (mode, fixture) {
+        (QualificationMode::StylesheetCustody, None) => {
+            return Err("stylesheet custody qualification requires one declared fixture".into());
+        }
+        (QualificationMode::NumericDiagnostics, None) => {
+            return Err("numeric diagnostics require one declared fixture".into());
+        }
+        _ => {}
+    }
+    if let Some(source) = fixture {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() == source);
+        if declaration.records.len() != 1 {
+            return Err("focused qualification requires one declared source".into());
+        }
+        if declaration.records[0].relation.is_some() {
+            return Err("paired observations require the complete inventory".into());
+        }
+        if !matches!(
+            &declaration.records[0].expected,
+            ExpectedDisposition::Generated { .. }
+        ) {
+            match mode {
+                QualificationMode::StylesheetCustody => {
+                    return Err(
+                        "stylesheet custody qualification requires a Generated fixture".into(),
+                    );
+                }
+                QualificationMode::NumericDiagnostics => {
+                    return Err("numeric diagnostics require a Generated fixture".into());
+                }
+                QualificationMode::Regular => {}
+            }
+        }
+    }
+    Ok(())
+}
 
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
 const STYLESHEET_CUSTODY: &[u8] = include_bytes!("stylesheet_custody.js");
@@ -167,32 +219,13 @@ impl BrowserCorpusAdapter for QualificationAdapter {
     }
 }
 
-pub(super) fn run(fixture: Option<&str>, stylesheet_custody: bool) -> Result<()> {
-    if stylesheet_custody && fixture.is_none() {
-        return Err("stylesheet custody qualification requires one declared fixture".into());
-    }
+pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut declaration: Declaration =
         surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION)?, "corpus.toml")?;
     assert_eq!(declaration.schema_version, 3);
+    select_records(&mut declaration, fixture, mode)?;
     if let Some(source) = fixture {
-        declaration
-            .records
-            .retain(|record| record.source.as_str() == source);
-        if declaration.records.len() != 1 {
-            return Err("focused qualification requires one declared source".into());
-        }
-        if declaration.records[0].relation.is_some() {
-            return Err("paired observations require the complete inventory".into());
-        }
-        if stylesheet_custody
-            && !matches!(
-                &declaration.records[0].expected,
-                ExpectedDisposition::Generated { .. }
-            )
-        {
-            return Err("stylesheet custody qualification requires a Generated fixture".into());
-        }
         eprintln!(
             "qualify-root-context: focused declared source {source}; not a full inventory qualification"
         );
@@ -222,7 +255,7 @@ pub(super) fn run(fixture: Option<&str>, stylesheet_custody: bool) -> Result<()>
         browser_path,
         declaration,
         fixture.is_some(),
-        stylesheet_custody,
+        mode,
     );
     // Generation owns and joins its supervisor. Never remove outstanding profile
     // journals, even on an assertion/generation failure: preserve them for recovery.
@@ -284,10 +317,10 @@ fn qualify(
     browser_path: RelativePath,
     declaration: Declaration,
     focused: bool,
-    stylesheet_custody: bool,
+    mode: QualificationMode,
 ) -> Result<()> {
     let expected = declaration.expected()?;
-    let inventory = prepare_inventory(root, owner, &declaration.records, stylesheet_custody)?;
+    let inventory = prepare_inventory(root, owner, &declaration.records, mode)?;
     let mut exact_roots = vec![
         RelativePath::new("scripts/gentest")?,
         RelativePath::new("fonts")?,
@@ -365,6 +398,7 @@ fn qualify(
             .count()
     );
     let mut native_errors = Vec::new();
+    let mut numeric = NumericDiagnostics::default();
     for artifact in report.generated() {
         let case = inventory
             .cases
@@ -372,11 +406,21 @@ fn qualify(
             .find(|case| case.case.id() == artifact.name())
             .expect("declared generated case");
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
-        // Source certificates and parsing remain fatal. Only an actual strict
-        // Native comparison failure is retained so later cases still execute.
+        // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
         let golden = crate::parity_support::Golden::parse(&xml)?;
-        if let Err(error) = crate::parity_support::assert_surgeist_matches(&golden) {
+        if mode == QualificationMode::NumericDiagnostics {
+            match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
+                Ok(mismatches) => numeric.record_case(mismatches)?,
+                Err(error) => {
+                    let diagnostic = format!("{}: {error}", case.case.id());
+                    eprintln!(
+                        "qualify-root-context: fatal numeric comparison failure: {diagnostic}"
+                    );
+                    native_errors.push(diagnostic);
+                }
+            }
+        } else if let Err(error) = crate::parity_support::assert_surgeist_matches(&golden) {
             let diagnostic = format!("{}: {error}", case.case.id());
             eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
             native_errors.push(diagnostic);
@@ -397,6 +441,16 @@ fn qualify(
         browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
+    if mode == QualificationMode::NumericDiagnostics {
+        eprintln!(
+            "qualify-root-context: raw numeric diagnostics: {} of {} Generated cases completed, {} mismatches, {} fatal comparison failures; source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; no classification or conformance approval",
+            numeric.completed_cases,
+            report.summary().generated(),
+            numeric.mismatches,
+            native_errors.len(),
+        );
+        return numeric.finish(report.summary().generated(), &native_errors);
+    }
     if !native_errors.is_empty() {
         eprintln!(
             "qualify-root-context: {} Native comparison failures across {} Generated cases; declared pairs, source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; Native conformance failed",
@@ -415,12 +469,89 @@ fn qualify(
         report.summary().generated(),
         report.summary().unsupported()
     );
-    if stylesheet_custody {
+    if mode == QualificationMode::StylesheetCustody {
         eprintln!(
             "qualify-root-context: focused real-browser stylesheet custody checks completed; original fixture, dispositions and strict observations retained"
         );
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+struct NumericDiagnostic<'a> {
+    kind: &'static str,
+    case: &'a str,
+    source: &'a str,
+    variant: &'a str,
+    path: &'a str,
+    field: &'static str,
+    browser: surgeist_layout::Scalar,
+    native: surgeist_layout::Scalar,
+}
+
+fn collect_numeric_case(
+    golden: &crate::parity_support::Golden,
+    case: &ExpectedCase,
+    output: &mut impl Write,
+) -> Result<usize> {
+    // The reader returns a complete result only after all category, topology,
+    // source and capability checks succeed. Failed cases emit no partial set.
+    let mismatches = crate::parity_support::collect_surgeist_numeric_mismatches(golden)?;
+    for mismatch in &mismatches {
+        let diagnostic = NumericDiagnostic {
+            kind: "numeric-mismatch",
+            case: case.case.id(),
+            source: case.source.as_str(),
+            variant: case.case.variant(),
+            path: mismatch.path(),
+            field: mismatch.field().as_str(),
+            browser: mismatch.browser_value(),
+            native: mismatch.native_value(),
+        };
+        serde_json::to_writer(&mut *output, &diagnostic)?;
+        output.write_all(b"\n")?;
+    }
+    output.flush()?;
+    Ok(mismatches.len())
+}
+
+#[derive(Default)]
+struct NumericDiagnostics {
+    completed_cases: usize,
+    mismatches: usize,
+}
+
+impl NumericDiagnostics {
+    fn record_case(&mut self, mismatches: usize) -> Result<()> {
+        self.completed_cases = self
+            .completed_cases
+            .checked_add(1)
+            .ok_or("numeric diagnostic case count overflow")?;
+        self.mismatches = self
+            .mismatches
+            .checked_add(mismatches)
+            .ok_or("numeric diagnostic mismatch count overflow")?;
+        Ok(())
+    }
+
+    fn finish(&self, generated: usize, fatal_errors: &[String]) -> Result<()> {
+        if !fatal_errors.is_empty() {
+            return Err(format!(
+                "numeric diagnostics incomplete: {} of {generated} Generated cases completed, {} numeric mismatches, {} fatal comparison failures:\n{}",
+                self.completed_cases, self.mismatches, fatal_errors.len(), fatal_errors.join("\n"),
+            ).into());
+        }
+        if self.completed_cases != generated {
+            return Err("numeric diagnostics did not complete every Generated case".into());
+        }
+        if self.mismatches != 0 {
+            return Err(format!(
+                "numeric diagnostics found {} raw numeric mismatches across {generated} Generated cases; no classification or conformance approval",
+                self.mismatches,
+            ).into());
+        }
+        Ok(())
+    }
 }
 
 fn write_input(
@@ -445,7 +576,7 @@ fn prepare_inventory(
     root: &Path,
     owner: &Path,
     records: &[Record],
-    stylesheet_custody: bool,
+    mode: QualificationMode,
 ) -> Result<Inventory> {
     let mut inventory = Inventory {
         fixtures: Vec::new(),
@@ -461,7 +592,9 @@ fn prepare_inventory(
         let path = RelativePath::new(name)?;
         // Instrument only this invocation's real helper input. Register its exact
         // augmented bytes before the shared generator authenticates any job.
-        let augmented = if stylesheet_custody && name == "scripts/gentest/test_helper.js" {
+        let augmented = if mode == QualificationMode::StylesheetCustody
+            && name == "scripts/gentest/test_helper.js"
+        {
             Some([bytes, b"\n", STYLESHEET_CUSTODY].concat())
         } else {
             None
@@ -1027,5 +1160,205 @@ fn assert_invalid_inventory(
             "{error}"
         ),
         other => panic!("expected typed input/output inventory refusal, received {other:?}"),
+    }
+}
+
+#[cfg(test)]
+mod numeric_diagnostic_tests {
+    use super::*;
+
+    fn declaration() -> Declaration {
+        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
+            .unwrap()
+    }
+
+    #[test]
+    fn numeric_diagnostics_require_a_generated_declared_source_with_four_variants() {
+        let mut declaration = declaration();
+        let source = declaration
+            .records
+            .iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        select_records(
+            &mut declaration,
+            Some(&source),
+            QualificationMode::NumericDiagnostics,
+        )
+        .unwrap();
+        let expected = declaration.expected().unwrap();
+        assert_eq!(expected.generated(), 4);
+        assert_eq!(expected.unsupported(), 0);
+        assert_eq!(declaration.records[0].source.as_str(), source);
+    }
+
+    #[test]
+    fn numeric_diagnostics_refuse_unsupported_only_without_changing_regular_focus() {
+        let mut numeric = declaration();
+        let source = numeric
+            .records
+            .iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Unsupported { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut numeric,
+                Some(&source),
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "numeric diagnostics require a Generated fixture"
+        );
+        let mut regular = declaration();
+        select_records(&mut regular, Some(&source), QualificationMode::Regular).unwrap();
+        assert_eq!(regular.expected().unwrap().unsupported(), 4);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                None,
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "numeric diagnostics require one declared fixture"
+        );
+    }
+
+    #[test]
+    fn numeric_diagnostics_keep_paired_observation_inventory_authority() {
+        let mut declaration = declaration();
+        let source = declaration
+            .records
+            .iter()
+            .find(|record| record.relation.is_some())
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut declaration,
+                Some(&source),
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "paired observations require the complete inventory"
+        );
+    }
+
+    fn fixture_golden() -> crate::parity_support::Golden {
+        crate::parity_support::Golden::parse(r#"<test name="numeric-transport" measurement-version="4" observation-frame="root-border" use-rounding="false">
+<viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+<input><div display="block" position="relative" direction="ltr" width="20px" height="10px"><div display="block" width="10px" height="5px"/></div></input>
+<expectations><node x="0" y="0" width="20" height="10"><node x="0" y="0" width="10" height="5"/></node></expectations>
+<diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="20" height="10"/><world-rounded-layout node-path="0.0" x="0" y="0" width="10" height="5"/></diagnostics></test>"#).unwrap()
+    }
+
+    fn case() -> ExpectedCase {
+        let record = declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+            })
+            .unwrap();
+        ExpectedCase {
+            source: record.source,
+            case: CaseSpec::new(
+                "numeric-transport__content_box_ltr".into(),
+                "content_box_ltr".into(),
+                RelativePath::new("xml/numeric-transport.xml").unwrap(),
+            )
+            .unwrap(),
+            historical: None,
+            expected: record.expected,
+            relation: None,
+        }
+    }
+
+    #[test]
+    fn numeric_diagnostics_emit_every_real_kernel_record_and_fail_on_any_difference() {
+        let mut golden = fixture_golden();
+        let case = case();
+        let mut output = Vec::new();
+        assert_eq!(
+            collect_numeric_case(&golden, &case, &mut output).unwrap(),
+            0
+        );
+        assert!(output.is_empty());
+        golden.expectations.x = Some(1.0);
+        golden.expectations.width = Some(21.0);
+        golden.expectations.children[0].height = Some(6.0);
+        let count = collect_numeric_case(&golden, &case, &mut output).unwrap();
+        let rows: Vec<serde_json::Value> = std::str::from_utf8(&output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let expected: Vec<_> = [
+            ("numeric-transport", "x", 1.0, 0.0),
+            ("numeric-transport", "width", 21.0, 20.0),
+            ("numeric-transport/0", "height", 6.0, 5.0),
+        ]
+        .into_iter()
+        .map(|(path, field, browser, native)| {
+            serde_json::json!({
+                "kind": "numeric-mismatch", "case": case.case.id(),
+                "source": case.source.as_str(), "variant": "content_box_ltr",
+                "path": path, "field": field, "browser": browser, "native": native,
+            })
+        })
+        .collect();
+        assert_eq!(rows, expected);
+        let mut diagnostics = NumericDiagnostics::default();
+        diagnostics.record_case(count).unwrap();
+        assert!(diagnostics.finish(1, &[]).is_err());
+        let mut matching = NumericDiagnostics::default();
+        matching.record_case(0).unwrap();
+        matching.finish(1, &[]).unwrap();
+    }
+
+    #[test]
+    fn numeric_diagnostics_never_emit_partial_records_for_fatal_cases() {
+        let mut golden = fixture_golden();
+        golden.expectations.x = Some(1.0);
+        golden
+            .expectations
+            .children
+            .push(golden.expectations.children[0].clone());
+        let mut output = Vec::new();
+        let error = collect_numeric_case(&golden, &case(), &mut output).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "numeric-transport: expected 2 children, got 1"
+        );
+        assert!(output.is_empty());
+        let mut unsupported = fixture_golden();
+        unsupported.expectations.children[0].fragments = Some(Vec::new());
+        assert_eq!(
+            collect_numeric_case(&unsupported, &case(), &mut output)
+                .unwrap_err()
+                .to_string(),
+            "numeric-transport/0: numeric collection supports only box geometry and scroll observations"
+        );
+        assert!(output.is_empty());
+        let diagnostics = NumericDiagnostics::default();
+        assert!(diagnostics.finish(1, &[error.to_string()]).is_err());
+        assert!(diagnostics.finish(1, &[]).is_err());
     }
 }
