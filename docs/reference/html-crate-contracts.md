@@ -1457,9 +1457,11 @@ foreign-result check of the same fact. Retained arrays and indexes are charged
 for moving their existing entries only when growth actually moves them, so those
 charges sum to a constant number of credits per entry. Establishing a container's
 children or attaching template contents revises only the depths of the subtrees
-it attaches, and charges for them; a cycle is the parent being found at or below
-an attached child, reported at the first such record the breadth-first revision
-reaches (before that record's depth is checked against the limit). The one
+it attaches, and charges for them. The new edge's own depth, the parent's depth
+plus one, is checked against the limit first. A cycle is the parent being found
+at or below an attached child, reported at the first such record the
+breadth-first revision reaches (before that record's depth is checked against
+the limit). The one
 remaining whole-capture pass is `finish`, which runs once. No
 `HtmlConstructionCaptureAdapter` charge scales with the number of other nodes,
 so a work allowance sized as a fixed amount per node, attribute, name or value

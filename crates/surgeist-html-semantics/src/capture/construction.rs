@@ -152,10 +152,10 @@ impl HtmlConstructionCaptureFacts {
 /// Importing through the adapter is linear in the nodes and facts: node and fact
 /// lookups are indexed and charged one work credit each, array and index growth
 /// is charged when it moves entries, and establishing a container's children or
-/// attaching template contents revises only the subtrees it attaches. Each supplied fact and each mapped node holds one
-/// scratch entry for the whole import, in addition to the worklist and one
-/// container's temporary lists, so scratch is a constant number of entries per
-/// node.
+/// attaching template contents revises only the subtrees it attaches. Each
+/// supplied fact and each mapped node holds one scratch entry for the whole
+/// import, in addition to the worklist and one container's temporary lists, so
+/// scratch is a constant number of entries per node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionCaptureLimits {
     mapping_entries: usize,
