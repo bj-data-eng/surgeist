@@ -38,11 +38,7 @@ fn change(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("prepare")),
-    );
+    let mut operation = Some(storage.prepare(command));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }
@@ -318,11 +314,7 @@ struct Observation {
 
 fn observe(storage: HtmlConstructionStorage, command: HtmlConstructionCommand) -> Observation {
     let before = snapshot(&storage);
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("prepare")),
-    );
+    let mut operation = Some(storage.prepare(command));
     let mut commit = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         if let HtmlConstructionActionDescription::Commit {

@@ -711,11 +711,7 @@ mod tests {
         let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
             .unwrap()
             .commit();
-        let mut operation = Some(
-            storage
-                .prepare(HtmlConstructionCommand::Create { kind })
-                .unwrap_or_else(|_| panic!("new construction operation")),
-        );
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { kind }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }

@@ -552,11 +552,7 @@ mod tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -627,11 +623,7 @@ mod tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, bool) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         let mut refused = false;
         loop {
             match operation.as_mut().unwrap().next_action() {

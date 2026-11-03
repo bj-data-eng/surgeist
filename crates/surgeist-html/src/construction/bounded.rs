@@ -506,22 +506,15 @@ impl HtmlConstructionStorage {
     pub fn result_id(&self, handle: &HtmlBuilderNode) -> Result<HtmlNodeId, HtmlConstructionError> {
         Ok(self.arena.id(self.position(handle)?))
     }
-    /// Starts an operation for `command` and takes the owner. Operand qualification happens in the
-    /// operation's own actions; a rejection hands the owner and command back intact.
-    #[expect(clippy::result_large_err)] // Refusal returns the complete unallocated owner and operand.
-    pub fn prepare(
-        self,
-        command: HtmlConstructionCommand,
-    ) -> Result<HtmlConstructionOperation, HtmlConstructionRejection> {
-        Ok(HtmlConstructionOperation::new(self, command))
+    /// Starts an operation for `command` and takes the owner. Preparation allocates and inspects
+    /// nothing, so it cannot fail: operand qualification happens in the operation's own actions,
+    /// and `HtmlConstructionOperation::abort` hands the owner and command back intact.
+    pub fn prepare(self, command: HtmlConstructionCommand) -> HtmlConstructionOperation {
+        HtmlConstructionOperation::new(self, command)
     }
     /// Starts the publication of the tree rooted at `root`; equivalent to preparing
     /// `HtmlConstructionCommand::Publish`.
-    #[expect(clippy::result_large_err)] // Refusal retains actual storage without allocating a box.
-    pub fn prepare_finish(
-        self,
-        root: HtmlBuilderNode,
-    ) -> Result<HtmlConstructionOperation, HtmlConstructionRejection> {
+    pub fn prepare_finish(self, root: HtmlBuilderNode) -> HtmlConstructionOperation {
         self.prepare(HtmlConstructionCommand::Publish { root })
     }
     /// Starts deterministic cleanup of the owner's allocations. Cleanup never resumes

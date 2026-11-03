@@ -678,11 +678,7 @@ fn command(
     command: bounded::HtmlConstructionCommand,
 ) -> bounded::HtmlConstructionCommit {
     use bounded::*;
-    let mut value = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("prepare")),
-    );
+    let mut value = Some(storage.prepare(command));
     while let Some(action) = value.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }

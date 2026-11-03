@@ -196,9 +196,9 @@ record. HTML never applies parser placement, recovery or language conformance
 rules to native authoring.
 
 `HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>` is the `Publish`
-command's consuming convenience entry point. It starts a publication
-operation. It checks that the selected root is the proper document/fragment
+HtmlConstructionOperation` is the `Publish` command's consuming convenience
+entry point. It starts a publication operation and cannot fail, because it
+inspects nothing. It checks that the selected root is the proper document/fragment
 kind, that all retained owning links are reciprocal and in range, that
 association roots have the right owner, that each non-owning contents reference
 targets a live result-local shadow-contents fragment, and that no pending generic operation
@@ -457,11 +457,12 @@ not establish the same amortized bound.
 
 The public operation signature is
 `HtmlConstructionStorage::prepare(self, HtmlConstructionCommand) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>`. A rejection owns
-the unchanged storage, the unconsumed command and `HtmlConstructionError`;
-`into_parts` returns all three without allocation. Operations consume storage
-rather than borrowing a vector or returning mutable record references. Parser
-keeps this owner in its existing `Option` slot and restores it after a refusal.
+HtmlConstructionOperation`. Preparation inspects and allocates nothing, so it
+cannot fail; the operation's first action qualifies the operands, and a refusal
+surfaces from the action, after which `HtmlConstructionOperation::abort`
+returns the unchanged storage and the unconsumed command without allocation.
+Operations consume storage rather than borrowing a vector or returning mutable
+record references.
 `HtmlConstructionStorage::begin() -> HtmlConstructionInitialization` creates an
 allocation-free initialization owner. It uses the same action/observation
 sequence to create the zero-payload shared identity.
@@ -1655,7 +1656,7 @@ and otherwise that it names a rule or vocabulary.
 
 | Family | Shape | Evolution |
 | --- | --- | --- |
-| `HtmlConstructionRejection`, `HtmlConstructionAttributeRejection`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
 | `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
 | Resource accounting that a consumer matches exhaustively: `IntegerUnitStepError` and `NumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `FloatingPointAllocationError` (semantics `range.rs`), `IntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `AutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
 | Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |

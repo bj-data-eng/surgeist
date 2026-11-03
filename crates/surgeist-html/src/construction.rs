@@ -1277,9 +1277,7 @@ impl Builder {
         command: bounded::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         let storage = self.storage.take().expect("native storage retained");
-        let mut operation = storage
-            .prepare(command)
-            .unwrap_or_else(|_| unreachable!("preparation retains all operands"));
+        let mut operation = storage.prepare(command);
         let result = (|| -> Result<_, HtmlConstructionError> {
             while let Some(action) = operation.next_action()? {
                 action
@@ -1405,9 +1403,7 @@ impl Builder {
     fn finish(mut self) -> Arc<Arena> {
         let root = self.handle(0);
         let storage = self.storage.take().expect("native storage retained");
-        let mut operation = storage
-            .prepare_finish(root)
-            .unwrap_or_else(|_| unreachable!("native root exists"));
+        let mut operation = storage.prepare_finish(root);
         while let Some(action) = operation
             .next_action()
             .expect("native construction invariants")

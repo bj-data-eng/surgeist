@@ -222,11 +222,7 @@ fn commit_description(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> (HtmlConstructionStorage, usize, usize) {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(command));
     let mut described = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         if let HtmlConstructionActionDescription::Commit {

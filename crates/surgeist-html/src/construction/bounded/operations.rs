@@ -485,38 +485,6 @@ pub struct HtmlConstructionOperation {
     snapshot: Option<HtmlConstructionAllocationSnapshot>,
     lease: Option<HtmlConstructionLease>,
 }
-/// No rejected command loses its input or storage owner.
-#[derive(Debug)]
-pub struct HtmlConstructionRejection {
-    storage: HtmlConstructionStorage,
-    command: HtmlConstructionCommand,
-    reason: HtmlConstructionError,
-}
-impl HtmlConstructionRejection {
-    /// Returns the owned storage, the command and the refusal cause. Nothing the caller supplied
-    /// is lost.
-    pub fn into_parts(
-        self,
-    ) -> (
-        HtmlConstructionStorage,
-        HtmlConstructionCommand,
-        HtmlConstructionError,
-    ) {
-        (self.storage, self.command, self.reason)
-    }
-}
-impl HtmlConstructionRejection {
-    /// The cause the command was refused for; the owners stay recoverable.
-    pub fn reason(&self) -> &HtmlConstructionError {
-        &self.reason
-    }
-}
-impl fmt::Display for HtmlConstructionRejection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "construction command rejected: {}", self.reason)
-    }
-}
-impl std::error::Error for HtmlConstructionRejection {}
 /// The storage and command of an abandoned operation, plus retirement evidence for any allocation
 /// the operation had already created.
 #[derive(Debug)]
@@ -2500,9 +2468,7 @@ mod reference_admission_tests {
             .commit();
         let identity = storage.arena.identity.clone();
         let HtmlConstructionCommit::Changed { storage, .. } = drive(
-            storage
-                .prepare(HtmlConstructionCommand::ReserveRecords { additional: 4 })
-                .unwrap_or_else(|_| panic!("retained reserve command")),
+            storage.prepare(HtmlConstructionCommand::ReserveRecords { additional: 4 }),
             &identity,
         ) else {
             panic!("reserve retains actual storage")
@@ -2512,20 +2478,15 @@ mod reference_admission_tests {
             created: Some(root),
             ..
         } = drive(
-            storage
-                .prepare(HtmlConstructionCommand::CreateFragment)
-                .unwrap_or_else(|_| panic!("retained create command")),
+            storage.prepare(HtmlConstructionCommand::CreateFragment),
             &identity,
         )
         else {
             panic!("created actual root")
         };
-        let HtmlConstructionCommit::Published { result, lease } = drive(
-            storage
-                .prepare_finish(root)
-                .unwrap_or_else(|_| panic!("retained publish command")),
-            &identity,
-        ) else {
+        let HtmlConstructionCommit::Published { result, lease } =
+            drive(storage.prepare_finish(root), &identity)
+        else {
             panic!("published actual storage")
         };
         let recovery =
@@ -2542,11 +2503,7 @@ mod publish_membership_tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -2605,11 +2562,7 @@ mod publish_membership_tests {
         storage: HtmlConstructionStorage,
         root: HtmlBuilderNode,
     ) -> (HtmlConstructionStorage, Result<(), HtmlConstructionError>) {
-        let mut operation = Some(
-            storage
-                .prepare_finish(root)
-                .unwrap_or_else(|_| panic!("retained publish command")),
-        );
+        let mut operation = Some(storage.prepare_finish(root));
         let result = loop {
             match operation.as_mut().unwrap().next_action() {
                 Ok(Some(action)) => match action.perform() {
@@ -2698,11 +2651,7 @@ mod order_commit_guard_tests {
             storage: HtmlConstructionStorage,
             command: HtmlConstructionCommand,
         ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-            let mut operation = Some(
-                storage
-                    .prepare(command)
-                    .unwrap_or_else(|_| panic!("retained command")),
-            );
+            let mut operation = Some(storage.prepare(command));
             while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
                 action.perform().unwrap().accept();
             }
@@ -2816,9 +2765,7 @@ mod order_commit_guard_tests {
     ) {
         let (storage, root, children, node) = parts();
         let usage = storage.usage();
-        let mut operation = storage
-            .prepare(build(&root, &children, &node))
-            .unwrap_or_else(|_| panic!("retained command"));
+        let mut operation = storage.prepare(build(&root, &children, &node));
         loop {
             let action = operation.next_action().unwrap().unwrap();
             if matches!(

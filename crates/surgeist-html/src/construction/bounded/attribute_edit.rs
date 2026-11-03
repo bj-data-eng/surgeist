@@ -193,39 +193,6 @@ pub struct HtmlConstructionAttributeEdit {
     appended: usize,
     next_selected: usize,
 }
-/// A refused edit begin. It returns the storage and operands unchanged.
-#[derive(Debug)]
-pub struct HtmlConstructionAttributeRejection {
-    storage: HtmlConstructionStorage,
-    element: HtmlBuilderNode,
-    mode: HtmlConstructionAttributeEditMode,
-    reason: HtmlConstructionError,
-}
-impl HtmlConstructionAttributeRejection {
-    /// Returns the storage, the element handle, the edit mode and the refusal cause.
-    pub fn into_parts(
-        self,
-    ) -> (
-        HtmlConstructionStorage,
-        HtmlBuilderNode,
-        HtmlConstructionAttributeEditMode,
-        HtmlConstructionError,
-    ) {
-        (self.storage, self.element, self.mode, self.reason)
-    }
-}
-impl HtmlConstructionAttributeRejection {
-    /// The cause the edit was refused for; the owners stay recoverable.
-    pub fn reason(&self) -> &HtmlConstructionError {
-        &self.reason
-    }
-}
-impl fmt::Display for HtmlConstructionAttributeRejection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "attribute edit rejected: {}", self.reason)
-    }
-}
-impl std::error::Error for HtmlConstructionAttributeRejection {}
 /// The result of a finished or abandoned edit.
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeCompletion {
@@ -258,18 +225,15 @@ pub struct HtmlConstructionAttributeObservation<'a> {
     next: GroupPhase,
 }
 impl HtmlConstructionAttributeEdit {
-    #[expect(
-        clippy::result_large_err,
-        reason = "refusal returns the actual allocation-free storage and operands"
-    )]
-    /// Starts an attribute edit of `element` in `mode`. Allocation-free: the first action
-    /// qualifies that the element exists and is an element.
+    /// Starts an attribute edit of `element` in `mode`. Allocation-free and infallible: the first
+    /// action qualifies that the element exists and is an element, and `abort` hands the storage
+    /// back.
     pub fn begin(
         storage: HtmlConstructionStorage,
         element: HtmlBuilderNode,
         mode: HtmlConstructionAttributeEditMode,
-    ) -> Result<Self, HtmlConstructionAttributeRejection> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             storage,
             element,
             mode,
@@ -285,7 +249,7 @@ impl HtmlConstructionAttributeEdit {
             selected: 0,
             appended: 0,
             next_selected: 0,
-        })
+        }
     }
     /// The construction storage as it stands, for read-only inspection.
     pub fn storage_view(&self) -> &HtmlConstructionStorage {
@@ -1574,16 +1538,12 @@ mod tests {
         let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
             .unwrap()
             .commit();
-        let mut operation = Some(
-            storage
-                .prepare(HtmlConstructionCommand::Create {
-                    kind: HtmlNodeKind::Element(HtmlElement::new(
-                        QualifiedName::new(Namespace::none(), None, "root"),
-                        OrderedAttributes::new(attributes).unwrap(),
-                    )),
-                })
-                .unwrap_or_else(|_| panic!("owned create")),
-        );
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create {
+            kind: HtmlNodeKind::Element(HtmlElement::new(
+                QualifiedName::new(Namespace::none(), None, "root"),
+                OrderedAttributes::new(attributes).unwrap(),
+            )),
+        }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -1601,8 +1561,7 @@ mod tests {
         target: HtmlBuilderNode,
         mode: HtmlConstructionAttributeEditMode,
     ) -> HtmlConstructionAttributeEdit {
-        let mut edit = HtmlConstructionAttributeEdit::begin(storage, target, mode)
-            .unwrap_or_else(|_| panic!("owned edit"));
+        let mut edit = HtmlConstructionAttributeEdit::begin(storage, target, mode);
         while let Some(action) = edit.next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -2275,8 +2234,7 @@ mod tests {
             storage,
             foreign,
             HtmlConstructionAttributeEditMode::Slots,
-        )
-        .unwrap_or_else(|_| panic!("pending check"));
+        );
         assert!(matches!(
             edit.next_action().unwrap().unwrap().perform(),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::ForeignBuilder

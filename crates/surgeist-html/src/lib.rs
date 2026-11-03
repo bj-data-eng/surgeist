@@ -15,7 +15,7 @@
 //!
 //! 1. Does the refusal hand back recoverable owners? Then it is a carrier
 //!    struct with the reason and an `into_parts` or accessor, such as
-//!    [`bounded::HtmlConstructionRejection`] and
+//!    [`bounded::HtmlConstructionActionFailure`] and
 //!    [`bounded::HtmlValuePoolSealRefusal`].
 //! 2. Is it a misuse of an owner or cursor protocol (a consumed, not-ready,
 //!    stale, wrong-reply or already-complete state), or does one type merge the

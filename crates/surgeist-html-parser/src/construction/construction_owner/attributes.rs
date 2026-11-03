@@ -67,15 +67,7 @@ impl ConstructionOwner {
         let Some(storage) = self.owner.take() else {
             return Err(latch_registry_row(control));
         };
-        let mut group = match HtmlConstructionAttributeEdit::begin(storage, handle, mode) {
-            Ok(group) => group,
-            Err(rejection) => {
-                // A refusal returns the unchanged storage.
-                let (storage, _, _, reason) = rejection.into_parts();
-                self.owner = Some(storage);
-                return Err(construction_error(control, reason));
-            }
-        };
+        let mut group = HtmlConstructionAttributeEdit::begin(storage, handle, mode);
         let result = (|| {
             while let Some(action) = group
                 .next_action()

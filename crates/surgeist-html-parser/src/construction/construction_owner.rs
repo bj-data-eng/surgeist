@@ -584,18 +584,10 @@ impl ConstructionOwner {
             return Err(latch_registry_row(control));
         };
         let before_edges = storage.usage().edges();
-        match storage.prepare(command) {
-            Ok(operation) => Ok(PendingConstruction {
-                operation: Some(operation),
-                before_edges,
-            }),
-            Err(rejection) => {
-                // A refusal returns the unchanged storage.
-                let (storage, _, reason) = rejection.into_parts();
-                self.owner = Some(storage);
-                Err(construction_error(control, reason))
-            }
-        }
+        Ok(PendingConstruction {
+            operation: Some(storage.prepare(command)),
+            before_edges,
+        })
     }
     pub(super) fn perform_action(
         &mut self,
