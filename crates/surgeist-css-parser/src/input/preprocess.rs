@@ -420,10 +420,10 @@ impl Preprocessed {
 ///    entry, each no further than its limit.
 /// 3. [`released`](Meter::released) the bytes of the cursor.
 ///
-/// This is the growth model of the preparation loop this function was moved
-/// from, not that of [`grow`](crate::limits::grow): that helper takes a step
-/// when it starts and never plans a bank under four elements, so charging
-/// with it would change the work and bytes that a host compares.
+/// This growth model is not that of [`grow`](crate::limits::grow): that helper
+/// takes a step when it starts and never plans a bank under four elements, so
+/// charging with it would give other work and bytes than the literal values
+/// that `tests/receipts/utf16-preprocessing.tsv` holds.
 ///
 /// On success the meter holds [`Preprocessed::charged_bytes`]; the host
 /// releases that amount when it drops the result. On failure everything has

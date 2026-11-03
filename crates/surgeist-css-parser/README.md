@@ -8,10 +8,10 @@ property values, rules, selectors, queries and recovery diagnostics belong to
 [surgeist-css](../surgeist-css/README.md), which builds CSS language
 interpretation on this crate.
 
-## Status
+## Contents
 
-The crate is being built module by module, each with the specification-derived
-tests for the clauses it implements. It currently offers:
+Each module has specification-derived tests for the clauses it implements. The
+crate offers:
 
 - `lexer`: the free-running `Lexer`, which reads text as authored (section 3.3
   is applied as it reads, offsets are original bytes) and returns one `Lexeme`
@@ -76,8 +76,9 @@ tests for the clauses it implements. It currently offers:
   A driver consumes a whole unit, prelude and block, and then asks the grammar
   through the `RuleGrammar` and `BlockGrammar` traits whether it is valid, so a
   rejection leaves nothing to recover; each unit reports how it ended
-  (`RuleEnd`), and a unit that was not accepted is a `Failed` record. The trait
-  shapes are provisional until the first grammars of `surgeist-css` prove them.
+  (`RuleEnd`), and a unit that was not accepted is a `Failed` record.
+  `RuleGrammar` and `BlockGrammar` are the host traits through which a consumer
+  such as `surgeist-css` supplies its grammars.
 - `anb`: the `An+B` microsyntax of section 6, recognized by `anb::parse` into
   two `i32` and serialized by `AnPlusB`'s `Display` (section 9.1). A value
   outside `i32` is a typed overflow, never a saturated number.
@@ -92,7 +93,7 @@ tests for the clauses it implements. It currently offers:
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-Section 5.4.3 (the stylesheet object) is not here yet. The
+The stylesheet object of section 5.4.3 is not this crate's. The
 [coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
 edition with their tests and claims only what those tests establish.
 
@@ -134,16 +135,16 @@ their license is in the [notice](NOTICE.md).
 Section 3.2 has no WPT backing (the `charset/*` tests observe HTTP headers and
 HTML documents), so its tests in `tests/input_decode.rs` are written from the
 clause and the Encoding Standard. `tests/input_receipts.rs` checks that
-`input::preprocess_utf16` charges the same work and live bytes as the loop it
-replaced, against values recorded from the old function.
+`input::preprocess_utf16` charges the work and live bytes that
+`tests/receipts/utf16-preprocessing.tsv` holds as literal values.
 
 ## Lexer throughput
 
 `tests/lexer_performance.rs` measures the lexer's throughput in MB/s on the
-CSSTree corpus sources and on a 1 MiB synthetic style sheet, in a release build
-and unmetered. It asserts nothing; its output is the baseline for a later change
-to the lexer. It is ignored and runs only when `SURGEIST_CSS_PARSER_PERF=1` is
-set:
+inputs of the crate's WPT vectors and on a 1 MiB synthetic style sheet, in a
+release build and unmetered. It asserts nothing; its output is the baseline
+against which a change to the lexer is compared. It is ignored and runs only
+when `SURGEIST_CSS_PARSER_PERF=1` is set:
 
 ```sh
 SURGEIST_CSS_PARSER_PERF=1 cargo test --release --offline --locked -j 1 -p surgeist-css-parser --test lexer_performance -- --ignored --nocapture

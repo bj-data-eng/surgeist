@@ -14,8 +14,8 @@ use crate::SyntaxError;
 /// of rules or declarations, [`stylesheet_contents`] and [`block_contents`]
 /// again.
 ///
-/// The shape of these traits is provisional: they are proven on the grammars of
-/// `surgeist-css` before they are relied on.
+/// This trait and [`BlockGrammar`] are the host traits through which a consumer
+/// such as `surgeist-css` supplies the grammars that the drivers consult.
 ///
 /// [`stylesheet_contents`]: crate::Stream::stylesheet_contents
 /// [`block_contents`]: crate::Stream::block_contents

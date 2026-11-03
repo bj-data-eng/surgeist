@@ -49,18 +49,21 @@ predicate.
 [src/input/](src/input/) holds section 3.2 (`decode.rs`) and section 3.3
 (`cursor.rs`, `filter.rs`, `preprocess.rs`). `decode` is the fallback-encoding
 algorithm in the clause's order followed by the Encoding Standard's decode;
-the decoded text is unfiltered. The `@charset` prefix is the exact byte
-sequence of the clause, and its tests are the whole evidence for section 3.2
-(the WPT `charset/*` tests are not in the corpus). `preprocess_utf16` loops the
-`InputCursor` and charges a `Meter` with the growth model of the UTF-16
-preparation it was moved from: capacities double from one entry (not the
-four-entry floor of `limits::grow`), growth takes no opening step, and the text
-moves one step per scalar. `limits::grow` charges differently, so it cannot
-stand in without changing the work and bytes that hosts compare; the literal
-values in [tests/receipts/utf16-preprocessing.tsv](tests/receipts/utf16-preprocessing.tsv)
-were recorded from the old function and are checked by
-[tests/input_receipts.rs](tests/input_receipts.rs). Do not regenerate them from
-this crate. A failed preprocessing releases everything it charged.
+the decoded text is unfiltered, and it grows geometrically within its limit so
+that the copying is linear in the decoded size. The `@charset` prefix is the
+exact byte sequence of the clause, and its tests are the whole evidence for
+section 3.2 (the WPT `charset/*` tests are not in the corpus). `preprocess_utf16`
+loops the `InputCursor` and charges a `Meter` with its own growth model:
+capacities double from one entry (not the four-entry floor of `limits::grow`),
+growth takes no opening step, and the text moves one step per scalar.
+`limits::grow` charges differently, so it cannot stand in without changing the
+work and bytes that hosts compare; the literal values in
+[tests/receipts/utf16-preprocessing.tsv](tests/receipts/utf16-preprocessing.tsv)
+are checked by [tests/input_receipts.rs](tests/input_receipts.rs). Do not
+regenerate them from this crate. A failed preprocessing releases everything it
+charged. Section 3.3 is defined once, in [src/input/filter.rs](src/input/filter.rs)
+(`filter_code_point`, `absorbs_line_feed`), and the cursor, the lexer and
+`filter_code_points` apply it.
 
 ## Lexer Facts
 
@@ -83,9 +86,11 @@ test and the lexer is resolved from the specification text, never from the
 behavior of another tokenizer.
 
 [tests/lexer_performance.rs](tests/lexer_performance.rs) measures the lexer's
-throughput in MB/s on the CSSTree sources and on a synthetic style sheet. It
-asserts nothing, is ignored by default, and its output is the baseline for a
-later change to the lexer; see the README for the command.
+throughput in MB/s on the inputs of the crate's WPT vectors and on a synthetic
+style sheet. It asserts nothing, is ignored by default, and its output is the
+baseline against which a change to the lexer is compared; see the README for
+the command. The byte classes of the lexer's runs are tables evaluated from the
+[lexical](src/lexical.rs) predicates, so no class is written twice.
 
 ## Document And Stream Facts
 
@@ -160,8 +165,8 @@ end of the stream. A refusal ends an iterator with one `Failed` for which
 to keep that. Keep a driver's consumption independent of what the grammar says
 about a unit (`verdicts-do-not-change-extents` in
 [tests/syntax_properties.rs](tests/syntax_properties.rs)). `RuleGrammar` and
-`BlockGrammar` are provisional until `surgeist-css` has ported implementors; do
-not widen them for a test.
+`BlockGrammar` are the host traits through which `surgeist-css` supplies its
+grammars; do not widen them for a test.
 
 [src/serialize.rs](src/serialize.rs) writes tokens so that they read back as
 themselves. Its escaping asks `lexical::is_ident_code_point`, so it follows the

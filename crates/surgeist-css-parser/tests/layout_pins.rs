@@ -1,18 +1,16 @@
-//! NumberLayout pins for the stepwise protocol types.
+//! Size and alignment pins for the types of the stepwise protocol and the
+//! public handles.
 //!
 //! Hosts charge these sizes. A metered host admits `size_of::<InputCursor>()`
 //! and `size_of::<TokenCursor>()` as the fixed cost of a front, and a record
-//! bank admits `size_of::<Record>()` for every record it stores. Surgeist's
-//! recorded charged amounts (the `scratch=160` of the UTF-16 rows in
-//! `surgeist-css`'s characterization table is the size of `InputCursor` plus
-//! that crate's source-position checkpoint) therefore change if any of these
-//! change.
+//! bank admits `size_of::<Record>()` for every record it stores. The amounts
+//! that hosts charge and compare (the `scratch` amount of a host's UTF-16
+//! characterization rows includes the size of `InputCursor`) therefore change
+//! if any of these change.
 //!
-//! The values were measured on the cursors at the commit that moved them into
-//! this crate, before the move, so they record the sizes the hosts have always
-//! been charged. They are a declared contract of the protocol, not an
-//! incidental property: a later change must not alter them. A change that
-//! needs more room has to keep it outside these types.
+//! The pins are a declared contract of the protocol, not an incidental
+//! property: a change must not alter them. A change that needs more room has to
+//! keep it outside these types.
 //!
 //! The pins describe 64-bit targets, where `usize` is eight bytes.
 

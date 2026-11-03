@@ -39,9 +39,8 @@ fn span(range: Option<&Range<Offset>>) -> Option<usize> {
 /// them through the same [`Stream`](crate::Stream) as parsed text (section 5.4,
 /// "normalize into a token stream").
 ///
-/// A builder charges what it adds as the document it replaces always has: for
-/// every token it adds it takes one step of the [`Meter`], counts the
-/// component against [`Limits::max_nodes`], compares the depth with
+/// For every token it adds, a builder takes one step of the [`Meter`], counts
+/// the component against [`Limits::max_nodes`], compares the depth with
 /// [`Limits::max_depth`] (the base depth included) and adds the token's
 /// interval to the bytes it compares with [`Limits::max_bytes`]; it grows its
 /// vectors through [`limits::grow`], so a host sees every byte of live

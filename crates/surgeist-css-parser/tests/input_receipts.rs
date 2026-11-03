@@ -1,28 +1,26 @@
-//! The charged work and live bytes of `input::preprocess_utf16` equal those of
-//! the UTF-16 preparation loop it replaces, on shared inputs.
+//! The work and the live bytes that `input::preprocess_utf16` charges, on
+//! shared inputs, are the literal values of a table.
 //!
 //! The expected values are in `tests/receipts/utf16-preprocessing.tsv`. They
-//! are literal values that were recorded once from the old function, the loop
-//! of `prepare_utf16` in `crates/surgeist-css/src/source/utf16_input.rs`, run on
-//! each input by a scratch harness (the file's header says exactly how); this
-//! crate's output is not their source.
+//! are literal numbers written down from the growth model that the function
+//! documents (the text and the map double from one entry, a growth moves the
+//! old contents one step per element or scalar, and a growth takes no step of
+//! its own), checked here by hand for two inputs below; this crate's output is
+//! not their source.
 //!
-//! What is compared. The old function also formed the source snapshot (its
-//! checkpoints, which stay in `surgeist-css`) and owned the original units. Its
-//! charges before the loop differ from this function's by the registers and
-//! the original backing that only the old owner had:
+//! What a row holds. `first_level` is the live level that a host reports after
+//! the function's first charge when it also holds the input's backing and
+//! registers of its own:
 //!
-//! - the original `Vec<u16>` backing, `2 * capacity` bytes, is the host's; and
-//! - the registers only the old function held: a `Vec<CssSourcePosition>` (24
-//!   bytes), a `CssSourcePosition` (16), a `Vec<u16>` (24), an `Arc` (8) and
-//!   its `Preparation` (128), 200 bytes in all.
+//! - the input's `Vec<u16>` backing, `2 * capacity` bytes, is the host's; and
+//! - the host's own registers are 200 bytes.
 //!
-//! So the old first live level is `2 * capacity + 200` plus this function's
-//! first charge (the cursor, 144, a `String`, 24, and the map's `Vec`, 24: 192),
-//! which is 392 plus the original backing. Everything after that first charge,
-//! up to the end of the loop, is compared one change at a time, with the
-//! steps (the work charged). This function then returns the cursor's 144 bytes;
-//! what remains is the result's own storage.
+//! The function's first charge is the cursor (144 bytes), a `String` (24) and
+//! the map's `Vec` (24): 192. So the first level is `2 * capacity + 200 + 192`,
+//! which is 392 plus the input's backing. Everything after that first charge,
+//! up to the end of the loop, is compared one change at a time, with the steps
+//! (the work charged). The function then returns the cursor's 144 bytes; what
+//! remains is the result's own storage.
 //!
 //! By hand, for the input `color: red; margin: 1px 2px` (27 ASCII units): the
 //! loop makes a read and an emit request per unit and one end request, 55
@@ -30,13 +28,13 @@
 //! moving 0 + 1 + 2 + 4 + 8 + 16 = 31 scalars, and the map moves the same 31
 //! entries, so 55 + 62 = 117 steps. The live level rises by the final capacity
 //! of the text (32) and of the map (32 entries of 16 bytes, 512): 544 bytes,
-//! which is the old 990 - 446. For `content: "é😀"; color: blue` (27 units, 26
-//! scalars of 30 bytes): 27 reads, 26 emits and one end make 54 requests. The
-//! text grows (and moves what it holds, a step per scalar) when a scalar needs
-//! its 1st, 2nd, 3rd, 5th, 9th and 17th byte, at which points it holds 0, 1, 2,
-//! 4, 8 and 12 scalars (10 ASCII, é and 😀 before the 17th byte): 27 moves. The
-//! map moves 31 entries as before. So 54 + 27 + 31 = 112 steps. The final
-//! capacities are again 32 bytes and 32 entries, 544 bytes.
+//! which is 990 - 446 in the table. For `content: "é😀"; color: blue` (27
+//! units, 26 scalars of 30 bytes): 27 reads, 26 emits and one end make 54
+//! requests. The text grows (and moves what it holds, a step per scalar) when a
+//! scalar needs its 1st, 2nd, 3rd, 5th, 9th and 17th byte, at which points it
+//! holds 0, 1, 2, 4, 8 and 12 scalars (10 ASCII, é and 😀 before the 17th
+//! byte): 27 moves. The map moves 31 entries as before. So 54 + 27 + 31 = 112
+//! steps. The final capacities are again 32 bytes and 32 entries, 544 bytes.
 
 use std::cell::{Cell, RefCell};
 use std::mem::size_of;
@@ -44,16 +42,15 @@ use std::mem::size_of;
 use surgeist_css_parser::input::{InputCursor, PreprocessLimits, preprocess_utf16};
 use surgeist_css_parser::limits::{Failure, Meter, Refused};
 
-const OLD: &str = include_str!("receipts/utf16-preprocessing.tsv");
+const RECEIPTS: &str = include_str!("receipts/utf16-preprocessing.tsv");
 
-/// Registers that only the old function held: `Vec<CssSourcePosition>` (24),
-/// `CssSourcePosition` (16), `Vec<u16>` (24), `Arc<Vec<u16>>` (8) and
-/// `Preparation` (128).
-const OLD_ONLY_REGISTERS: usize = 24 + 16 + 24 + 8 + 128;
+/// The bytes of registers that the host of the table's levels holds besides
+/// the input's backing.
+const HOST_REGISTERS: usize = 200;
 
 /// The registers this function charges first: the cursor, a `String` and the
 /// map's `Vec`.
-const NEW_REGISTERS: usize = 144 + 24 + 24;
+const FIRST_CHARGE: usize = 144 + 24 + 24;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Change {
@@ -90,24 +87,24 @@ impl Meter for Trace {
     }
 }
 
-/// One recorded row: what the old loop charged for an input.
-struct OldRow {
-    capacity: usize,
-    first_live: usize,
+/// One row of the table: what the function charges for an input.
+struct Receipt {
+    units_capacity: usize,
+    first_level: usize,
     steps: usize,
-    level_after_loop: usize,
+    final_level: usize,
     changes: Vec<Change>,
 }
 
-fn old_rows() -> Vec<(&'static str, OldRow)> {
+fn receipts() -> Vec<(&'static str, Receipt)> {
     let mut rows = Vec::new();
-    for line in OLD
+    for line in RECEIPTS
         .lines()
         .filter(|line| !line.starts_with('#') && !line.is_empty())
     {
         let columns: Vec<&str> = line.split('\t').collect();
         assert_eq!(columns.len(), 6, "{line}");
-        let number = |text: &str| text.parse::<usize>().expect("a recorded number");
+        let number = |text: &str| text.parse::<usize>().expect("a tabulated number");
         let changes = columns[5]
             .split(' ')
             .map(|token| match token.as_bytes()[0] {
@@ -122,11 +119,11 @@ fn old_rows() -> Vec<(&'static str, OldRow)> {
             .collect();
         rows.push((
             columns[0],
-            OldRow {
-                capacity: number(columns[1]),
-                first_live: number(columns[2]),
+            Receipt {
+                units_capacity: number(columns[1]),
+                first_level: number(columns[2]),
                 steps: number(columns[3]),
-                level_after_loop: number(columns[4]),
+                final_level: number(columns[4]),
                 changes,
             },
         ));
@@ -134,7 +131,7 @@ fn old_rows() -> Vec<(&'static str, OldRow)> {
     rows
 }
 
-/// The shared inputs, by the names the recorded rows use.
+/// The shared inputs, by the names the rows use.
 fn input(name: &str) -> Vec<u16> {
     let utf16 = |text: &str| text.encode_utf16().collect::<Vec<u16>>();
     match name {
@@ -151,8 +148,8 @@ fn input(name: &str) -> Vec<u16> {
 }
 
 #[test]
-fn the_recorded_rows_cover_every_shared_input() {
-    let names: Vec<&str> = old_rows().iter().map(|(name, _)| *name).collect();
+fn the_table_covers_every_shared_input() {
+    let names: Vec<&str> = receipts().iter().map(|(name, _)| *name).collect();
     assert_eq!(
         names,
         [
@@ -162,32 +159,31 @@ fn the_recorded_rows_cover_every_shared_input() {
 }
 
 #[test]
-fn the_registers_of_the_old_and_new_function_differ_by_the_original_backing_and_two_hundred_bytes()
-{
+fn the_first_level_is_the_input_backing_the_host_registers_and_the_first_charge() {
     assert_eq!(size_of::<InputCursor>(), 144);
     assert_eq!(
-        NEW_REGISTERS,
+        FIRST_CHARGE,
         size_of::<InputCursor>() + size_of::<String>() + size_of::<Vec<(usize, usize)>>()
     );
-    for (name, row) in old_rows() {
+    for (name, row) in receipts() {
         assert_eq!(
-            row.first_live,
-            2 * row.capacity + OLD_ONLY_REGISTERS + NEW_REGISTERS,
+            row.first_level,
+            2 * row.units_capacity + HOST_REGISTERS + FIRST_CHARGE,
             "{name}"
         );
     }
 }
 
 #[test]
-fn the_work_and_the_live_bytes_charged_equal_those_of_the_old_loop() {
-    for (name, row) in old_rows() {
+fn the_work_and_the_live_bytes_charged_are_those_of_the_table() {
+    for (name, row) in receipts() {
         let units = input(name);
         let trace = Trace::default();
         let result = preprocess_utf16(&units, &PreprocessLimits::default(), &trace)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
         let changes = trace.changes.borrow().clone();
         // The first charge, the loop, and the cursor's release at its end.
-        assert_eq!(changes.first(), Some(&Change::Add(NEW_REGISTERS)), "{name}");
+        assert_eq!(changes.first(), Some(&Change::Add(FIRST_CHARGE)), "{name}");
         assert_eq!(changes.last(), Some(&Change::Released(144)), "{name}");
         let middle = &changes[1..changes.len() - 1];
         assert_eq!(
@@ -209,23 +205,23 @@ fn the_work_and_the_live_bytes_charged_equal_those_of_the_old_loop() {
         });
         assert_eq!(
             usize::try_from(net).unwrap(),
-            row.level_after_loop - row.first_live,
+            row.final_level - row.first_level,
             "{name}: live bytes"
         );
         // What the result keeps charged: its text and map, with one header each.
         assert_eq!(trace.live.get(), result.charged_bytes(), "{name}");
         assert_eq!(
             result.charged_bytes(),
-            NEW_REGISTERS - 144 + usize::try_from(net).unwrap(),
+            FIRST_CHARGE - 144 + usize::try_from(net).unwrap(),
             "{name}"
         );
     }
 }
 
 #[test]
-fn the_hand_derived_step_counts_match_the_recorded_old_loop() {
+fn the_hand_derived_step_counts_match_the_table() {
     // See the arithmetic in the module documentation.
-    let rows = old_rows();
+    let rows = receipts();
     let steps = |name: &str| rows.iter().find(|(row, _)| *row == name).unwrap().1.steps;
     assert_eq!(steps("empty"), 1);
     assert_eq!(steps("color"), 55 + 62);
@@ -233,6 +229,6 @@ fn the_hand_derived_step_counts_match_the_recorded_old_loop() {
     // The final capacities of the two 27-unit inputs: 32 bytes and 32 entries.
     for name in ["color", "nonascii"] {
         let row = &rows.iter().find(|(row, _)| *row == name).unwrap().1;
-        assert_eq!(row.level_after_loop - row.first_live, 32 + 32 * 16);
+        assert_eq!(row.final_level - row.first_level, 32 + 32 * 16);
     }
 }

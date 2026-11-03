@@ -22,11 +22,10 @@
 //! `docs/conformance-coverage.md` maps each clause of that edition to the
 //! tests that exercise it and states what is not claimed.
 //!
-//! # Current state
+//! # Contents
 //!
-//! The crate's public API is introduced module by module, with the
-//! specification-derived tests for each clause, and the coverage map claims
-//! only what those tests establish. Today it offers:
+//! The coverage map claims only what the specification-derived tests of each
+//! clause establish. The crate offers:
 //!
 //! - [`lexer`]: the free-running [`Lexer`](lexer::Lexer), which tokenizes
 //!   text as section 4.3 says and reports each token with its source interval
