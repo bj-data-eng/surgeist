@@ -59,7 +59,7 @@ pub enum HtmlParseTokenFamily {
 pub enum HtmlParseDiagnosticLocationRole {
     InputFrontier,
     TokenEnvelope,
-    HtmlParseTextOrigin,
+    TextOrigin,
     BufferedTableCharacter,
 }
 pub struct HtmlParseDiagnosticLocation {

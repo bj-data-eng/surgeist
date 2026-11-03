@@ -2243,7 +2243,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
                 0 => R::TokenEnvelope,
                 1 | 4 => R::InputFrontier,
                 2 | 3 => R::BufferedTableCharacter,
-                _ => R::HtmlParseTextOrigin,
+                _ => R::TextOrigin,
             }
         );
         assert_eq!(

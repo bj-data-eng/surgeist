@@ -338,7 +338,7 @@ impl HeadState<'_> {
                         },
                         crate::construction::evidence::DiagnosticLocationInput {
                             source: &origin.source,
-                            role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::HtmlParseTextOrigin,
+                            role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TextOrigin,
                             token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text),
                         },
                     )?;
