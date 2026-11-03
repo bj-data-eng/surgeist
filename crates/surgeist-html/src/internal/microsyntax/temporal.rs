@@ -2431,14 +2431,16 @@ pub(crate) fn parse_duration(
     else {
         unreachable!()
     };
-    Ok(ordinary_recovery_duration(plan))
+    ordinary_recovery_duration(plan)
 }
-fn ordinary_recovery_duration(plan: BorrowedDurationPlan<'_>) -> HtmlParsedDuration {
+fn ordinary_recovery_duration(
+    plan: BorrowedDurationPlan<'_>,
+) -> Result<HtmlParsedDuration, HtmlTemporalError> {
     let mut cursor = plan.cursor();
     // Each component adds its own digits to the column sums, so a long first number followed
     // by many repeated units costs the digits plus the components, not their product.
     let mut seconds = HtmlDecimalColumns::default();
-    while let Some(component) = cursor.next_component().expect("recognized duration") {
+    while let Some(component) = cursor.next_component()? {
         if let Some(scale) = component.scale() {
             seconds
                 .add_scaled(
@@ -2446,10 +2448,10 @@ fn ordinary_recovery_duration(plan: BorrowedDurationPlan<'_>) -> HtmlParsedDurat
                     component.fraction_digits(),
                     scale,
                 )
-                .expect("borrowed recognition checked duration digits");
+                .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
         }
     }
-    plan.assemble_recovery(seconds.finish())
+    Ok(plan.assemble_recovery(seconds.finish()))
 }
 
 pub(crate) fn validate_date_with_optional_time(
@@ -2482,8 +2484,8 @@ impl BorrowedTemporalPlan<'_> {
             }
         }
     }
-    fn ordinary_recovery(self) -> HtmlMachineReadableTime {
-        match self {
+    fn ordinary_recovery(self) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
+        Ok(match self {
             Self::Month(value) => HtmlMachineReadableTime::Month(value.ordinary()),
             Self::Date(value) => HtmlMachineReadableTime::Date(value.ordinary()),
             Self::YearlessDate(value) => HtmlMachineReadableTime::YearlessDate(value),
@@ -2498,9 +2500,9 @@ impl BorrowedTemporalPlan<'_> {
             Self::Week(value) => HtmlMachineReadableTime::Week(value.ordinary()),
             Self::Year(value) => HtmlMachineReadableTime::Year(value.ordinary()),
             Self::Duration(value) => {
-                HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value))
+                HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value)?)
             }
-        }
+        })
     }
 }
 /// The ten author alternatives share allocation-free recognition with the
@@ -2541,7 +2543,7 @@ pub(crate) fn parse_time_element_value(
     let mut final_error = HtmlTemporalError::InvalidSyntax;
     for alternative in TemporalAlternative::ALL {
         match recognize_time_alternative(input.code_units(), TemporalPhase::Recovery, alternative) {
-            Ok(plan) => return Ok(plan.ordinary_recovery()),
+            Ok(plan) => return plan.ordinary_recovery(),
             Err(error) => final_error = error,
         }
     }

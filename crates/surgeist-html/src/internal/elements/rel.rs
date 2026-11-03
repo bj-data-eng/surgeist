@@ -773,11 +773,10 @@ fn heap_sort<C: RelMeter>(
     Ok(())
 }
 /// Sets `duplicate_of` of every `rel` token that an earlier token equals under ASCII case
-/// folding to the position of the first such token. The tokens are ordered by (folded content,
-/// position), so equal tokens are adjacent and the first of a run is the earliest; the
-/// positions are then restored by the (strictly increasing) offsets of the tokens. While the
-/// order is scrambled `duplicate_of` holds the offset of the run's first token, and the final
-/// pass replaces it by that token's position.
+/// folding to the position of the first such token. Each token enters with its own position in
+/// `duplicate_of`. The tokens are ordered by (folded content, position), so equal tokens are
+/// adjacent and the first of a run is the earliest: it keeps no twin, and the others take its
+/// position. The positions are then restored by the (strictly increasing) offsets of the tokens.
 fn mark_duplicates<C: RelMeter>(
     units: &[u16],
     occurrences: &mut [HtmlRelOccurrence],
@@ -786,35 +785,22 @@ fn mark_duplicates<C: RelMeter>(
     heap_sort(occurrences, m, |a, b, m| {
         Ok(compare_folded(units, a, b, m)?.then(a.start.cmp(&b.start)))
     })?;
-    let mut first_start = None;
+    let mut first = None;
     for index in 0..occurrences.len() {
         m.work(1)?;
         let same_run = index > 0
             && compare_folded(units, &occurrences[index - 1], &occurrences[index], m)?
                 == Ordering::Equal;
         if same_run {
-            occurrences[index].duplicate_of = first_start;
+            occurrences[index].duplicate_of = first;
         } else {
-            first_start = Some(occurrences[index].start);
+            first = occurrences[index].duplicate_of.take();
         }
     }
     heap_sort(occurrences, m, |a, b, m| {
         m.work(1)?;
         Ok(a.start.cmp(&b.start))
-    })?;
-    let search_steps = usize::BITS as usize + 1 - occurrences.len().leading_zeros() as usize;
-    for index in 0..occurrences.len() {
-        m.work(1)?;
-        if let Some(start) = occurrences[index].duplicate_of {
-            m.work(search_steps)?;
-            occurrences[index].duplicate_of = Some(
-                occurrences
-                    .binary_search_by_key(&start, |occurrence| occurrence.start)
-                    .expect("a run's first token is an occurrence"),
-            );
-        }
-    }
-    Ok(())
+    })
 }
 fn classify<C: RelMeter>(
     units: &[u16],
@@ -881,7 +867,8 @@ fn interpret<C: RelMeter>(
                         end,
                         keyword,
                         spelling,
-                        duplicate_of: None,
+                        // The token's own position until `mark_duplicates` assigns its twin.
+                        duplicate_of: Some(occurrences.len()),
                         registry_resolved: false,
                         effect: keyword.and_then(|k| input.role.and_then(|r| k.effect(r))),
                     });
