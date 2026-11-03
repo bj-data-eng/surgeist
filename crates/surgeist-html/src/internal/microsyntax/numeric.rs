@@ -1325,15 +1325,23 @@ impl HtmlFloatingPointNumber {
         }
         let mut coefficient = HtmlNonNegativeInteger::from(u128::from(significand));
         let magnitude = if exponent >= 0 {
-            for _ in 0..exponent {
-                coefficient = coefficient.multiplied_by(2);
+            // Multiply by the largest power of two that fits a u32 multiplier, 2^31, per pass.
+            let mut remaining = exponent.unsigned_abs();
+            while remaining > 0 {
+                let step = remaining.min(31);
+                coefficient = coefficient.multiplied_by(1_u32 << step);
+                remaining -= step;
             }
             coefficient.into()
         } else {
             // The largest scale is 1074. n / 2^k = n * 5^k / 10^k exactly.
             let scale = (-exponent) as usize;
-            for _ in 0..scale {
-                coefficient = coefficient.multiplied_by(5);
+            // Multiply by the largest power of five that fits a u32 multiplier, 5^13, per pass.
+            let mut remaining = scale;
+            while remaining > 0 {
+                let step = remaining.min(13);
+                coefficient = coefficient.multiplied_by(5_u32.pow(step as u32));
+                remaining -= step;
             }
             let digits = coefficient.digits;
             let (integer, fraction) = if digits.len() > scale {
