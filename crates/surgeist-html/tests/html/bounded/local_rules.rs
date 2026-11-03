@@ -147,7 +147,9 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
     // The consumer's index of committed names: a table at most half full, probed from a keyed hash.
     let hasher = PiNameHasher::new();
     let mut name_index = PiNameIndex::new(PiCursor::name_index_slots(units.len()));
-    let mut table = vec![PiNameSlot::default(); name_index.slots().get()];
+    let mut table: Vec<PiNameSlot> = (0..name_index.slots().get())
+        .map(|_| PiNameSlot::default())
+        .collect();
     while let Some(action) = cursor.action() {
         requests += 1;
         let reply = match action {

@@ -3143,28 +3143,30 @@ Native and captured readers share one allocation-free
 [XML pseudo-attribute cursor](../../crates/surgeist-html/src/internal/microsyntax/pi_pseudo_attributes.rs) and
 [marker rules](../../crates/surgeist-html/src/internal/elements/template_markers.rs). The cursor validates the complete map:
 duplicate names or malformed unrelated fields invalidate it, including suffixes
-after a provisional matching name. When a name is complete the cursor asks the
-consumer (`FindName`) for the committed pair with that name and verifies the one
-candidate unit by unit, so its requests grow with the pairs plus the name units, not
-with their product. Each consumer keeps the index in slot storage that it allocates and
-admits (`HtmlPiPseudoAttributeCursor::name_index_slots` sizes it for the data length), and
-HTML owns its rules in the generic `bounded::values` name index, which the types carry:
-a power-of-two slot count, opaque slots that a consumer cannot forge, an entry count held
-to a capacity of at most half the slots, and a single way to write, the vacancy that a
-probe produces at the first empty slot of its sequence. The hash key is random for each
-scan, so no input can pick colliding names. The consumer charges the table, the hash of
-the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert`
-serve consumers that admit each probe as an action, and `find_or_insert` serves those that
-charge inside closures. A `None` answer to `FindName` is trusted, and the index is never
-consulted after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge
-totals vary from run to run.
-XML scalar/name rules and numeric/predefined
+after a provisional matching name. XML scalar/name rules and numeric/predefined
 references apply; HTML entity recovery supplies no substitute. Original raw for
 is admitted before role classification. The existing semantic session owns all
 work, scratch, nested output, cancellation, sticky failure and atomic publication.
 The [captured tests](../../crates/surgeist-html-semantics/tests/semantics/elements/template_for.rs) cover literal names, first
 selection, partial coverage, sibling ranges and finite refusal boundaries.
 This query reports immutable facts; it does not execute patching or attachment.
+
+When a name is complete the pseudo-attribute cursor asks the consumer (`FindName`) for the
+committed pair with that name and verifies the one candidate unit by unit, so its requests
+grow with the pairs plus the name units, not with their product. Each consumer keeps the
+index in slot storage that it allocates and admits (`HtmlPiPseudoAttributeCursor::name_index_slots`
+sizes it for the data length), and HTML owns its rules in the generic `bounded::values` name
+index, which the types carry: a power-of-two slot count; opaque slots that a consumer cannot
+forge; an index with a unique identity that is not `Clone`, that guards the one empty storage
+it was first lent and that counts its entries against a capacity of at most half the slots;
+and probes and vacancies that only that index produces and accepts. The one way to write is the
+vacancy that a probe yields at the first empty slot of its sequence. The hash key is random for
+each scan, so no input can pick colliding names. The consumer charges the table, the hash of
+the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert` serve
+consumers that admit each probe as an action, and `find_or_insert` serves those that charge
+inside closures. A `None` answer to `FindName` is trusted, and the index is never consulted
+after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge totals vary
+from run to run.
 
 <a id="private-ordinary-templates"></a>
 

@@ -1,20 +1,29 @@
 //! An insert-only index from names to entry numbers, in a caller-owned open-addressing table.
 //!
 //! The consumer owns the table's memory and admission; this module owns its rules, and the types
-//! carry them. The slot count is a power of two. The index counts its entries and refuses one
-//! beyond its capacity, which is at most half the slots, so a probe sequence always meets an empty
-//! slot. A slot is opaque, so a consumer cannot forge an entry. The only way to write is to
-//! insert at the [`HtmlNameIndexVacancy`] that a probe produces at the first empty slot of its
-//! sequence, so a later lookup of the same name always meets the entry before any empty slot.
-//! Nothing is removed. The hash key is random for each [`HtmlNameIndexHasher`], so no input can
-//! choose names that collide and the expected probes per lookup are constant. The consumer
-//! charges the hash of a name (one unit inspection per unit), each probe and each comparison.
+//! carry them.
+//!
+//! - The slot count is a power of two, and the index counts its entries against a capacity of at
+//!   most half the slots, so a probe sequence always meets an empty slot.
+//! - A slot is opaque, so a consumer cannot forge an entry.
+//! - An index has a unique identity and is neither `Clone` nor `Copy`, so its count cannot be
+//!   duplicated. It binds to the storage it is first lent, which must be empty, and refuses any
+//!   other storage afterwards, so its count always describes the storage it guards.
+//! - Probes come only from the index and carry its identity, and the only way to write is to
+//!   insert at the [`HtmlNameIndexVacancy`] that a probe produces at the first empty slot of its
+//!   sequence, which carries the identity too. Nothing is removed, so a later lookup of a name
+//!   meets its entry before any empty slot.
+//!
+//! The hash key is random for each [`HtmlNameIndexHasher`], so no input can choose names that
+//! collide and the expected probes per lookup are constant. The consumer charges the hash of a
+//! name (one unit inspection per unit), each probe and each comparison.
 
 use std::{
     error::Error,
     fmt,
     hash::{BuildHasher, RandomState},
     num::NonZeroUsize,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 /// The slot count of a name index, a power of two, with the number of entries it may hold.
@@ -74,44 +83,47 @@ impl HtmlNameIndexHasher {
 }
 
 /// One slot of an index's storage: empty, or holding an entry that only the index can record.
-/// The default is empty, so a consumer allocates storage as `HtmlNameIndexSlot::default()` values.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// The default is empty, so a consumer fills its storage with `HtmlNameIndexSlot::default()`.
+///
+/// ```compile_fail,E0423
+/// use surgeist_html::bounded::values::HtmlNameIndexSlot;
+/// let forged = HtmlNameIndexSlot(None);
+/// ```
+#[derive(Debug, Default, Eq, PartialEq)]
 pub struct HtmlNameIndexSlot(Option<NonZeroUsize>);
 impl HtmlNameIndexSlot {
     /// Whether the slot holds no entry.
-    pub fn is_empty(self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.0.is_none()
     }
 }
 
-/// The slots that a name visits, from its hash onward, each once, wrapping around. It keeps no
-/// table and does no I/O, so a consumer that admits each probe as an action steps it between
-/// actions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The slots that a name visits, from its hash onward, each once, wrapping around, for one index.
+/// It keeps no table and does no I/O, so a consumer that admits each probe as an action keeps it in
+/// its own state between actions. Only [`HtmlNameIndexTable::probe`] makes one.
+///
+/// ```compile_fail,E0624
+/// use surgeist_html::bounded::values::{HtmlNameIndexProbe, HtmlNameIndexSlots};
+/// let forged = HtmlNameIndexProbe::new(1, 0, HtmlNameIndexSlots::for_entries(1));
+/// ```
+#[derive(Debug, Eq, PartialEq)]
 pub struct HtmlNameIndexProbe {
+    index: u64,
     slot: usize,
     mask: usize,
     remaining: usize,
 }
 impl HtmlNameIndexProbe {
-    /// The probe sequence of a hash over a table of `slots` slots.
-    pub fn new(hash: u64, slots: HtmlNameIndexSlots) -> Self {
+    fn new(index: u64, hash: u64, slots: HtmlNameIndexSlots) -> Self {
         let mask = slots.get().saturating_sub(1);
         Self {
+            index,
             slot: (hash as usize) & mask,
             mask,
             remaining: slots.get(),
         }
     }
-    fn finish(&mut self) {
-        self.remaining = 0;
-    }
-}
-impl Iterator for HtmlNameIndexProbe {
-    type Item = usize;
-    /// The next slot, the first slot at the first call, or `None` once every slot has been
-    /// visited.
-    fn next(&mut self) -> Option<usize> {
+    fn next_slot(&mut self) -> Option<usize> {
         if self.remaining == 0 {
             return None;
         }
@@ -120,19 +132,46 @@ impl Iterator for HtmlNameIndexProbe {
         self.slot = slot.wrapping_add(1) & self.mask;
         Some(slot)
     }
+    fn finish(&mut self) {
+        self.remaining = 0;
+    }
 }
 
-/// The count of entries of one index, and its slot count. A consumer keeps it beside its slot
-/// storage for the life of the index and lends both to a [`HtmlNameIndexTable`] for each lookup.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+static NEXT_INDEX: AtomicU64 = AtomicU64::new(1);
+
+/// The count of entries of one index, its slot count and its identity. A consumer keeps it beside
+/// its slot storage for the life of the index and lends both to a [`HtmlNameIndexTable`] for each
+/// lookup. It is not `Clone` or `Copy`: a copy would count from zero over populated storage.
+///
+/// ```compile_fail,E0599
+/// use surgeist_html::bounded::values::{HtmlNameIndex, HtmlNameIndexSlots};
+/// let index = HtmlNameIndex::new(HtmlNameIndexSlots::for_entries(4));
+/// let copy = index.clone();
+/// ```
+///
+/// ```compile_fail,E0382
+/// use surgeist_html::bounded::values::{HtmlNameIndex, HtmlNameIndexSlots};
+/// let index = HtmlNameIndex::new(HtmlNameIndexSlots::for_entries(4));
+/// let moved = index;
+/// let again = index;
+/// ```
+#[derive(Debug, Eq, PartialEq)]
 pub struct HtmlNameIndex {
+    id: u64,
     slots: HtmlNameIndexSlots,
     entries: usize,
+    /// The address of the storage that the index first guarded.
+    bound: Option<usize>,
 }
 impl HtmlNameIndex {
-    /// An index with no entries.
+    /// An index with no entries and a unique identity.
     pub fn new(slots: HtmlNameIndexSlots) -> Self {
-        Self { slots, entries: 0 }
+        Self {
+            id: NEXT_INDEX.fetch_add(1, Ordering::Relaxed),
+            slots,
+            entries: 0,
+            bound: None,
+        }
     }
     /// The slot count and capacity.
     pub fn slots(&self) -> HtmlNameIndexSlots {
@@ -148,39 +187,63 @@ impl HtmlNameIndex {
     }
 }
 
-/// The slot storage does not have the index's slot count.
+/// Why slot storage cannot be lent to an index.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlNameIndexLengthError {
-    expected: usize,
-    actual: usize,
+#[non_exhaustive]
+pub enum HtmlNameIndexStorageError {
+    /// The storage does not have the index's slot count.
+    Length {
+        /// The slot count that the storage needed.
+        expected: usize,
+        /// The length of the storage that was supplied.
+        actual: usize,
+    },
+    /// A new index was lent storage that already holds an entry, so it would count from zero.
+    Occupied {
+        /// The first occupied slot.
+        slot: usize,
+    },
+    /// The index guards other storage than the one supplied.
+    OtherStorage,
 }
-impl HtmlNameIndexLengthError {
-    /// The slot count that the storage needed.
-    pub fn expected(&self) -> usize {
-        self.expected
-    }
-    /// The length of the storage that was supplied.
-    pub fn actual(&self) -> usize {
-        self.actual
-    }
-}
-impl fmt::Display for HtmlNameIndexLengthError {
+impl fmt::Display for HtmlNameIndexStorageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "name index storage has {} slots but the index needs {}",
-            self.actual, self.expected
-        )
+        match self {
+            Self::Length { expected, actual } => write!(
+                f,
+                "name index storage has {actual} slots but the index needs {expected}"
+            ),
+            Self::Occupied { slot } => {
+                write!(f, "name index storage is already occupied at slot {slot}")
+            }
+            Self::OtherStorage => f.write_str("the name index guards other storage"),
+        }
     }
 }
-impl Error for HtmlNameIndexLengthError {}
+impl Error for HtmlNameIndexStorageError {}
+
+/// The probe was made by another index.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlNameIndexForeignProbe;
+impl fmt::Display for HtmlNameIndexForeignProbe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the probe was made by another name index")
+    }
+}
+impl Error for HtmlNameIndexForeignProbe {}
 
 /// The first empty slot of a probe sequence, the only place a new entry may be recorded. It is
-/// produced by [`HtmlNameIndexTable::advance`] and consumed by [`HtmlNameIndexTable::insert`].
+/// produced by [`HtmlNameIndexTable::advance`] and consumed by [`HtmlNameIndexTable::insert`], and
+/// a consumer may keep it between the two, because it borrows nothing. It is not `Clone`.
+///
+/// ```compile_fail,E0451
+/// use surgeist_html::bounded::values::HtmlNameIndexVacancy;
+/// let forged = HtmlNameIndexVacancy { index: 1, slot: 0 };
+/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct HtmlNameIndexVacancy {
+    index: u64,
     slot: usize,
-    slots: usize,
 }
 /// What a probe found at its next slot.
 #[derive(Debug, Eq, PartialEq)]
@@ -203,7 +266,9 @@ pub enum HtmlNameIndexLookup {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlNameIndexInsertError {
-    /// The vacancy belongs to another index, or its slot is no longer empty.
+    /// The vacancy was produced by another index.
+    ForeignVacancy,
+    /// The slot of the vacancy is no longer empty.
     SlotTaken,
     /// The index already holds as many entries as its capacity.
     CapacityReached,
@@ -213,7 +278,8 @@ pub enum HtmlNameIndexInsertError {
 impl fmt::Display for HtmlNameIndexInsertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::SlotTaken => "the vacancy does not name an empty slot of this name index",
+            Self::ForeignVacancy => "the vacancy was produced by another name index",
+            Self::SlotTaken => "the slot of the vacancy is no longer empty",
             Self::CapacityReached => "the name index holds as many entries as its capacity",
             Self::EntryNumber => "the entry number cannot be recorded in the name index",
         })
@@ -232,8 +298,10 @@ pub enum HtmlNameIndexError<E> {
     CapacityReached,
     /// The entry number cannot be recorded.
     EntryNumber,
-    /// The first empty slot could not be written; it was not empty or not this index's.
+    /// The first empty slot is no longer empty.
     SlotTaken,
+    /// The vacancy was produced by another index.
+    ForeignVacancy,
 }
 impl<E> From<HtmlNameIndexInsertError> for HtmlNameIndexError<E> {
     fn from(error: HtmlNameIndexInsertError) -> Self {
@@ -241,6 +309,7 @@ impl<E> From<HtmlNameIndexInsertError> for HtmlNameIndexError<E> {
             HtmlNameIndexInsertError::CapacityReached => Self::CapacityReached,
             HtmlNameIndexInsertError::EntryNumber => Self::EntryNumber,
             HtmlNameIndexInsertError::SlotTaken => Self::SlotTaken,
+            HtmlNameIndexInsertError::ForeignVacancy => Self::ForeignVacancy,
         }
     }
 }
@@ -252,6 +321,7 @@ impl<E: fmt::Display> fmt::Display for HtmlNameIndexError<E> {
             Self::CapacityReached => HtmlNameIndexInsertError::CapacityReached.fmt(f),
             Self::EntryNumber => HtmlNameIndexInsertError::EntryNumber.fmt(f),
             Self::SlotTaken => HtmlNameIndexInsertError::SlotTaken.fmt(f),
+            Self::ForeignVacancy => HtmlNameIndexInsertError::ForeignVacancy.fmt(f),
         }
     }
 }
@@ -264,66 +334,91 @@ impl<E: Error + 'static> Error for HtmlNameIndexError<E> {
     }
 }
 
-/// An index lent its slot storage for a lookup.
+/// An index lent the storage it guards, for a lookup.
 #[derive(Debug)]
 pub struct HtmlNameIndexTable<'a> {
     index: &'a mut HtmlNameIndex,
     storage: &'a mut [HtmlNameIndexSlot],
 }
 impl<'a> HtmlNameIndexTable<'a> {
-    /// Lends `storage`, which must hold exactly the index's slot count.
+    /// Lends `storage`, which must hold exactly the index's slot count. The first storage that an
+    /// index is lent must be empty and is the only storage that it accepts afterwards (the first
+    /// lend scans it once, which is proportional to the fill that the consumer already charged).
     pub fn new(
         index: &'a mut HtmlNameIndex,
         storage: &'a mut [HtmlNameIndexSlot],
-    ) -> Result<Self, HtmlNameIndexLengthError> {
+    ) -> Result<Self, HtmlNameIndexStorageError> {
         if storage.len() != index.slots.get() {
-            return Err(HtmlNameIndexLengthError {
+            return Err(HtmlNameIndexStorageError::Length {
                 expected: index.slots.get(),
                 actual: storage.len(),
             });
         }
+        let address = storage.as_ptr() as usize;
+        match index.bound {
+            Some(bound) if bound != address => return Err(HtmlNameIndexStorageError::OtherStorage),
+            Some(_) => {}
+            None => {
+                if let Some(slot) = storage.iter().position(|slot| !slot.is_empty()) {
+                    return Err(HtmlNameIndexStorageError::Occupied { slot });
+                }
+                index.bound = Some(address);
+            }
+        }
         Ok(Self { index, storage })
     }
-    /// The probe sequence of a hash.
+    /// The probe sequence of a hash, which only this index accepts.
     pub fn probe(&self, hash: u64) -> HtmlNameIndexProbe {
-        HtmlNameIndexProbe::new(hash, self.index.slots)
+        HtmlNameIndexProbe::new(self.index.id, hash, self.index.slots)
     }
     /// Moves `probe` to its next slot and reports it: an occupied slot with its entry number, or
     /// the first empty slot, which ends the probe. `None` once every slot was occupied.
-    pub fn advance(&self, probe: &mut HtmlNameIndexProbe) -> Option<HtmlNameIndexStep> {
-        let slot = probe.next()?;
-        match self.storage.get(slot)?.0 {
-            Some(recorded) => Some(HtmlNameIndexStep::Occupied(recorded.get() - 1)),
+    pub fn advance(
+        &self,
+        probe: &mut HtmlNameIndexProbe,
+    ) -> Result<Option<HtmlNameIndexStep>, HtmlNameIndexForeignProbe> {
+        if probe.index != self.index.id {
+            return Err(HtmlNameIndexForeignProbe);
+        }
+        let Some(slot) = probe.next_slot() else {
+            return Ok(None);
+        };
+        let Some(content) = self.storage.get(slot) else {
+            return Ok(None);
+        };
+        Ok(Some(match content.0 {
+            Some(recorded) => HtmlNameIndexStep::Occupied(recorded.get() - 1),
             None => {
                 probe.finish();
-                Some(HtmlNameIndexStep::Vacant(HtmlNameIndexVacancy {
+                HtmlNameIndexStep::Vacant(HtmlNameIndexVacancy {
+                    index: self.index.id,
                     slot,
-                    slots: self.storage.len(),
-                }))
+                })
             }
-        }
+        }))
     }
     /// Records `entry` (the number that the new name will have) at `vacancy`, the only way to
-    /// write. The slot is checked to be empty again, and the entry count to be under capacity.
+    /// write. The vacancy must be this index's, its slot must still be empty, and the index must
+    /// be under its capacity.
     pub fn insert(
         &mut self,
         vacancy: HtmlNameIndexVacancy,
         entry: usize,
     ) -> Result<(), HtmlNameIndexInsertError> {
+        if vacancy.index != self.index.id {
+            return Err(HtmlNameIndexInsertError::ForeignVacancy);
+        }
         let recorded = entry
             .checked_add(1)
             .and_then(NonZeroUsize::new)
             .ok_or(HtmlNameIndexInsertError::EntryNumber)?;
-        if vacancy.slots != self.storage.len() {
-            return Err(HtmlNameIndexInsertError::SlotTaken);
-        }
         if self.index.entries >= self.index.slots.capacity() {
             return Err(HtmlNameIndexInsertError::CapacityReached);
         }
         let target = self
             .storage
             .get_mut(vacancy.slot)
-            .filter(|target| target.0.is_none())
+            .filter(|target| target.is_empty())
             .ok_or(HtmlNameIndexInsertError::SlotTaken)?;
         target.0 = Some(recorded);
         self.index.entries += 1;
@@ -348,14 +443,17 @@ impl<'a> HtmlNameIndexTable<'a> {
         let mut probe = self.probe(hash);
         loop {
             step(context).map_err(HtmlNameIndexError::Consumer)?;
+            // The probe is this index's own, so it is never foreign.
             match self.advance(&mut probe) {
-                None => return Err(HtmlNameIndexError::NoEmptySlot),
-                Some(HtmlNameIndexStep::Occupied(existing)) => {
+                Ok(None) | Err(HtmlNameIndexForeignProbe) => {
+                    return Err(HtmlNameIndexError::NoEmptySlot);
+                }
+                Ok(Some(HtmlNameIndexStep::Occupied(existing))) => {
                     if same_name(context, existing).map_err(HtmlNameIndexError::Consumer)? {
                         return Ok(HtmlNameIndexLookup::Found(existing));
                     }
                 }
-                Some(HtmlNameIndexStep::Vacant(vacancy)) => {
+                Ok(Some(HtmlNameIndexStep::Vacant(vacancy))) => {
                     self.insert(vacancy, entry)?;
                     return Ok(HtmlNameIndexLookup::Inserted);
                 }
@@ -369,7 +467,9 @@ mod tests {
     use super::*;
 
     fn storage(slots: HtmlNameIndexSlots) -> Vec<HtmlNameIndexSlot> {
-        vec![HtmlNameIndexSlot::default(); slots.get()]
+        (0..slots.get())
+            .map(|_| HtmlNameIndexSlot::default())
+            .collect()
     }
     fn lookup(
         hasher: &HtmlNameIndexHasher,
@@ -407,11 +507,12 @@ mod tests {
         for entries in [0_usize, 1, 3, 10] {
             let slots = HtmlNameIndexSlots::for_entries(entries);
             for hash in [0_u64, 1, 12345, u64::MAX] {
-                let mut probe = HtmlNameIndexProbe::new(hash, slots);
-                let first = probe.next().unwrap();
+                let mut probe = HtmlNameIndexProbe::new(7, hash, slots);
+                let first = probe.next_slot().unwrap();
                 assert_eq!(first, (hash as usize) & (slots.get() - 1));
-                let mut visited: Vec<usize> = std::iter::once(first).chain(&mut probe).collect();
-                assert_eq!(probe.next(), None);
+                let mut visited = vec![first];
+                visited.extend(std::iter::from_fn(|| probe.next_slot()));
+                assert_eq!(probe.next_slot(), None);
                 visited.sort_unstable();
                 assert_eq!(visited, (0..slots.get()).collect::<Vec<_>>());
             }
@@ -454,55 +555,7 @@ mod tests {
         }
     }
     #[test]
-    fn wrong_storage_a_foreign_vacancy_and_the_capacity_leave_the_index_unchanged() {
-        let hasher = HtmlNameIndexHasher::new();
-        let slots = HtmlNameIndexSlots::for_entries(2);
-        assert_eq!((slots.get(), slots.capacity()), (4, 2));
-        let mut index = HtmlNameIndex::new(slots);
-        let mut short = vec![HtmlNameIndexSlot::default(); 3];
-        let error = HtmlNameIndexTable::new(&mut index, &mut short).unwrap_err();
-        assert_eq!((error.expected(), error.actual()), (4, 3));
-        // Two entries fill the capacity while two slots stay empty: a third name is refused,
-        // and an existing one is still found.
-        let mut entries = storage(slots);
-        let mut table = HtmlNameIndexTable::new(&mut index, &mut entries).unwrap();
-        let mut names = vec![];
-        for name in [[97_u16], [98]] {
-            assert_eq!(
-                lookup(&hasher, &mut table, &names, &name),
-                Ok(HtmlNameIndexLookup::Inserted)
-            );
-            names.push(name.to_vec());
-        }
-        assert_eq!(
-            lookup(&hasher, &mut table, &names, &[99]),
-            Err(HtmlNameIndexError::CapacityReached)
-        );
-        assert_eq!(
-            lookup(&hasher, &mut table, &names, &[98]),
-            Ok(HtmlNameIndexLookup::Found(1))
-        );
-        assert_eq!(index.len(), 2);
-        // A vacancy from a table with another slot count is not this table's.
-        let other_slots = HtmlNameIndexSlots::for_entries(8);
-        let mut other_index = HtmlNameIndex::new(other_slots);
-        let mut other_entries = storage(other_slots);
-        let other = HtmlNameIndexTable::new(&mut other_index, &mut other_entries).unwrap();
-        let mut probe = other.probe(0);
-        let Some(HtmlNameIndexStep::Vacant(foreign)) = other.advance(&mut probe) else {
-            panic!("an empty table is vacant at once");
-        };
-        let mut fresh_index = HtmlNameIndex::new(slots);
-        let mut fresh = storage(slots);
-        let mut table = HtmlNameIndexTable::new(&mut fresh_index, &mut fresh).unwrap();
-        assert_eq!(
-            table.insert(foreign, 0),
-            Err(HtmlNameIndexInsertError::SlotTaken)
-        );
-        assert_eq!(fresh_index.len(), 0);
-    }
-    #[test]
-    fn a_probe_ends_at_the_first_empty_slot_and_a_full_table_has_none() {
+    fn a_full_table_has_no_empty_slot_to_offer_and_a_probe_ends_at_the_first_empty_one() {
         let slots = HtmlNameIndexSlots::for_entries(1);
         let mut index = HtmlNameIndex::new(slots);
         let mut entries = storage(slots);
@@ -510,12 +563,15 @@ mod tests {
         let mut probe = table.probe(1);
         assert!(matches!(
             table.advance(&mut probe),
-            Some(HtmlNameIndexStep::Vacant(_))
+            Ok(Some(HtmlNameIndexStep::Vacant(_)))
         ));
-        assert_eq!(table.advance(&mut probe), None);
+        assert_eq!(table.advance(&mut probe), Ok(None));
         // Storage that is full, which a sized index never reaches, reports no empty slot.
         let mut index = HtmlNameIndex::new(slots);
-        let mut full = vec![HtmlNameIndexSlot(NonZeroUsize::new(1)); slots.get()];
+        let mut full: Vec<HtmlNameIndexSlot> = (0..slots.get())
+            .map(|_| HtmlNameIndexSlot(NonZeroUsize::new(1)))
+            .collect();
+        index.bound = Some(full.as_ptr() as usize);
         let mut table = HtmlNameIndexTable::new(&mut index, &mut full).unwrap();
         assert_eq!(
             table.find_or_insert(3, 5, &mut (), |_| Ok::<_, ()>(()), |_, _| Ok(false)),
@@ -567,17 +623,21 @@ mod tests {
             HtmlNameIndexError::CapacityReached,
             HtmlNameIndexError::EntryNumber,
             HtmlNameIndexError::SlotTaken,
+            HtmlNameIndexError::ForeignVacancy,
         ] {
             assert!(!error.to_string().is_empty() && error.source().is_none());
         }
-        assert!(
-            !HtmlNameIndexLengthError {
+        for error in [
+            HtmlNameIndexStorageError::Length {
                 expected: 4,
-                actual: 3
-            }
-            .to_string()
-            .is_empty()
-        );
+                actual: 3,
+            },
+            HtmlNameIndexStorageError::Occupied { slot: 1 },
+            HtmlNameIndexStorageError::OtherStorage,
+        ] {
+            assert!(!error.to_string().is_empty());
+        }
         assert!(!HtmlNameIndexInsertError::SlotTaken.to_string().is_empty());
+        assert!(!HtmlNameIndexForeignProbe.to_string().is_empty());
     }
 }

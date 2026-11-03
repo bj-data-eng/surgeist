@@ -449,7 +449,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         if table.is_empty() {
                             self.reserve_scratch(&mut table, slots.get())?;
                             self.charge(slots.get())?;
-                            table.resize(slots.get(), NameSlot::default());
+                            table.resize_with(slots.get(), NameSlot::default);
                         }
                         let units = pi.data().code_units();
                         let Some(sought) = units.get(current.clone()) else {

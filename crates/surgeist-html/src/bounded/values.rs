@@ -5,9 +5,10 @@ pub use crate::internal::values::bounded::{
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
 pub use crate::internal::values::name_index::{
-    HtmlNameIndex, HtmlNameIndexError, HtmlNameIndexHasher, HtmlNameIndexInsertError,
-    HtmlNameIndexLengthError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,
-    HtmlNameIndexSlots, HtmlNameIndexStep, HtmlNameIndexTable, HtmlNameIndexVacancy,
+    HtmlNameIndex, HtmlNameIndexError, HtmlNameIndexForeignProbe, HtmlNameIndexHasher,
+    HtmlNameIndexInsertError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,
+    HtmlNameIndexSlots, HtmlNameIndexStep, HtmlNameIndexStorageError, HtmlNameIndexTable,
+    HtmlNameIndexVacancy,
 };
 pub use crate::internal::values::sharing::{
     HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,

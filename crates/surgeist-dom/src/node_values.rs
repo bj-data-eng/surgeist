@@ -378,7 +378,7 @@ fn parse_attributes(
                     for _ in 0..slots.get() {
                         formation::step(budget, cancelled)?;
                     }
-                    table.resize(slots.get(), NameSlot::default());
+                    table.resize_with(slots.get(), NameSlot::default);
                     #[cfg(test)]
                     source_observation::grew(
                         observed,
