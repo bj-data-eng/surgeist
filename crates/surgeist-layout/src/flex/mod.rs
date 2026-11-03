@@ -41,7 +41,10 @@ use input::FlexContainerProjection;
 use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
-use items::{CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout};
+use items::{
+    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout,
+    has_eligible_items,
+};
 use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
 use scroll::{
     flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contributions,
@@ -99,9 +102,18 @@ where
             height: Some(height),
         } = constants.node_outer_size
     {
-        return Ok(ComputeOutputOf::<S>::from_outer_size(Size::new(
-            width, height,
-        )));
+        let output = ComputeOutputOf::<S>::from_outer_size(Size::new(width, height));
+        // A requested named fact needs the actual eligible item set even when
+        // known dimensions make child layout unnecessary.
+        return Ok(
+            if input.named_baseline_demand() != crate::output::NamedBaselineDemand::None
+                && !has_eligible_items::<Tree, M>(tree, node)
+            {
+                output.with_named_baselines(crate::NamedBaselinesOf::absent())
+            } else {
+                output
+            },
+        );
     }
 
     let collected_items = collect_items(tree, node, &constants, input.run_mode())?;
@@ -236,6 +248,13 @@ where
         final_geometry_and_content_size.map(|(_, content_size)| content_size),
         container_sizes,
     );
+    // Inspect the original eligible collection, not the resolved lines: a
+    // nonempty collection of collapsed items is not proof of named absence.
+    let output = if collected_items.is_empty() {
+        output.with_named_baselines(crate::NamedBaselinesOf::absent())
+    } else {
+        output
+    };
     Ok(
         final_geometry_and_content_size.map_or(output, |(scroll_geometry, _)| {
             retain_flex_scroll_geometry(output, scroll_geometry)

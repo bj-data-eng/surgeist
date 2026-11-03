@@ -172,6 +172,29 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
     }
 }
 
+fn is_eligible_item<S: LayoutScalar>(style: &FlexItemProjection<'_, S>) -> bool {
+    style.common.position != Position::Absolute && style.display != crate::Display::None
+}
+
+pub(super) fn has_eligible_items<'input, Tree, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+) -> bool
+where
+    Tree: Compute<'input, M>,
+{
+    // Index the actual child list without retaining an iterator borrow across
+    // the projection callback or allocating a second item collection.
+    for index in 0..tree.child_count(node) {
+        let child = tree.child(node, index);
+        if with_flex_item_projection::<Tree, M, _>(tree, child, |_, style| is_eligible_item(&style))
+        {
+            return true;
+        }
+    }
+    false
+}
+
 #[expect(
     clippy::type_complexity,
     reason = "the private flex collector preserves node, scalar, and provider error types"
@@ -196,9 +219,7 @@ where
     for (source_index, child) in children.into_iter().enumerate() {
         let collected =
             with_flex_item_projection::<Tree, M, _>(tree, child, |tree, child_style| {
-                if child_style.common.position == Position::Absolute
-                    || child_style.display == crate::Display::None
-                {
+                if !is_eligible_item(&child_style) {
                     return Ok(None);
                 }
 

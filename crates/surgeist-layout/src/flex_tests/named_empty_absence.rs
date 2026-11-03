@@ -9,6 +9,7 @@ enum Children {
     Absolute,
     Hidden,
     InFlow,
+    Collapsed,
 }
 
 fn fixture<S: LayoutScalar>(
@@ -51,6 +52,11 @@ fn fixture<S: LayoutScalar>(
                 Position::Absolute
             } else {
                 Position::Relative
+            },
+            flex_item_collapse: if matches!(children, Children::Collapsed) {
+                FlexItemCollapse::Collapsed
+            } else {
+                FlexItemCollapse::Normal
             },
             writing_mode: flow.writing_mode(),
             direction: flow.direction(),
@@ -139,23 +145,59 @@ fn empty_eligible_set<S: LayoutScalar>(children: Children, fixed: bool) {
 
 fn nonempty_remains_unknown<S: LayoutScalar>() {
     for flow in fixtures::fri05_c04_flex_all_flow_axes() {
-        let tree = fixture::<S>(flow, FlexDirection::Row, Children::InFlow, false);
-        assert!(!tree.has_leaf_measurement(1));
-        assert!(!tree.has_leaf_measurement(2));
-        for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
-            for name in [BaselineName::Alphabetic, BaselineName::Central] {
-                for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
-                    let demand = NamedBaselineDemand::Fact { name, set };
-                    let mut session = ComputeSession::new(&tree, Vec::new());
-                    let output = session
-                        .compute_child(1, request(flow, run_mode, demand))
-                        .unwrap();
-                    assert_eq!(
-                        demand.selected_fact(output.named_baselines),
-                        Some((name, BaselineFactOf::Unknown)),
-                        "a real in-flow item is not proof of named absence: {flow:?} {run_mode:?} {set:?} {name:?}",
-                    );
+        for direction in [FlexDirection::Row, FlexDirection::Column] {
+            for children in [Children::InFlow, Children::Collapsed] {
+                for fixed in [false, true] {
+                    let tree = fixture::<S>(flow, direction, children, fixed);
+                    assert!(!tree.has_leaf_measurement(1));
+                    assert!(!tree.has_leaf_measurement(2));
+                    for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+                        for name in [BaselineName::Alphabetic, BaselineName::Central] {
+                            for set in [NamedBaselineSet::First, NamedBaselineSet::Last] {
+                                let demand = NamedBaselineDemand::Fact { name, set };
+                                let mut session = ComputeSession::new(&tree, Vec::new());
+                                let output = session
+                                    .compute_child(1, request(flow, run_mode, demand))
+                                    .unwrap();
+                                assert_eq!(
+                                    demand.selected_fact(output.named_baselines),
+                                    Some((name, BaselineFactOf::Unknown)),
+                                    "a real in-flow item is not proof of named absence: {flow:?} {direction:?} {children:?} fixed={fixed} {run_mode:?} {set:?} {name:?}",
+                                );
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+fn known_size_without_named_demand<S: LayoutScalar>() {
+    for flow in fixtures::fri05_c04_flex_all_flow_axes() {
+        for direction in [FlexDirection::Row, FlexDirection::Column] {
+            for children in [
+                Children::Empty,
+                Children::Absolute,
+                Children::Hidden,
+                Children::InFlow,
+                Children::Collapsed,
+            ] {
+                let tree = fixture::<S>(flow, direction, children, true);
+                let mut session = ComputeSession::new(&tree, Vec::new());
+                let output = session
+                    .compute_child(
+                        1,
+                        request(flow, RunMode::ComputeSize, NamedBaselineDemand::None),
+                    )
+                    .unwrap();
+                assert_eq!(output.size, Size::new(S::from_f64(20.0), S::from_f64(12.0)));
+                assert_eq!(output.baselines(), BaselinesOf::NONE);
+                assert_eq!(
+                    output.named_baselines,
+                    NamedBaselinesOf::unknown(),
+                    "the size-only shortcut supplies no unrequested named proof: {flow:?} {direction:?} {children:?}",
+                );
             }
         }
     }
@@ -229,6 +271,14 @@ fn nonempty_flex_named_export_stays_unknown_f32() {
 #[test]
 fn nonempty_flex_named_export_stays_unknown_f64() {
     nonempty_remains_unknown::<f64>();
+}
+#[test]
+fn known_size_flex_without_named_demand_stays_unknown_f32() {
+    known_size_without_named_demand::<f32>();
+}
+#[test]
+fn known_size_flex_without_named_demand_stays_unknown_f64() {
+    known_size_without_named_demand::<f64>();
 }
 #[test]
 fn flex_physical_last_zero_and_generic_unknown_f32() {
