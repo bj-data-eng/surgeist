@@ -10,6 +10,23 @@ use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
 
+/// Digit visits made by the decimal kernels on this thread, for work-growth tests.
+#[cfg(test)]
+thread_local! {
+    static DIGIT_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+pub(crate) fn count_digit_steps(steps: usize) {
+    DIGIT_STEPS.with(|total| total.set(total.get() + steps as u64));
+}
+/// Runs `operation` and returns its result with the digit visits it made.
+#[cfg(test)]
+pub(crate) fn digit_steps_during<R>(operation: impl FnOnce() -> R) -> (R, u64) {
+    let before = DIGIT_STEPS.with(std::cell::Cell::get);
+    let result = operation();
+    (result, DIGIT_STEPS.with(std::cell::Cell::get) - before)
+}
+
 fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
     left_digits
         .max(right_digits)
@@ -42,6 +59,8 @@ fn write_product(input: &[u8], multiplier: u32, mut carry: u64, output: &mut Vec
         carry /= 10;
     }
     output.reverse();
+    #[cfg(test)]
+    count_digit_steps(output.len());
 }
 
 fn sum_carry(left: &[u8], right: &[u8], mut carry: u8) -> u8 {
@@ -72,6 +91,8 @@ fn write_sum(left: &[u8], right: &[u8], mut carry: u8, output: &mut Vec<u8>) {
         carry = sum / 10;
     }
     output.reverse();
+    #[cfg(test)]
+    count_digit_steps(output.len());
 }
 
 fn write_fraction_sum(left: &[u8], right: &[u8], output: &mut [u8]) -> u8 {
@@ -83,6 +104,8 @@ fn write_fraction_sum(left: &[u8], right: &[u8], output: &mut [u8]) -> u8 {
         output[index] = b'0' + sum % 10;
         carry = sum / 10;
     }
+    #[cfg(test)]
+    count_digit_steps(output.len());
     carry
 }
 
@@ -93,6 +116,8 @@ fn write_fraction_product(input: &[u8], multiplier: u32, output: &mut [u8]) -> u
         output[index] = b'0' + (product % 10) as u8;
         carry = product / 10;
     }
+    #[cfg(test)]
+    count_digit_steps(input.len());
     carry
 }
 
@@ -131,6 +156,8 @@ fn write_quotient(input: &[u8], divisor: NonZeroU32, output: &mut Vec<u8>) -> u3
 }
 
 fn ascii_digit_string(bytes: Vec<u8>) -> String {
+    #[cfg(test)]
+    count_digit_steps(bytes.len());
     // Safe ownership transfer, with UTF-8 validation but no second allocation.
     String::from_utf8(bytes).expect("numeric owner writes only ASCII digits")
 }
@@ -3148,6 +3175,25 @@ impl Error for HtmlNumericMaterializationFailure {
 
 #[cfg(test)]
 mod tests {
+    /// 2^-1074 = 5^1074 / 10^1074 (binary64 subnormal minimum): 5^1074 has 751
+    /// digits and ends in 5, so the expansion has exactly 1074 fractional digits.
+    /// Multiplying by 5 once per power costs about 1074 * 400 digit visits plus a
+    /// validation pass per call; chunks of 5^13 must cost an order of magnitude less.
+    #[test]
+    fn exact_decimal_of_the_smallest_subnormal_is_computed_in_chunked_passes() {
+        let number = HtmlFloatingPointNumber::try_from(5e-324).unwrap();
+        let (decimal, steps) = digit_steps_during(|| number.exact_decimal());
+        let text = decimal.as_document_string().to_utf8().unwrap();
+        let fraction = text.strip_prefix("0.").unwrap();
+        assert_eq!(fraction.len(), 1074);
+        assert!(fraction.starts_with(&format!(
+            "{}494065645841246544176568792868221372365059802",
+            "0".repeat(323)
+        )));
+        assert!(fraction.ends_with("19718265533447265625"));
+        assert!(steps < 120_000, "{steps} digit visits");
+    }
+
     #[test]
     fn retained_integer_bytes_observe_real_spare_buffer_without_changing_value_identity() {
         use std::hash::{Hash, Hasher};

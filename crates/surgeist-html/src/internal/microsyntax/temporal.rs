@@ -3858,4 +3858,58 @@ mod tests {
             assert!(cursor.normalization().is_none());
         }
     }
+    /// The digit visits that the ordinary recovery duration makes on `text`.
+    fn recovery_duration_steps(text: &str) -> (HtmlParsedDuration, u64) {
+        let input = DocumentString::from(text);
+        crate::internal::microsyntax::numeric::digit_steps_during(|| {
+            parse_duration(&input).unwrap()
+        })
+    }
+    fn assert_linear_growth(steps: &[u64]) {
+        for pair in steps.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "doubling the input grew the digit visits from {} to {}: {steps:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+    /// "parse a duration string" (html-source:7160-7340) lets one unit repeat, so after one
+    /// long number many one-digit components follow; each is added to the running total.
+    /// The first token is the N nines and the first `1` (10^(N+1) - 9); the other k - 1
+    /// components add one each, so the total is 10^(N+1) + k - 10.
+    #[test]
+    fn ordinary_recovery_duration_digit_visits_grow_linearly_with_a_long_integer() {
+        let mut steps = Vec::new();
+        for digits in [3_000_usize, 6_000, 12_000, 24_000] {
+            let components = digits / 3;
+            let text = format!("{}{}", "9".repeat(digits), "1s".repeat(components));
+            let (value, visits) = recovery_duration_steps(&text);
+            let tail = (components - 10).to_string();
+            let expected = format!("1{}{}", "0".repeat(digits + 1 - tail.len()), tail);
+            assert_eq!(value.seconds().integer_part().decimal_digits(), expected);
+            assert_eq!(value.seconds().fractional_digits(), None);
+            steps.push(visits);
+        }
+        assert_linear_growth(&steps);
+    }
+    /// 0.99...9s plus m components of 1s is m + 0.99...9.
+    #[test]
+    fn ordinary_recovery_duration_digit_visits_grow_linearly_with_a_long_fraction() {
+        let mut steps = Vec::new();
+        for digits in [4_000_usize, 8_000, 16_000, 32_000] {
+            let components = digits / 4;
+            let text = format!("0.{}s{}", "9".repeat(digits), "1s".repeat(components));
+            let (value, visits) = recovery_duration_steps(&text);
+            assert_eq!(
+                value.seconds().integer_part().decimal_digits(),
+                components.to_string()
+            );
+            let nines = "9".repeat(digits);
+            assert_eq!(value.seconds().fractional_digits(), Some(nines.as_str()));
+            steps.push(visits);
+        }
+        assert_linear_growth(&steps);
+    }
 }
