@@ -1,21 +1,23 @@
-use crate::semantics::support::dimension_semantic_limits as limits;
+use crate::semantics::support::{
+    dimension_capture_limits, dimension_semantic_limits as limits, tenth_capture_limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlImageContentBoxObservation,
-    HtmlImageDimensionAttributeObservation, HtmlImageDimensionAxisResult, HtmlImageDimensionBranch,
-    HtmlImageDimensionCompleted, HtmlImageDimensionExpectation, HtmlImageDimensionFacts,
-    HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement,
-    HtmlImageDimensionMissingReason, HtmlImageDimensionOperationKey, HtmlImageDimensionOrigin,
-    HtmlImageDimensionReadback, HtmlImageDimensionRecovery, HtmlImageDimensionResourceObservation,
-    HtmlImageDimensionRevision, HtmlImageDimensionRole, HtmlImageDimensionSelection,
-    HtmlImageSizingRevision, HtmlImgRequestState, HtmlInputImageAvailability,
-    HtmlListParticipation, HtmlListParticipationFact, HtmlListParticipationRevision,
-    HtmlNaturalDimensionFact, HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId,
-    HtmlNaturalDimensionRevision, HtmlNaturalDimensionUnsupported, HtmlNaturalDimensions,
-    HtmlNaturalResourceId, HtmlNaturalResourceKey, HtmlParticipationProducerId,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
+    HtmlCapturedIsValue, HtmlImageContentBoxObservation, HtmlImageDimensionAttributeObservation,
+    HtmlImageDimensionAxisResult, HtmlImageDimensionBranch, HtmlImageDimensionCompleted,
+    HtmlImageDimensionExpectation, HtmlImageDimensionFacts, HtmlImageDimensionFactsError,
+    HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement, HtmlImageDimensionMissingReason,
+    HtmlImageDimensionOperationKey, HtmlImageDimensionOrigin, HtmlImageDimensionReadback,
+    HtmlImageDimensionRecovery, HtmlImageDimensionResourceObservation, HtmlImageDimensionRevision,
+    HtmlImageDimensionRole, HtmlImageDimensionSelection, HtmlImageSizingRevision,
+    HtmlImgRequestState, HtmlInputImageAvailability, HtmlListParticipation,
+    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlNaturalDimensionFact,
+    HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision,
+    HtmlNaturalDimensionUnsupported, HtmlNaturalDimensions, HtmlNaturalResourceId,
+    HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
     HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
@@ -36,10 +38,7 @@ fn fixture(local: &str, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubje
     fixture_name(QualifiedName::new(Namespace::html(), None, local), attrs)
 }
 fn fixture_name(name: QualifiedName, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubjectId) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(dimension_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -1449,10 +1448,7 @@ fn incoming_measurement_digit_storage_is_admitted_in_addition_to_record_backing(
 
 #[test]
 fn non_element_subjects_do_not_require_rendering_or_resource_facts() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,

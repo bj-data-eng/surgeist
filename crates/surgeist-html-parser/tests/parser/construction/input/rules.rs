@@ -1,8 +1,8 @@
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAssociationRelation, HtmlParseHistoryFrame,
-    HtmlParseHistoryStep, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseRangeBranch,
-    HtmlParseRangeOperandKind, HtmlParseRangeOperandRole, HtmlSource,
+    HtmlParseHistoryStep, HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,
+    HtmlParseRangeOperandRole, HtmlSource,
 };
 
 fn recognize(raw: Option<&DocumentString>) -> HtmlInputType {
@@ -687,28 +687,7 @@ fn range_requests_constraint_sanitization_without_selection_or_string_cursor_byp
 fn range_public_parse_lends_native_default_current_and_qualified_generated_dependencies() {
     let literal =
         "<!doctype html><form id=f><input type=range min=0 max=100 step=20 value=50>Z</form>";
-    let limits = HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
-        .token_attributes(10_000)
-        .auxiliary_entries(1_000_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
-        .finish()
-        .unwrap();
+    let limits = crate::parser::support::limits();
     let source = HtmlSource::utf8(literal);
     let identity = source.identity().clone();
     let report = HtmlDocumentParseRequest::offline(source, limits)

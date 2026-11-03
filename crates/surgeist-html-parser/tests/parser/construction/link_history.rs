@@ -1,32 +1,8 @@
+use crate::parser::support::small_limits as limits;
 use surgeist_html::*;
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseMetadataDocument, HtmlParseMetadataStep,
-    HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlSource,
 };
-fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(10000)
-        .buffered_utf16_units(10000)
-        .token_attributes(1000)
-        .auxiliary_entries(10000)
-        .managed_nodes(1000)
-        .managed_edges(1000)
-        .managed_attributes(1000)
-        .managed_utf16_units(10000)
-        .source_map_entries(10000)
-        .source_map_payload_units(10000)
-        .diagnostics(1000)
-        .diagnostic_payload_units(1000)
-        .context_effects(1000)
-        .open_elements(100)
-        .tree_depth(1000)
-        .managed_capacity_bytes(10000000)
-        .peak_transient_bytes(10000000)
-        .atomic_layout_bytes(10000000)
-        .work_credits(10000000)
-        .finish()
-        .unwrap()
-}
 #[test]
 fn actual_completed_parser_publishes_fresh_flags_and_creating_document_identity() {
     let report = HtmlDocumentParseRequest::offline(

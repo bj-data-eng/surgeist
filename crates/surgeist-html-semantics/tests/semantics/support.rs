@@ -67,6 +67,33 @@ pub fn small_builder_with_short_text() -> (HtmlCaptureBuilder, HtmlCaptureBuilde
     ))
 }
 
+/// Capture budget of the base and dimension fixtures: a tenth of the standard
+/// subject, relationship, attribute, UTF-16 and depth capacity, with the
+/// standard registry and definition capacity.
+pub fn tenth_capture_limits() -> HtmlCaptureLimits {
+    HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216)
+}
+
+/// Document builder with the tenth capture budget.
+pub fn tenth_builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
+    builder_with(tenth_capture_limits())
+}
+
+/// Capture budget of the image-dimension fixtures: a tenth of the standard
+/// subject capacity, with every other allowance standard.
+pub fn dimension_capture_limits() -> HtmlCaptureLimits {
+    HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216)
+}
+
+/// Table fixtures: ten times the standard subject and attribute capacity with
+/// the standard relationship, UTF-16 and depth capacity, without registry or
+/// definition capacity.
+pub fn wide_builder_without_registries() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
+    builder_with(HtmlCaptureLimits::new(
+        10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216,
+    ))
+}
+
 /// Default context: no custom classifications or optional fact inputs.
 pub fn context(c: &HtmlCapture) -> HtmlSemanticContext {
     HtmlSemanticContext::new(

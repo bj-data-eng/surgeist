@@ -9,12 +9,19 @@ use std::convert::Infallible;
 use surgeist_html::bounded::native_element_initialization_with;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlConstructionError, HtmlConstructionResource,
-    HtmlInputSanitization, HtmlInputValueSanitization, HtmlNativeInitialization,
-    HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState, HtmlNumericAttributeReport,
-    HtmlNumericAttributeValueOrigin, HtmlValueInterpreter, HtmlYear, KnownHtmlAttribute,
-    KnownHtmlElement, Namespace, OrderedAttributes, QualifiedName,
+    HtmlAttributeContextConformanceError, HtmlConstructionError, HtmlConstructionLimits,
+    HtmlConstructionResource, HtmlInputSanitization, HtmlInputValueSanitization,
+    HtmlNativeInitialization, HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState,
+    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlValueInterpreter, HtmlYear,
+    KnownHtmlAttribute, KnownHtmlElement, Namespace, OrderedAttributes, QualifiedName,
 };
+
+/// Construction limits that ordinary builder fixtures do not reach: one
+/// hundred nodes, edges and attributes, 100,000 UTF-16 units and depth one
+/// hundred.
+pub fn construction_limits() -> HtmlConstructionLimits {
+    HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
+}
 
 /// HTML-namespace element name with the exact local name and no prefix.
 pub fn html_element(local: &str) -> QualifiedName {

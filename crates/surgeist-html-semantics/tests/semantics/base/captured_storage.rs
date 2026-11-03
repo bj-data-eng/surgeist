@@ -1,4 +1,5 @@
 //! Owner storage receipts include unused inputs and capacity, independently of queries.
+use crate::semantics::support::tenth_capture_limits;
 use surgeist_html::*;
 use surgeist_html_semantics::*;
 
@@ -29,10 +30,8 @@ fn capture() -> (
     Vec<HtmlCaptureDocumentId>,
     Vec<HtmlCaptureSubjectId>,
 ) {
-    let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut builder =
+        HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let mut documents = Vec::new();
     let mut bases = Vec::new();
     for _ in 0..2 {
