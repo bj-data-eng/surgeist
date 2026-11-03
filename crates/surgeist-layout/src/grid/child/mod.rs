@@ -82,69 +82,8 @@ where
         sizing_stage,
         execution_input,
     } = context;
-    if columns.is_empty() || rows.is_empty() {
-        for (source_index, child) in tree
-            .children(node)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .enumerate()
-        {
-            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-                child,
-                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            ));
-            tree.compute_child(
-                child,
-                ComputeInputOf::hidden_in_containing_pass(
-                    crate::ContainingLayoutContext::new(
-                        crate::geometry::FlowAxes::new(style.writing_mode, style.direction),
-                        crate::ParentFormattingContext::Grid,
-                    ),
-                    containing_auto_scrollbar_pass,
-                ),
-            )?;
-        }
-        return Ok(GridChildrenLayout {
-            executed_baselines: execution_input.run_mode().is_perform_layout().then(|| {
-                ExecutedBaselineInventory::empty(
-                    node,
-                    ExecutedBaselineFrame {
-                        style,
-                        size: constants.node_outer_size.unwrap_or(
-                            container_content_size + constants.content_box_inset.sum_axes(),
-                        ),
-                        execution_input,
-                        stage: sizing_stage,
-                        columns: sizing_stage
-                            .has_resolved_axis(GridAxisKind::Column)
-                            .then_some(ExecutedBaselineAxisFrame {
-                                starts: &[],
-                                sizes: columns,
-                            }),
-                        rows: sizing_stage.has_resolved_axis(GridAxisKind::Row).then_some(
-                            ExecutedBaselineAxisFrame {
-                                starts: &[],
-                                sizes: rows,
-                            },
-                        ),
-                        nomination: ExecutedBaselineNomination::Grid {
-                            row_tracks,
-                            track_basis,
-                        },
-                    },
-                )
-            }),
-            visible_content_size: Size::ZERO,
-            contributions: empty_grid_contributions(),
-            baselines: BaselinesOf::NONE,
-            baseline_groups: GridBaselineGroups {
-                rows: Vec::new(),
-                columns: Vec::new(),
-            },
-        });
-    }
-
+    // Absolute children still require layout when either track axis is empty.
+    // The ordinary loop separates them from in-flow placement and track sizing.
     let inherited_column_geometry = parent_context.columns.as_ref().map(|axis| &axis.geometry);
     let inherited_row_geometry = parent_context.rows.as_ref().map(|axis| &axis.geometry);
     let intrinsic_column_geometry = inherited_column_geometry.cloned().unwrap_or_else(|| {

@@ -877,3 +877,103 @@ source_kind = "authored"
 [records.expected]
 kind = "unsupported"
 reason = "Atomic paragraph metrics: UnsupportedOccurrence"
+
+[[records]]
+source = "html/grid/grid_absolute_layout_within_border.html"
+source_sha256 = "4164b2def608e0c20d030773ff5d3c3dc6ecd88b2f91bb614e28c2b978b28478"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "e64c9d78a11c8f2c0f980fecf751c97cdf23c8b248f9d9e8444be2613654ec4a"
+content_box_ltr = "4785e7f32a4f9ed07b8481ef8f3c7763deaffdc60680aca3de221b58153328b4"
+border_box_rtl = "85dc80ab4da8da832e90f1d8f9bbde0bc168c82adb8e8c93fe1892f195b22089"
+content_box_rtl = "3bcbfff7482606601b1eb8eb184b10b48ac17fa09bab66fccdea0e7f9a7f0072"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_absolute_resolved_insets.html"
+source_sha256 = "b225a7a58230ba8155042b2bc6a8ad352d6e63b3ab336c47c39faf01dca6e1d0"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "a9e5285cf730c06ad4c69d8ec5958f5fed9effa4835b7a912272293d0658cdd3"
+content_box_ltr = "1ef4fb20ba7d065d0509d6b294b48153e78fefd7b74109745b3814c5a0325932"
+border_box_rtl = "04b26b137fb9051aa6f49bc989c40ab5a820b4e7e4868b086b6339a0e4535d5a"
+content_box_rtl = "15c131a425c03d2b2336c8df1f9d5a61b44d4db279ee202e0a0c0cc79979fb75"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_aspect_ratio_overrides_height_of_full_inset.html"
+source_sha256 = "8d159da05c91deddae2cf23ee84f2f5fc0865da5ff15272cf2964d10f22e8096"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "8814c3ea3037fb84d375ebf1df53339b60dda33fde05672c4c7aad418e95ab0c"
+content_box_ltr = "6b2186dba3466bd4c13a9c3056a6ae1378fb615414d2851693c46cf9a54fb947"
+border_box_rtl = "da74c2ed3d3933b26db82146cb46e3f2742799471a24dee532f5fdb595223186"
+content_box_rtl = "30d5e11863f2b44012dfc23cb9fcbb0a5a303852207763371ef490f19443149a"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_fill_height_from_inset.html"
+source_sha256 = "152587aededc64e0b565f56f189b8c6cd4f20c9fe5f10b12e4f0c9f25bf2990b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "c492936f7065b991e1c67441f58253b75db059f68463ebd10b33d45e34a59e09"
+content_box_ltr = "673d461aacf21bba1b8b39a042ef51f0de695c7d2381feeeed43598c7b1fc440"
+border_box_rtl = "4615be1fe5627d5fcf3dee4d22e316e2fc43a8d94ae656f3663d386fbe0ef195"
+content_box_rtl = "9e5ffe1f08521033b0631181fb400d6dc9b83cbd054b4a1441a04cc883171d4e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_aspect_ratio_absolute_width_overrides_inset.html"
+source_sha256 = "329ee2a22a961270908b386a0d93b47f52f8ad0ef67d71e99044fa572c07c551"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "081dc55ac490dbe23dc0a2be0f0af377ccd37d1018cf4852d140aa81654ee22a"
+content_box_ltr = "bc31e0af126c54008b2dc564fa8fbfc8ccf0d7963f1702bc9b00c993d7e2549b"
+border_box_rtl = "ef7c4d37554ba60d1887eea97008ad344a582b2bdcfc56f202574efb80b8b2e1"
+content_box_rtl = "f6c6f2f4a426ab299659cd4c51d3ef71d80fac6b44058844181c54079a7cf699"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
