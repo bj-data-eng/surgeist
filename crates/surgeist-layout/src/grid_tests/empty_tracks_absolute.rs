@@ -942,3 +942,72 @@ fn empty_axes_explicit_scroll_padding_cb_f32() {
 fn empty_axes_explicit_scroll_padding_cb_f64() {
     explicit_scroll_padding_cb::<f64>();
 }
+
+fn sole_line_uses_axis_start<S: LayoutScalar>() {
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        for tracks in TOPOLOGIES {
+            let mut parent = grid::<S>(
+                direction,
+                BoxSizing::BorderBox,
+                Size::new(100.0, 80.0),
+                tracks,
+            );
+            parent.justify_content = Some(AlignContent::Center);
+            parent.align_content = Some(AlignContent::End);
+            let mut child = fixed_absolute::<S>(direction, Size::new(20.0, 10.0));
+            child.grid_column = GridPlacement::try_line(1).unwrap();
+            child.grid_row = GridPlacement::try_line(1).unwrap();
+            child.inset = Edges {
+                left: if direction == Direction::Ltr {
+                    LengthAutoOf::px(S::from_f64(7.0))
+                } else {
+                    LengthAutoOf::AUTO
+                },
+                right: if direction == Direction::Rtl {
+                    LengthAutoOf::px(S::from_f64(7.0))
+                } else {
+                    LengthAutoOf::AUTO
+                },
+                top: LengthAutoOf::px(S::from_f64(11.0)),
+                bottom: LengthAutoOf::AUTO,
+            };
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .style(1, parent)
+                .children(2, [])
+                .style(2, child);
+            let batch = compute(&tree);
+            // Grid2 §11.3: an empty axis has one line at its start edge,
+            // regardless of content alignment. Populated axes still align
+            // their real32/24 tracks: (100-32)/2=34 and80-24=56.
+            let inline_start = if matches!(tracks, Tracks::Both | Tracks::ColumnsOnly) {
+                34.0
+            } else {
+                0.0
+            };
+            let block_start = if matches!(tracks, Tracks::Both | Tracks::RowsOnly) {
+                56.0
+            } else {
+                0.0
+            };
+            let x = if direction == Direction::Ltr {
+                inline_start + 7.0
+            } else {
+                100.0 - inline_start - 7.0 - 20.0
+            };
+            assert_integer_rect(&batch, 1, [0.0, 0.0, 100.0, 80.0]);
+            assert_integer_rect(&batch, 2, [x, block_start + 11.0, 20.0, 10.0]);
+            assert_nodes(&batch, &[1, 2]);
+        }
+    }
+}
+
+#[test]
+fn empty_axis_sole_line_stays_at_start_despite_content_alignment_f32() {
+    sole_line_uses_axis_start::<f32>();
+}
+
+#[test]
+fn empty_axis_sole_line_stays_at_start_despite_content_alignment_f64() {
+    sole_line_uses_axis_start::<f64>();
+}
