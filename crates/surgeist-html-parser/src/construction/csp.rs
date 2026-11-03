@@ -34,6 +34,13 @@ pub(super) struct State {
     initial_base: bool,
     initial: Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>,
     owner_usage: Storage,
+    /// The registry rows already summed into `rows_usage`. Rows are appended
+    /// and never removed or reordered while the registry is live, and a
+    /// policy or transition row is complete when the call that pushed it
+    /// returns, so a row below this count never changes its usage.
+    rows_scanned: usize,
+    /// What the policy and transition rows below `rows_scanned` retain.
+    rows_usage: Storage,
 }
 fn protocol(
     c: &mut ParseControl,
@@ -121,7 +128,7 @@ impl SessionStorage {
         }
     }
     fn reconcile_csp(&self, c: &mut ParseControl, state: &mut State) -> Result<(), SessionError> {
-        let mut live = state
+        let base = state
             .owner_usage
             .add(Storage {
                 bytes: size_of::<State>(),
@@ -129,7 +136,8 @@ impl SessionStorage {
                 entries: 1,
             })
             .ok_or(SessionError::WrongToken)?;
-        for row in &self.payloads.values {
+        let mut rows = state.rows_usage;
+        for row in self.payloads.values.iter().skip(state.rows_scanned) {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let usage = match row {
                 RetainedPayload::CspPolicy(v) => {
@@ -191,8 +199,9 @@ impl SessionStorage {
                 }
                 _ => Storage::ZERO,
             };
-            live = live.add(usage).ok_or(SessionError::WrongToken)?;
+            rows = rows.add(usage).ok_or(SessionError::WrongToken)?;
         }
+        let mut live = base.add(rows).ok_or(SessionError::WrongToken)?;
         if let Some(p) = &state.pending {
             let units = p.content.shared_code_units().capacity();
             live = live
@@ -215,6 +224,8 @@ impl SessionStorage {
             .ok_or_else(|| crate::meta_csp::accounting_violation(c))?;
         retired.release(c)?;
         state.account.rebaseline(live);
+        state.rows_scanned = self.payloads.values.len();
+        state.rows_usage = rows;
         Ok(())
     }
     pub(super) fn csp_policy(
@@ -409,6 +420,8 @@ impl ParserArenaSession {
                     initial_base,
                     initial: None,
                     owner_usage: Storage::ZERO,
+                    rows_scanned: 0,
+                    rows_usage: Storage::ZERO,
                 }))),
             )
             .map_err(|_| latch_registry_row(c))?;
@@ -592,6 +605,8 @@ mod tests {
                     initial_base: false,
                     initial: None,
                     owner_usage: Storage::ZERO,
+                    rows_scanned: 0,
+                    rows_usage: Storage::ZERO,
                 }))),
             )
             .unwrap();
