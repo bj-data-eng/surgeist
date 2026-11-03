@@ -597,24 +597,30 @@ pub enum HtmlMachineReadableTime {
     Date(HtmlDate),
     /// The processed value of a valid yearless date string (HTML877d #yearless-dates).
     YearlessDate(HtmlYearlessDate),
-    /// The processed value of a valid time string (HTML877d #times). Its fraction keeps every
-    /// authored digit.
+    /// The result of the parse a time string algorithm (HTML877d #times). Unlike a valid time
+    /// string, its seconds may carry a fraction of any length, and the value keeps every digit.
     Time(HtmlParsedTime),
-    /// The processed value of a valid local date and time string (HTML877d #local-dates-and-times).
-    /// Its time keeps every authored fraction digit.
+    /// The result of the parse a local date and time string algorithm (HTML877d
+    /// #local-dates-and-times). Unlike a valid string, its time may carry a fraction of any
+    /// length, and the value keeps every digit.
     LocalDateTime(HtmlParsedLocalDateTime),
-    /// The processed value of a valid time-zone offset string (HTML877d #time-zones).
+    /// The result of the parse a time-zone offset string algorithm (HTML877d #time-zones). Unlike a
+    /// valid time-zone offset string, it accepts a negative zero offset such as `-00:00`.
     TimeZoneOffset(HtmlTimeZoneOffset),
-    /// The processed value of a valid global date and time string (HTML877d
-    /// #global-dates-and-times). It keeps the explicit source offset and the exact UTC instant.
+    /// The result of the parse a global date and time string algorithm (HTML877d
+    /// #global-dates-and-times). Unlike a valid string, its time may carry a fraction of any
+    /// length and its offset may be a negative zero. It keeps the explicit source offset and the
+    /// exact UTC instant.
     GlobalDateTime(HtmlParsedGlobalDateTime),
     /// The processed value of a valid week string (HTML877d #weeks).
     Week(HtmlWeek),
     /// The processed value of a string of ASCII digits read as a positive year; unlike the authored
     /// form it accepts fewer than four digits.
     Year(HtmlYear),
-    /// The processed value of a valid duration string (HTML877d #durations). Its seconds keep every
-    /// authored fraction digit.
+    /// The result of the parse a duration string algorithm (HTML877d #durations). Unlike a valid
+    /// duration string, it accepts repeated or reordered unit components such as `1h1H`, lowercase
+    /// units, ASCII whitespace between components and a fraction of any length on seconds, and
+    /// the value keeps every digit.
     Duration(HtmlParsedDuration),
 }
 

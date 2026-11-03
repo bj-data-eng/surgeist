@@ -44,8 +44,9 @@ pub enum HtmlImageAttributeConformanceError {
     /// `src` has no code units left after stripping ASCII whitespace at both
     /// edges.
     EmptySource,
-    /// A dimension value is not a valid non-negative integer. The payload is the
-    /// syntax or representation failure of that value.
+    /// A dimension value is not a valid non-negative integer. The payload is always the syntax
+    /// failure of that value: a value too large to represent is still grammatical, so it is
+    /// reported as conforming and not as this error.
     CommonValue(HtmlValueFailure),
 }
 

@@ -327,7 +327,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     /// Supplies the `name` operand from the caller's original traversal. `None`
     /// is an established absence. Fails with `WrongField` if the match is for
     /// another field and with `NameAlreadySupplied` on a second supply. It must
-    /// precede `begin_value`.
+    /// precede `begin_value` and needs no earlier `admit_media`; only `admit_name` waits for it.
     pub fn supply_matched_name(
         &mut self,
         name: Option<HtmlMediaFieldMatch<'raw, A>>,

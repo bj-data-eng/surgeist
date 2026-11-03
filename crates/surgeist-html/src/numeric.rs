@@ -1766,16 +1766,16 @@ impl HtmlDimensionList {
 #[non_exhaustive]
 pub enum NumericParseError {
     /// The value does not match the HTML grammar the entry point implements: author mode rejects
-    /// what recovery would skip or truncate, and a value with no digits is always invalid ( HTML877d
+    /// what recovery would skip or truncate, and a value with no digits is always invalid (HTML877d
     /// #numbers).
     InvalidSyntax,
-    /// A minus sign precedes a nonzero value where a non-negative integer is required ( HTML877d
+    /// A minus sign precedes a nonzero value where a non-negative integer is required (HTML877d
     /// #non-negative-integers). `-0` is accepted as zero.
     Negative,
-    /// The value is grammatical but too large to convert to a finite binary64 number ( HTML877d
+    /// The value is grammatical but too large to convert to a finite binary64 number (HTML877d
     /// #floating-point-numbers), which differs from invalid syntax.
     FloatingPointOverflow,
-    /// A percentage, absolute or relative length is zero where a nonzero one is required ( HTML877d
+    /// A percentage, absolute or relative length is zero where a nonzero one is required (HTML877d
     /// #nonzero-percentages-and-lengths).
     ZeroDimension,
 }

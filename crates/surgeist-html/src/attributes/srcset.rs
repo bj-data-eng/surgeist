@@ -456,12 +456,16 @@ impl HtmlParsedImageCandidate {
         self.url_range
     }
 }
-/// A parse error that the standard's algorithm for parsing a srcset attribute reports ( HTML877d
-/// #parsing-a-srcset-attribute), plus one recovery rule for density overflow. The enum is `#[non_exhaustive]`.
+/// A parse error that the standard's algorithm for parsing a srcset attribute reports (HTML877d
+/// #parsing-a-srcset-attribute), plus one recovery rule for density overflow. The enum is
+/// `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetParseError {
-    /// More than one comma appears between candidates, so the splitting loop skips several commas.
+    /// The splitting loop that precedes a candidate collected at least one U+002C COMMA among the
+    /// ASCII whitespace it skips. Any collected comma is an error, so a single comma at the
+    /// start of the list (`,a`) or set apart from the previous candidate by whitespace triggers
+    /// it as well as several in a row.
     SkippedCommas,
     /// A candidate URL is followed by more than one trailing comma, all of which are removed.
     MultipleTrailingCommas,
@@ -528,8 +532,11 @@ impl HtmlSrcsetAuthorDiagnostic {
     pub fn range(&self) -> HtmlSrcsetRawRange {
         self.range
     }
-    /// The index of the candidate involved among all lexical candidates, including rejected ones,
-    /// or `None` for list-level and separator violations.
+    /// The index of the candidate involved among all lexical candidates, including rejected ones.
+    /// It is `None` for `EmptyList` and for a `MissingCandidate` that reports commas skipped
+    /// before a candidate or a separator that ends the list. It is `Some` for every other
+    /// violation, including the `MissingCandidate` for several trailing commas after a URL,
+    /// which carries the index that URL's candidate has.
     pub fn candidate_index(&self) -> Option<usize> {
         self.candidate
     }
@@ -633,8 +640,9 @@ impl HtmlSrcsetContext {
         }
     }
 }
-/// A requirement that surrounding attributes or elements place on a `srcset` or `imagesrcset` ( HTML877d
-/// #srcset-attributes). The enum is `#[non_exhaustive]`.
+/// A requirement that surrounding attributes or elements place on a `srcset` or `imagesrcset`
+/// (HTML877d #srcset-attributes for `img` and `source`, HTML877d #attr-link-imagesrcset and
+/// HTML877d #attr-link-imagesizes for `link`). The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetContextViolation {
@@ -646,7 +654,8 @@ pub enum HtmlSrcsetContextViolation {
     SourceSrcsetRequired,
     /// A `srcset` with width descriptors lacks a `sizes` attribute.
     SizesRequired,
-    /// A `sizes` attribute is present but not every candidate has a width descriptor.
+    /// A `sizes` attribute, or an `imagesizes` attribute on a `link`, is present but not every
+    /// candidate has a width descriptor.
     WidthDescriptorsRequiredForSizes,
     /// An `imagesrcset` with width descriptors lacks an `imagesizes` attribute.
     ImagesizesRequired,

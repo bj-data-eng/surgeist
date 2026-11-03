@@ -489,13 +489,14 @@ pub enum HtmlAutofillFieldCategory {
     Contact,
 }
 
-/// The author control group in HTML's defining autofill-field table.
+/// The author control group in HTML's defining autofill-field table. The table admits `textarea`
+/// and `select` elements in every group, so a group only limits which `input` states are admitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofillControlGroup {
     /// Admits `input` controls in the Hidden, Text and Search states.
     Text,
-    /// Admits `input` controls in the Hidden state, for text that keeps newlines. A Text or Search
-    /// `input` cannot hold newlines, so it is not admitted.
+    /// Admits `input` controls in the Hidden state only, for text that keeps newlines. A Text or
+    /// Search `input` cannot hold newlines, so it is not admitted.
     Multiline,
     /// Admits the `input` states of the Text group and the Password state.
     Password,
@@ -715,13 +716,14 @@ macro_rules! hint_type {
 }
 
 hint_type!(
-    /// The address mode token of an `autocomplete` value, which names whose address the field
-    /// expects. It is a typed hint and joins the scope.
+    /// The mode token of an `autocomplete` value, which says which kind of address or contact
+    /// information the user agent is to look at, shipping or billing. It is a typed hint and
+    /// joins the scope.
     HtmlAutocompleteMode,
     [
-        /// The `shipping` token: the field expects the address the purchase is shipped to.
+        /// The `shipping` token: the address or contact information is the shipping kind.
         Shipping => "shipping",
-        /// The `billing` token: the field expects the billing address of the purchase.
+        /// The `billing` token: the address or contact information is the billing kind.
         Billing => "billing"
     ]
 );
@@ -1119,8 +1121,8 @@ impl HtmlAutocompleteProcessed {
     pub fn field_identity(&self) -> HtmlAutofillFieldIdentity {
         self.field_identity
     }
-    /// Returns the autofill field name with the final token's exact case, or the canonical `on` or
-    /// `off` for a setting.
+    /// Returns the final token's exact spelling: the detail field, or the credential token
+    /// `webauthn` when one follows the detail field, or the canonical `on` or `off` for a setting.
     pub fn field_name(&self) -> &DocumentString {
         &self.field
     }

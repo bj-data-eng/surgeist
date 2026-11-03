@@ -188,8 +188,11 @@ impl HtmlInputImageCoordinate {
 /// alpha/colorspace attributes and the CSS used-color operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueSanitization {
-    /// A string-level rule that the borrowed cursor and `HtmlInputSanitization::retain_unit` can
-    /// evaluate on exact UTF-16 code units, with no further facts.
+    /// A string-level rule that `HtmlInputSanitizationCursor` evaluates on exact UTF-16 code
+    /// units. `Email` also needs whether the `multiple` attribute is present (`HtmlInputEmailMode`).
+    /// `HtmlInputSanitization::retain_unit` completes only `Preserve` and `StripCrLf`; the other
+    /// rules need trimming, comma processing or whole-value validation, which a per-unit
+    /// predicate cannot supply.
     String(HtmlInputSanitization),
     /// The Range sanitization, which needs the control's minimum, maximum, step and value content
     /// and an exact numeric producer. Nothing in this module can supply those facts.
@@ -305,8 +308,9 @@ pub enum HtmlInputTemporalFormat {
     Week,
     /// Keeps a valid time string and otherwise yields the empty string.
     Time,
-    /// Normalizes a valid local date and time string, replacing a space separator with `T`, and
-    /// otherwise yields the empty string.
+    /// Normalizes a valid local date and time string and otherwise yields the empty string.
+    /// Normalizing replaces a space separator with `T` and writes the time in its shortest form,
+    /// dropping zero seconds and trailing zero fraction digits.
     LocalDateTime,
 }
 impl HtmlInputTemporalFormat {

@@ -71,7 +71,8 @@ pub struct BestFiniteNumberCursor {
 }
 impl BestFiniteNumberCursor {
     /// Starts serializing `value`. `headers` describes the caller's empty output buffer and its
-    /// scratch buffers. A non-finite `value` or a nonempty output buffer is an `Integrity` error.
+    /// scratch buffers. A non-finite `value` is an `Overflow` error, checked before the buffer, and
+    /// a nonempty output buffer is an `Integrity` error.
     pub fn new(value: f64, headers: RangeNumericHeaders) -> Result<Self, RangeNumericError> {
         let raw = value.to_bits();
         let bits = raw & !(1u64 << 63);

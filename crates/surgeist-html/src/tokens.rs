@@ -81,7 +81,7 @@ pub enum HtmlTokenError {
         code_unit_offset: usize,
     },
     /// A comma-separated token candidate begins or ends with ASCII whitespace,
-    /// but a comma-separated token neither begins nor ends with it ( HTML877d
+    /// but a comma-separated token neither begins nor ends with it (HTML877d
     /// #comma-separated-tokens). Leading whitespace is checked first.
     CommaTokenBoundaryWhitespace {
         /// Zero-based UTF-16 code-unit offset of the offending boundary unit:

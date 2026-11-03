@@ -153,12 +153,13 @@ pub enum RangeNumericReply {
 #[non_exhaustive]
 pub enum RangeNumericError {
     /// The reply, headers or operands contradict the protocol: a reply that does not match the
-    /// pending request, a header whose length exceeds its capacity, an inconsistent length, or an
-    /// operand that is not finite.
+    /// pending request, a header whose length exceeds its capacity, an inconsistent length, or, for
+    /// the midpoint and lattice cursors, an operand that is not finite.
     Integrity,
     /// A length or count cannot be represented on this platform or exceeds the cursor's bound.
     Representation,
-    /// The value is finite in the source grammar but exceeds the finite binary64 range.
+    /// The value exceeds the finite binary64 range: a parsed decimal that rounds to infinity, or a
+    /// non-finite number given to the number serializer.
     Overflow,
     /// The decimal has no digits, so it does not match the HTML floating-point syntax.
     InvalidSyntax,

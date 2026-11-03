@@ -100,8 +100,10 @@ impl std::error::Error for HtmlTimeElementInterpretationError {
 /// The next operation's role; no borrowed temporal plan crosses this boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTimeElementInterpretationActionKind {
-    /// Recognizing which of the time element's alternatives the raw value matches. Its work is
-    /// proportional to the raw length, and it allocates nothing.
+    /// Recognizing which of the time element's alternatives the raw value matches, or, for a
+    /// duration, scanning its next component. Each attempt is charged `16 * length + 256`, where
+    /// `length` is the raw length for the value match and the unread remainder for a duration
+    /// component. It allocates nothing.
     Recognition,
     /// Building exact numeric digits from borrowed digits or by arithmetic. It is the only kind
     /// that allocates, and the caller supplies the limits for it.

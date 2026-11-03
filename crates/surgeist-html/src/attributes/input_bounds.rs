@@ -72,8 +72,8 @@ pub enum HtmlInputNumericAuthorState {
 /// Actual typed common evidence selected by input state, or by step's grammar.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlInputNumericCommonReport {
-    /// The floating-point number report, for Number and Range and for every
-    /// `step` value.
+    /// The floating-point number report, for Number and Range and for every `step` value except
+    /// the keyword `any`, which is recognized before any common report is made.
     FloatingPoint(HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>),
     /// The date report, for the Date state.
     Date(HtmlValueReport<HtmlDate, HtmlDate>),

@@ -384,8 +384,9 @@ pub enum HtmlRelOccurrenceSource {
 pub enum HtmlRelTokenApplicability {
     /// The token has an effect on this role.
     Allowed,
-    /// The token is a standard keyword the standard does not allow on this role, or is unknown and
-    /// resolved as having no effect. Authors must not use it.
+    /// The token is a standard keyword the standard does not allow on this role, an invalid
+    /// `shortcut`, or an unknown token that a registry resolved as having no effect. Authors must
+    /// not use it.
     NotAllowed,
     /// The token is the permitted `shortcut` that precedes `icon`; it has no effect of its own.
     ShortcutModifier,
@@ -422,7 +423,7 @@ impl HtmlRelOccurrence {
         self.start..self.end
     }
     /// The standard keyword this token denotes, including through a forbidden synonym, or `None`
-    /// when it is unknown, an invalid `shortcut`, or resolved as an extension.
+    /// when it is unknown, a `shortcut` (valid or invalid), or resolved as an extension.
     pub fn keyword(&self) -> Option<HtmlRelKeyword> {
         self.keyword
     }
@@ -505,8 +506,10 @@ pub enum HtmlRelLinks {
     /// The role is not `link`, no token has the `Hyperlink` effect and no unresolved unknown token
     /// exists. An `a` or `area` with an `href` is then a hyperlink by default.
     ImpliedHyperlink,
-    /// No token declares an effect and an unresolved unknown token exists, so a registered
-    /// extension might still create a link.
+    /// No token creates the link and an unresolved unknown token exists, so a registered extension
+    /// might still create it. On a `link` no token is allowed at all. On an `a`, `area` or `form`
+    /// no token has the hyperlink effect, though tokens with other effects, such as `nofollow`,
+    /// may be present.
     ExtensionEffectsUnchecked,
 }
 /// How the `alternate` keyword is used, which selects the meaning the standard gives it.

@@ -21,7 +21,8 @@ pub enum HtmlTokenDeclarationError {
         /// The zero-based index of the offending token among the attribute's tokens.
         token_index: usize,
     },
-    /// A `blocking` token is not the `render` keyword.
+    /// A `blocking` token is not exactly the lowercase `render` keyword. The author check is case
+    /// sensitive, so `RENDER` is refused here even though explicit render detection ignores case.
     InvalidBlockingToken {
         /// The zero-based index of the offending token among the attribute's tokens.
         token_index: usize,
