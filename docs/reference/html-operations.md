@@ -2906,7 +2906,7 @@ Unavailable evidence remains Missing or conditional rather than becoming a
 negative observation. Unknown extensions remain available for later definition;
 standard keyword recognition does not authorize an extension alias.
 
-The [native link owner](../../crates/surgeist-html-parser/src/construction/storage_allocation.rs) retains
+The [native link owner](../../crates/surgeist-html-parser/src/construction/payload_registry.rs) retains
 the actual creating-parser document separately from the current node document.
 Fresh construction and clone start with fresh flags. Removing an existing
 no-namespace `disabled` attribute establishes explicitly-enabled state; absent
