@@ -712,3 +712,6 @@ fn mixed_span_visible_explicit_zero_minimum_a_end_f64() {
 
 #[path = "../tracks_intrinsic/native_maximum_bound.rs"]
 mod native_maximum_bound;
+
+#[path = "../tracks_intrinsic/native_content_size_operation.rs"]
+mod native_content_size_operation;
