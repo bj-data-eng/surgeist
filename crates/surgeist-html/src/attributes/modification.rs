@@ -23,11 +23,15 @@ pub enum HtmlModificationTimestampAbsence {
 /// No host time zone is selected and a date is not converted to a moment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlModificationTimestamp<'a> {
+    /// The `datetime` attribute is absent.
     Missing,
+    /// The value recovered a Date, which is the timestamp.
     Date(&'a HtmlDate),
     /// Exact local components, UTC instant and explicit source offset.
     Global(&'a HtmlParsedGlobalDateTime),
+    /// The attribute is present but supplies no timestamp. The payload says why.
     NoTimestamp(HtmlModificationTimestampAbsence),
+    /// The rule does not apply to these names. The payload is the reason.
     Unapplied(HtmlAttributeApplicability),
 }
 
@@ -43,30 +47,43 @@ pub struct HtmlModificationDatetimeReport {
 }
 
 impl HtmlModificationDatetimeReport {
+    /// The exact element name, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.attribute.element()
     }
+    /// The exact supplied attribute name, prefix and value, if present.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.attribute.raw_attribute()
     }
+    /// The exact supplied raw value. `None` is an absent attribute; an empty
+    /// value is `Some`.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.attribute.raw()
     }
+    /// Whether the attribute is absent, empty or nonempty, independent of
+    /// validity.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
+    /// Whether the rule applies to these expanded names: only HTML `ins` and
+    /// `del` elements carry `datetime`.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }
+    /// The selected standard attribute, `datetime`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.attribute.attribute()
     }
+    /// The original index row identifiers that this defining rule covers.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.attribute.inventory_rows()
     }
+    /// The normative clause in the pinned edition that defines the attribute.
     pub fn source_clause(&self) -> &'static str {
         self.attribute.source_clause()
     }
+    /// The UTF-16 code units in the raw value that was admitted, or zero when
+    /// the attribute is absent.
     pub fn input_code_units(&self) -> usize {
         self.attribute.input_code_units()
     }

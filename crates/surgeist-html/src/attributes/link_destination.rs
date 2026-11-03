@@ -8,11 +8,49 @@ const FETCH_VOCABULARY: &str = concat!(
     "e9460d1b22ead1c6a72eeac37fb2ec0dc01aeb1d/#request-destination-script-like"
 );
 
+// Each variant is a Fetch request destination named by the `as` attribute. A
+// preload destination is Fetch, Font, Image, Script, Style or Track (HTML
+// §4.6.8.20). A module preload destination is Json, Style, Text or a script-like
+// destination: AudioWorklet, PaintWorklet, Script, ServiceWorker, SharedWorker or
+// Worker (HTML §4.6.8.12).
 keyword_type!(HtmlLinkDestination, As, [
-    AudioWorklet => "audioworklet", Fetch => "fetch", Font => "font",
-    Image => "image", Json => "json", PaintWorklet => "paintworklet",
-    Script => "script", ServiceWorker => "serviceworker", SharedWorker => "sharedworker",
-    Style => "style", Text => "text", Track => "track", Worker => "worker"
+    /// The `audioworklet` destination, for audio worklet modules. A script-like
+    /// destination, so it is a module preload destination only.
+    AudioWorklet => "audioworklet",
+    /// The `fetch` destination, for generic fetched resources. A preload
+    /// destination only.
+    Fetch => "fetch",
+    /// The `font` destination, for font resources. A preload destination only.
+    Font => "font",
+    /// The `image` destination, for images. A preload destination only.
+    Image => "image",
+    /// The `json` destination, for JSON modules. A module preload destination
+    /// only.
+    Json => "json",
+    /// The `paintworklet` destination, for paint worklet modules. A script-like
+    /// destination, so it is a module preload destination only.
+    PaintWorklet => "paintworklet",
+    /// The `script` destination, for classic or module scripts. Both a preload
+    /// and a module preload destination, and the destination that
+    /// `modulepreload` selects when `as` carries no state.
+    Script => "script",
+    /// The `serviceworker` destination, for service worker scripts. A
+    /// script-like destination, so it is a module preload destination only.
+    ServiceWorker => "serviceworker",
+    /// The `sharedworker` destination, for shared worker scripts. A
+    /// script-like destination, so it is a module preload destination only.
+    SharedWorker => "sharedworker",
+    /// The `style` destination, for style sheets. Both a preload and a module
+    /// preload destination.
+    Style => "style",
+    /// The `text` destination, for text modules. A module preload destination
+    /// only.
+    Text => "text",
+    /// The `track` destination, for text tracks. A preload destination only.
+    Track => "track",
+    /// The `worker` destination, for dedicated worker scripts. A script-like
+    /// destination, so it is a module preload destination only.
+    Worker => "worker"
 ]);
 
 impl HtmlLinkDestination {
@@ -61,18 +99,31 @@ enum_rule!(LINK_AS, HtmlLinkDestination, As,
 pub enum HtmlLinkDestinationContextAuthorState {
     /// This particular rel-dependent requirement does not apply.
     NotRequired,
+    /// The requirement applies and the link meets it.
     Conforming,
+    /// The requirement applies and the link violates it. The payload names the
+    /// violated requirement.
     Nonconforming(HtmlLinkDestinationContextError),
     /// Expanded names did not select the link as rule.
     Unapplied,
 }
 
+/// A requirement that ties the `as` attribute to the link's `rel` keywords.
+///
+/// The requirements come from the `preload` and `modulepreload` link types
+/// (HTML §4.6.8.20 and §4.6.8.12) and the `as` attribute of `link`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlLinkDestinationContextError {
+    /// `rel` contains `preload` but the link has no `as` attribute.
     PreloadRequiresAs,
+    /// `rel` contains `preload` and `as` is present but is not a preload
+    /// destination: its value is unrecognized or names another destination.
     PreloadRequiresPreloadDestination,
+    /// `rel` contains `modulepreload` and `as` is present but is not a module
+    /// preload destination. An absent `as` is allowed there.
     ModulePreloadRequiresModuleDestination,
+    /// `as` is present but `rel` contains neither `preload` nor `modulepreload`.
     AsRequiresPreloadOrModulePreloadRel,
 }
 
@@ -100,6 +151,7 @@ impl std::error::Error for HtmlLinkDestinationContextError {}
 /// Both missing and invalid as have no state; modulepreload then selects Script.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlLinkDestinationProcessing {
+    /// The rule does not apply to these names, so there is no link-type branch.
     Unapplied,
     /// Actual rel does not select this link-type branch.
     NotSelected,
@@ -135,15 +187,22 @@ pub struct HtmlLinkDestinationReport {
 }
 
 impl HtmlLinkDestinationReport {
+    /// The report for the `as` attribute itself: its exact raw value and the
+    /// recognized destination, if any.
     pub fn attribute(&self) -> &HtmlAttributeReport<HtmlLinkDestination> {
         &self.attribute
     }
+    /// The exact `rel` attribute that was consulted, or `None` when absent.
     pub fn rel_attribute(&self) -> Option<&Attribute> {
         self.rel.as_ref()
     }
+    /// Whether `as` satisfies the `preload` requirements. `NotRequired` when
+    /// `rel` lacks the `preload` keyword.
     pub fn preload_author(&self) -> HtmlLinkDestinationContextAuthorState {
         self.preload_author
     }
+    /// Whether `as` satisfies the `modulepreload` requirements. `NotRequired`
+    /// when `rel` lacks the keyword or `as` is absent.
     pub fn modulepreload_author(&self) -> HtmlLinkDestinationContextAuthorState {
         self.modulepreload_author
     }
@@ -151,24 +210,33 @@ impl HtmlLinkDestinationReport {
     pub fn other_rel_author(&self) -> HtmlLinkDestinationContextAuthorState {
         self.other_rel_author
     }
+    /// The destination decision of the `preload` link type. `NotSelected` when
+    /// `rel` lacks the keyword.
     pub fn preload_processing(&self) -> HtmlLinkDestinationProcessing {
         self.preload_processing
     }
+    /// The destination decision of the `modulepreload` link type. `NotSelected`
+    /// when `rel` lacks the keyword.
     pub fn modulepreload_processing(&self) -> HtmlLinkDestinationProcessing {
         self.modulepreload_processing
     }
+    /// The clause that defines the `rel` attribute of `link`.
     pub fn rel_source_clause(&self) -> &'static str {
         source!("attr-link-rel")
     }
+    /// The clause that defines a preload destination (HTML §4.6.8.20).
     pub fn preload_source_clause(&self) -> &'static str {
         source!("preload-destination")
     }
+    /// The clause that defines a module preload destination (HTML §4.6.8.12).
     pub fn modulepreload_source_clause(&self) -> &'static str {
         source!("module-preload-destination")
     }
+    /// The clause that defines the `modulepreload` link type (HTML §4.6.8.12).
     pub fn modulepreload_processing_source_clause(&self) -> &'static str {
         source!("link-type-modulepreload")
     }
+    /// The clause that defines the `preload` link type (HTML §4.6.8.20).
     pub fn preload_processing_source_clause(&self) -> &'static str {
         source!("link-type-preload")
     }

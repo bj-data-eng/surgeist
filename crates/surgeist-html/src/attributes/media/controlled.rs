@@ -1,9 +1,14 @@
 //! Actual-field selection and deferred local media report production.
 use super::*;
 use crate::bounded::ThemeColorNameCursor;
+/// The two no-namespace attributes that media interpretation matches by local
+/// name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaField {
+    /// The `media` attribute.
     Media,
+    /// The `name` attribute, which decides whether a `meta` element may carry
+    /// `media`.
     Name,
 }
 impl HtmlMediaField {
@@ -20,9 +25,12 @@ pub struct HtmlMediaFieldMatch<'raw, A: HtmlAttributeInput> {
     field: HtmlMediaField,
 }
 impl<'raw, A: HtmlAttributeInput> HtmlMediaFieldMatch<'raw, A> {
+    /// The matched candidate, borrowed from the caller's original attribute
+    /// collection.
     pub fn attribute(&self) -> &'raw A {
         self.attribute
     }
+    /// The field that the candidate's local name matched.
     pub fn field(&self) -> HtmlMediaField {
         self.field
     }
@@ -60,6 +68,12 @@ pub fn media_field_matches(
         Err(never) => match never {},
     }
 }
+/// A misuse of the media interpretation protocol, such as a step requested out
+/// of order, on a stopped or consumed owner, or before its input is ready.
+///
+/// The cause is private; ask about it with the `is_*` predicates. A refusal by
+/// the caller's own admission is not this error: it is
+/// `HtmlMediaActionError::Admission`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlMediaInterpretationError {
     kind: HtmlMediaInterpretationErrorKind,
@@ -164,9 +178,14 @@ impl std::fmt::Display for HtmlMediaInterpretationError {
 
 impl std::error::Error for HtmlMediaInterpretationError {}
 
+/// A failed controlled media action: the caller's refusal, or a protocol misuse.
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlMediaActionError<E> {
+    /// The caller's admission refused the action. The owner is stopped and
+    /// accepts no further step except `abort`.
     Admission(E),
+    /// The step was requested in the wrong state, or the work to charge cannot
+    /// be represented. See `HtmlMediaInterpretationError`.
     Protocol(HtmlMediaInterpretationError),
 }
 impl<E> From<HtmlMediaInterpretationError> for HtmlMediaActionError<E> {
@@ -199,6 +218,12 @@ enum Name<'raw, A: HtmlAttributeInput> {
     Present(&'raw A),
 }
 /// Retains actual operands and local decisions; semantic processing remains external.
+///
+/// The owner advances through admission, namespace, role, value and (for a
+/// `meta` element with a name) theme-color steps, each charged to the caller
+/// before it runs. A refused admission stops the owner. `assemble` produces the
+/// report and `try_finish` hands it out once. It is not `Clone`, so one owner
+/// cannot be advanced twice.
 pub struct HtmlMediaInterpretation<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
     element: &'raw N,
     raw: Option<&'raw A>,
@@ -262,6 +287,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             Ok(())
         }
     }
+    /// Admits the `media` operand once, before any other step. `admit` receives
+    /// the raw attribute, or `None` when it is absent. A refusal stops the owner.
     pub fn admit_media<E>(
         &mut self,
         admit: impl FnOnce(Option<&'raw A>) -> Result<(), E>,
@@ -295,6 +322,10 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<(), HtmlMediaInterpretationError> {
         self.supply(name, None)
     }
+    /// Supplies the `name` operand from the caller's original traversal. `None`
+    /// is an established absence. Fails with `WrongField` if the match is for
+    /// another field and with `NameAlreadySupplied` on a second supply. It must
+    /// precede `begin_value`.
     pub fn supply_matched_name(
         &mut self,
         name: Option<HtmlMediaFieldMatch<'raw, A>>,
@@ -308,6 +339,9 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         }
         self.supply(name.map(|m| m.attribute), Some(true))
     }
+    /// Admits the supplied `name` operand once, after `admit_media`. `admit`
+    /// receives the name attribute, or `None` when it is absent. Fails with
+    /// `WrongPhase` unless a name was supplied. A refusal stops the owner.
     pub fn admit_name<E>(
         &mut self,
         admit: impl FnOnce(Option<&'raw A>) -> Result<(), E>,
@@ -320,6 +354,11 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.name_admitted = true;
         Ok(())
     }
+    /// Compares the element's namespace URI with the HTML namespace after
+    /// `admit_media`. `admit` is charged one unit for the header and, when the
+    /// URI is as long as the HTML namespace, one more for each code unit
+    /// compared; comparison ends at the first difference. A refusal stops the
+    /// owner. Read the result with `is_html_namespace`.
     pub fn inspect_namespace<E>(
         &mut self,
         mut admit: impl FnMut(usize) -> Result<(), E>,
@@ -378,6 +417,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         ));
         Ok(())
     }
+    /// Whether the element is in the HTML namespace. `NotReady` before
+    /// `inspect_namespace`; `Stopped` after a stop.
     pub fn is_html_namespace(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -385,6 +426,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.html_namespace
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
+    /// The element role: `Some` for `link`, `style`, `source` or `meta`, `None`
+    /// for any other element. `NotReady` before `derive_role`.
     pub fn role(&self) -> Result<Option<HtmlMediaElementRole>, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -392,6 +435,9 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.role
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
+    /// Starts the value scan once the role is derived, and the name is admitted
+    /// if one was supplied. The scan borrows the raw value and allocates
+    /// nothing.
     pub fn begin_value(&mut self) -> Result<(), HtmlMediaInterpretationError> {
         self.require(
             self.role.is_some()
@@ -403,6 +449,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         ));
         Ok(())
     }
+    /// The next announced action of the value scan. `NotReady` before
+    /// `begin_value`.
     pub fn value_action(&self) -> Result<HtmlMediaCursorAction, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -412,6 +460,9 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             .map(HtmlMediaValueCursor::next_action)
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
+    /// Admits and performs the announced value action: one unit for inspecting a
+    /// code unit, four for the final classification. `WrongPhase` once the scan
+    /// is complete or the report is assembled. A refusal stops the owner.
     pub fn advance_value<E>(
         &mut self,
         admit: impl FnOnce(usize) -> Result<(), E>,
@@ -443,6 +494,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         cursor.advance();
         Ok(())
     }
+    /// The finished value classification. `NotReady` until `value_action`
+    /// reports `Complete`.
     pub fn value(&self) -> Result<HtmlMediaValue, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -452,6 +505,10 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             .and_then(HtmlMediaValueCursor::result)
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
+    /// Starts the comparison of the `name` with `theme-color`, charging one
+    /// unit. Allowed only for a `meta` role after the value is complete. Fails
+    /// with `NameNotSupplied` if no name was supplied (an absent name is fine
+    /// and never equals `theme-color`).
     pub fn begin_theme_color<E>(
         &mut self,
         admit: impl FnOnce(usize) -> Result<(), E>,
@@ -472,6 +529,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         ));
         Ok(())
     }
+    /// Whether the `theme-color` comparison has finished. `NotReady` before
+    /// `begin_theme_color`.
     pub fn theme_color_complete(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -481,6 +540,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             .map(ThemeColorNameCursor::is_complete)
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
+    /// Admits one unit and compares the next code unit of the name. `WrongPhase`
+    /// when not started, already complete, or the report is assembled.
     pub fn advance_theme_color<E>(
         &mut self,
         admit: impl FnOnce(usize) -> Result<(), E>,
@@ -507,6 +568,8 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         cursor.advance();
         Ok(())
     }
+    /// Whether the name is an ASCII case-insensitive match for `theme-color`.
+    /// `NotReady` until the comparison is complete.
     pub fn theme_color(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
             return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
@@ -556,6 +619,10 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             HtmlAttributeApplicability::Applicable
         }
     }
+    /// Admits the final report assembly and builds the report once the value is
+    /// complete. For an applicable `meta` with both `media` and a supplied name,
+    /// the theme-color comparison must be complete too. `try_finish` hands the
+    /// report out.
     pub fn assemble<E>(
         &mut self,
         admit: impl FnOnce() -> Result<(), E>,
@@ -595,12 +662,17 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         });
         Ok(())
     }
+    /// Stops the owner. Every later step fails with `Stopped`; `abort` still
+    /// returns the operands.
     pub fn stop(&mut self) {
         self.stopped = true;
     }
+    /// The `media` operand this owner was created with.
     pub fn raw(&self) -> Option<&'raw A> {
         self.raw
     }
+    /// Gives up the interpretation and returns its original operands, without
+    /// scanning, sharing or allocating.
     pub fn abort(self) -> HtmlMediaInputs<'raw, N, A> {
         HtmlMediaInputs {
             element: self.element,
@@ -612,6 +684,9 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             },
         }
     }
+    /// Takes the assembled report out of the slot, leaving it empty. Fails with
+    /// `Consumed` for an empty slot, `Stopped` for a stopped owner and
+    /// `NotReady` before `assemble`. A failure leaves the owner in the slot.
     pub fn try_finish(
         slot: &mut Option<Self>,
     ) -> Result<HtmlMediaAttributeReport, HtmlMediaInterpretationError> {
@@ -634,8 +709,11 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
 
 /// Original name operand supply, with absence distinct from non-selection.
 pub enum HtmlMediaNameSupply<'raw, A: HtmlAttributeInput> {
+    /// No name operand was supplied: the caller did not ask for meta placement.
     NotSupplied,
+    /// A name operand was supplied and the attribute is established absent.
     SuppliedAbsent,
+    /// The supplied name attribute.
     Present(&'raw A),
 }
 /// Operands recovered without scanning, sharing or allocation.
@@ -645,12 +723,15 @@ pub struct HtmlMediaInputs<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInpu
     name: HtmlMediaNameSupply<'raw, A>,
 }
 impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInputs<'raw, N, A> {
+    /// The element name operand.
     pub fn element(&self) -> &'raw N {
         self.element
     }
+    /// The `media` operand, or `None` when absent.
     pub fn raw(&self) -> Option<&'raw A> {
         self.raw
     }
+    /// The `name` operand supply.
     pub fn name(&self) -> &HtmlMediaNameSupply<'raw, A> {
         &self.name
     }

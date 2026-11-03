@@ -2,13 +2,23 @@
 use super::*;
 use crate::HtmlSpaceToken;
 
+/// Which of the three microdata token-list attributes is being read (HTML §5.2). The kind decides
+/// the attribute name and the nonemptiness and duplicate rules that apply.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenKind {
+    /// The `itemtype` attribute (HTML §5.2.2): the item types of an item. The standard requires at
+    /// least one token and no identical tokens.
     ItemType,
+    /// The `itemprop` attribute (HTML §5.2.3): the property names an element adds. The standard
+    /// requires at least one token and no identical tokens. Repeated tokens are skipped when
+    /// processing.
     ItemProp,
+    /// The `itemref` attribute (HTML §5.2.2): element IDs to crawl for additional properties. It
+    /// may be empty, but identical tokens are still forbidden.
     ItemRef,
 }
 impl HtmlMicrodataTokenKind {
+    /// The known attribute that this kind reads.
     pub fn attribute(self) -> KnownHtmlAttribute {
         match self {
             Self::ItemType => KnownHtmlAttribute::Itemtype,
@@ -26,19 +36,32 @@ pub struct HtmlMicrodataToken {
     dot_or_colon: bool,
 }
 impl HtmlMicrodataToken {
+    /// The offset of the token's first UTF-16 code unit in the raw value.
     pub fn start(&self) -> usize {
         self.start
     }
+    /// The offset one past the token's last UTF-16 code unit in the raw value. A token is never
+    /// empty, so `end` is greater than `start`.
     pub fn end(&self) -> usize {
         self.end
     }
+    /// The index, among the report's tokens, of the first earlier token with identical code units,
+    /// or `None` when this token is the first occurrence. Comparison is case-sensitive.
     pub fn duplicate_of(&self) -> Option<usize> {
         self.duplicate_of
     }
+    /// Whether the token contains U+002E FULL STOP or U+003A COLON, which the standard excludes
+    /// from non-URL property names (HTML §5.2.3). This is a fact about the code units, not a
+    /// verdict on the token.
     pub fn contains_dot_or_colon(&self) -> bool {
         self.dot_or_colon
     }
 }
+/// The tokens of one microdata attribute, split on ASCII whitespace, with the exact raw value they
+/// index.
+///
+/// An absent attribute has no raw value and no tokens. Reports are produced only by the interpreter
+/// and the controlled interpretation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataTokenReport {
     kind: HtmlMicrodataTokenKind,
@@ -46,12 +69,17 @@ pub struct HtmlMicrodataTokenReport {
     tokens: Vec<HtmlMicrodataToken>,
 }
 impl HtmlMicrodataTokenReport {
+    /// The attribute this report was read from.
     pub fn kind(&self) -> HtmlMicrodataTokenKind {
         self.kind
     }
+    /// The exact raw value, or `None` when the attribute was absent. Every token offset indexes
+    /// this value's UTF-16 code units.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.raw.as_ref()
     }
+    /// Every token in source order, duplicates included. A token that repeats an earlier one names
+    /// that earlier token through `duplicate_of`.
     pub fn tokens(&self) -> &[HtmlMicrodataToken] {
         &self.tokens
     }
@@ -60,11 +88,15 @@ impl HtmlMicrodataTokenReport {
     fn units(&self) -> &[u16] {
         self.raw.as_ref().map_or(&[], DocumentString::code_units)
     }
+    /// The UTF-16 code units of the token at `index`, or `None` when `index` is not a token index.
     pub fn token_units(&self, index: usize) -> Option<&[u16]> {
         self.tokens
             .get(index)
             .map(|t| &self.units()[t.start..t.end])
     }
+    /// The tokens that processing uses, in source order. For `itemprop` the standard keeps only the
+    /// first occurrence of each name (HTML §5.2.3), so repeated tokens are skipped. For `itemtype`
+    /// and `itemref` every token is yielded.
     pub fn processing_tokens(&self) -> impl Iterator<Item = &[u16]> {
         self.tokens
             .iter()
@@ -78,10 +110,13 @@ impl HtmlMicrodataTokenReport {
                 && self.tokens.iter().all(|t| t.duplicate_of.is_none()))
     }
 }
+/// Why a token list cannot be built from the given tokens. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlMicrodataTokenListError {
+    /// The kind requires at least one token (`itemtype` and `itemprop`) and none were given.
     Empty,
+    /// Two tokens were identical in code units; the payload names the duplicate.
     Duplicate(crate::HtmlDuplicateTokenError),
 }
 impl std::fmt::Display for HtmlMicrodataTokenListError {
@@ -112,6 +147,11 @@ pub struct HtmlMicrodataTokenList {
     tokens: crate::HtmlUnorderedTokenSet,
 }
 impl HtmlMicrodataTokenList {
+    /// Builds a list for `kind` from already-valid tokens.
+    ///
+    /// Returns [`HtmlMicrodataTokenListError::Empty`] when the kind is `ItemType` or `ItemProp` and
+    /// `tokens` is empty. Returns [`HtmlMicrodataTokenListError::Duplicate`] when two tokens have
+    /// identical code units; token comparison is case-sensitive.
     pub fn new(
         kind: HtmlMicrodataTokenKind,
         tokens: Vec<HtmlSpaceToken>,
@@ -292,7 +332,10 @@ impl std::error::Error for HtmlMicrodataTokenInterpretationError {}
 /// Execution preserves the caller's original admission error.
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenActionError<E> {
+    /// The caller's meter refused the work or reservation; the payload is the meter's own error,
+    /// unchanged.
     Admission(E),
+    /// The caller drove the interpretation in a way the protocol forbids.
     Protocol(HtmlMicrodataTokenInterpretationError),
 }
 impl<E> From<HtmlMicrodataTokenInterpretationError> for HtmlMicrodataTokenActionError<E> {
@@ -328,15 +371,19 @@ pub struct HtmlMicrodataTokenReservation<'a> {
     completed: bool,
 }
 impl HtmlMicrodataTokenReservation<'_> {
+    /// The number of tokens committed so far.
     pub fn len(&self) -> usize {
         self.values.len()
     }
+    /// Whether no token has been committed yet.
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
+    /// The capacity of the unpublished token vector, in tokens.
     pub fn capacity(&self) -> usize {
         self.values.capacity()
     }
+    /// The size in bytes of one token record, for charging the reservation.
     pub fn record_size(&self) -> usize {
         std::mem::size_of::<HtmlMicrodataToken>()
     }
@@ -365,23 +412,38 @@ impl HtmlMicrodataTokenReservation<'_> {
 
 /// Admission policy; HTML retains the data and does not own a work ledger.
 pub trait HtmlMicrodataTokenMeter {
+    /// The meter's refusal type, returned unchanged inside
+    /// [`HtmlMicrodataTokenActionError::Admission`].
     type Error;
+    /// Charges `units` of abstract work for the next step. Returning an error stops the
+    /// interpretation before the step runs.
     fn work(&mut self, units: usize) -> Result<(), Self::Error>;
+    /// Decides whether to admit the single-record reservation. Admitting it means calling
+    /// [`HtmlMicrodataTokenReservation::try_reserve`] exactly once; returning `Ok` without a
+    /// successful reservation is a protocol violation, and returning an error stops the
+    /// interpretation.
     fn reserve(
         &mut self,
         reservation: &mut HtmlMicrodataTokenReservation<'_>,
     ) -> Result<(), Self::Error>;
 }
 
+/// What the next action needs from the meter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenActionKind {
+    /// The step must be charged this many units of work before it runs.
     Work(usize),
+    /// The step stores one more token record and needs a reservation decision from the meter.
     Reserve,
 }
+/// The result of one executed action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenStep {
+    /// The interpretation advanced inside a token or between tokens; no token was added.
     Continue,
+    /// One more token record was committed to the unpublished vector.
     TokenCommitted,
+    /// The report is assembled; collect it with `try_finish`.
     Complete,
 }
 
@@ -439,12 +501,18 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             report: None,
         }
     }
+    /// Abandons the interpretation. Later calls to `next_action` and `try_finish` report the
+    /// stopped cause, and the partial tokens are never published.
     pub fn stop(&mut self) {
         self.phase = Phase::Stopped;
     }
+    /// Gives back the attribute kind and the raw operand, discarding any partial tokens.
     pub fn abort(self) -> (HtmlMicrodataTokenKind, Option<&'raw DocumentString>) {
         (self.kind, self.raw)
     }
+    /// Returns the next action, `None` when the report is ready, or the stopped cause after `stop`.
+    /// The returned action borrows the interpretation exclusively, so it cannot be replayed or
+    /// paired with another operand.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlMicrodataTokenAction<'_, 'raw>>, HtmlMicrodataTokenInterpretationError>
@@ -455,6 +523,10 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             _ => Ok(Some(HtmlMicrodataTokenAction { owner: self })),
         }
     }
+    /// Takes the finished report out of `slot`, leaving `None`.
+    ///
+    /// Returns the consumed cause when `slot` is already empty, the stopped cause after `stop`, and
+    /// the not-ready cause while actions remain. On every error the interpretation stays in `slot`.
     pub fn try_finish(
         slot: &mut Option<Self>,
     ) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataTokenInterpretationError> {
@@ -485,6 +557,7 @@ pub struct HtmlMicrodataTokenAction<'owner, 'raw> {
     owner: &'owner mut HtmlMicrodataTokenInterpretation<'raw>,
 }
 impl HtmlMicrodataTokenAction<'_, '_> {
+    /// What this action needs from the meter, decided by the interpretation's current phase.
     pub fn kind(&self) -> HtmlMicrodataTokenActionKind {
         use HtmlMicrodataTokenActionKind::{Reserve, Work};
         match self.owner.phase {
@@ -499,6 +572,12 @@ impl HtmlMicrodataTokenAction<'_, '_> {
             _ => Work(1),
         }
     }
+    /// Runs the action against `meter`.
+    ///
+    /// A meter refusal stops the interpretation and returns it as `Admission`. A meter that returns
+    /// `Ok` without a successful reservation yields a `Protocol` error carrying the
+    /// not-performed cause; if it had attempted the reservation, the interpretation also stops.
+    /// On success it returns the step taken.
     pub fn advance<M: HtmlMicrodataTokenMeter>(
         self,
         meter: &mut M,

@@ -21,17 +21,30 @@ pub enum HtmlImageAttributeAuthorState {
     Missing,
     /// Actual input state or source-parent evidence has not selected the rule.
     Unchecked,
+    /// The value meets the local author rule for its selected role.
     Conforming,
+    /// The value violates the local author rule. The payload names the rule.
     Nonconforming(HtmlImageAttributeConformanceError),
+    /// The rule does not apply to these names or this context.
     Unapplied,
 }
 
+/// The local author rule that an image string or dimension value violates.
+///
+/// The causes are the nonempty `alt` and `src` requirements of the Image Button
+/// state (HTML §4.10.5.1.19) and the dimension attribute grammar (HTML §4.8.17).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlImageAttributeConformanceError {
+    /// A required attribute is absent: `alt` or `src` of an Image Button.
     RequiredAttributeMissing,
+    /// `alt` is present but empty. Whitespace-only text is not empty here.
     EmptyAlt,
+    /// `src` has no code units left after stripping ASCII whitespace at both
+    /// edges.
     EmptySource,
+    /// A dimension value is not a valid non-negative integer. The payload is the
+    /// syntax or representation failure of that value.
     CommonValue(HtmlValueFailure),
 }
 
@@ -59,6 +72,8 @@ impl std::error::Error for HtmlImageAttributeConformanceError {
 pub enum HtmlImageExternalConformance {
     /// No attribute value is present for this selected requirement.
     NotRequired,
+    /// The requirement depends on external facts that this crate does not
+    /// evaluate, so conformance is neither confirmed nor refuted.
     Unchecked,
     /// Expanded names or actual context did not select the requirement.
     Unapplied,
@@ -75,10 +90,13 @@ pub struct HtmlInputImageAttributes {
     src: DocumentString,
 }
 
+/// The refusal to build `HtmlInputImageAttributes` from an invalid string.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlInputImageAttributeError {
+    /// The `alt` string is empty. An Image Button requires nonempty text.
     EmptyAlt,
+    /// The `src` string is empty after stripping ASCII whitespace at both edges.
     EmptySource,
 }
 impl fmt::Display for HtmlInputImageAttributeError {
@@ -120,9 +138,12 @@ impl HtmlInputImageAttributes {
         }
         Ok(Self { alt, src })
     }
+    /// The exact nonempty `alt` text, untrimmed.
     pub fn alt(&self) -> &DocumentString {
         &self.alt
     }
+    /// The exact `src` string, untrimmed and unresolved. Its ASCII-stripped
+    /// form is nonempty.
     pub fn src(&self) -> &DocumentString {
         &self.src
     }
@@ -150,6 +171,7 @@ impl HtmlInputImageStringReport {
     pub fn attribute(&self) -> &HtmlAttributeReport<()> {
         &self.attribute
     }
+    /// The local nonempty check of this string, for the role the report selected.
     pub fn author(&self) -> HtmlImageAttributeAuthorState {
         self.author
     }
@@ -192,9 +214,13 @@ pub struct HtmlInputImageAttributeReport {
     src: HtmlInputImageStringReport,
 }
 impl HtmlInputImageAttributeReport {
+    /// The report for the `alt` slot, which is present even when the attribute
+    /// is absent.
     pub fn alt(&self) -> &HtmlInputImageStringReport {
         &self.alt
     }
+    /// The report for the `src` slot, which is present even when the attribute
+    /// is absent.
     pub fn src(&self) -> &HtmlInputImageStringReport {
         &self.src
     }
@@ -204,8 +230,12 @@ impl HtmlInputImageAttributeReport {
 /// Captured callers must obtain this from their coherently qualified capture.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlImageSourceParent {
+    /// The `source` element has a parent with this expanded name. Only an HTML
+    /// `picture` parent makes the dimension attributes apply (HTML §4.8.17).
     Parent(QualifiedName),
+    /// The `source` element has no parent, which is established fact.
     NoParent,
+    /// The parent could not be established, so applicability is undecided.
     Unavailable,
 }
 
@@ -213,7 +243,10 @@ pub enum HtmlImageSourceParent {
 /// A fact for the wrong element family is DifferentContext, not a negative fact.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlEmbeddedDimensionContext {
+    /// The actual state of an `input` element. The dimensions apply only in the
+    /// Image Button state.
     InputState(HtmlInputType),
+    /// The parent evidence for a `source` element.
     SourceParent(HtmlImageSourceParent),
 }
 
@@ -238,6 +271,9 @@ impl HtmlEmbeddedDimensionReport {
     ) -> Option<&HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>> {
         self.common.as_ref()
     }
+    /// Whether the value is a valid non-negative integer, per HTML §4.8.17.
+    /// `Unchecked` means the input state or source parent has not selected the
+    /// rule; `Missing` means the optional attribute is absent.
     pub fn author(&self) -> HtmlImageAttributeAuthorState {
         self.author
     }
@@ -263,12 +299,16 @@ pub struct HtmlEmbeddedDimensionAttributeReport {
     context: Option<HtmlEmbeddedDimensionContext>,
 }
 impl HtmlEmbeddedDimensionAttributeReport {
+    /// The independent observation of the `width` attribute.
     pub fn width(&self) -> &HtmlEmbeddedDimensionReport {
         &self.width
     }
+    /// The independent observation of the `height` attribute.
     pub fn height(&self) -> &HtmlEmbeddedDimensionReport {
         &self.height
     }
+    /// The supplied role evidence, exactly as given. `None` when the element
+    /// needs none.
     pub fn context(&self) -> Option<&HtmlEmbeddedDimensionContext> {
         self.context.as_ref()
     }
@@ -288,27 +328,49 @@ const IMAGE_ELEMENTS: &[KnownHtmlElement] = &[
 /// never a missing capture relation. This classifier owns no tree or controller.
 #[derive(Clone, Copy)]
 pub enum EmbeddedDimensionParent {
+    /// The `source` element has an HTML parent of the known kind, or `None`
+    /// for a parent that is not a known HTML element.
     Parent(Option<KnownHtmlElement>),
+    /// The `source` element has no parent.
     NoParent,
+    /// The parent could not be established.
     Unavailable,
 }
+/// Role evidence for the embedded dimension attributes, as a copyable fact for
+/// `embedded_dimension_applicability`.
 #[derive(Clone, Copy)]
 pub enum EmbeddedDimensionContext {
+    /// The actual state of an `input` element.
     InputState(HtmlInputType),
+    /// The parent evidence of a `source` element.
     SourceParent(EmbeddedDimensionParent),
 }
+/// The kind of evidence that was missing when applicability is undecided.
 #[derive(Clone, Copy)]
 pub enum EmbeddedDimensionEvidenceNeeded {
+    /// The element is an `input` and its actual state was not supplied.
     InputState,
+    /// The element is a `source` and its parent was not established.
     SourceParent,
 }
+/// Whether `width` and `height` apply to an element, given the evidence.
 #[derive(Clone, Copy)]
 pub enum EmbeddedDimensionApplicability {
+    /// The element carries the dimension attributes in this context.
     Applicable,
+    /// The element is not among those that carry them, or the supplied
+    /// evidence rules them out (an `input` outside the Image Button state, or a
+    /// `source` outside a `picture`).
     Inapplicable,
+    /// The evidence needed to decide is missing. The payload names it.
     Unavailable(EmbeddedDimensionEvidenceNeeded),
+    /// The supplied evidence belongs to another element family.
     DifferentContext,
 }
+/// Decides whether `width` and `height` apply to `element`, from the HTML
+/// element list of HTML §4.8.17 and the role evidence in `context`.
+///
+/// `None` for `element` is a non-HTML or unknown element and is inapplicable.
 pub fn embedded_dimension_applicability(
     element: Option<KnownHtmlElement>,
     context: Option<EmbeddedDimensionContext>,

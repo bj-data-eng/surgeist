@@ -21,8 +21,11 @@ use crate::{HtmlAttributeInput, HtmlNameInput};
 /// Exact presence of the supplied attribute, independent of validity/defaults.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeObservation {
+    /// The attribute record is absent from the supplied attributes.
     Missing,
+    /// The attribute is present and its value has zero UTF-16 code units.
     PresentEmpty,
+    /// The attribute is present and its value has at least one UTF-16 code unit.
     PresentNonempty,
 }
 
@@ -30,9 +33,15 @@ pub enum HtmlAttributeObservation {
 /// Author-only restrictions do not suppress known intrinsic content presence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeApplicability {
+    /// The rule applies to the supplied element and attribute names, subject to any further context
+    /// fact the rule needs.
     Applicable,
+    /// The element is not in the HTML namespace, so no HTML content attribute rule applies to it.
     ForeignElementNamespace,
+    /// The element is in the HTML namespace but is not one the selected rule covers.
     DifferentElement,
+    /// The supplied attribute has a namespace or a local name other than the one the selected rule
+    /// defines.
     DifferentAttribute,
     /// Script kind and external/inline placement were not supplied.
     ScriptContextRequired,
@@ -52,19 +61,31 @@ pub enum HtmlAttributeApplicability {
 /// fetched or executed, and inline imports are not resolved by this model.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptAttributeContext {
+    /// A classic script whose source is fetched through its `src` attribute.
     ExternalClassic,
+    /// A classic script whose source is the element's inline text.
     InlineClassic,
+    /// A module script whose source is fetched through its `src` attribute.
     ExternalModule,
+    /// A module script whose source is the element's inline text.
     InlineModule,
+    /// An import map; the script attribute table lists none of the attributes this family
+    /// interprets for it.
     ImportMap,
+    /// A speculation rules block; the script attribute table lists none of the attributes this
+    /// family interprets for it.
     SpeculationRules,
+    /// A data block, a `script` whose type is neither a script nor a rules type; the script
+    /// attribute table lists none of the attributes this family interprets for it.
     DataBlock,
 }
 
 /// Explicit a/area href presence, without parsing or resolving the URL.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlHyperlinkAttributeContext {
+    /// The `a` or `area` element has an `href` attribute, even when its value is empty.
     WithHref,
+    /// The `a` or `area` element has no `href` attribute.
     WithoutHref,
 }
 
@@ -74,7 +95,9 @@ pub enum HtmlHyperlinkAttributeContext {
 /// interpreter does not infer registry, upgrade or form association from a name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCustomControlAttributeContext {
+    /// The custom element's definition makes it a form-associated custom element.
     FormAssociated,
+    /// The custom element is not form-associated, so form-control attributes have no rule here.
     NotFormAssociated,
 }
 
@@ -82,7 +105,9 @@ pub enum HtmlCustomControlAttributeContext {
 /// This is not inferred from the type keyword or used to submit a form.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlButtonSubmitterContext {
+    /// The button is a submit button as the `button` element section defines the term.
     SubmitButton,
+    /// The button is not a submit button, for example because its `type` is Reset Button or Button.
     NotSubmitButton,
 }
 
@@ -90,17 +115,28 @@ pub enum HtmlButtonSubmitterContext {
 /// An HTML a ancestor with href present qualifies even when href is empty.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageMapAttributeContext {
+    /// The `img` has an HTML `a` ancestor carrying an `href` attribute, which satisfies the `ismap`
+    /// requirement.
     AncestorAnchorWithHref,
+    /// No ancestor of the `img` is an HTML `a` element with an `href` attribute.
     NoAncestorAnchorWithHref,
+    /// The caller could not establish ancestor evidence, so the requirement is reported as
+    /// unavailable rather than failed.
     Unavailable,
 }
 
 /// Actual alt observation for img controls, without trimming its value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageControlsAttributeContext {
+    /// The `img` has no `alt` attribute.
     AltMissing,
+    /// The `img` has an `alt` attribute whose value is the empty string.
     AltEmpty,
+    /// The `img` has an `alt` attribute whose value has at least one code unit; whitespace-only
+    /// text counts as nonempty.
     AltNonempty,
+    /// The caller could not establish the `alt` observation, so the requirement is reported as
+    /// unavailable rather than failed.
     Unavailable,
 }
 
@@ -117,6 +153,8 @@ impl HtmlStylesheetLinkAttributeContext {
     pub fn rel(&self) -> Option<&DocumentString> {
         self.rel.as_ref()
     }
+    /// Returns whether the `rel` value contains the `stylesheet` token under the ASCII
+    /// case-insensitive comparison the Infra token split uses.
     pub fn contains_stylesheet(&self) -> bool {
         self.contains_stylesheet
     }
@@ -132,18 +170,30 @@ pub enum HtmlAttributeContextAuthorState {
     Unchecked,
     /// Supplied actual context evidence could not be established.
     Unavailable,
+    /// The context evidence was supplied and satisfies the selected requirement.
     Conforming,
+    /// The context evidence was supplied and violates the selected requirement; the payload names
+    /// which one.
     Nonconforming(HtmlAttributeContextConformanceError),
     /// The selected rule does not apply to these names or operation context.
     Unapplied,
 }
 
+/// A context-dependent author requirement that a present attribute violates.
+///
+/// Each variant names one requirement from the defining clause of the attribute. The value's own
+/// spelling is judged separately by [`HtmlAttributeConformanceError`]. The enum is
+/// `#[non_exhaustive]`: new requirements can be added without breaking a caller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAttributeContextConformanceError {
+    /// An `img` with `ismap` has no HTML `a` ancestor carrying an `href` attribute.
     ImageMapRequiresAncestorAnchorWithHref,
+    /// An `img` with `controls` has a missing or empty `alt` attribute.
     ImageControlsRequireNonemptyAlt,
+    /// A `link` with `disabled` does not have the `stylesheet` relationship in its `rel`.
     StylesheetDisabledRequiresStylesheetRel,
+    /// An `a` or `area` with `referrerpolicy` has no `href` attribute.
     ReferrerPolicyRequiresHref,
     /// The normative input-state bookkeeping prohibits authored presence.
     /// This report does not apply the source's separate ignore/effect rule.
@@ -225,19 +275,34 @@ enum SuppliedContext {
 /// Recognition of literal value syntax; a fallback never changes this result.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeRecognition {
+    /// The attribute is absent; nothing was recognised.
     Missing,
+    /// The attribute is present with an empty value that matched no keyword. For a Boolean
+    /// attribute this is the conforming empty spelling; for an enumerated attribute the rule's
+    /// empty value default, if any, applies.
     Empty,
     /// The selected text rule recognizes an exact nonempty value.
     NonemptyText,
     /// A command keyword begins with two exact ASCII hyphens.
     /// Independent author checks can still reject its boundary spelling.
     CustomCommand,
+    /// A keyword matched under the rule's comparison (ASCII case-insensitive for enumerated
+    /// attributes, exact for `ol` `type`).
     Keyword {
+        /// The keyword spelling from the rule's table that matched the value, which can be an alias
+        /// such as `off` for `autocapitalize`.
         matched: &'static str,
+        /// The conforming spelling of the state the matched keyword selects, which is what an
+        /// emitter writes back.
         canonical: &'static str,
     },
+    /// The value is nonempty and matched no keyword of the rule, or is not a Boolean attribute's
+    /// own name; the rule's invalid value default, if any, applies.
     Unrecognized,
+    /// A Boolean attribute's value equals the attribute's own name, compared ASCII
+    /// case-insensitively.
     BooleanName,
+    /// The selected rule does not apply to these names, so no value was examined.
     Unapplied,
 }
 
@@ -245,11 +310,18 @@ pub enum HtmlAttributeRecognition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAttributeConformanceError {
+    /// The value of an enumerated attribute matches no keyword and the attribute defines no empty
+    /// value default for it.
     UnrecognizedKeyword,
     /// A source-recognized keyword spelling is forbidden in authored markup.
     NonconformingKeyword,
+    /// A Boolean attribute's value is neither empty nor the attribute's name compared ASCII
+    /// case-insensitively.
     BooleanSpelling,
+    /// A `bdo` element has no `dir` attribute.
     BdoDirectionRequired,
+    /// A `bdo` element's `dir` attribute is present but is not in the `ltr` or `rtl` state, so
+    /// `auto` and invalid values are rejected.
     BdoDirectionMustBeLtrOrRtl,
     /// A specified details name must not be the empty string.
     DetailsNameMustNotBeEmpty,
@@ -259,6 +331,7 @@ pub enum HtmlAttributeConformanceError {
     DirnameMustNotBeEmpty,
     /// An authored input placeholder contains a forbidden CR or LF code unit.
     InputPlaceholderContainsNewline {
+        /// Zero-based UTF-16 code-unit offset of the first CR or LF in the value.
         code_unit_offset: usize,
     },
     /// An HTML id violates its local nonempty/no-ASCII-whitespace author rule.
@@ -328,9 +401,13 @@ impl std::error::Error for HtmlAttributeConformanceError {
 /// serialized qualified-name syntax or other tree/element author requirements.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAttributeAuthorState {
+    /// The attribute is absent, so no author value rule applies.
     Missing,
+    /// The value satisfies the rule's author requirements.
     Conforming,
+    /// The value violates an author requirement; the payload names it.
     Nonconforming(HtmlAttributeConformanceError),
+    /// The rule does not apply to these names, so no author judgment was made.
     Unapplied,
 }
 
@@ -366,15 +443,24 @@ impl<T> HtmlAttributeReport<T> {
     pub fn raw(&self) -> Option<&DocumentString> {
         self.raw_attribute.as_ref().map(HtmlAttributeInput::value)
     }
+    /// Returns the exact presence of the supplied attribute, before any validity or default is
+    /// considered.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.observation
     }
+    /// Returns whether the selected rule covers the supplied element and attribute names, which
+    /// decides whether the other results are meaningful.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.applicability
     }
+    /// Returns how the literal value matched the rule, before defaults. A defaulted intrinsic state
+    /// never changes this result.
     pub fn recognition(&self) -> HtmlAttributeRecognition {
         self.recognition
     }
+    /// Returns the value's author conformance for this rule, or `Unapplied` when the rule does not
+    /// cover the names. Context-dependent requirements are reported separately by
+    /// [`HtmlAttributeReport::context_author`].
     pub fn author(&self) -> HtmlAttributeAuthorState {
         self.author
     }
@@ -426,18 +512,21 @@ impl<T> HtmlAttributeReport<T> {
             _ => None,
         }
     }
+    /// Returns the supplied `ismap` ancestor evidence, if this report was built with it.
     pub fn image_map_context(&self) -> Option<HtmlImageMapAttributeContext> {
         match &self.supplied_context {
             SuppliedContext::ImageMap(context) => Some(*context),
             _ => None,
         }
     }
+    /// Returns the supplied `img` `alt` observation, if this report was built with it.
     pub fn image_controls_context(&self) -> Option<HtmlImageControlsAttributeContext> {
         match &self.supplied_context {
             SuppliedContext::ImageControls(context) => Some(*context),
             _ => None,
         }
     }
+    /// Returns the supplied `rel` stylesheet membership, if this report was built with it.
     pub fn stylesheet_link_context(&self) -> Option<&HtmlStylesheetLinkAttributeContext> {
         match &self.supplied_context {
             SuppliedContext::StylesheetLink(context) => Some(context),
@@ -814,10 +903,10 @@ const REFERRER_POLICY_VOCABULARY: &str = concat!(
 );
 
 macro_rules! keyword_type {
-    ($name:ident, $attribute:ident, [$($variant:ident => $keyword:literal),+ $(,)?]) => {
+    ($name:ident, $attribute:ident, [$($(#[$vmeta:meta])* $variant:ident => $keyword:literal),+ $(,)?]) => {
         #[doc = concat!("Conforming native keywords for the HTML ", stringify!($attribute), " attribute.")]
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum $name { $($variant),+ }
+        pub enum $name { $($(#[$vmeta])* $variant),+ }
         impl $name {
             /// Returns a conforming canonical author spelling.
             pub fn canonical_keyword(self) -> &'static str {
@@ -832,75 +921,407 @@ macro_rules! keyword_type {
 }
 
 macro_rules! default_state {
-    ($name:ident, $value:ident, $default:ident) => {
+    ($name:ident, $value:ident, $default:ident, $default_doc:literal) => {
         #[doc = concat!("Intrinsic ", stringify!($value), " state; the default is not a conforming author keyword.")]
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum $name {
+            #[doc = concat!("The value matched a conforming [`", stringify!($value), "`] keyword.")]
             Keyword($value),
+            #[doc = $default_doc]
             $default,
         }
     };
 }
 
-keyword_type!(HtmlDir, Dir, [Ltr => "ltr", Rtl => "rtl", Auto => "auto"]);
-default_state!(HtmlDirState, HtmlDir, Undefined);
-keyword_type!(HtmlContentEditable, Contenteditable, [True => "true", False => "false", PlaintextOnly => "plaintext-only"]);
-default_state!(HtmlContentEditableState, HtmlContentEditable, Inherit);
-keyword_type!(HtmlDraggable, Draggable, [True => "true", False => "false"]);
-default_state!(HtmlDraggableState, HtmlDraggable, Auto);
-keyword_type!(HtmlHidden, Hidden, [Hidden => "hidden", UntilFound => "until-found"]);
-default_state!(HtmlHiddenState, HtmlHidden, NotHidden);
-keyword_type!(HtmlPopover, Popover, [Auto => "auto", Manual => "manual", Hint => "hint"]);
-default_state!(HtmlPopoverState, HtmlPopover, NoPopover);
-keyword_type!(HtmlTranslate, Translate, [Yes => "yes", No => "no"]);
-default_state!(HtmlTranslateState, HtmlTranslate, Inherit);
-keyword_type!(HtmlSpellcheck, Spellcheck, [True => "true", False => "false"]);
-default_state!(HtmlSpellcheckState, HtmlSpellcheck, Default);
-keyword_type!(HtmlAutocapitalize, Autocapitalize, [None => "none", Sentences => "sentences", Words => "words", Characters => "characters"]);
-default_state!(HtmlAutocapitalizeState, HtmlAutocapitalize, Default);
-keyword_type!(HtmlAutocorrect, Autocorrect, [On => "on", Off => "off"]);
-keyword_type!(HtmlWritingSuggestions, Writingsuggestions, [True => "true", False => "false"]);
-default_state!(HtmlWritingSuggestionsState, HtmlWritingSuggestions, Default);
-keyword_type!(HtmlInputMode, Inputmode, [None => "none", Text => "text", Tel => "tel", Url => "url", Email => "email", Numeric => "numeric", Decimal => "decimal", Search => "search"]);
-keyword_type!(HtmlEnterKeyHint, Enterkeyhint, [Enter => "enter", Done => "done", Go => "go", Next => "next", Previous => "previous", Search => "search", Send => "send"]);
+keyword_type!(HtmlDir, Dir, [
+    /// The `ltr` keyword: the element's contents are explicitly directionally isolated
+    /// left-to-right text.
+    Ltr => "ltr",
+    /// The `rtl` keyword: the element's contents are explicitly directionally isolated
+    /// right-to-left text.
+    Rtl => "rtl",
+    /// The `auto` keyword: the contents are explicitly directionally isolated, with the direction
+    /// determined programmatically from them.
+    Auto => "auto",
+]);
+default_state!(
+    HtmlDirState,
+    HtmlDir,
+    Undefined,
+    "The Undefined state, which a missing or invalid value selects: the attribute states no direction."
+);
+keyword_type!(HtmlContentEditable, Contenteditable, [
+    /// The `true` keyword, also selected by an empty value: the element is editable.
+    True => "true",
+    /// The `false` keyword: the element is not editable.
+    False => "false",
+    /// The `plaintext-only` keyword: only the element's raw text content is editable and rich
+    /// formatting is disabled.
+    PlaintextOnly => "plaintext-only",
+]);
+default_state!(
+    HtmlContentEditableState,
+    HtmlContentEditable,
+    Inherit,
+    "The Inherit state, which a missing or invalid value selects: the element is editable or not according to its parent."
+);
+keyword_type!(HtmlDraggable, Draggable, [
+    /// The `true` keyword: the element is draggable.
+    True => "true",
+    /// The `false` keyword: the element is not draggable.
+    False => "false",
+]);
+default_state!(
+    HtmlDraggableState,
+    HtmlDraggable,
+    Auto,
+    "The Auto state, which a missing or invalid value selects: neither keyword was specified, so the default drag behavior applies."
+);
+keyword_type!(HtmlHidden, Hidden, [
+    /// The `hidden` keyword, also selected by an empty or invalid value: the element is not
+    /// rendered.
+    Hidden => "hidden",
+    /// The `until-found` keyword: the element is not rendered, but its content stays reachable to
+    /// find-in-page and fragment navigation.
+    UntilFound => "until-found",
+]);
+default_state!(
+    HtmlHiddenState,
+    HtmlHidden,
+    NotHidden,
+    "The Not Hidden state, which a missing value selects: the attribute is absent."
+);
+keyword_type!(HtmlPopover, Popover, [
+    /// The `auto` popover state, also selected by an empty value.
+    Auto => "auto",
+    /// The `manual` popover state, also selected by an invalid value.
+    Manual => "manual",
+    /// The `hint` popover state.
+    Hint => "hint",
+]);
+default_state!(
+    HtmlPopoverState,
+    HtmlPopover,
+    NoPopover,
+    "The No Popover state, which a missing value selects: the element is not a popover."
+);
+keyword_type!(HtmlTranslate, Translate, [
+    /// The `yes` keyword, also selected by an empty value: the element's translatable text is
+    /// translated when the page is localized.
+    Yes => "yes",
+    /// The `no` keyword: the element's translatable text is left unchanged when the page is
+    /// localized.
+    No => "no",
+]);
+default_state!(
+    HtmlTranslateState,
+    HtmlTranslate,
+    Inherit,
+    "The Inherit state, which a missing or invalid value selects: the translation mode comes from the parent."
+);
+keyword_type!(HtmlSpellcheck, Spellcheck, [
+    /// The `true` keyword, also selected by an empty value: spelling and grammar are checked.
+    True => "true",
+    /// The `false` keyword: spelling and grammar are not checked.
+    False => "false",
+]);
+default_state!(
+    HtmlSpellcheckState,
+    HtmlSpellcheck,
+    Default,
+    "The Default state, which a missing or invalid value selects: the element acts according to its default behavior, possibly based on its parent's own spellcheck state."
+);
+keyword_type!(HtmlAutocapitalize, Autocapitalize, [
+    /// No automatic capitalization. The `none` keyword and its alias `off` select it.
+    None => "none",
+    /// Capitalize the first letter of each sentence. The `sentences` keyword and its alias `on`
+    /// select it, and so does an invalid value.
+    Sentences => "sentences",
+    /// The `words` keyword: capitalize the first letter of each word.
+    Words => "words",
+    /// The `characters` keyword: capitalize every character.
+    Characters => "characters",
+]);
+default_state!(
+    HtmlAutocapitalizeState,
+    HtmlAutocapitalize,
+    Default,
+    "The Default state, which a missing value selects: the user agent's own autocapitalization behavior applies."
+);
+keyword_type!(HtmlAutocorrect, Autocorrect, [
+    /// The `on` keyword, also selected by a missing, empty or invalid value: automatic text
+    /// correction is enabled.
+    On => "on",
+    /// The `off` keyword: automatic text correction is disabled.
+    Off => "off",
+]);
+keyword_type!(HtmlWritingSuggestions, Writingsuggestions, [
+    /// The `true` keyword, also selected by an empty or invalid value: writing suggestions should
+    /// be offered on the element.
+    True => "true",
+    /// The `false` keyword: writing suggestions should not be offered on the element.
+    False => "false",
+]);
+default_state!(
+    HtmlWritingSuggestionsState,
+    HtmlWritingSuggestions,
+    Default,
+    "The Default state, which a missing value selects: the element acts according to its default behavior, possibly based on its parent's own state."
+);
+keyword_type!(HtmlInputMode, Inputmode, [
+    /// The `none` keyword: no virtual keyboard is wanted, for content that supplies its own input
+    /// method.
+    None => "none",
+    /// The `text` keyword: a standard text-entry keyboard for the user's locale.
+    Text => "text",
+    /// The `tel` keyword: a telephone-number keypad.
+    Tel => "tel",
+    /// The `url` keyword: a keyboard suited to entering a URL.
+    Url => "url",
+    /// The `email` keyword: a keyboard suited to entering an email address.
+    Email => "email",
+    /// The `numeric` keyword: a keyboard for entering digits.
+    Numeric => "numeric",
+    /// The `decimal` keyword: a keyboard for entering digits and a decimal separator.
+    Decimal => "decimal",
+    /// The `search` keyword: a keyboard suited to entering a search query.
+    Search => "search",
+]);
+keyword_type!(HtmlEnterKeyHint, Enterkeyhint, [
+    /// The `enter` keyword: label the enter key for inserting a new line.
+    Enter => "enter",
+    /// The `done` keyword: label the enter key as finishing input.
+    Done => "done",
+    /// The `go` keyword: label the enter key as going to the target the text names.
+    Go => "go",
+    /// The `next` keyword: label the enter key as moving to the next field.
+    Next => "next",
+    /// The `previous` keyword: label the enter key as moving to the previous field.
+    Previous => "previous",
+    /// The `search` keyword: label the enter key as running a search.
+    Search => "search",
+    /// The `send` keyword: label the enter key as sending the text.
+    Send => "send",
+]);
 
-keyword_type!(HtmlClosedBy, Closedby, [Any => "any", CloseRequest => "closerequest", None => "none"]);
-default_state!(HtmlClosedByState, HtmlClosedBy, Auto);
-keyword_type!(HtmlFormAutocomplete, Autocomplete, [On => "on", Off => "off"]);
-keyword_type!(HtmlDecoding, Decoding, [Sync => "sync", Async => "async", Auto => "auto"]);
-keyword_type!(HtmlLoading, Loading, [Lazy => "lazy", Eager => "eager"]);
-keyword_type!(HtmlPreload, Preload, [Auto => "auto", None => "none", Metadata => "metadata"]);
+keyword_type!(HtmlClosedBy, Closedby, [
+    /// The `any` keyword: close requests and clicks outside the dialog close it.
+    Any => "any",
+    /// The `closerequest` keyword: close requests close the dialog.
+    CloseRequest => "closerequest",
+    /// The `none` keyword: no user action closes the dialog automatically.
+    None => "none",
+]);
+default_state!(
+    HtmlClosedByState,
+    HtmlClosedBy,
+    Auto,
+    "The Auto state, which a missing or invalid value selects: behaves as Close Request when the dialog was shown modally and as None otherwise."
+);
+keyword_type!(HtmlFormAutocomplete, Autocomplete, [
+    /// The `on` keyword, also selected by a missing or invalid value: the user agent may prefill
+    /// the form's controls.
+    On => "on",
+    /// The `off` keyword: the user agent should not prefill the form's controls.
+    Off => "off",
+]);
+keyword_type!(HtmlDecoding, Decoding, [
+    /// The `sync` keyword: prefer decoding the image synchronously for atomic presentation with
+    /// other content.
+    Sync => "sync",
+    /// The `async` keyword: prefer decoding the image asynchronously to avoid delaying other
+    /// content.
+    Async => "async",
+    /// The `auto` keyword, also selected by a missing or invalid value: no decoding preference.
+    Auto => "auto",
+]);
+keyword_type!(HtmlLoading, Loading, [
+    /// The `lazy` keyword: the resource's fetch may be deferred until it is likely to be needed.
+    Lazy => "lazy",
+    /// The `eager` keyword, also selected by a missing or invalid value: fetch the resource
+    /// immediately.
+    Eager => "eager",
+]);
+keyword_type!(HtmlPreload, Preload, [
+    /// The `auto` keyword, also selected by an empty value: the user agent may download the whole
+    /// resource optimistically.
+    Auto => "auto",
+    /// The `none` keyword: the author does not expect the media resource to be needed, or wants to
+    /// minimize server traffic.
+    None => "none",
+    /// The `metadata` keyword: the author expects only metadata such as dimensions, track list and
+    /// duration to be needed.
+    Metadata => "metadata",
+]);
 
 /// Intrinsic preload hint, with no invented implementation-defined choice.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlPreloadState {
+    /// The value matched a conforming `preload` keyword.
     Keyword(HtmlPreload),
     /// HTML supplies no selected preload state for missing/invalid values.
     ImplementationDefined,
 }
 
-keyword_type!(HtmlFormMethod, Method, [Get => "get", Post => "post", Dialog => "dialog"]);
-keyword_type!(HtmlFormEnctype, Enctype, [UrlEncoded => "application/x-www-form-urlencoded", MultipartFormData => "multipart/form-data", PlainText => "text/plain"]);
-keyword_type!(HtmlTrackKind, Kind, [Subtitles => "subtitles", Captions => "captions", Descriptions => "descriptions", Chapters => "chapters", Metadata => "metadata"]);
-keyword_type!(HtmlOlType, Type, [Decimal => "1", LowerAlpha => "a", UpperAlpha => "A", LowerRoman => "i", UpperRoman => "I"]);
-keyword_type!(HtmlInputType, Type, [
-    Hidden => "hidden", Text => "text", Search => "search", Telephone => "tel",
-    Url => "url", Email => "email", Password => "password", Date => "date",
-    Month => "month", Week => "week", Time => "time", LocalDateTime => "datetime-local",
-    Number => "number", Range => "range", Color => "color", Checkbox => "checkbox",
-    Radio => "radio", File => "file", Submit => "submit", Image => "image",
-    Reset => "reset", Button => "button"
+keyword_type!(HtmlFormMethod, Method, [
+    /// The `get` keyword, also selected by a missing or invalid value: the form submits with the
+    /// HTTP GET method.
+    Get => "get",
+    /// The `post` keyword: the form submits with the HTTP POST method.
+    Post => "post",
+    /// The `dialog` keyword: the form closes the dialog that contains it, if any, and otherwise
+    /// does not submit.
+    Dialog => "dialog",
 ]);
-keyword_type!(HtmlButtonType, Type, [Submit => "submit", Reset => "reset", Button => "button"]);
-default_state!(HtmlButtonTypeState, HtmlButtonType, Auto);
-keyword_type!(HtmlCrossOrigin, Crossorigin, [Anonymous => "anonymous", UseCredentials => "use-credentials"]);
-default_state!(HtmlCrossOriginState, HtmlCrossOrigin, NoCors);
-keyword_type!(HtmlFetchPriority, Fetchpriority, [High => "high", Low => "low", Auto => "auto"]);
+keyword_type!(HtmlFormEnctype, Enctype, [
+    /// The `application/x-www-form-urlencoded` keyword, also selected by a missing or invalid
+    /// value.
+    UrlEncoded => "application/x-www-form-urlencoded",
+    /// The `multipart/form-data` keyword.
+    MultipartFormData => "multipart/form-data",
+    /// The `text/plain` keyword.
+    PlainText => "text/plain",
+]);
+keyword_type!(HtmlTrackKind, Kind, [
+    /// The `subtitles` keyword, also selected by a missing value: a transcription or translation of
+    /// the dialogue, overlaid on the video.
+    Subtitles => "subtitles",
+    /// The `captions` keyword: a transcription of the dialogue, sound effects and other relevant
+    /// audio, for when sound is unavailable.
+    Captions => "captions",
+    /// The `descriptions` keyword: textual descriptions of the video component, intended for audio
+    /// synthesis.
+    Descriptions => "descriptions",
+    /// The `chapters` keyword: chapter titles intended to aid navigation of the media resource.
+    Chapters => "chapters",
+    /// The `metadata` keyword, also selected by an invalid value: tracks intended for use from
+    /// script and not displayed by the user agent.
+    Metadata => "metadata",
+]);
+keyword_type!(HtmlOlType, Type, [
+    /// The `1` marker: decimal numbers. A missing or invalid value selects it.
+    Decimal => "1",
+    /// The `a` marker: the lowercase Latin alphabet.
+    LowerAlpha => "a",
+    /// The `A` marker: the uppercase Latin alphabet.
+    UpperAlpha => "A",
+    /// The `i` marker: lowercase Roman numerals.
+    LowerRoman => "i",
+    /// The `I` marker: uppercase Roman numerals.
+    UpperRoman => "I",
+]);
+keyword_type!(HtmlInputType, Type, [
+    /// The Hidden state (`hidden`): an arbitrary string with no control shown to the user.
+    Hidden => "hidden",
+    /// The Text state (`text`), also selected by a missing or invalid value: text with no line
+    /// breaks, shown as a text control.
+    Text => "text",
+    /// The Search state (`search`): text with no line breaks, shown as a search control.
+    Search => "search",
+    /// The Telephone state (`tel`): text with no line breaks, shown as a text control.
+    Telephone => "tel",
+    /// The URL state (`url`): an absolute URL, shown as a text control.
+    Url => "url",
+    /// The Email state (`email`): an email address or a list of email addresses, shown as a text
+    /// control.
+    Email => "email",
+    /// The Password state (`password`): text with no line breaks that is sensitive information,
+    /// shown as a text control that obscures data entry.
+    Password => "password",
+    /// The Date state (`date`): a date made of a year, month and day with no time zone.
+    Date => "date",
+    /// The Month state (`month`): a date made of a year and a month with no time zone.
+    Month => "month",
+    /// The Week state (`week`): a date made of a week-year number and a week number with no time
+    /// zone.
+    Week => "week",
+    /// The Time state (`time`): a time with no time zone, made of hour, minute, seconds and
+    /// fractional seconds.
+    Time => "time",
+    /// The Local Date and Time state (`datetime-local`): a date and time with no time zone.
+    LocalDateTime => "datetime-local",
+    /// The Number state (`number`): a numerical value, shown as a text control or spinner.
+    Number => "number",
+    /// The Range state (`range`): a numerical value whose exact value is not important, shown as a
+    /// slider or similar.
+    Range => "range",
+    /// The Color state (`color`): a color value, shown as a color picker.
+    Color => "color",
+    /// The Checkbox state (`checkbox`): a set of zero or more values from a predefined list, shown
+    /// as a checkbox.
+    Checkbox => "checkbox",
+    /// The Radio Button state (`radio`): an enumerated value, shown as a radio button.
+    Radio => "radio",
+    /// The File Upload state (`file`): zero or more files, each with a MIME type and optionally a
+    /// filename.
+    File => "file",
+    /// The Submit Button state (`submit`): an enumerated value that must be the last value selected
+    /// and that initiates form submission.
+    Submit => "submit",
+    /// The Image Button state (`image`): a coordinate relative to an image's size that initiates
+    /// form submission, shown as a clickable image or button.
+    Image => "image",
+    /// The Reset Button state (`reset`): a button with no data type that resets the form.
+    Reset => "reset",
+    /// The Button state (`button`): a button with no data type and no default behavior.
+    Button => "button",
+]);
+keyword_type!(HtmlButtonType, Type, [
+    /// The `submit` keyword: the Submit Button state, which submits the form.
+    Submit => "submit",
+    /// The `reset` keyword: the Reset Button state, which resets the form.
+    Reset => "reset",
+    /// The `button` keyword: the Button state, which has no default behavior.
+    Button => "button",
+]);
+default_state!(
+    HtmlButtonTypeState,
+    HtmlButtonType,
+    Auto,
+    "The Auto state, which a missing or invalid value selects: the button is a submit button only when it has neither a `command` nor a `commandfor` attribute and its parent is not a `select` element."
+);
+keyword_type!(HtmlCrossOrigin, Crossorigin, [
+    /// The `anonymous` keyword, also selected by an empty or invalid value: the fetch uses CORS
+    /// mode with the same-origin credentials mode.
+    Anonymous => "anonymous",
+    /// The `use-credentials` keyword: the fetch uses CORS mode with the include credentials mode.
+    UseCredentials => "use-credentials",
+]);
+default_state!(
+    HtmlCrossOriginState,
+    HtmlCrossOrigin,
+    NoCors,
+    "The No CORS state, which a missing value selects: the attribute does not request a CORS fetch."
+);
+keyword_type!(HtmlFetchPriority, Fetchpriority, [
+    /// The `high` keyword: fetch the resource at a higher priority than its default.
+    High => "high",
+    /// The `low` keyword: fetch the resource at a lower priority than its default.
+    Low => "low",
+    /// The `auto` keyword, also selected by a missing or invalid value: no preference among
+    /// fetches.
+    Auto => "auto",
+]);
 keyword_type!(HtmlReferrerPolicy, Referrerpolicy, [
-    Empty => "", NoReferrer => "no-referrer", NoReferrerWhenDowngrade => "no-referrer-when-downgrade",
-    SameOrigin => "same-origin", Origin => "origin", StrictOrigin => "strict-origin",
+    /// The empty string: no policy is set, so the fallback policy applies. A missing or invalid
+    /// value selects it.
+    Empty => "",
+    /// The `no-referrer` policy.
+    NoReferrer => "no-referrer",
+    /// The `no-referrer-when-downgrade` policy.
+    NoReferrerWhenDowngrade => "no-referrer-when-downgrade",
+    /// The `same-origin` policy.
+    SameOrigin => "same-origin",
+    /// The `origin` policy.
+    Origin => "origin",
+    /// The `strict-origin` policy.
+    StrictOrigin => "strict-origin",
+    /// The `origin-when-cross-origin` policy.
     OriginWhenCrossOrigin => "origin-when-cross-origin",
-    StrictOriginWhenCrossOrigin => "strict-origin-when-cross-origin", UnsafeUrl => "unsafe-url"
+    /// The `strict-origin-when-cross-origin` policy.
+    StrictOriginWhenCrossOrigin => "strict-origin-when-cross-origin",
+    /// The `unsafe-url` policy.
+    UnsafeUrl => "unsafe-url",
 ]);
 
 impl HtmlShadowRootMode {
@@ -1142,26 +1563,45 @@ const OL_TYPE: EnumRule<HtmlOlType> = EnumRule {
 /// heading computation or a created shadow root.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlBooleanAttribute {
+    /// The global `autofocus` attribute.
     Autofocus,
+    /// The global `inert` attribute.
     Inert,
+    /// The global `itemscope` attribute that creates a microdata item.
     Itemscope,
+    /// The global `headingreset` attribute.
     HeadingReset,
+    /// The `template` `shadowrootclonable` attribute.
     ShadowRootClonable,
+    /// The `template` `shadowrootcustomelementregistry` attribute.
     ShadowRootCustomElementRegistry,
+    /// The `template` `shadowrootdelegatesfocus` attribute.
     ShadowRootDelegatesFocus,
+    /// The `template` `shadowrootserializable` attribute.
     ShadowRootSerializable,
+    /// The `iframe` `allowfullscreen` attribute.
     AllowFullscreen,
+    /// The `audio` and `video` `autoplay` attribute.
     Autoplay,
     /// The audio/video controls rule; this does not select img's controls rule.
     MediaControls,
+    /// The `track` `default` attribute.
     TrackDefault,
+    /// The `audio` and `video` `loop` attribute.
     Loop,
+    /// The `audio` and `video` `muted` attribute.
     Muted,
+    /// The `form` `novalidate` attribute.
     Novalidate,
+    /// The `details` `open` attribute.
     DetailsOpen,
+    /// The `dialog` `open` attribute.
     DialogOpen,
+    /// The `video` `playsinline` attribute.
     PlaysInline,
+    /// The `ol` `reversed` attribute.
     Reversed,
+    /// The `option` `selected` attribute.
     Selected,
     /// Local disabled content presence, with defining source chosen by context.
     /// This does not compute inherited or actual disabledness.
@@ -1170,14 +1610,19 @@ pub enum HtmlBooleanAttribute {
     Alpha,
     /// Default checkedness content presence, not current checkedness.
     Checked,
+    /// The `multiple` attribute of `input` in the Email or File state and of `select`.
     Multiple,
+    /// The `readonly` attribute of editable `input` states and of `textarea`.
     Readonly,
+    /// The `required` attribute of `input`, `select` and `textarea`.
     Required,
     /// Content presence on source-qualified submitters, not no-validate state.
     Formnovalidate,
     /// Script content presence, not scheduling, force-async or execution state.
     Async,
+    /// The external classic `script` `defer` attribute.
     Defer,
+    /// The classic `script` `nomodule` attribute.
     Nomodule,
     /// img controls content presence, independent of the alt author constraint.
     ImageControls,
@@ -2410,15 +2855,23 @@ pub(crate) mod bounded_rules {
         input_code_units.checked_mul(8)?.checked_add(13)
     }
 
+    /// The recognition and intrinsic state of one `writingsuggestions` value, without a name or
+    /// attribute record.
+    ///
+    /// The bounded front door returns it after admitting the value under the caller's work
+    /// accounting.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct WritingSuggestionsProcessing {
         pub(crate) recognition: HtmlAttributeRecognition,
         pub(crate) intrinsic: Option<HtmlWritingSuggestionsState>,
     }
     impl WritingSuggestionsProcessing {
+        /// Returns how the literal value matched the `true` and `false` keywords, before defaults.
         pub const fn recognition(&self) -> HtmlAttributeRecognition {
             self.recognition
         }
+        /// Returns the selected intrinsic state, which is never absent for this attribute because
+        /// every value has a default.
         pub const fn intrinsic(&self) -> Option<HtmlWritingSuggestionsState> {
             self.intrinsic
         }

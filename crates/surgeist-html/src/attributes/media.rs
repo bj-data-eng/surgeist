@@ -3,11 +3,20 @@ use super::*;
 pub(crate) mod controlled;
 use crate::{HtmlMediaCursorAction, HtmlMediaValue, HtmlMediaValueCursor, HtmlMetaMediaPlacement};
 
+/// The kind of HTML element whose `media` attribute is interpreted.
+///
+/// Only these four elements carry a `media` attribute; any other element is
+/// `DifferentElement` and has no role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaElementRole {
+    /// A `link` element.
     Link,
+    /// A `style` element.
     Style,
+    /// A `source` element.
     Source,
+    /// A `meta` element, whose `media` attribute is only allowed when its
+    /// `name` is `theme-color` (HTML §4.2.5).
     Meta,
 }
 impl HtmlMediaElementRole {
@@ -21,11 +30,16 @@ impl HtmlMediaElementRole {
         }
     }
 }
+/// Whether a `meta` element's `media` attribute is allowed by its `name`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaPlacementObservation {
+    /// The placement rule was not selected: the attribute rule is unapplied or
+    /// the element is not a `meta`.
     Unapplied,
     /// The actual meta name field was not supplied.
     Unchecked,
+    /// The `media` attribute was checked against the `name` field. The payload
+    /// is the verdict; an absent `media` attribute is `NotSpecified`.
     Known(HtmlMetaMediaPlacement),
 }
 /// Exact original fields and independent HTML observations. CSS is unchecked.
@@ -39,21 +53,32 @@ pub struct HtmlMediaAttributeReport {
     placement: HtmlMediaPlacementObservation,
 }
 impl HtmlMediaAttributeReport {
+    /// The exact supplied `media` attribute, or `None` when it is absent.
     pub fn raw(&self) -> Option<&Attribute> {
         self.raw.as_ref()
     }
+    /// The exact supplied `name` attribute of a `meta` element. `None` when no
+    /// name was supplied or the name is established absent.
     pub fn name_attribute(&self) -> Option<&Attribute> {
         self.name.as_ref()
     }
+    /// Whether the rule applies to these expanded names and this context. A
+    /// foreign namespace, another attribute or element, or a name supplied for
+    /// a non-`meta` element makes it not applicable.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.applicability
     }
+    /// The element role, or `None` when the element is none of the four that
+    /// carry `media`.
     pub fn role(&self) -> Option<HtmlMediaElementRole> {
         self.role
     }
+    /// The presence and content classification of the raw value. This is not a
+    /// CSS media query parse.
     pub fn value(&self) -> HtmlMediaValue {
         self.value
     }
+    /// Whether a `meta` element's `media` attribute is allowed by its `name`.
     pub fn meta_placement(&self) -> HtmlMediaPlacementObservation {
         self.placement
     }

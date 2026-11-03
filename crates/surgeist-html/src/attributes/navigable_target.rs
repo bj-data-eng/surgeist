@@ -8,12 +8,15 @@ use super::*;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlNavigableTargetError {
+    /// The name has no code units. A navigable target name needs at least one.
     Empty,
     /// Names beginning with underscore are reserved for special keywords.
     ReservedLeadingUnderscore,
     /// The first TAB/LF/CR and first less-than unit are both present.
     TabOrNewlineWithLessThan {
+        /// UTF-16 offset of the first TAB, LF or CR code unit.
         tab_or_newline_code_unit_offset: usize,
+        /// UTF-16 offset of the first U+003C (`<`) code unit.
         less_than_code_unit_offset: usize,
     },
 }
@@ -49,6 +52,9 @@ pub struct HtmlNavigableTargetName {
 }
 
 impl HtmlNavigableTargetName {
+    /// Checks one authored name and keeps its exact code units. Fails with the
+    /// first reached violation: empty, leading underscore, then the combination
+    /// of a TAB, LF or CR with a `<`.
     pub fn new(value: impl Into<DocumentString>) -> Result<Self, HtmlNavigableTargetError> {
         let value = value.into();
         validate_name(&value)?;
@@ -65,9 +71,17 @@ impl HtmlNavigableTargetName {
 /// These do not choose a target or establish navigation permissions.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlNavigableTargetKeyword {
+    /// The `_blank` keyword. The rules for choosing a navigable give it its
+    /// meaning; this type only spells it.
     Blank,
+    /// The `_self` keyword. The rules for choosing a navigable give it its
+    /// meaning; this type only spells it.
     SelfTarget,
+    /// The `_parent` keyword. The rules for choosing a navigable give it its
+    /// meaning; this type only spells it.
     Parent,
+    /// The `_top` keyword. The rules for choosing a navigable give it its
+    /// meaning; this type only spells it.
     Top,
 }
 
@@ -91,7 +105,9 @@ impl HtmlNavigableTargetKeyword {
 /// Iframe/object name authoring must use the name-only type instead.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlNavigableTarget {
+    /// A checked local name.
     Name(HtmlNavigableTargetName),
+    /// One of the four reserved keywords.
     Keyword(HtmlNavigableTargetKeyword),
 }
 
@@ -112,6 +128,7 @@ pub enum HtmlNavigableTargetAttribute {
     HyperlinkTarget,
     /// base target; actual placement before hyperlinks remains unchecked.
     BaseTarget,
+    /// form target; actual form placement and submission are unchecked.
     FormTarget,
     /// button/input formtarget; actual submitter/input-state eligibility is unchecked.
     SubmitterFormtarget,
@@ -189,6 +206,8 @@ pub struct TargetRecovery {
     angle: Option<usize>,
 }
 impl TargetRecovery {
+    /// Records one UTF-16 code unit at `offset`. Only the first TAB, LF or CR and
+    /// the first `<` are kept; later units never replace them.
     pub fn unit(&mut self, offset: usize, unit: u16) {
         if matches!(unit, 9 | 10 | 13) && self.newline.is_none() {
             self.newline = Some(offset);
@@ -197,6 +216,8 @@ impl TargetRecovery {
             self.angle = Some(offset);
         }
     }
+    /// The offsets of the first TAB, LF or CR and of the first `<`, in that
+    /// order, once both have been seen; otherwise `None`.
     pub fn dangerous(&self) -> Option<(usize, usize)> {
         self.newline.zip(self.angle)
     }

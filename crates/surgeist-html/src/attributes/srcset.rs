@@ -35,15 +35,21 @@ impl HtmlSrcsetUrlToken {
         }
         Ok(Self { value })
     }
+    /// The exact token text in UTF-16 code units.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
 }
+/// Why text cannot be a srcset image candidate URL token. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetUrlTokenError {
+    /// The text is empty, but the standard requires a nonempty URL.
     Empty,
+    /// The text contains an ASCII whitespace code unit, which would end the token.
     AsciiWhitespace,
+    /// The text starts or ends with U+002C COMMA, which the standard forbids for candidate URLs
+    /// (HTML §4.8.4.2.1).
     EdgeComma,
 }
 impl fmt::Display for HtmlSrcsetUrlTokenError {
@@ -63,6 +69,9 @@ pub struct HtmlSrcsetWidth {
     value: HtmlNonNegativeInteger,
 }
 impl HtmlSrcsetWidth {
+    /// Accepts a width greater than zero.
+    ///
+    /// Returns [`HtmlSrcsetWidthError`] when `value` is zero.
     pub fn new(value: HtmlNonNegativeInteger) -> Result<Self, HtmlSrcsetWidthError> {
         if value.is_zero() {
             Err(HtmlSrcsetWidthError)
@@ -70,10 +79,12 @@ impl HtmlSrcsetWidth {
             Ok(Self { value })
         }
     }
+    /// The exact width, always greater than zero.
     pub fn value(&self) -> &HtmlNonNegativeInteger {
         &self.value
     }
 }
+/// A width descriptor must be greater than zero (HTML §4.8.4.2.1), and zero was supplied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetWidthError;
 impl fmt::Display for HtmlSrcsetWidthError {
@@ -108,6 +119,7 @@ impl HtmlSrcsetDensity {
         }
         Ok(Self { syntax, key })
     }
+    /// The exact decimal spelling that was checked, in UTF-16 code units.
     pub fn syntax(&self) -> &DocumentString {
         &self.syntax
     }
@@ -128,11 +140,16 @@ impl TryFrom<HtmlFloatingPointNumber> for HtmlSrcsetDensity {
         Self::from_decimal_syntax(value.to_plain_decimal_string())
     }
 }
+/// Why text cannot be a srcset pixel density. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetDensityError {
+    /// The text is not a valid floating-point number.
     InvalidSyntax,
+    /// The text is a valid number that is not greater than zero.
     Nonpositive,
+    /// The exact decimal key of the text exceeds the checked representation bounds on this
+    /// platform.
     RepresentationExhausted,
 }
 impl fmt::Display for HtmlSrcsetDensityError {
@@ -157,24 +174,33 @@ impl fmt::Display for HtmlSrcsetDensityProjectionError {
 }
 impl Error for HtmlSrcsetDensityProjectionError {}
 
+/// The optional descriptor of one image candidate string (HTML §4.8.4.2.1).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetDescriptor {
+    /// No descriptor is written. For uniqueness checks the standard treats this as a `1x` density.
     Unspecified,
+    /// A width descriptor, written as a positive integer followed by `w`.
     Width(HtmlSrcsetWidth),
+    /// A pixel density descriptor, written as a positive number followed by `x`.
     Density(HtmlSrcsetDensity),
 }
+/// One image candidate: a URL token and its descriptor. Construction does not check the list-level
+/// rules, which [`HtmlSrcsetValue::new`] enforces.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetCandidate {
     url: HtmlSrcsetUrlToken,
     descriptor: HtmlSrcsetDescriptor,
 }
 impl HtmlSrcsetCandidate {
+    /// Pairs a URL token with a descriptor.
     pub fn new(url: HtmlSrcsetUrlToken, descriptor: HtmlSrcsetDescriptor) -> Self {
         Self { url, descriptor }
     }
+    /// The candidate's URL token.
     pub fn url(&self) -> &HtmlSrcsetUrlToken {
         &self.url
     }
+    /// The candidate's descriptor.
     pub fn descriptor(&self) -> &HtmlSrcsetDescriptor {
         &self.descriptor
     }
@@ -184,15 +210,36 @@ impl HtmlSrcsetCandidate {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetAuthorViolation {
+    /// The list has no image candidate strings, but a present `srcset` must have at least one.
     EmptyList,
+    /// A comma appears without an image candidate string on one side of it.
     MissingCandidate,
+    /// The URL part of a candidate is not a valid URL token.
     InvalidUrlToken,
+    /// A descriptor is neither a valid width (`w`) nor a valid density (`x`) descriptor.
     InvalidDescriptor,
+    /// A width or density descriptor is valid in form but is zero or negative.
     NonpositiveDescriptor,
+    /// A candidate carries more than one descriptor.
     MultipleDescriptors,
+    /// A candidate uses the `h` height descriptor, which the standard reserves and does not accept.
     FutureHeightDescriptor,
-    DuplicateWidth { first: usize, duplicate: usize },
-    DuplicateDensity { first: usize, duplicate: usize },
+    /// Two candidates have the same width descriptor value.
+    DuplicateWidth {
+        /// The index of the earlier candidate with this width.
+        first: usize,
+        /// The index of the later candidate that repeats it.
+        duplicate: usize,
+    },
+    /// Two candidates have the same density; a candidate without a descriptor counts as `1x`.
+    DuplicateDensity {
+        /// The index of the earlier candidate with this density.
+        first: usize,
+        /// The index of the later candidate that repeats it.
+        duplicate: usize,
+    },
+    /// Some candidates have a width descriptor and others do not, but the standard requires all or
+    /// none.
     MixedWidthDescriptors,
 }
 impl fmt::Display for HtmlSrcsetAuthorViolation {
@@ -240,6 +287,10 @@ pub struct HtmlSrcsetValue {
     candidates: Vec<HtmlSrcsetCandidate>,
 }
 impl HtmlSrcsetValue {
+    /// Builds a list from candidates.
+    ///
+    /// Returns the first author violation: `EmptyList` for no candidates, otherwise the earliest
+    /// violation of the standard's uniqueness and width-descriptor rules.
     pub fn new(
         candidates: impl Into<Vec<HtmlSrcsetCandidate>>,
     ) -> Result<Self, HtmlSrcsetAuthorViolation> {
@@ -252,6 +303,7 @@ impl HtmlSrcsetValue {
         }
         Ok(Self { candidates })
     }
+    /// The candidates in authored order.
     pub fn candidates(&self) -> &[HtmlSrcsetCandidate] {
         &self.candidates
     }
@@ -259,6 +311,8 @@ impl HtmlSrcsetValue {
     pub fn external_conformance(&self) -> HtmlSrcsetExternalConformance {
         HtmlSrcsetExternalConformance::Unchecked
     }
+    /// Serializes the list as `url`, then an optional ` 123w` or ` 1.5x` descriptor, with
+    /// candidates separated by a comma and a space. Densities keep their authored spelling.
     pub fn as_document_string(&self) -> DocumentString {
         let mut units = Vec::new();
         for (index, candidate) in self.candidates.iter().enumerate() {
@@ -282,12 +336,14 @@ impl HtmlSrcsetValue {
         }
         DocumentString::from_utf16(units)
     }
+    /// Emits a no-namespace `srcset` attribute carrying the serialization.
     pub fn into_srcset_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Srcset.qualified_name(),
             self.as_document_string(),
         )
     }
+    /// Emits a no-namespace `imagesrcset` attribute carrying the serialization.
     pub fn into_imagesrcset_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Imagesrcset.qualified_name(),
@@ -352,17 +408,24 @@ pub struct HtmlSrcsetRawRange {
     end: usize,
 }
 impl HtmlSrcsetRawRange {
+    /// The offset of the first UTF-16 code unit of the range.
     pub fn start(self) -> usize {
         self.start
     }
+    /// The offset one past the last UTF-16 code unit of the range.
     pub fn end(self) -> usize {
         self.end
     }
 }
+/// The descriptor of a candidate recovered by the standard's parsing algorithm (HTML §4.8.4.3.10).
 #[derive(Clone, Debug, PartialEq)]
 pub enum HtmlParsedSrcsetDescriptor {
+    /// No descriptor was recovered.
     Unspecified,
+    /// A width descriptor was recovered; it is greater than zero.
     Width(HtmlSrcsetWidth),
+    /// A pixel density descriptor was recovered, as the finite binary64 value the standard's
+    /// number-parsing rules give.
     Density(HtmlFloatingPointNumber),
 }
 /// Literal recovered candidate; its URL remains unresolved symbolic text.
@@ -374,9 +437,11 @@ pub struct HtmlParsedImageCandidate {
     url_range: HtmlSrcsetRawRange,
 }
 impl HtmlParsedImageCandidate {
+    /// The recovered URL in UTF-16 code units, with removed trailing commas excluded.
     pub fn url(&self) -> &DocumentString {
         &self.url
     }
+    /// The recovered descriptor.
     pub fn descriptor(&self) -> &HtmlParsedSrcsetDescriptor {
         &self.descriptor
     }
@@ -389,13 +454,22 @@ impl HtmlParsedImageCandidate {
         self.url_range
     }
 }
+/// A parse error that the standard's algorithm for parsing a srcset attribute reports (HTML
+/// §4.8.4.3.10), plus one recovery rule for density overflow. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetParseError {
+    /// More than one comma appears between candidates, so the splitting loop skips several commas.
     SkippedCommas,
+    /// A candidate URL is followed by more than one trailing comma, all of which are removed.
     MultipleTrailingCommas,
+    /// A candidate uses the `h` future-compatibility descriptor.
     FutureHeightDescriptor,
+    /// A candidate is rejected and ignored because its descriptors are invalid, repeated or
+    /// conflicting.
     RejectedCandidate,
+    /// A density descriptor is a valid number that overflows finite binary64, so the candidate is
+    /// dropped. This replaces `RejectedCandidate` for that candidate.
     DensityConversionOverflow,
 }
 impl fmt::Display for HtmlSrcsetParseError {
@@ -414,6 +488,7 @@ impl fmt::Display for HtmlSrcsetParseError {
     }
 }
 impl Error for HtmlSrcsetParseError {}
+/// A recoverable parse error with the raw range where it occurred.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetParseDiagnostic {
     error: HtmlSrcsetParseError,
@@ -421,9 +496,11 @@ pub struct HtmlSrcsetParseDiagnostic {
     candidate: Option<usize>,
 }
 impl HtmlSrcsetParseDiagnostic {
+    /// Which parse error occurred.
     pub fn error(&self) -> HtmlSrcsetParseError {
         self.error
     }
+    /// The range of the offending text in the raw value.
     pub fn range(&self) -> HtmlSrcsetRawRange {
         self.range
     }
@@ -432,6 +509,8 @@ impl HtmlSrcsetParseDiagnostic {
         self.candidate
     }
 }
+/// A violation of the standard's srcset authoring requirements with its location. A violation does
+/// not stop literal recovery.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetAuthorDiagnostic {
     violation: HtmlSrcsetAuthorViolation,
@@ -439,50 +518,79 @@ pub struct HtmlSrcsetAuthorDiagnostic {
     candidate: Option<usize>,
 }
 impl HtmlSrcsetAuthorDiagnostic {
+    /// Which authoring requirement is violated.
     pub fn violation(&self) -> HtmlSrcsetAuthorViolation {
         self.violation
     }
+    /// The range of the offending text in the raw value.
     pub fn range(&self) -> HtmlSrcsetRawRange {
         self.range
     }
+    /// The index of the candidate involved among all lexical candidates, including rejected ones,
+    /// or `None` for list-level and separator violations.
     pub fn candidate_index(&self) -> Option<usize> {
         self.candidate
     }
 }
+/// The author verdict for a `srcset` or `imagesrcset` value on its own.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetAuthorState {
+    /// The attribute is absent.
     Missing,
+    /// The attribute is present and satisfies the HTML list constraints. URL and resource
+    /// requirements stay unchecked.
     HtmlConstraintsConforming,
+    /// The attribute is present and has at least one author diagnostic.
     Nonconforming,
+    /// The rule does not apply to the supplied element.
     Unapplied,
 }
+/// Whether literal candidate recovery ran.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetProcessingState {
+    /// The rule applies but the attribute is absent, so there are no candidates.
     MissingAttribute,
+    /// The rule applies and the attribute is present; the report carries the recovered candidates,
+    /// possibly none.
     Candidates,
+    /// The rule does not apply to the supplied element.
     Unapplied,
 }
+/// Whether URL and resource requirements that this crate does not validate are relevant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetExternalConformance {
+    /// The attribute is absent or has no candidates, so there is nothing to check.
     NotRequired,
+    /// At least one candidate exists, and its URL and referenced resource requirements stay
+    /// unchecked.
     Unchecked,
+    /// The rule does not apply to the supplied element.
     Unapplied,
 }
 
 /// Actual raw observations supplied by an adapter; no topology is inferred.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetParentObservation {
+    /// The adapter did not observe the parent, so picture ancestry is unknown.
     Unavailable,
+    /// The adapter observed that the element has no parent.
     Absent,
+    /// The adapter observed that the parent is this element.
     Element(QualifiedName),
 }
 /// Actual following sibling image observation, distinct from unavailable evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetFollowingImageObservation {
+    /// The adapter did not observe the following sibling, so image requirements that depend on it
+    /// are unknown.
     Unavailable,
+    /// The adapter observed that no following image element exists.
     Absent,
+    /// The adapter observed this following element.
     Element {
+        /// The following element's name.
         name: QualifiedName,
+        /// The following element's attributes in order.
         attributes: OrderedAttributes,
     },
 }
@@ -490,15 +598,27 @@ pub enum HtmlSrcsetFollowingImageObservation {
 /// Target raw is derived from the same attributes to avoid contradictory inputs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetContext {
+    /// The context of an `img` element.
     Img {
+        /// The `img` element's attributes in order. The `srcset`, `src` and `sizes` values come
+        /// from here.
         attributes: OrderedAttributes,
     },
+    /// The context of a `source` element.
     Source {
+        /// The `source` element's attributes in order. The `srcset` and `sizes` values come from
+        /// here.
         attributes: OrderedAttributes,
+        /// What the adapter observed about the parent element.
         parent: HtmlSrcsetParentObservation,
+        /// What the adapter observed about the following sibling image, used for the `sizes="auto"`
+        /// allowance.
         following_image: HtmlSrcsetFollowingImageObservation,
     },
+    /// The context of a `link` element.
     Link {
+        /// The `link` element's attributes in order. The `imagesrcset`, `imagesizes`, `rel` and
+        /// `as` values come from here.
         attributes: OrderedAttributes,
     },
 }
@@ -511,16 +631,26 @@ impl HtmlSrcsetContext {
         }
     }
 }
+/// A requirement that surrounding attributes or elements place on a `srcset` or `imagesrcset` (HTML
+/// §4.8.4.2.1). The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetContextViolation {
+    /// An `img` element has neither `src` nor `srcset`.
     SrcOrSrcsetRequired,
+    /// A `source` element with `srcset` has a parent that is not a `picture` element.
     SourceParentNotPicture,
+    /// A `source` element in a `picture` lacks `srcset`.
     SourceSrcsetRequired,
+    /// A `srcset` with width descriptors lacks a `sizes` attribute.
     SizesRequired,
+    /// A `sizes` attribute is present but not every candidate has a width descriptor.
     WidthDescriptorsRequiredForSizes,
+    /// An `imagesrcset` with width descriptors lacks an `imagesizes` attribute.
     ImagesizesRequired,
+    /// An `imagesrcset` is present on a `link` whose `rel` lacks the `preload` keyword.
     PreloadRelRequired,
+    /// An `imagesrcset` is present on a `link` whose `as` attribute is not the `image` keyword.
     ImageAsStateRequired,
 }
 impl fmt::Display for HtmlSrcsetContextViolation {
@@ -544,12 +674,20 @@ impl fmt::Display for HtmlSrcsetContextViolation {
     }
 }
 impl Error for HtmlSrcsetContextViolation {}
+/// The author verdict for the requirements that surrounding attributes and elements place on the
+/// value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetContextAuthorState {
+    /// No requirement applies in the supplied context.
     NotRequired,
+    /// Some applicable requirement cannot be decided, for example because the `sizes` grammar or
+    /// the parent was not checked.
     Unchecked,
+    /// Every applicable requirement was decided and holds.
     Conforming,
+    /// At least one requirement is violated; `context_violations` lists them.
     Nonconforming,
+    /// The rule does not apply to the supplied element.
     Unapplied,
 }
 
@@ -570,77 +708,107 @@ pub struct HtmlSrcsetReport {
     context_violations: Vec<HtmlSrcsetContextViolation>,
 }
 impl HtmlSrcsetReport {
+    /// The exact element name that was supplied, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.input.element()
     }
+    /// The exact supplied attribute (name, prefix and value), or `None` when it was absent.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.input.raw_attribute()
     }
+    /// The exact raw value in UTF-16 code units, distinguishing an absent attribute from an empty
+    /// one.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.input.raw()
     }
+    /// Whether the attribute was absent, present and empty, or present and nonempty.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.input.observation()
     }
+    /// Whether the rule applies to the supplied element and context.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.input.applicability()
     }
+    /// The standard attribute this report is about, `srcset` or `imagesrcset`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.input.attribute()
     }
+    /// The rows of the pinned specification's attribute index that this rule reproduces.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.input.inventory_rows()
     }
+    /// The URL of the attribute's element-specific definition in the pinned HTML Standard snapshot.
     pub fn source_clause(&self) -> &'static str {
         self.input.source_clause()
     }
+    /// The URL of the pinned standard's srcset grammar.
     pub fn grammar_source_clause(&self) -> &'static str {
         GRAMMAR
     }
+    /// The URL of the pinned standard's algorithm for parsing a srcset attribute.
     pub fn processing_source_clause(&self) -> &'static str {
         PROCESSING
     }
+    /// The URL of the WebKit source that this crate follows when a density overflows binary64. The
+    /// pinned standard does not define that recovery.
     pub fn overflow_recovery_source_clause(&self) -> &'static str {
         OVERFLOW_SOURCE
     }
+    /// The length of the raw value in UTF-16 code units, as admitted against the per-value cap.
     pub fn input_code_units(&self) -> usize {
         self.input.input_code_units()
     }
+    /// The supplied surrounding facts, or `None` when the report was made without a context.
     pub fn context(&self) -> Option<&HtmlSrcsetContext> {
         self.context.as_ref()
     }
+    /// The candidate list as a checked native value. It is `Some` only when the attribute is
+    /// present and has no author diagnostic.
     pub fn author_fields(&self) -> Option<&HtmlSrcsetValue> {
         self.author_fields.as_ref()
     }
+    /// The author verdict for the value alone, without the surrounding context.
     pub fn author(&self) -> HtmlSrcsetAuthorState {
         self.author
     }
+    /// Every author diagnostic in the order found.
     pub fn author_diagnostics(&self) -> &[HtmlSrcsetAuthorDiagnostic] {
         &self.author_diagnostics
     }
+    /// Whether URL and resource requirements remain unchecked.
     pub fn external_conformance(&self) -> HtmlSrcsetExternalConformance {
         self.external
     }
+    /// Whether literal candidate recovery ran for the supplied element.
     pub fn processing(&self) -> HtmlSrcsetProcessingState {
         self.processing
     }
+    /// The candidates recovered by the standard's parsing algorithm, or `None` when the attribute
+    /// is absent or the rule does not apply. Rejected candidates are absent.
     pub fn candidates(&self) -> Option<&[HtmlParsedImageCandidate]> {
         self.candidates.as_deref()
     }
+    /// The parse errors the recovery reported, in the order found.
     pub fn diagnostics(&self) -> &[HtmlSrcsetParseDiagnostic] {
         &self.diagnostics
     }
+    /// The author verdict for the requirements that surrounding attributes place on the value.
     pub fn context_author(&self) -> HtmlSrcsetContextAuthorState {
         self.context_author
     }
+    /// The surrounding requirements that are violated.
     pub fn context_violations(&self) -> &[HtmlSrcsetContextViolation] {
         &self.context_violations
     }
 }
+/// Why srcset interpretation could not produce a report. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetInterpretationError {
+    /// The raw value or a surrounding raw attribute exceeded the per-value admission cap; the
+    /// payload is that refusal.
     RawAdmission(HtmlValueAdmissionError),
+    /// An internal size cannot be represented on this platform.
     RepresentationExhausted,
 }
 impl fmt::Display for HtmlSrcsetInterpretationError {
@@ -757,6 +925,8 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Img, element, context)
     }
+    /// Interprets a `source` element's `srcset` together with its attributes, parent and following
+    /// image. Surrounding raw values obey the same per-value cap.
     pub fn source_srcset_with_context(
         &self,
         element: &(impl crate::HtmlNameInput + ?Sized),
@@ -764,6 +934,8 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Source, element, context)
     }
+    /// Interprets a `link` element's `imagesrcset` together with its attributes. Surrounding raw
+    /// values obey the same per-value cap.
     pub fn link_imagesrcset_with_context(
         &self,
         element: &(impl crate::HtmlNameInput + ?Sized),
