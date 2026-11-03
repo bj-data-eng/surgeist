@@ -155,7 +155,10 @@ impl HtmlConstructionCaptureFacts {
 /// lookups are indexed and charged one work credit each, array and index growth
 /// is charged when it moves entries, and establishing a container's children or
 /// attaching template contents links each attached root, charging the records
-/// visited, whatever order the edges arrive in. Each
+/// visited finding the root of its parent's component. The adapter attaches
+/// containers before their descendants, so that search stays a few steps and the
+/// work per node is constant; an arbitrary producer order costs amortized
+/// logarithmic work per edge, not quadratic. Each
 /// supplied fact and each mapped node holds one scratch entry for the whole
 /// import, in addition to the worklist and one container's temporary lists, so
 /// scratch is a constant number of entries per node. The node lookup of a

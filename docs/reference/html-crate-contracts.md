@@ -1504,31 +1504,39 @@ children or attaching template contents links each attached root below the root
 of the parent's component and charges the records visited finding it, so the
 cost of an edge does not depend on the order in which a producer attaches edges
 or on the size of the subtree below the attached child. The builder keeps each
-owning edge's depth as a weighted union-find (path halving, amortized logarithmic
-per edge) and the greatest depth below each component root; no record's depth
-is materialized or revised. An edge is refused as a cycle exactly when the root of
-the parent's component is an attached child, and as over the depth limit exactly
-when the parent's depth plus one plus the tallest attached subtree exceeds it;
-both are decided from those roots and heights. Only a refusal walks the attached
-subtrees breadth first, charged per record, to report the failure reached first:
-the new edge's own depth, the parent's depth plus one, is checked against the
-limit first, and a cycle is the parent being found at or below an attached child,
-reported at the first such record the walk reaches (before that record's depth is
-checked against the limit). The one
-remaining whole-capture pass is `finish`, which runs once. No
-`HtmlConstructionCaptureAdapter` charge scales with the number of other nodes,
-so a work allowance sized as a fixed amount per node, attribute, name or value
-unit and relationship admits every adapter import of that size. The crate-private
-controlled-storage builder mode, whose duplicate-child detection compares every
-pair, is not reachable through the adapter, which always uses a builder in
-ordinary storage mode.
+owning edge's depth as a weighted union-find (path halving) and the greatest
+depth below each component root; no record's depth is materialized or revised.
+For an arbitrary attachment order an edge costs amortized logarithmic work in
+the records. The adapter attaches each container's children before those of its
+descendants and creates a shadow root at its host, so the root of a parent's
+component is found within a few steps and the work per imported node is
+constant: `deeply_nested_sources_charge_constant_work_per_node` measures chains,
+nested templates and nested shadow roots, and requires the charge per node at
+1,600 nodes to stay within 5% of the charge at 200.
+
+An edge is refused as a cycle exactly when the root of the parent's component is
+an attached child, and as over the depth limit exactly when the parent's depth
+plus one plus the tallest attached subtree exceeds it; both are decided from
+those roots and heights. Only a refusal walks the attached subtrees breadth
+first, charged per record, to report the failure reached first: the new edge's
+own depth, the parent's depth plus one, is checked against the limit first, and
+a cycle is the parent being found at or below an attached child, reported at the
+first such record the walk reaches (before that record's depth is checked
+against the limit). The one remaining whole-capture pass is `finish`, which runs
+once. No `HtmlConstructionCaptureAdapter` charge scales with the number of other
+nodes, so a work allowance sized as a fixed amount per node, attribute, name or
+value unit and relationship admits every adapter import of that size. The
+crate-private controlled-storage builder mode, whose duplicate-child detection
+compares every pair, is not reachable through the adapter, which always uses a
+builder in ordinary storage mode.
 
 Scratch entries are counted per live logical entry: one per supplied fact and
 one per mapped node while the import runs, plus the traversal worklist and, for
 one container at a time, its child lists and duplicate-detection set (and, only
-while a refusal is named, the list of records its walk visits). All of these are bounded by a constant number of entries per
-node: a fragment of `n` childless siblings peaks at `8n + O(1)` scratch entries,
-measured. The fact index is released when the import ends, whatever the outcome.
+while a refusal is named, the list of records its walk visits). All of these are
+bounded by a constant number of entries per node: a fragment of `n` childless
+siblings peaks at `7n + 2` scratch entries, measured by
+`a_fragment_of_childless_siblings_peaks_at_seven_scratch_entries_per_sibling`. The fact index is released when the import ends, whatever the outcome.
 The node index is released on refusal; after success it is moved, not copied,
 into the returned `HtmlConstructionCaptureMap`, so its entries stop counting as
 live scratch (the reported peak still includes them) and become retained memory
