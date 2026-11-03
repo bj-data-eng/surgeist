@@ -437,13 +437,18 @@ enum Staged {
     Template(HtmlNodeId),
 }
 /// What a ready operation's commit stores beyond the command's own operands, paired with the
-/// command by `try_ready`.
+/// command by `try_ready`. A creation's template identity is an option because only a template
+/// has contents to own; the association is applied by itself, so the commit needs no pairing of
+/// the command with it.
 #[derive(Debug)]
-enum Resolved {
-    Nothing,
-    Create {
-        template_owner: Option<HtmlNodeId>,
-    },
+struct Resolved {
+    template_owner: Option<HtmlNodeId>,
+    association: Association,
+}
+/// The identities and releases of the commands that associate fragments.
+#[derive(Debug)]
+enum Association {
+    None,
     AttachShadow {
         host: HtmlNodeId,
         contents: HtmlNodeId,
@@ -463,80 +468,101 @@ enum Resolved {
         old_contents: Option<usize>,
     },
 }
-/// Pairs the command with what planning staged and released. A mismatch hands the staged
-/// identities back.
+impl Resolved {
+    fn only(association: Association) -> Self {
+        Self {
+            template_owner: None,
+            association,
+        }
+    }
+}
+/// Pairs the command with what planning staged and released. Every command is listed, so a new
+/// one must say what it stages. A mismatch hands the staged identities back.
 fn resolve(
     command: &HtmlConstructionCommand,
     staged: Staged,
     old_contents: Option<usize>,
 ) -> Result<Resolved, Staged> {
     use HtmlConstructionCommand as Command;
-    match (command, staged, old_contents) {
-        (
-            Command::Create { .. } | Command::CreateElement { .. },
-            Staged::Created { template_owner },
-            _,
-        ) => Ok(Resolved::Create { template_owner }),
+    match command {
+        Command::Create { .. } | Command::CreateElement { .. } => match staged {
+            Staged::Created { template_owner } => Ok(Resolved {
+                template_owner,
+                association: Association::None,
+            }),
+            staged => Err(staged),
+        },
         // The other creations mint their record's identity too, but share nothing with it.
-        (
-            Command::CreateDocument { .. }
-            | Command::CreateFragment
-            | Command::CreateShadowContents { .. },
+        Command::CreateDocument { .. }
+        | Command::CreateFragment
+        | Command::CreateShadowContents { .. } => match staged {
             Staged::Created {
                 template_owner: None,
-            },
-            _,
-        ) => Ok(Resolved::Nothing),
-        (
-            Command::AttachShadow { .. },
-            Staged::Shadow {
+            } => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
+        Command::AttachShadow { .. } => match (staged, old_contents) {
+            (
+                Staged::Shadow {
+                    host,
+                    contents,
+                    owner,
+                },
+                None,
+            ) => Ok(Resolved::only(Association::AttachShadow {
                 host,
                 contents,
                 owner,
-            },
-            None,
-        ) => Ok(Resolved::AttachShadow {
-            host,
-            contents,
-            owner,
-        }),
-        (
-            Command::AttachTemplateShadow { .. },
-            Staged::Shadow {
+            })),
+            (staged, _) => Err(staged),
+        },
+        Command::AttachTemplateShadow { .. } => match (staged, old_contents) {
+            (
+                Staged::Shadow {
+                    host,
+                    contents,
+                    owner,
+                },
+                Some(old_contents),
+            ) => Ok(Resolved::only(Association::AttachTemplateShadow {
                 host,
                 contents,
                 owner,
-            },
-            Some(old_contents),
-        ) => Ok(Resolved::AttachTemplateShadow {
-            host,
-            contents,
-            owner,
-            old_contents,
-        }),
-        (Command::SetTemplateShadowContents { .. }, Staged::Nothing, Some(old_contents)) => {
-            Ok(Resolved::SetTemplateShadowContents { old_contents })
-        }
-        (Command::ReassignTemplateContents { .. }, Staged::Template(template), old_contents) => {
-            Ok(Resolved::ReassignTemplateContents {
-                template,
                 old_contents,
-            })
-        }
-        // A reassignment to the contents already owned plans nothing and commits nothing.
-        (Command::ReassignTemplateContents { .. }, Staged::Nothing, _) => Ok(Resolved::Nothing),
-        (
-            Command::Create { .. }
-            | Command::CreateElement { .. }
-            | Command::AttachShadow { .. }
-            | Command::AttachTemplateShadow { .. }
-            | Command::SetTemplateShadowContents { .. }
-            | Command::ReassignTemplateContents { .. },
-            staged,
-            _,
-        ) => Err(staged),
-        (_, Staged::Nothing, _) => Ok(Resolved::Nothing),
-        (_, staged, _) => Err(staged),
+            })),
+            (staged, _) => Err(staged),
+        },
+        Command::SetTemplateShadowContents { .. } => match (staged, old_contents) {
+            (Staged::Nothing, Some(old_contents)) => {
+                Ok(Resolved::only(Association::SetTemplateShadowContents {
+                    old_contents,
+                }))
+            }
+            (staged, _) => Err(staged),
+        },
+        Command::ReassignTemplateContents { .. } => match staged {
+            Staged::Template(template) => {
+                Ok(Resolved::only(Association::ReassignTemplateContents {
+                    template,
+                    old_contents,
+                }))
+            }
+            // A reassignment to the contents already owned plans nothing and commits nothing.
+            Staged::Nothing => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
+        Command::ReserveRecords { .. }
+        | Command::CheckChildTransfer { .. }
+        | Command::Insert { .. }
+        | Command::Detach { .. }
+        | Command::ReplaceContent { .. }
+        | Command::ReplaceAttributes { .. }
+        | Command::SetDocumentMode { .. }
+        | Command::SetLinkFlags { .. }
+        | Command::Publish { .. } => match staged {
+            Staged::Nothing => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
     }
 }
 
@@ -2275,17 +2301,17 @@ impl HtmlConstructionReadyOperation {
             );
             // Depths move while the edges are the ones planning walked.
             plan.commit_depths(arena);
-            match (command, resolved) {
+            let Resolved {
+                template_owner,
+                association,
+            } = resolved;
+            match command {
                 // The element form was converted to `Create` above.
-                (Command::CreateElement { .. }, _) => {}
-                (Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. }, _) => {}
-                (Command::Create { kind }, resolved) => {
+                Command::CreateElement { .. } => {}
+                Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
+                Command::Create { kind } => {
                     // A template's identity, staged for its contents, is what makes the created
                     // element a template here.
-                    let template_owner = match resolved {
-                        Resolved::Create { template_owner } => template_owner,
-                        _ => None,
-                    };
                     let mut record = Record::new(kind, None, 0);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
@@ -2305,7 +2331,7 @@ impl HtmlConstructionReadyOperation {
                         arena.populate(0);
                     }
                 }
-                (Command::CreateDocument { mode }, _) => {
+                Command::CreateDocument { mode } => {
                     let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
                     // This actual admitted constructor issues original state;
                     // generic raw kinds and later mode edits cannot issue it.
@@ -2316,14 +2342,14 @@ impl HtmlConstructionReadyOperation {
                     arena.records.push(record);
                     arena.populate(0);
                 }
-                (Command::CreateFragment, _) => {
+                Command::CreateFragment => {
                     let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
                     arena.records.push(record);
                     arena.populate(0);
                 }
-                (Command::CreateShadowContents { properties }, _) => {
+                Command::CreateShadowContents { properties } => {
                     let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
@@ -2331,16 +2357,16 @@ impl HtmlConstructionReadyOperation {
                     arena.records.push(record);
                     arena.populate(0);
                 }
-                (Command::Insert { .. }, _) => {
+                Command::Insert { .. } => {
                     // The guard above the match proved these edits apply.
                     plan.apply_order_edits(arena);
                     arena.records[p[0]].parent = Some(p[1]);
                 }
-                (Command::Detach { .. }, _) => {
+                Command::Detach { .. } => {
                     plan.apply_order_edits(arena);
                     arena.records[p[0]].parent = None;
                 }
-                (Command::ReplaceContent { content, .. }, _) => match content {
+                Command::ReplaceContent { content, .. } => match content {
                     HtmlConstructionContent::ElementName(name) => {
                         let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
                             unreachable!("checked element content kind");
@@ -2363,80 +2389,66 @@ impl HtmlConstructionReadyOperation {
                         arena.records[p[0]].kind = HtmlNodeKind::Doctype(value)
                     }
                 },
-                (Command::ReplaceAttributes { attributes, .. }, _) => {
+                Command::ReplaceAttributes { attributes, .. } => {
                     let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
                         unreachable!("checked attribute target kind");
                     };
                     element.attributes = attributes.into_attributes();
                 }
-                (
-                    Command::AttachShadow { .. },
-                    Resolved::AttachShadow {
-                        host: host_id,
-                        contents: contents_id,
-                        owner,
-                    },
-                ) => {
-                    arena.records[p[1]].owner = Some(HtmlFragmentOwner::ShadowHost(owner));
-                    arena.records[p[0]].shadow = Some(ShadowAssociation {
-                        host: host_id,
-                        contents: contents_id,
-                    });
+                // The associations are applied below, from what planning resolved.
+                Command::AttachShadow { .. }
+                | Command::AttachTemplateShadow { .. }
+                | Command::SetTemplateShadowContents { .. }
+                | Command::ReassignTemplateContents { .. } => {}
+                Command::SetDocumentMode { mode, .. } => {
+                    arena.records[p[0]].kind = HtmlNodeKind::Document(mode)
                 }
-                (
-                    Command::AttachTemplateShadow { .. },
-                    Resolved::AttachTemplateShadow {
-                        host: host_id,
-                        contents: contents_id,
-                        owner,
-                        old_contents,
-                    },
-                ) => {
+                Command::SetLinkFlags { flags, .. } => {
+                    let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
+                        unreachable!("checked link element");
+                    };
+                    element.link_flags = Some(flags);
+                }
+                // A publication returned above, where its owner is shared.
+                Command::Publish { .. } => {}
+            }
+            match association {
+                Association::None => {}
+                Association::AttachShadow {
+                    host,
+                    contents,
+                    owner,
+                } => {
+                    arena.records[p[1]].owner = Some(HtmlFragmentOwner::ShadowHost(owner));
+                    arena.records[p[0]].shadow = Some(ShadowAssociation { host, contents });
+                }
+                Association::AttachTemplateShadow {
+                    host,
+                    contents,
+                    owner,
+                    old_contents,
+                } => {
                     arena.records[old_contents].owner = None;
                     arena.records[p[0]].template_contents =
                         Some(TemplateContents::ShadowReference(p[2]));
                     arena.records[p[2]].owner = Some(HtmlFragmentOwner::ShadowHost(owner));
-                    arena.records[p[1]].shadow = Some(ShadowAssociation {
-                        host: host_id,
-                        contents: contents_id,
-                    });
+                    arena.records[p[1]].shadow = Some(ShadowAssociation { host, contents });
                 }
-                (
-                    Command::SetTemplateShadowContents { .. },
-                    Resolved::SetTemplateShadowContents { old_contents },
-                ) => {
+                Association::SetTemplateShadowContents { old_contents } => {
                     arena.records[old_contents].owner = None;
                     arena.records[p[0]].template_contents =
                         Some(TemplateContents::ShadowReference(p[1]));
                 }
-                (
-                    Command::ReassignTemplateContents { .. },
-                    Resolved::ReassignTemplateContents {
-                        template,
-                        old_contents,
-                    },
-                ) => {
+                Association::ReassignTemplateContents {
+                    template,
+                    old_contents,
+                } => {
                     if let Some(old) = old_contents {
                         arena.records[old].owner = None;
                     }
                     arena.records[p[0]].template_contents = Some(TemplateContents::Owned(p[1]));
                     arena.records[p[1]].owner = Some(HtmlFragmentOwner::Template(template));
                 }
-                (Command::SetDocumentMode { mode, .. }, _) => {
-                    arena.records[p[0]].kind = HtmlNodeKind::Document(mode)
-                }
-                (Command::SetLinkFlags { flags, .. }, _) => {
-                    let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
-                        unreachable!("checked link element");
-                    };
-                    element.link_flags = Some(flags);
-                }
-                // A publication returned above, where its owner is shared, and a reassignment to
-                // the contents already owned commits nothing.
-                (Command::Publish { .. }, _) | (Command::ReassignTemplateContents { .. }, _) => {}
-                // `try_ready` pairs every command with its resolved identities, so no other
-                // pairing is ready; one that were would commit nothing.
-                (_, _) => {}
             }
             if assigns_usage {
                 arena.usage = plan.usage;
