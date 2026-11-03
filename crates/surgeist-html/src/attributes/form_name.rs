@@ -18,6 +18,8 @@ impl HtmlFormName {
         }
         Ok(Self { value })
     }
+    /// The exact nonempty name. Case, whitespace and unpaired surrogates are
+    /// preserved.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }

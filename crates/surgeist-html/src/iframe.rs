@@ -10,6 +10,8 @@ pub enum HtmlIframeAttributeBranch {
     /// Present srcdoc, including empty, precedes shared src processing.
     /// Continue the actual intrinsic/lazy/srcdoc-navigation steps.
     Srcdoc,
+    /// No `srcdoc` attribute: continue with the shared Frame/Iframe `src` processing
+    /// (#shared-attribute-processing-steps-for-iframe-and-frame-elements).
     Shared,
 }
 
@@ -86,14 +88,18 @@ impl HtmlIframeInitialState {
         false
     }
 
+    /// Always `true`: a fresh iframe has no pending resource timing start time.
     pub const fn pending_resource_timing_start_time_is_null(&self) -> bool {
         true
     }
 
+    /// Always `true`: a fresh iframe has no pending resource timing URL.
     pub const fn pending_resource_timing_url_is_null(&self) -> bool {
         true
     }
 
+    /// Always `true`: a fresh iframe has no lazy load resumption steps
+    /// (#lazy-load-resumption-steps).
     pub const fn lazy_load_resumption_is_null(&self) -> bool {
         true
     }

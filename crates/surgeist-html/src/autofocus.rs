@@ -66,6 +66,8 @@ pub enum HtmlAutofocusInsertionAction {
     /// Retain the original Element's actual node Document as target. Later
     /// reads use that target, even if execution suspends or the Element moves.
     CaptureTargetDocument,
+    /// Read whether the captured target Document is fully active; if it is not, the insertion steps
+    /// end.
     ReadFullyActive,
     /// Read the captured target's actual active sandboxing flag set.
     ReadSandboxAutomaticFeatures,
@@ -82,6 +84,7 @@ pub enum HtmlAutofocusInsertionAction {
     /// Append the original Element to the same retained topDocument's candidates
     /// only after actual removal. There is no focusability or same-origin test.
     AppendCandidate,
+    /// The insertion steps have returned; no further reply is accepted.
     Complete,
 }
 
@@ -89,15 +92,29 @@ pub enum HtmlAutofocusInsertionAction {
 /// Missing facts cannot be supplied as false or Applied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofocusInsertionReply {
+    /// Whether the element has the `autofocus` attribute, answering `ReadAutofocus`.
     Autofocus(bool),
+    /// Whether the element is in a document tree, answering `ReadInDocumentTree`.
     InDocumentTree(bool),
+    /// Whether the target Document is fully active, answering `ReadFullyActive`.
     FullyActive(bool),
+    /// Whether the target Document's active sandboxing flag set has the sandboxed automatic
+    /// features browsing context flag, answering `ReadSandboxAutomaticFeatures`. True ends the
+    /// insertion steps.
     SandboxAutomaticFeatures(bool),
+    /// Whether the allow focus steps permit focusing in the target Document, answering
+    /// `ReadAllowFocus`.
     AllowFocus(bool),
+    /// Whether the top Document's autofocus processed flag is set, answering
+    /// `ReadAutofocusProcessed`. True ends the insertion steps (HTML877d
+    /// #autofocus-processed-flag).
     AutofocusProcessed(bool),
+    /// The pending capture or candidate removal or append was performed.
     Applied,
 }
 
+/// The refusal of a reply: either it does not match the pending action (`is_wrong_reply`), or the
+/// cursor is already complete (`is_terminal`). The cursor is unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlAutofocusInsertionError {
     kind: HtmlAutofocusInsertionErrorKind,
@@ -161,11 +178,14 @@ pub struct HtmlAutofocusInsertionCursor {
     pending: HtmlAutofocusInsertionAction,
 }
 impl HtmlAutofocusInsertionCursor {
+    /// Starts the insertion steps, with `ReadAutofocus` pending.
     pub const fn new() -> Self {
         Self {
             pending: HtmlAutofocusInsertionAction::ReadAutofocus,
         }
     }
+    /// The action the owner must perform next, or `Complete` once the insertion steps have
+    /// returned.
     pub const fn action(&self) -> HtmlAutofocusInsertionAction {
         self.pending
     }

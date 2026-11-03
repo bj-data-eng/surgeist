@@ -70,6 +70,11 @@ pub struct AutocompleteMaterializationLimits {
     pub(crate) scratch_records: usize,
 }
 
+/// Storage a materialization actually took, in the same units as
+/// [`AutocompleteMaterializationLimits`].
+///
+/// Growth is observed after each reservation and before it can be rejected, so the figures include
+/// any allocator overshoot.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AutocompleteMaterializationUsage {
     pub(crate) allocated_bytes: usize,
@@ -77,22 +82,57 @@ pub struct AutocompleteMaterializationUsage {
     pub(crate) peak_scratch_records: usize,
 }
 
+/// A successfully materialized report with the storage it took.
+///
+/// Take the pair apart with `into_parts`, or read each half through `report` and `usage`.
 #[derive(Debug)]
 pub struct AutocompleteMaterialized {
     pub(crate) report: HtmlAutocompleteReport,
     pub(crate) usage: AutocompleteMaterializationUsage,
 }
 
+/// Why a controlled materialization stopped. Every variant ends the operation and discards its
+/// partial storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AutocompleteMaterializationError {
+    /// The raw value was refused by the interpreter's per-value UTF-16 admission cap before any
+    /// storage was taken. The cause is returned from `source`.
     RawAdmission(HtmlValueAdmissionError),
-    BytesLimit { limit: usize, required: usize },
-    OutputLimit { limit: usize, required: usize },
-    ScratchLimit { limit: usize, required: usize },
-    Allocation { requested_bytes: usize },
+    /// Growth would take the total allocated bytes past the byte allowance.
+    BytesLimit {
+        /// The byte allowance the session was given.
+        limit: usize,
+        /// The total allocated bytes the growth would have reached.
+        required: usize,
+    },
+    /// Growth would take the nested output records past the output allowance.
+    OutputLimit {
+        /// The output record allowance the session was given.
+        limit: usize,
+        /// The total output records the growth would have reached.
+        required: usize,
+    },
+    /// Growth would take the live scratch records past the scratch allowance.
+    ScratchLimit {
+        /// The scratch record allowance the session was given.
+        limit: usize,
+        /// The total live scratch records the growth would have reached.
+        required: usize,
+    },
+    /// The allocator refused to reserve the storage.
+    Allocation {
+        /// The number of bytes of growth that the allocator was asked for.
+        requested_bytes: usize,
+    },
+    /// A size computation overflowed `usize` or exceeded `isize::MAX` bytes, so the request cannot
+    /// be represented on this platform.
     Representation,
 }
 
+/// A refused materialization with the storage it had taken when it stopped.
+///
+/// The refusal carries recoverable values, so it is a carrier: `into_parts` hands back the cause
+/// and the usage.
 #[derive(Debug)]
 pub struct AutocompleteMaterializationFailure {
     pub(crate) kind: AutocompleteMaterializationError,
@@ -100,6 +140,7 @@ pub struct AutocompleteMaterializationFailure {
 }
 
 impl AutocompleteMaterializationLimits {
+    /// Builds a set of allowances. A zero allowance admits no growth of that kind.
     pub const fn new(
         allocated_bytes: usize,
         nested_output_records: usize,
@@ -111,45 +152,59 @@ impl AutocompleteMaterializationLimits {
             scratch_records,
         }
     }
+    /// Returns the remaining byte allowance for every variable-size buffer the materialization
+    /// grows.
     pub const fn allocated_bytes(self) -> usize {
         self.allocated_bytes
     }
+    /// Returns the remaining allowance of records in the output's nested buffers.
     pub const fn nested_output_records(self) -> usize {
         self.nested_output_records
     }
+    /// Returns the remaining allowance of live records in temporary buffers that do not escape.
     pub const fn scratch_records(self) -> usize {
         self.scratch_records
     }
 }
 impl AutocompleteMaterializationUsage {
+    /// Returns the bytes of buffer growth observed so far, output and scratch together.
     pub const fn allocated_bytes(self) -> usize {
         self.allocated_bytes
     }
+    /// Returns the records of growth observed in the output's nested buffers.
     pub const fn nested_output_records(self) -> usize {
         self.nested_output_records
     }
+    /// Returns the largest number of scratch records that were live at once.
     pub const fn peak_scratch_records(self) -> usize {
         self.peak_scratch_records
     }
 }
 impl AutocompleteMaterialized {
+    /// Returns the materialized report.
     pub fn report(&self) -> &HtmlAutocompleteReport {
         &self.report
     }
+    /// Returns the storage the materialization took.
     pub const fn usage(&self) -> AutocompleteMaterializationUsage {
         self.usage
     }
+    /// Splits the result into the report and its usage.
     pub fn into_parts(self) -> (HtmlAutocompleteReport, AutocompleteMaterializationUsage) {
         (self.report, self.usage)
     }
 }
 impl AutocompleteMaterializationFailure {
+    /// Returns why the materialization stopped.
     pub const fn kind(&self) -> AutocompleteMaterializationError {
         self.kind
     }
+    /// Returns the storage taken before the materialization stopped, including growth that was
+    /// rejected after being observed.
     pub const fn usage(&self) -> AutocompleteMaterializationUsage {
         self.usage
     }
+    /// Splits the failure into its cause and usage.
     pub fn into_parts(
         self,
     ) -> (
@@ -424,23 +479,38 @@ impl Materialization {
     }
 }
 
+/// Whether an autofill field is a normal field or a contact field.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofillFieldCategory {
+    /// A field that does not admit a contact hint.
     Normal,
+    /// A telephone, email or instant-messaging field, which alone admits a contact hint such as
+    /// `home`.
     Contact,
 }
 
-/// The author control group in HTML's defining autofill-field table.
+/// The author control group in HTML's defining autofill-field table. The table admits `textarea`
+/// and `select` elements in every group, so a group only limits which `input` states are admitted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofillControlGroup {
+    /// Admits `input` controls in the Hidden, Text and Search states.
     Text,
+    /// Admits `input` controls in the Hidden state only, for text that keeps newlines. A Text or
+    /// Search `input` cannot hold newlines, so it is not admitted.
     Multiline,
+    /// Admits the `input` states of the Text group and the Password state.
     Password,
+    /// Admits the `input` states of the Text group and the URL state.
     Url,
+    /// Admits the `input` states of the Text group and the Email state.
     Username,
+    /// Admits the `input` states of the Text group and the Telephone state.
     Tel,
+    /// Admits the `input` states of the Text group and the Number state.
     Numeric,
+    /// Admits the `input` states of the Text group and the Month state.
     Month,
+    /// Admits the `input` states of the Text group and the Date state.
     Date,
 }
 
@@ -470,21 +540,31 @@ impl HtmlAutofillControlGroup {
 }
 
 macro_rules! fields {
-    ($($variant:ident => ($keyword:literal, $category:ident, $group:ident)),+ $(,)?) => {
+    ($($(#[$vmeta:meta])* $variant:ident => ($keyword:literal, $category:ident, $group:ident)),+ $(,)?) => {
         /// Native detail-field vocabulary, excluding on/off and credential fields.
+        ///
+        /// Each variant is one autofill field name from the pinned autofill field table. The
+        /// canonical keyword is its lowercase spelling, and an author may write it with any ASCII
+        /// case. The enum is closed by that table; a new edition of the standard is a deliberate
+        /// breaking change.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum HtmlAutofillField { $($variant),+ }
+        pub enum HtmlAutofillField { $($(#[$vmeta])* $variant),+ }
         impl HtmlAutofillField {
             const ALL: &'static [Self] = &[$(Self::$variant),+];
+            /// Returns the field name in the lowercase spelling of the pinned table.
             pub fn canonical_keyword(self) -> &'static str {
                 match self { $(Self::$variant => $keyword),+ }
             }
+            /// Returns whether the field is a normal field or a contact field, which alone admits a
+            /// contact hint such as `home` or `work`.
             pub fn category(self) -> HtmlAutofillFieldCategory {
                 match self { $(Self::$variant => HtmlAutofillFieldCategory::$category),+ }
             }
+            /// Returns the group of controls that the table permits to carry this field.
             pub fn control_group(self) -> HtmlAutofillControlGroup {
                 match self { $(Self::$variant => HtmlAutofillControlGroup::$group),+ }
             }
+            /// Returns the URL of the field's definition in the pinned edition.
             pub fn source_clause(self) -> &'static str {
                 match self { $(Self::$variant => concat!(
                     "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-autocomplete-",
@@ -499,68 +579,132 @@ macro_rules! fields {
 
 // One source-backed definition owns keyword, category and author control group.
 fields! {
+    /// Full name.
     Name => ("name", Normal, Text),
+    /// Prefix or title, such as "Mr.", "Ms." or "Dr.".
     HonorificPrefix => ("honorific-prefix", Normal, Text),
+    /// Given name, also known in some Western cultures as the first name.
     GivenName => ("given-name", Normal, Text),
+    /// Additional names, also known in some Western cultures as middle names.
     AdditionalName => ("additional-name", Normal, Text),
+    /// Family name, also known in some Western cultures as the last name or surname.
     FamilyName => ("family-name", Normal, Text),
+    /// Suffix, such as "Jr.", "B.Sc." or "II".
     HonorificSuffix => ("honorific-suffix", Normal, Text),
+    /// Nickname, screen name or handle: a typically short name used instead of the full name.
     Nickname => ("nickname", Normal, Text),
+    /// Job title, such as "Software Engineer".
     OrganizationTitle => ("organization-title", Normal, Text),
+    /// A username.
     Username => ("username", Normal, Username),
+    /// A new password, for example when creating an account or changing a password.
     NewPassword => ("new-password", Normal, Password),
+    /// The current password for the account that the username field identifies.
     CurrentPassword => ("current-password", Normal, Password),
+    /// A one-time code used for verifying the user's identity.
     OneTimeCode => ("one-time-code", Normal, Password),
+    /// Company name corresponding to the person, address or contact information in the other fields
+    /// associated with this field.
     Organization => ("organization", Normal, Text),
+    /// Street address over multiple lines, with newlines preserved.
     StreetAddress => ("street-address", Normal, Multiline),
+    /// Street address, one line per field: the first line.
     AddressLine1 => ("address-line1", Normal, Text),
+    /// Street address, one line per field: the second line.
     AddressLine2 => ("address-line2", Normal, Text),
+    /// Street address, one line per field: the third line.
     AddressLine3 => ("address-line3", Normal, Text),
+    /// The most fine-grained administrative level, in addresses with four administrative levels.
     AddressLevel4 => ("address-level4", Normal, Text),
+    /// The third administrative level, in addresses with three or more administrative levels.
     AddressLevel3 => ("address-level3", Normal, Text),
+    /// The second administrative level, in addresses with two or more administrative levels; in
+    /// countries with two levels this is typically the city, town or village.
     AddressLevel2 => ("address-level2", Normal, Text),
+    /// The broadest administrative level in the address, such as the state in the US or the canton
+    /// in Switzerland.
     AddressLevel1 => ("address-level1", Normal, Text),
+    /// Country code, a valid ISO 3166-1 alpha-2 code.
     Country => ("country", Normal, Text),
+    /// Country name.
     CountryName => ("country-name", Normal, Text),
+    /// Postal code, post code, ZIP code or CEDEX code.
     PostalCode => ("postal-code", Normal, Text),
+    /// Full name as given on the payment instrument.
     CcName => ("cc-name", Normal, Text),
+    /// Given name as given on the payment instrument.
     CcGivenName => ("cc-given-name", Normal, Text),
+    /// Additional names given on the payment instrument.
     CcAdditionalName => ("cc-additional-name", Normal, Text),
+    /// Family name given on the payment instrument.
     CcFamilyName => ("cc-family-name", Normal, Text),
+    /// Code identifying the payment instrument, such as the credit card number; ASCII digits.
     CcNumber => ("cc-number", Normal, Text),
+    /// Expiration date of the payment instrument, as a valid month string.
     CcExp => ("cc-exp", Normal, Month),
+    /// Month component of the expiration date of the payment instrument, an integer from 1 to 12.
     CcExpMonth => ("cc-exp-month", Normal, Numeric),
+    /// Year component of the expiration date of the payment instrument, an integer greater than
+    /// zero.
     CcExpYear => ("cc-exp-year", Normal, Numeric),
+    /// Security code for the payment instrument, also known as the CSC, CVC or CVV; ASCII digits.
     CcCsc => ("cc-csc", Normal, Text),
+    /// Type of payment instrument.
     CcType => ("cc-type", Normal, Text),
+    /// The currency that the user would prefer the transaction to use, an ISO 4217 currency code.
     TransactionCurrency => ("transaction-currency", Normal, Text),
+    /// The amount that the user would like for the transaction, a valid floating-point number.
     TransactionAmount => ("transaction-amount", Normal, Numeric),
+    /// Preferred language, a valid BCP 47 language tag.
     Language => ("language", Normal, Text),
+    /// Birthday, as a valid date string.
     Bday => ("bday", Normal, Date),
+    /// Day component of the birthday, an integer from 1 to 31.
     BdayDay => ("bday-day", Normal, Numeric),
+    /// Month component of the birthday, an integer from 1 to 12.
     BdayMonth => ("bday-month", Normal, Numeric),
+    /// Year component of the birthday, an integer greater than zero.
     BdayYear => ("bday-year", Normal, Numeric),
+    /// Gender identity.
     Sex => ("sex", Normal, Text),
+    /// Home page or other web page corresponding to the company, person, address or contact
+    /// information in the other fields associated with this field.
     Url => ("url", Normal, Url),
+    /// Photograph, icon or other image corresponding to the company, person, address or contact
+    /// information in the other fields associated with this field.
     Photo => ("photo", Normal, Url),
+    /// Full telephone number including the country code, a contact field.
     Tel => ("tel", Contact, Tel),
+    /// Country code component of the telephone number, a contact field.
     TelCountryCode => ("tel-country-code", Contact, Text),
+    /// Telephone number without the country code component, a contact field.
     TelNational => ("tel-national", Contact, Text),
+    /// Area code component of the telephone number, a contact field.
     TelAreaCode => ("tel-area-code", Contact, Text),
+    /// Telephone number without the country code and area code components, a contact field.
     TelLocal => ("tel-local", Contact, Text),
+    /// First part of the component of the telephone number that follows the area code, when that
+    /// component is split into two, a contact field.
     TelLocalPrefix => ("tel-local-prefix", Contact, Text),
+    /// Second part of the component of the telephone number that follows the area code, when that
+    /// component is split into two, a contact field.
     TelLocalSuffix => ("tel-local-suffix", Contact, Text),
+    /// Telephone number internal extension code, a contact field.
     TelExtension => ("tel-extension", Contact, Text),
+    /// Email address, a contact field.
     Email => ("email", Contact, Username),
+    /// URL representing an instant messaging protocol endpoint, a contact field.
     Impp => ("impp", Contact, Url),
 }
 
 macro_rules! hint_type {
-    ($name:ident, [$($variant:ident => $keyword:literal),+]) => {
+    ($(#[$meta:meta])* $name:ident, [$($(#[$vmeta:meta])* $variant:ident => $keyword:literal),+]) => {
+        $(#[$meta])*
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum $name { $($variant),+ }
+        pub enum $name { $($(#[$vmeta])* $variant),+ }
         impl $name {
             const ALL: &'static [Self] = &[$(Self::$variant),+];
+            /// Returns the keyword in its lowercase spelling.
             pub fn canonical_keyword(self) -> &'static str {
                 match self { $(Self::$variant => $keyword),+ }
             }
@@ -571,14 +715,46 @@ macro_rules! hint_type {
     };
 }
 
-hint_type!(HtmlAutocompleteMode, [Shipping => "shipping", Billing => "billing"]);
-hint_type!(HtmlAutocompleteContactHint, [Home => "home", Work => "work", Mobile => "mobile", Fax => "fax", Pager => "pager"]);
+hint_type!(
+    /// The mode token of an `autocomplete` value, which says which kind of address or contact
+    /// information the user agent is to look at, shipping or billing. It is a typed hint and
+    /// joins the scope.
+    HtmlAutocompleteMode,
+    [
+        /// The `shipping` token: the address or contact information is the shipping kind.
+        Shipping => "shipping",
+        /// The `billing` token: the address or contact information is the billing kind.
+        Billing => "billing"
+    ]
+);
+hint_type!(
+    /// The contact hint token of an `autocomplete` value, which says which of the person's
+    /// telephone or messaging contacts a contact field expects. Only a contact field admits it.
+    HtmlAutocompleteContactHint,
+    [
+        /// The `home` token: the contact is the person's home contact.
+        Home => "home",
+        /// The `work` token: the contact is the person's work contact.
+        Work => "work",
+        /// The `mobile` token: the contact is the person's mobile contact.
+        Mobile => "mobile",
+        /// The `fax` token: the contact is the person's fax line.
+        Fax => "fax",
+        /// The `pager` token: the contact is the person's pager.
+        Pager => "pager"
+    ]
+);
 
+/// A non-autofill credential type that an `autocomplete` value can request. The enum is closed by
+/// the pinned standard.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteCredential {
+    /// The `webauthn` token: selecting a public key credential resolves a pending conditional
+    /// mediation request instead of autofilling the field.
     Webauthn,
 }
 impl HtmlAutocompleteCredential {
+    /// Returns the credential token in its lowercase spelling, `webauthn`.
     pub fn canonical_keyword(self) -> &'static str {
         WEBAUTHN
     }
@@ -589,10 +765,13 @@ impl HtmlAutocompleteCredential {
 pub struct HtmlAutocompleteSection {
     token: HtmlSpaceToken,
 }
+/// Why a string is not an `autocomplete` section token. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAutocompleteSectionError {
+    /// The string is not a valid space token. The grammar error is returned from `source`.
     Token(HtmlTokenError),
+    /// The token does not begin with `section-` (ASCII case-insensitive).
     MissingSectionPrefix,
 }
 impl fmt::Display for HtmlAutocompleteSectionError {
@@ -634,16 +813,20 @@ impl HtmlAutocompleteSection {
         }
         Ok(Self { token })
     }
+    /// Returns the exact token text, including its `section-` prefix and its case.
     pub fn value(&self) -> &DocumentString {
         self.token.value()
     }
 }
 
+/// A contact hint was attached to a field that is not a contact field. The accessor names the
+/// field.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlAutocompleteContactFieldError {
     field: HtmlAutofillField,
 }
 impl HtmlAutocompleteContactFieldError {
+    /// Returns the field that rejected the hint.
     pub fn field(self) -> HtmlAutofillField {
         self.field
     }
@@ -670,6 +853,8 @@ pub struct HtmlAutocompleteDetails {
     webauthn: bool,
 }
 impl HtmlAutocompleteDetails {
+    /// Starts a value from its required detail field, with no section, mode, contact hint or
+    /// `webauthn` token.
     pub fn new(field: HtmlAutofillField) -> Self {
         Self {
             section: None,
@@ -679,14 +864,17 @@ impl HtmlAutocompleteDetails {
             webauthn: false,
         }
     }
+    /// Sets the section token, which comes first in the ordered value.
     pub fn with_section(mut self, section: HtmlAutocompleteSection) -> Self {
         self.section = Some(section);
         self
     }
+    /// Sets the shipping or billing mode token.
     pub fn with_mode(mut self, mode: HtmlAutocompleteMode) -> Self {
         self.mode = Some(mode);
         self
     }
+    /// Sets the contact hint. Fails with the field when the field is not a contact field.
     pub fn with_contact_hint(
         mut self,
         hint: HtmlAutocompleteContactHint,
@@ -697,25 +885,34 @@ impl HtmlAutocompleteDetails {
         self.contact = Some(hint);
         Ok(self)
     }
+    /// Appends the `webauthn` credential token after the field.
     pub fn with_webauthn(mut self) -> Self {
         self.webauthn = true;
         self
     }
+    /// Returns the section token, if one was set.
     pub fn section(&self) -> Option<&HtmlAutocompleteSection> {
         self.section.as_ref()
     }
+    /// Returns the shipping or billing mode, if one was set.
     pub fn mode(&self) -> Option<HtmlAutocompleteMode> {
         self.mode
     }
+    /// Returns the contact hint, if one was set. It is only ever set for a contact field.
     pub fn contact_hint(&self) -> Option<HtmlAutocompleteContactHint> {
         self.contact
     }
+    /// Returns the detail field, which is always present.
     pub fn field(&self) -> HtmlAutofillField {
         self.field
     }
+    /// Returns whether the value ends with the `webauthn` token.
     pub fn has_webauthn(&self) -> bool {
         self.webauthn
     }
+    /// Builds the no-namespace `autocomplete` attribute. Tokens appear in the order section, mode,
+    /// contact hint, field, `webauthn`, joined by one U+0020 each, with canonical lowercase
+    /// keywords and the section as supplied.
     pub fn into_attribute(self) -> Attribute {
         let mut tokens = Vec::new();
         if let Some(section) = self.section {
@@ -738,12 +935,16 @@ impl HtmlAutocompleteDetails {
     }
 }
 
+/// A natively constructed `autocomplete` value: either the on/off setting or ordered detail tokens.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteValue {
+    /// The single `on` or `off` token.
     Setting(HtmlFormAutocomplete),
+    /// Autofill detail tokens that name a field.
     Details(HtmlAutocompleteDetails),
 }
 impl HtmlAutocompleteValue {
+    /// Builds the no-namespace `autocomplete` attribute in its canonical spelling.
     pub fn into_attribute(self) -> Attribute {
         match self {
             Self::Setting(setting) => setting.into_attribute(),
@@ -752,14 +953,30 @@ impl HtmlAutocompleteValue {
     }
 }
 
+/// Why an `autocomplete` value is not valid ordered expectation syntax. The enum is
+/// `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAutocompleteSyntaxError {
+    /// The value has no tokens, because it is empty or only ASCII whitespace.
     EmptyTokens,
+    /// Only a section, mode or contact hint is present, so no field token follows.
     MissingDetailField,
-    UnrecognizedDetailField { token_index: usize },
-    ContactHintRequiresContactField { field: HtmlAutofillField },
-    UnexpectedToken { token_index: usize },
+    /// The token where the detail field belongs is not a recognised autofill field name.
+    UnrecognizedDetailField {
+        /// Zero-based index of the offending token.
+        token_index: usize,
+    },
+    /// A contact hint precedes a field that is not a contact field.
+    ContactHintRequiresContactField {
+        /// The recognised field that cannot take a contact hint.
+        field: HtmlAutofillField,
+    },
+    /// A token remains after a complete, ordered value.
+    UnexpectedToken {
+        /// Zero-based index of the first leftover token.
+        token_index: usize,
+    },
 }
 impl fmt::Display for HtmlAutocompleteSyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -783,18 +1000,29 @@ impl fmt::Display for HtmlAutocompleteSyntaxError {
     }
 }
 impl Error for HtmlAutocompleteSyntaxError {}
+/// The ordered expectation syntax judgment of an `autocomplete` value, independent of the element,
+/// the input state and the mantle.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteSyntaxState {
+    /// The attribute is absent.
     Missing,
     /// Ordered expectation syntax only; mantle/control authorship is separate.
     Valid(HtmlAutocompleteValue),
+    /// The value violates the ordered expectation syntax; the payload says how.
     Invalid(HtmlAutocompleteSyntaxError),
+    /// The rule does not apply to these names, so no syntax was examined.
     Unapplied,
 }
 
+/// The role the attribute plays, which the actual element and input state decide. The role decides
+/// which values are valid and how processing treats them.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteMantle {
+    /// The autofill expectation mantle: the attribute describes what input the user is expected to
+    /// enter. It applies to every element except a Hidden `input`.
     Expectation,
+    /// The autofill anchor mantle: the attribute describes the meaning of the given value. It
+    /// applies to an `input` in the Hidden state.
     Anchor,
 }
 
@@ -808,15 +1036,22 @@ pub struct HtmlAutocompleteContextViolations {
     webauthn_on_select: bool,
 }
 impl HtmlAutocompleteContextViolations {
+    /// Returns the supplied input state if the attribute is not allowed on it (Checkbox, Radio,
+    /// File Upload or a button state).
     pub fn prohibited_input_state(self) -> Option<HtmlInputType> {
         self.prohibited_input_state
     }
+    /// Returns the `on` or `off` setting if it is written on a Hidden `input`, where only detail
+    /// tokens are allowed.
     pub fn anchor_setting(self) -> Option<HtmlFormAutocomplete> {
         self.anchor_setting
     }
+    /// Returns the detail field if the supplied input state is not in the field's control group.
     pub fn inappropriate_field(self) -> Option<HtmlAutofillField> {
         self.inappropriate_field
     }
+    /// Returns whether the value ends with `webauthn` on a `select` element, which does not admit
+    /// it.
     pub fn webauthn_on_select(self) -> bool {
         self.webauthn_on_select
     }
@@ -827,21 +1062,33 @@ impl HtmlAutocompleteContextViolations {
             && !self.webauthn_on_select
     }
 }
+/// Independent author requirements that depend on the actual element and input state.
+///
+/// They never replace the syntax judgment: a value can be lexically valid and still violate its
+/// context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteContextAuthorState {
+    /// The attribute is absent, so no context requirement applies.
     NotRequired,
+    /// The element is an `input` and no actual input state was supplied, so context cannot be
+    /// judged.
     Unchecked,
     /// No selected context violation; this does not certify lexical conformance.
     Conforming,
+    /// At least one context requirement fails; the payload lists each independently.
     Nonconforming(HtmlAutocompleteContextViolations),
+    /// The rule does not apply to these names, so no context was judged.
     Unapplied,
 }
 
 /// Processing permits the credential field identity separately from author fields.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofillFieldIdentity {
+    /// The final token is the `on` or `off` setting.
     Setting(HtmlFormAutocomplete),
+    /// The final token is an autofill detail field.
     Detail(HtmlAutofillField),
+    /// The final token is a credential type, `webauthn`.
     Credential(HtmlAutocompleteCredential),
 }
 
@@ -850,8 +1097,11 @@ pub enum HtmlAutofillFieldIdentity {
 /// property; successful detail processing assigns null or a credential.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteCredentialOutcome {
+    /// The branch assigns no credential type, which is what a setting does.
     NotAssigned,
+    /// The branch assigns a null credential type, which a detail field does.
     Null,
+    /// The branch assigns the given credential type.
     Credential(HtmlAutocompleteCredential),
 }
 
@@ -867,9 +1117,12 @@ pub struct HtmlAutocompleteProcessed {
     idl_value: DocumentString,
 }
 impl HtmlAutocompleteProcessed {
+    /// Returns what the final token identifies: a setting, a detail field or a credential.
     pub fn field_identity(&self) -> HtmlAutofillFieldIdentity {
         self.field_identity
     }
+    /// Returns the final token's exact spelling: the detail field, or the credential token
+    /// `webauthn` when one follows the detail field, or the canonical `on` or `off` for a setting.
     pub fn field_name(&self) -> &DocumentString {
         &self.field
     }
@@ -877,31 +1130,50 @@ impl HtmlAutocompleteProcessed {
     pub fn mode_hint(&self) -> Option<HtmlAutocompleteMode> {
         self.mode
     }
+    /// Returns the contact hint, which is only ever produced for a contact field.
     pub fn contact_hint(&self) -> Option<HtmlAutocompleteContactHint> {
         self.contact
     }
+    /// Returns the autofill scope: the lowercased `section-` token, the mode and the contact hint,
+    /// in that order, for those that are present.
     pub fn scope(&self) -> &HtmlSpaceSeparatedTokens {
         &self.scope
     }
+    /// Returns the credential type that the processing branch assigned.
     pub fn credential_type(&self) -> HtmlAutocompleteCredentialOutcome {
         self.credential
     }
+    /// Returns the IDL-exposed autofill value: the lowercased section, mode and contact hint tokens
+    /// that are present, then the detail field when a `webauthn` token follows it, then the final
+    /// token, each separated by one U+0020.
     pub fn idl_value(&self) -> &DocumentString {
         &self.idl_value
     }
 }
 
+/// Which step of the processing algorithm sent an `autocomplete` value to its default branch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteDefaultReason {
+    /// The element has no `autocomplete` attribute.
     MissingAttribute,
+    /// The value splits into no tokens.
     EmptyTokens,
+    /// The last token is not a setting, a detail field or a credential type.
     UnrecognizedFinalToken,
+    /// The last token is `on` or `off` but other tokens accompany it.
     SettingWithExtraTokens,
+    /// The last token is `on` or `off` on an element that wears the anchor mantle.
     SettingOnAnchor,
+    /// The last token is `webauthn` and the token before it is not a detail field.
     InvalidCredentialPrefix,
+    /// More than one token remains before the field, hints and credential. Only a single `section-`
+    /// token may precede them.
     ExtraLeadingTokens,
+    /// The one remaining leading token does not begin with `section-` (ASCII case-insensitive).
     UnrecognizedLeadingToken,
 }
+/// What the field name is on the default branch. The standard sets it for an anchor and leaves it
+/// to the form owner for an expectation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteDefaultField {
     /// The source defines an empty field on the anchor default branch.
@@ -919,15 +1191,19 @@ pub struct HtmlAutocompleteDefault {
     scope: HtmlSpaceSeparatedTokens,
 }
 impl HtmlAutocompleteDefault {
+    /// Returns why the default branch was taken.
     pub fn reason(&self) -> HtmlAutocompleteDefaultReason {
         self.reason
     }
+    /// Returns whether the field name is empty or still needs the form owner.
     pub fn field(&self) -> HtmlAutocompleteDefaultField {
         self.field
     }
+    /// Returns the IDL-exposed value, which is always empty on this branch.
     pub fn idl_value(&self) -> &DocumentString {
         &self.idl_value
     }
+    /// Returns the autofill scope, which is always empty on this branch.
     pub fn scope(&self) -> &HtmlSpaceSeparatedTokens {
         &self.scope
     }
@@ -940,14 +1216,18 @@ impl HtmlAutocompleteDefault {
         None
     }
 }
+/// The outcome of the autofill processing algorithm for one `autocomplete` value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteProcessingState {
+    /// The value was processed successfully.
     Processed(HtmlAutocompleteProcessed),
+    /// The algorithm took its default branch; the payload says why.
     Defaulted(HtmlAutocompleteDefault),
     /// Actual input state is needed for both processing domain and mantle.
     InputContextRequired,
     /// Source gives autofill processing only to input states admitting autocomplete.
     InapplicableInputState(HtmlInputType),
+    /// The rule does not apply to these names, so nothing was processed.
     Unapplied,
 }
 
@@ -963,54 +1243,76 @@ pub struct HtmlAutocompleteReport {
     processing: HtmlAutocompleteProcessingState,
 }
 impl HtmlAutocompleteReport {
+    /// Returns the exact element name, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.input.element()
     }
+    /// Returns the exact supplied attribute name, prefix and value, if present.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.input.raw_attribute()
     }
+    /// Returns the exact supplied raw value, preserving absence versus empty.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.input.raw()
     }
+    /// Returns the exact presence of the supplied attribute.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.input.observation()
     }
+    /// Returns whether the `autocomplete` rule covers the supplied element and attribute names.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.input.applicability()
     }
+    /// Returns the selected standard attribute identity, which is always `autocomplete`.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.input.attribute()
     }
+    /// Returns the original index row IDs that this defining rule covers.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.input.inventory_rows()
     }
+    /// Returns the URL of the defining clause of the `autocomplete` attribute in the pinned
+    /// edition.
     pub fn source_clause(&self) -> &'static str {
         self.input.source_clause()
     }
+    /// Returns the URL of the autofill processing model clause that defines the processing result.
     pub fn processing_source_clause(&self) -> &'static str {
         PROCESSING_SOURCE
     }
+    /// Returns the defining clause of the supplied input type state, or `None` when no state was
+    /// supplied.
     pub fn context_source_clause(&self) -> Option<&'static str> {
         self.input.input_state().map(input_state_source)
     }
+    /// Returns the number of UTF-16 code units of the raw value admitted before name or value
+    /// processing, or zero when absent.
     pub fn input_code_units(&self) -> usize {
         self.input.input_code_units()
     }
+    /// Returns the supplied actual input type state, without inferring one.
     pub fn input_state(&self) -> Option<HtmlInputType> {
         self.input.input_state()
     }
+    /// Returns the value split on ASCII whitespace with each token's exact case, or `None` when the
+    /// attribute is absent or the rule does not apply.
     pub fn tokens(&self) -> Option<&HtmlSpaceSeparatedTokens> {
         self.tokens.as_ref()
     }
+    /// Returns the ordered expectation syntax judgment of the tokens.
     pub fn syntax(&self) -> &HtmlAutocompleteSyntaxState {
         &self.syntax
     }
+    /// Returns the mantle the actual element and input state select. It is `None` when the rule
+    /// does not apply or when an `input` was interpreted without its input state.
     pub fn mantle(&self) -> Option<HtmlAutocompleteMantle> {
         self.mantle
     }
+    /// Returns the independent context requirements of the element and input state.
     pub fn context_author(&self) -> HtmlAutocompleteContextAuthorState {
         self.context_author
     }
+    /// Returns the outcome of the autofill processing algorithm.
     pub fn processing(&self) -> &HtmlAutocompleteProcessingState {
         &self.processing
     }

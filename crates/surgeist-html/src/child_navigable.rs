@@ -3,8 +3,10 @@
 use crate::DocumentString;
 
 /// Source candidate selection in shared Frame/Iframe attribute processing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFrameIframeSrcDecision<'a> {
+    /// Use the initial `about:blank` candidate: the `src` attribute is absent or empty, so there
+    /// is nothing to parse.
     AboutBlank,
     /// Encoding-parse these exact nonempty units against the current Document.
     /// Actual parse failure keeps the initial about:blank candidate; unavailable
@@ -32,10 +34,13 @@ pub fn frame_iframe_src_with<E>(
 /// The next local step after the actual inclusive-ancestor URL comparison.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFrameIframeAfterAncestors {
+    /// The candidate URL equals an inclusive ancestor's URL (ignoring fragments); the shared
+    /// attribute processing steps return null and no navigation is started.
     ReturnNull,
     /// Execute the real child's URL/history update, then return its candidate
     /// URL to the remaining family steps. This value acknowledges no update.
     UpdateUrlAndHistory,
+    /// Return the candidate URL unchanged, with no URL or history update.
     ReturnUrl,
 }
 
@@ -66,13 +71,17 @@ pub fn frame_iframe_after_ancestors_with<E>(
 /// This value carries no identity, origin, resource, history or creation proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlChildNavigablePresence {
+    /// The element currently has no child navigable.
     Null,
+    /// The element currently has a child navigable. This does not say that it is loaded, accessible
+    /// or same-origin.
     Present,
 }
 
 /// The first content-Document/Window guard, before their distinct access rules.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlChildNavigableAccessDecision {
+    /// The element has no child navigable, so the content Document or Window getter returns null.
     ReturnNull,
     /// Read the actual child and execute the applicable origin/Window rules.
     Continue,
@@ -81,12 +90,15 @@ pub enum HtmlChildNavigableAccessDecision {
 /// The content guard for an element that potentially delays the load event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlChildNavigableLoadDelayDecision {
+    /// With no child navigable the element does not delay the load event.
     DoesNotDelay,
     /// Consult actual child load state; presence does not prove a load delay.
     Continue,
 }
 
 impl HtmlChildNavigablePresence {
+    /// The first guard of the content Document and Window getters: null without a child navigable,
+    /// otherwise `Continue` into their separate access rules.
     pub const fn content_access(self) -> HtmlChildNavigableAccessDecision {
         match self {
             Self::Null => HtmlChildNavigableAccessDecision::ReturnNull,

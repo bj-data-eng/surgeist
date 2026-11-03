@@ -6,22 +6,36 @@ use crate::values::bounded::{
     ComparisonStep, Phase as NamePhase, advance_comparison, comparison_layout,
 };
 
+/// Which protocol an attribute edit follows. It is fixed when the edit begins.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAttributeEditMode {
-    NamedMerge { candidate_count: usize },
+    /// Plans a merge of named candidate attributes into the element. Each candidate is kept
+    /// only if no existing attribute and no earlier candidate has the same name; the kept
+    /// candidates are then appended in order.
+    NamedMerge {
+        /// The number of candidates that will be planned, in order, before any append.
+        candidate_count: usize,
+    },
+    /// Positional edits (`reserve`, `append`, `replace`, `swap_adjacent`, `pop`). Each stored
+    /// attribute must keep an expanded name distinct from every other attribute, or the step is
+    /// refused with a duplicate-attribute error.
     Slots,
 }
 
 /// Actual public-payload vector dimensions; no allocation or release authority.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionAttributeCapacity {
+    /// The number of attributes currently stored.
     pub initialized_len: usize,
+    /// The reserved attribute capacity; at least `initialized_len`.
     pub capacity: usize,
 }
 impl HtmlConstructionAttributeCapacity {
+    /// The size in bytes of one stored attribute.
     pub fn element_size(self) -> usize {
         size_of::<Attribute>()
     }
+    /// The alignment in bytes of one stored attribute.
     pub fn element_alignment(self) -> usize {
         align_of::<Attribute>()
     }
@@ -32,39 +46,69 @@ impl HtmlConstructionAttributeCapacity {
 /// on the comparison outcome, before reading that outcome.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionAttributeWork {
+    /// The retained records the action reads or updates.
     pub record_visits: usize,
+    /// The provider requests the action makes.
     pub provider_calls: usize,
+    /// The bytes of name text the action compares without copying.
     pub inspected_bytes: usize,
+    /// The bytes the action copies, including bookkeeping values it moves.
     pub copied_bytes: usize,
+    /// The record fields the action writes.
     pub record_writes: usize,
     /// Largest indivisible physical transfer or individual fixed field write.
     /// This is a field-wise atomic maximum, not the sum of copied bytes.
     pub atomic_layout_bytes: usize,
+    /// The name-witness entries the action creates or destroys. Only planning and plan cleanup use
+    /// it.
     pub auxiliary_entries: usize,
 }
 
+/// The fixed next step of an attribute edit, with the work the consumer admits before running it.
 #[derive(Debug)]
 pub enum HtmlConstructionAttributeDescription<'a> {
+    /// Reads retained records to qualify the target element or an edit operand.
     Inspect(HtmlConstructionAttributeWork),
+    /// Qualifies that the attribute backing is uniquely owned before the step modifies it.
     UniqueBacking(HtmlConstructionAttributeWork),
+    /// Prepares the allocation snapshot of the merge plan or the next reservation. It allocates
+    /// nothing.
     PrepareAllocationReport(HtmlConstructionAttributeWork),
+    /// Compares one stretch of a candidate's name with an existing attribute name or an earlier
+    /// candidate's name.
     Compare {
+        /// In candidate planning, the index of the earlier candidate whose admitted name the
+        /// consumer must pass to `perform`. `None` when no earlier name is needed.
         prior_index: Option<usize>,
+        /// The work the step costs.
         work: HtmlConstructionAttributeWork,
     },
+    /// Reserves capacity in the merge plan so that one more decision fits.
     ReservePlan {
+        /// The plan's allocation, as reported before the step.
         allocation: &'a HtmlConstructionAllocationSnapshot,
+        /// The least plan capacity that suffices.
         minimum_capacity: usize,
+        /// The work the step costs.
         work: HtmlConstructionAttributeWork,
     },
+    /// Records the candidate's decision and a weak witness of its name in the merge plan.
     InitializeNameWitness(HtmlConstructionAttributeWork),
+    /// Reserves capacity in the attribute backing.
     ReserveAttributes {
+        /// The backing's dimensions before the reservation.
         before: HtmlConstructionAttributeCapacity,
+        /// The least capacity that suffices.
         minimum_capacity: usize,
+        /// The work the reservation costs.
         work: HtmlConstructionAttributeWork,
     },
+    /// Describes the prepaid writes of the positional edit and the new usage. Performing this
+    /// action applies nothing; `HtmlConstructionReadyAttributeSlot::commit` applies the writes.
     Commit {
+        /// The work the commit costs.
         work: HtmlConstructionAttributeWork,
+        /// The usage the edit leaves in place.
         usage: HtmlConstructionUsage,
     },
 }
@@ -93,6 +137,7 @@ impl HtmlConstructionAttributeDescription<'_> {
             .max(size_of::<Option<HtmlConstructionError>>());
         self
     }
+    /// The work the consumer admits for this step, whichever step it is.
     pub fn work(&self) -> HtmlConstructionAttributeWork {
         match self {
             Self::Inspect(v)
@@ -105,6 +150,8 @@ impl HtmlConstructionAttributeDescription<'_> {
             | Self::Commit { work, .. } => *work,
         }
     }
+    /// For a name comparison against an earlier candidate, that candidate's index; `None` for
+    /// every other step.
     pub fn prior_index(&self) -> Option<usize> {
         match self {
             Self::Compare { prior_index, .. } => *prior_index,
@@ -128,6 +175,7 @@ enum GroupPhase {
 }
 
 /// Owns the arena and its only merge plan; no name admission escapes this owner.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeEdit {
     storage: HtmlConstructionStorage,
     element: HtmlBuilderNode,
@@ -145,6 +193,7 @@ pub struct HtmlConstructionAttributeEdit {
     appended: usize,
     next_selected: usize,
 }
+/// A refused edit begin. It returns the storage and operands unchanged.
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeRejection {
     storage: HtmlConstructionStorage,
@@ -153,6 +202,7 @@ pub struct HtmlConstructionAttributeRejection {
     reason: HtmlConstructionError,
 }
 impl HtmlConstructionAttributeRejection {
+    /// Returns the storage, the element handle, the edit mode and the refusal cause.
     pub fn into_parts(
         self,
     ) -> (
@@ -176,11 +226,15 @@ impl fmt::Display for HtmlConstructionAttributeRejection {
     }
 }
 impl std::error::Error for HtmlConstructionAttributeRejection {}
+/// The result of a finished or abandoned edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCompletion {
     storage: HtmlConstructionStorage,
     retirement: HtmlConstructionAttributePlanRetirement,
 }
 impl HtmlConstructionAttributeCompletion {
+    /// Returns the storage and the retirement owner for the merge plan. Cleanup the plan with
+    /// `HtmlConstructionAttributePlanRetirement::next_action`.
     pub fn into_parts(
         self,
     ) -> (
@@ -190,9 +244,14 @@ impl HtmlConstructionAttributeCompletion {
         (self.storage, self.retirement)
     }
 }
+/// One pending action of an edit's own setup. It borrows the edit exclusively; `perform` consumes
+/// it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeAction<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
 }
+/// The observation after a setup action. It borrows the edit exclusively; `accept` resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeObservation<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     /// The phase this accepted observation resumes.
@@ -203,6 +262,8 @@ impl HtmlConstructionAttributeEdit {
         clippy::result_large_err,
         reason = "refusal returns the actual allocation-free storage and operands"
     )]
+    /// Starts an attribute edit of `element` in `mode`. Allocation-free: the first action
+    /// qualifies that the element exists and is an element.
     pub fn begin(
         storage: HtmlConstructionStorage,
         element: HtmlBuilderNode,
@@ -226,9 +287,14 @@ impl HtmlConstructionAttributeEdit {
             next_selected: 0,
         })
     }
+    /// The construction storage as it stands, for read-only inspection.
     pub fn storage_view(&self) -> &HtmlConstructionStorage {
         &self.storage
     }
+    /// The element's shared attribute backing. Returns the not-ready error until the first action
+    /// has qualified the target. That action fails for a target that is not an element, so the
+    /// target is never recorded as qualified and this method returns not-ready, not
+    /// wrong-node-kind, in that case.
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         if !self.target_checked {
             return Err(HtmlConstructionErrorKind::OperationNotReady.into());
@@ -238,6 +304,7 @@ impl HtmlConstructionAttributeEdit {
             _ => Err(HtmlConstructionErrorKind::WrongNodeKind.into()),
         }
     }
+    /// The attribute backing's dimensions as last observed.
     pub fn capacity(&self) -> HtmlConstructionAttributeCapacity {
         self.capacity
     }
@@ -272,6 +339,9 @@ impl HtmlConstructionAttributeEdit {
     fn poison(&mut self) {
         self.busy = true;
     }
+    /// The next setup action, or `Ok(None)` when planning and positional edits may begin. It
+    /// returns the latched failure, or the not-ready error while an observation, candidate or slot
+    /// is outstanding.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionAttributeAction<'_>>, HtmlConstructionError> {
@@ -284,6 +354,9 @@ impl HtmlConstructionAttributeEdit {
         Ok((self.phase != GroupPhase::Ready)
             .then_some(HtmlConstructionAttributeAction { edit: self }))
     }
+    /// Starts planning candidate `index` whose name is `name`. Candidates are planned in order
+    /// from 0, and `index` must equal the number planned so far. Only in `NamedMerge` mode;
+    /// `Slots` mode returns the attribute-order-mismatch error.
     pub fn candidate<'e, 'n>(
         &'e mut self,
         index: usize,
@@ -306,6 +379,8 @@ impl HtmlConstructionAttributeEdit {
             failure: None,
         })
     }
+    /// Whether the planned candidate `index` is kept: `true` if no existing attribute and no
+    /// earlier candidate has the same name.
     pub fn decision(&self, index: usize) -> Result<bool, HtmlConstructionError> {
         self.check_ready()?;
         self.decisions
@@ -313,6 +388,7 @@ impl HtmlConstructionAttributeEdit {
             .map(|v| v.keep)
             .ok_or(HtmlConstructionErrorKind::AttributeOrderMismatch.error())
     }
+    /// The number of kept candidates. Available once every candidate is planned.
     pub fn selected_count(&self) -> Result<usize, HtmlConstructionError> {
         self.check_ready()?;
         if !self.planning_complete() {
@@ -347,18 +423,24 @@ impl HtmlConstructionAttributeEdit {
             plan_index: 0,
         })
     }
+    /// Starts a step that ensures the backing can hold `additional` more attributes.
     pub fn reserve(
         &mut self,
         additional: usize,
     ) -> Result<HtmlConstructionAttributeSlot<'_>, HtmlConstructionError> {
         self.slot(SlotInput::Reserve(additional))
     }
+    /// Starts a step that appends the last element of `incoming`, which is removed from it on
+    /// commit. The backing needs a free slot, so `reserve` first. In `Slots` mode the name must be
+    /// unique; in `NamedMerge` mode it must be the next kept candidate.
     pub fn append<'a>(
         &'a mut self,
         incoming: &'a mut Vec<Attribute>,
     ) -> Result<HtmlConstructionAttributeSlot<'a>, HtmlConstructionError> {
         self.slot(SlotInput::Append(incoming))
     }
+    /// Starts a step that replaces the attribute at `index` with the attribute in `incoming`,
+    /// which is taken on commit. The replacement's name must remain unique. Only in `Slots` mode.
     pub fn replace<'a>(
         &'a mut self,
         index: usize,
@@ -366,15 +448,20 @@ impl HtmlConstructionAttributeEdit {
     ) -> Result<HtmlConstructionAttributeSlot<'a>, HtmlConstructionError> {
         self.slot(SlotInput::Replace { index, incoming })
     }
+    /// Starts a step that swaps the attributes at `index` and `index + 1`. Only in `Slots` mode.
     pub fn swap_adjacent(
         &mut self,
         index: usize,
     ) -> Result<HtmlConstructionAttributeSlot<'_>, HtmlConstructionError> {
         self.slot(SlotInput::Swap(index))
     }
+    /// Starts a step that removes the last attribute, which commit returns. Only in `Slots` mode.
     pub fn pop(&mut self) -> Result<HtmlConstructionAttributeSlot<'_>, HtmlConstructionError> {
         self.slot(SlotInput::Pop)
     }
+    /// Takes a finished edit out of `owner`. Requires all planning done and every kept candidate
+    /// appended. Returns the latched failure, the consumed error for an empty owner, or the
+    /// not-ready error; on error the owner is left in place.
     pub fn try_finish(
         owner: &mut Option<Self>,
     ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionError> {
@@ -387,6 +474,7 @@ impl HtmlConstructionAttributeEdit {
         }
         Ok(owner.take().expect("checked group").abort())
     }
+    /// Abandons the edit and returns the storage and the retirement owner for the merge plan.
     pub fn abort(self) -> HtmlConstructionAttributeCompletion {
         HtmlConstructionAttributeCompletion {
             storage: self.storage,
@@ -398,6 +486,7 @@ impl HtmlConstructionAttributeEdit {
     }
 }
 impl<'a> HtmlConstructionAttributeAction<'a> {
+    /// Describes the pending setup action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
         match self.edit.phase {
             GroupPhase::Target => {
@@ -427,6 +516,7 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
         }
         .transitions::<GroupPhase>()
     }
+    /// Performs the setup action. The observation must be accepted before the next one.
     pub fn perform(
         self,
     ) -> Result<HtmlConstructionAttributeObservation<'a>, HtmlConstructionError> {
@@ -487,9 +577,11 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
     }
 }
 impl HtmlConstructionAttributeObservation<'_> {
+    /// The merge plan's allocation snapshot, once the plan exists.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
         self.edit.plan.as_ref()
     }
+    /// Accepts the observation, which resumes the edit.
     pub fn accept(self) {
         self.edit.phase = self.next;
     }
@@ -514,6 +606,10 @@ enum CandidatePhase<'n> {
     Observing,
     Done,
 }
+/// The planning of one named candidate. It compares the candidate's name with the target's
+/// existing attributes and then with earlier candidates. Dropping it before `try_finish` poisons
+/// the edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     edit: &'e mut HtmlConstructionAttributeEdit,
     index: usize,
@@ -523,9 +619,14 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     complete: bool,
     failure: Option<HtmlConstructionError>,
 }
+/// One pending candidate action. It borrows the candidate exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
 }
+/// The observation after a candidate action. It borrows the candidate exclusively; `accept`
+/// resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
     /// The phase this accepted observation resumes.
@@ -544,6 +645,8 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
     pub fn allocation(&self) -> &HtmlConstructionAllocationSnapshot {
         self.edit.plan.as_ref().expect("candidate has issued plan")
     }
+    /// The next candidate action, or `Ok(None)` when planning of this candidate is finished. It
+    /// returns the latched failure, or the not-ready error while an observation awaits `accept`.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionAttributeCandidateAction<'_, 'e, 'n>>, HtmlConstructionError>
@@ -557,6 +660,9 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
         Ok((!matches!(self.phase, CandidatePhase::Done))
             .then_some(HtmlConstructionAttributeCandidateAction { candidate: self }))
     }
+    /// Takes a finished candidate out of `owner` and returns whether the candidate is kept (no
+    /// matching name). Returns the latched failure, the consumed error for an empty owner, or the
+    /// not-ready error before planning finished; on error the owner is left in place.
     pub fn try_finish(owner: &mut Option<Self>) -> Result<bool, HtmlConstructionError> {
         let candidate = owner
             .as_ref()
@@ -582,6 +688,7 @@ fn comparison_work(phase: NamePhase) -> HtmlConstructionAttributeWork {
     }
 }
 impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
+    /// Describes the pending candidate action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
         let c = &self.candidate;
         match c.phase {
@@ -651,6 +758,9 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
         }
         .transitions::<CandidatePhase>()
     }
+    /// Performs the candidate action. Pass the admitted name of the earlier candidate when
+    /// `description().prior_index()` is `Some`; the name must be the same shared allocation
+    /// planned earlier, or the attribute-name-mismatch error is returned.
     pub fn perform(
         self,
         prior: Option<&'n DocumentString>,
@@ -788,6 +898,8 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     }
 }
 impl HtmlConstructionAttributeCandidateObservation<'_, '_, '_> {
+    /// The plan's allocation snapshot when the performed action reserved plan storage; `None`
+    /// otherwise.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
         self.allocation.then(|| {
             self.candidate
@@ -797,11 +909,13 @@ impl HtmlConstructionAttributeCandidateObservation<'_, '_, '_> {
                 .expect("actual plan allocation")
         })
     }
+    /// Accepts the observation, which resumes planning.
     pub fn accept(self) {
         self.candidate.phase = self.next;
     }
 }
 
+#[derive(Debug)]
 enum SlotInput<'a> {
     Reserve(usize),
     Append(&'a mut Vec<Attribute>),
@@ -840,6 +954,9 @@ enum SlotPhase {
     },
     Ready,
 }
+/// One positional step on an edit: reserve, append, replace, swap or pop. Dropping it before it
+/// commits poisons the edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlot<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     input: SlotInput<'a>,
@@ -850,15 +967,21 @@ pub struct HtmlConstructionAttributeSlot<'a> {
     minimum_capacity: usize,
     plan_index: usize,
 }
+/// One pending slot action. It borrows the slot exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotAction<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
 }
+/// The observation after a slot action. It borrows the slot exclusively; `accept` resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotObservation<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
     /// The phase this accepted observation resumes.
     next: SlotPhase,
     capacity: bool,
 }
+/// A slot whose every action was accepted. `commit` applies it.
+#[derive(Debug)]
 pub struct HtmlConstructionReadyAttributeSlot<'a> {
     slot: HtmlConstructionAttributeSlot<'a>,
 }
@@ -870,6 +993,8 @@ impl Drop for HtmlConstructionAttributeSlot<'_> {
     }
 }
 impl<'e> HtmlConstructionAttributeSlot<'e> {
+    /// The element's shared attribute backing. Returns the not-ready error while the slot is ready
+    /// to commit.
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         if self.failure.is_none()
             && matches!(
@@ -888,6 +1013,8 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
     pub fn capacity(&self) -> HtmlConstructionAttributeCapacity {
         self.edit.capacity
     }
+    /// The next slot action, or `Ok(None)` once it is ready. It returns the latched failure, or
+    /// the not-ready error while an observation awaits `accept`.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionAttributeSlotAction<'_, 'e>>, HtmlConstructionError> {
@@ -900,6 +1027,9 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
         Ok((!matches!(self.phase, SlotPhase::Ready))
             .then_some(HtmlConstructionAttributeSlotAction { slot: self }))
     }
+    /// Takes a ready slot out of `owner`. Returns the latched failure, the consumed error for an
+    /// empty owner, or the not-ready error before the last action was accepted; on error the owner
+    /// is left in place.
     pub fn try_ready(
         owner: &mut Option<Self>,
     ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionError> {
@@ -938,9 +1068,12 @@ fn identical_name(left: &QualifiedName, right: &QualifiedName) -> bool {
         )
 }
 impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
+    /// The element's shared attribute backing, as
+    /// `HtmlConstructionAttributeSlot::shared_attributes`.
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         self.slot.shared_attributes()
     }
+    /// Describes the pending slot action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
         let s = &self.slot;
         match s.phase {
@@ -1054,6 +1187,8 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
         }
         .transitions::<SlotPhase>()
     }
+    /// Performs the slot action. The observation must be accepted before the next action. The
+    /// first failure is latched.
     pub fn perform(
         self,
     ) -> Result<HtmlConstructionAttributeSlotObservation<'a, 'e>, HtmlConstructionError> {
@@ -1259,17 +1394,25 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
     }
 }
 impl HtmlConstructionAttributeSlotObservation<'_, '_> {
+    /// The element's shared attribute backing, as
+    /// `HtmlConstructionAttributeSlot::shared_attributes`.
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         self.slot.shared_attributes()
     }
+    /// The backing's dimensions when the performed action reserved capacity; `None` otherwise. A
+    /// failed reservation returns an error and produces no observation, so only the slot's own
+    /// `capacity` survives such a failure.
     pub fn capacity(&self) -> Option<HtmlConstructionAttributeCapacity> {
         self.capacity.then_some(self.slot.edit.capacity)
     }
+    /// Accepts the observation, which resumes the slot.
     pub fn accept(self) {
         self.slot.phase = self.next;
     }
 }
 impl HtmlConstructionReadyAttributeSlot<'_> {
+    /// Applies the prepaid step. Returns the attribute that `replace` or `pop` removed, and `None`
+    /// for every other step.
     pub fn commit(mut self) -> Option<Attribute> {
         let s = &mut self.slot;
         let removed = match &mut s.input {
@@ -1323,28 +1466,39 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
 }
 
 /// Cleanup owns the same initialized decision cells and their actual allocation.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributePlanRetirement {
     decisions: Vec<NameDecision>,
     snapshot: Option<HtmlConstructionAllocationSnapshot>,
 }
+/// What a cleanup action of the merge plan releases.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAttributeRetirementDescription {
+    /// One initialized decision cell with its weak name witness.
     NameWitness {
+        /// The auxiliary entries the action destroys: 1.
         auxiliary_entries: usize,
+        /// The provider requests the action makes: 1.
         provider_calls: usize,
     },
+    /// The plan's allocation itself, once every decision cell is released.
     Allocation,
 }
+/// One pending cleanup action of the merge plan. It borrows the retirement exclusively; `perform`
+/// consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeRetirementAction<'a> {
     retirement: &'a mut HtmlConstructionAttributePlanRetirement,
 }
 impl HtmlConstructionAttributePlanRetirement {
+    /// The next cleanup action, or `None` once the plan is fully released.
     pub fn next_action(&mut self) -> Option<HtmlConstructionAttributeRetirementAction<'_>> {
         (!self.decisions.is_empty() || self.snapshot.is_some())
             .then_some(HtmlConstructionAttributeRetirementAction { retirement: self })
     }
 }
 impl HtmlConstructionAttributeRetirementAction<'_> {
+    /// Describes what the pending action releases.
     pub fn description(&self) -> HtmlConstructionAttributeRetirementDescription {
         if self.retirement.decisions.is_empty() {
             HtmlConstructionAttributeRetirementDescription::Allocation
@@ -1355,9 +1509,12 @@ impl HtmlConstructionAttributeRetirementAction<'_> {
             }
         }
     }
+    /// The plan's allocation snapshot, if one was made.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
         self.retirement.snapshot.as_ref()
     }
+    /// Performs the cleanup. Returns the retirement evidence when the plan's allocation was
+    /// released and `None` for a decision cell.
     pub fn perform(self) -> Option<HtmlConstructionRetired> {
         if let Some(decision) = self.retirement.decisions.pop() {
             drop(decision);

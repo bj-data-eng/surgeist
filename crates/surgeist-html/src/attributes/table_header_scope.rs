@@ -9,9 +9,17 @@ use super::*;
 /// needs actual row/column group anchoring in a qualified table model.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTableHeaderScope {
+    /// The `row` keyword: the header cell applies to some of the subsequent cells in the same
+    /// row(s) (HTML877d #attr-th-scope).
     Row,
+    /// The `col` keyword: the header cell applies to some of the subsequent cells in the same
+    /// column(s). The canonical spelling is `col`.
     Column,
+    /// The `rowgroup` keyword: the header cell applies to all the remaining cells in the row
+    /// group.
     RowGroup,
+    /// The `colgroup` keyword: the header cell applies to all the remaining cells in the column
+    /// group.
     ColumnGroup,
 }
 
@@ -40,6 +48,8 @@ impl HtmlTableHeaderScope {
 /// Auto has no conforming authored keyword or native attribute emitter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTableHeaderScopeState {
+    /// A conforming keyword was recognized; the payload says which. Group keywords prove spelling
+    /// only, not group anchoring.
     Keyword(HtmlTableHeaderScope),
     /// Missing or invalid content selects context-dependent Auto processing.
     Auto,

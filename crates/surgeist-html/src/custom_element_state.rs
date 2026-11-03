@@ -7,10 +7,18 @@
 /// to the consuming capture owner. This scalar supplies no execution capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCustomElementState {
+    /// The name is a valid custom element name, or `is` was supplied, but no definition has been
+    /// applied yet; the element can still be upgraded.
     Undefined,
+    /// An upgrade or construction attempt failed; the element is never retried.
     Failed,
+    /// The element is not a custom element: not in the HTML namespace, or neither a valid custom
+    /// element name nor a saved `is` value.
     Uncustomized,
+    /// The element is being created synchronously from a definition and is awaiting its constructor
+    /// result; it is not yet `Custom`.
     Precustomized,
+    /// The element was successfully constructed or upgraded from a custom element definition.
     Custom,
 }
 

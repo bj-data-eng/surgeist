@@ -12,21 +12,28 @@ pub struct HtmlConstructionTextAppendCapacity {
     data_address: usize,
 }
 impl HtmlConstructionTextAppendCapacity {
+    /// The number of initialized UTF-16 units in the candidate text backing.
     pub fn initialized_len(self) -> usize {
         self.initialized_len
     }
+    /// The reserved unit capacity of the candidate text backing; at least `initialized_len`.
     pub fn capacity(self) -> usize {
         self.capacity
     }
+    /// The address of the first backing unit. It identifies a reallocation, not ownership, and
+    /// grants no access.
     pub fn data_address(self) -> usize {
         self.data_address
     }
+    /// The size in bytes of one text unit: 2, a UTF-16 code unit.
     pub fn element_size(self) -> usize {
         size_of::<u16>()
     }
+    /// The alignment in bytes of one text unit.
     pub fn element_alignment(self) -> usize {
         align_of::<u16>()
     }
+    /// The reserved payload in bytes: capacity times the unit size.
     pub fn payload_bytes(self) -> usize {
         self.capacity * size_of::<u16>()
     }
@@ -46,49 +53,88 @@ impl HtmlConstructionTextAppendCapacity {
 /// Bounds admitted before each action, excluding allocator internals.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionTextAppendWork {
+    /// The retained records the action reads or updates.
     pub record_visits: usize,
+    /// The provider requests the action makes.
     pub provider_calls: usize,
+    /// The bytes the action only reads, without copying them. The text-append steps copy rather
+    /// than inspect, so every description reports zero.
     pub inspected_bytes: usize,
+    /// The bytes the action copies, including bookkeeping values it moves.
     pub copied_bytes: usize,
+    /// The record fields the action writes.
     pub record_writes: usize,
+    /// The size in bytes of the largest single layout the action initializes or moves as one unit.
+    /// A text copy is split so that no unit exceeds this chunk size.
     pub atomic_layout_bytes: usize,
     /// Conservative allocator relocation bound, separate from explicit copies.
     pub relocation_bound_bytes: usize,
 }
 
+/// The fixed next step of a text append, with the work the consumer admits before running it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionTextAppendDescription {
+    /// Qualifies the target text node and computes the required length and the usage after the
+    /// append.
     Inspect(HtmlConstructionTextAppendWork),
+    /// Decides whether the text's backing is uniquely owned, which allows reuse, or aliased, which
+    /// requires a separate copy.
     SelectBacking(HtmlConstructionTextAppendWork),
+    /// Creates the empty separate backing that receives a preserved copy of the original text.
     InitializeBacking(HtmlConstructionTextAppendWork),
+    /// Reserves capacity in the candidate backing.
     Reserve {
+        /// The candidate backing's dimensions before the reservation.
         before: HtmlConstructionTextAppendCapacity,
+        /// The least capacity that holds the original text and the appended text.
         required_capacity: usize,
+        /// The capacity `perform` reserves when called without a minimum: twice the current
+        /// capacity, raised to the required capacity and clipped to the largest representable
+        /// payload.
         preferred_capacity: usize,
+        /// The work the reservation costs, including the relocation bound.
         work: HtmlConstructionTextAppendWork,
     },
+    /// Copies a chunk of the original text into the separate backing.
     CopyPrefix {
+        /// The offset, in UTF-16 units, of the first unit to copy.
         offset: usize,
+        /// The number of units this action copies; at most one chunk of 128 units.
         units: usize,
+        /// The work the copy costs.
         work: HtmlConstructionTextAppendWork,
     },
     /// The only action lending the original construction storage.
     Preflight {
+        /// The usage after the append. The consumer admits limits against it.
         usage: HtmlConstructionUsage,
+        /// The work the action costs.
         work: HtmlConstructionTextAppendWork,
     },
+    /// Confirms that the candidate backing is uniquely owned before the tail is written, so
+    /// nothing outside the append can observe the written units.
     QualifyTail(HtmlConstructionTextAppendWork),
+    /// Copies a chunk of the incoming text onto the end of the candidate backing.
     CopyTail {
+        /// The offset, in UTF-16 units, of the first incoming unit to copy.
         offset: usize,
+        /// The number of units this action copies; at most one chunk of 128 units.
         units: usize,
+        /// The work the copy costs.
         work: HtmlConstructionTextAppendWork,
     },
+    /// Describes the prepaid writes: swapping in a preserved copy if one was made and storing the
+    /// new usage. Performing this action applies nothing; `HtmlConstructionTextAppendReady::commit`
+    /// applies them.
     Commit {
+        /// The usage that the commit stores.
         usage: HtmlConstructionUsage,
+        /// The work the commit costs.
         work: HtmlConstructionTextAppendWork,
     },
 }
 impl HtmlConstructionTextAppendDescription {
+    /// The work that the consumer admits for this step, whichever step it is.
     pub fn work(self) -> HtmlConstructionTextAppendWork {
         match self {
             Self::Inspect(w)
@@ -121,6 +167,7 @@ enum Phase {
 }
 
 /// Exclusive pending owner. No mutable backing or reusable uniqueness proof escapes.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppend {
     storage: HtmlConstructionStorage,
     node: HtmlBuilderNode,
@@ -137,20 +184,28 @@ pub struct HtmlConstructionTextAppend {
     prefix: usize,
     tail: usize,
 }
+/// One pending text-append action. It borrows the append exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendAction<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
 }
+/// The observation after a text-append action. It borrows the append exclusively; `accept` resumes
+/// it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendObservation<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
     /// The phase this accepted observation resumes.
     next: Phase,
 }
+/// A text append whose every action was accepted. `commit` applies it; `abort` abandons it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendReady {
     owner: HtmlConstructionTextAppend,
 }
 
 /// Original operands and actual storage, plus a distinct backing needing retirement.
 /// On abort, a pending preserved copy retains all of its initialized units.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendCompletion {
     storage: HtmlConstructionStorage,
     node: HtmlBuilderNode,
@@ -158,6 +213,9 @@ pub struct HtmlConstructionTextAppendCompletion {
     discarded: Option<DocumentString>,
 }
 impl HtmlConstructionTextAppendCompletion {
+    /// Returns the storage, the target node handle, the incoming text and the backing that the
+    /// caller must retire. The backing is `Some` when a separate preserved copy existed that is no
+    /// longer native-visible.
     pub fn into_parts(
         self,
     ) -> (
@@ -220,6 +278,9 @@ impl HtmlConstructionTextAppend {
             self.original_mut()
         }
     }
+    /// The dimensions of the candidate backing. `None` before the first action has qualified the
+    /// target, and, when the append works in a preserved copy, until the backing initialization
+    /// has created that copy.
     pub fn capacity(&self) -> Option<HtmlConstructionTextAppendCapacity> {
         self.candidate().map(HtmlConstructionTextAppendCapacity::of)
     }
@@ -235,6 +296,8 @@ impl HtmlConstructionTextAppend {
             self.candidate()
         }
     }
+    /// The next action, `Ok(None)` when the append is ready. It returns the latched failure, or
+    /// the not-ready error while an observation awaits `accept`.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionTextAppendAction<'_>>, HtmlConstructionError> {
@@ -249,6 +312,9 @@ impl HtmlConstructionTextAppend {
                 .then_some(HtmlConstructionTextAppendAction { owner: self }),
         )
     }
+    /// Takes a ready append out of `owner`. Returns the latched failure, the consumed error for an
+    /// empty owner, or the not-ready error before the last action was accepted; on error the owner
+    /// is left in place.
     pub fn try_ready(
         owner: &mut Option<Self>,
     ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
@@ -305,6 +371,8 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
             None
         }
     }
+    /// Describes the pending action's work. The consumer admits that work before calling
+    /// `perform`.
     pub fn description(&self) -> HtmlConstructionTextAppendDescription {
         use HtmlConstructionTextAppendDescription as D;
         let owner = &self.owner;
@@ -582,9 +650,13 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
     }
 }
 impl HtmlConstructionTextAppendObservation<'_> {
+    /// The dimensions of the candidate backing after the performed action. `None` under the same
+    /// conditions as the owner's `capacity`.
     pub fn capacity(&self) -> Option<HtmlConstructionTextAppendCapacity> {
         self.owner.capacity()
     }
+    /// Whether aliases of the original text require the append to work in a separate preserved
+    /// copy.
     pub fn preserves_original(&self) -> bool {
         self.owner.preserves_original()
     }
@@ -592,11 +664,14 @@ impl HtmlConstructionTextAppendObservation<'_> {
     pub fn backing(&self) -> Option<&DocumentString> {
         self.owner.backing()
     }
+    /// Accepts the observation, which resumes the append at the phase the action selected.
     pub fn accept(self) {
         self.owner.phase = self.next;
     }
 }
 impl HtmlConstructionTextAppendReady {
+    /// Abandons the ready append and returns its operands. Any separate preserved copy is returned
+    /// for retirement.
     pub fn abort(self) -> HtmlConstructionTextAppendCompletion {
         self.owner.abort()
     }

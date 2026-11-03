@@ -9,11 +9,16 @@ use super::*;
 /// wrapped text, complete element conformance or submission value is produced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTextareaWrap {
+    /// The `soft` state: the submitted value is not wrapped. It is also the missing and invalid
+    /// fallback.
     Soft,
+    /// The `hard` state: the user agent adds newlines so the text is wrapped when submitted. The
+    /// element must then specify `cols`. The wrapping itself is not performed here.
     Hard,
 }
 
 impl HtmlTextareaWrap {
+    /// The canonical lowercase spelling of the keyword, `soft` or `hard`.
     pub fn canonical_keyword(self) -> &'static str {
         match self {
             Self::Soft => "soft",

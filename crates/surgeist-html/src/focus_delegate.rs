@@ -6,64 +6,95 @@
 //! reply. Neither tabindex nor absent rendering services certify focusability.
 
 /// Classification of the original focus target, not the current descendant.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateTargetKind {
+    /// The focus target is a `dialog` element, so a descendant is chosen when it is
+    /// sequentially focusable. A descendant that is not is still resolved through get the
+    /// focusable area and chosen if that yields an area.
     Dialog,
+    /// The focus target is not a `dialog` element, so a descendant is chosen when it
+    /// is a focusable area. A descendant that is not is still resolved through get the
+    /// focusable area and chosen if that yields an area.
     Other,
 }
 /// Only the branch classification of the original trigger. Other includes every
 /// string except exact `click`. The adapter must still retain and forward the
 /// actual original trigger to called resolution and nested delegation; this
 /// classification is not a replacement string. Dialog supplies default `other`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusTriggerKind {
+    /// The trigger is exactly the string `click`, so a candidate must also be click
+    /// focusable.
     Click,
+    /// The trigger is any other string, including the default `other`.
     Other,
 }
 /// Role of the actual whereToLook local, retained by the adapter.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateRoot {
+    /// `whereToLook` is the focus target itself, which is not a shadow host.
     Target,
+    /// `whereToLook` is the shadow root of the focus target, a shadow host that
+    /// delegates focus.
     ShadowRoot,
 }
 /// Actual shadow-host/root relation and delegates-focus state. When present,
 /// the adapter retains the exact root observed with this reply.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateShadowRoot {
+    /// The focus target is not a shadow host.
     Absent,
+    /// The focus target is a shadow host whose shadow root delegates focus.
     DelegatesFocus,
+    /// The focus target is a shadow host whose shadow root does not delegate focus,
+    /// so the delegate is null.
     DoesNotDelegateFocus,
 }
 /// Role of the actual selected area, never its identity or a fabricated anchor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateCandidate {
+    /// The current descendant is itself the focusable area.
     Descendant,
+    /// The area that getting the focusable area resolved for the current descendant.
     ResolvedArea,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The result of an autofocus delegate: null, or the selected area's role.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlAutofocusDelegateOutcome {
+    /// No descendant with an `autofocus` attribute yielded a suitable area.
     Null,
+    /// A descendant with an `autofocus` attribute yielded this area.
     Candidate(HtmlFocusDelegateCandidate),
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The result of a focus delegate: null, an area from the autofocus delegate, or
+/// the selected area's role.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateOutcome {
+    /// No suitable focusable area exists below `whereToLook`, or the target is a
+    /// shadow host that does not delegate focus.
     Null,
     /// Return the actual area produced by the completed autofocus child.
     AutofocusDelegate,
+    /// The first suitable descendant in tree order yielded this area.
     Candidate(HtmlFocusDelegateCandidate),
 }
 
+/// The read or effect that the adapter must fulfill next for the focus delegate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusDelegateAction {
+    /// Read whether the focus target is a shadow host and whether its shadow root
+    /// delegates focus.
     ReadShadowRoot,
     /// Complete the entire autofocus-delegate call for the selected actual root
     /// and original trigger before supplying its nullable result.
     RunAutofocusDelegate {
+        /// The root the autofocus delegate searches.
         root: HtmlFocusDelegateRoot,
     },
     /// Initialize a NEW ordinary-descendant preorder pass of the actual root,
     /// excluding the root itself. No implicit shadow, slot or template edges.
     BeginDescendants {
+        /// The root whose descendants are walked.
         root: HtmlFocusDelegateRoot,
     },
     /// Advance exactly once in that pass; retain the actual current descendant.
@@ -71,23 +102,39 @@ pub enum HtmlFocusDelegateAction {
     NextDescendant,
     /// Read actual sequential focusability, not a tabindex sign heuristic.
     ReadSequentiallyFocusable,
+    /// Read whether the current descendant is itself a focusable area, for a focus
+    /// target that is not a `dialog`.
     ReadFocusableArea,
     /// Fulfill called get-the-focusable-area for the actual current descendant
     /// and unchanged original trigger, retaining its actual nullable result.
     /// Nested delegation is a real called algorithm, not an implicit tree edge.
     GetFocusableArea,
+    /// The focus delegate is finished with this result. No reply is accepted afterward.
     Complete(HtmlFocusDelegateOutcome),
 }
+/// Observations and acknowledgments for the focus delegate cursor. Each reply
+/// answers exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFocusDelegateReply {
+    /// The relation of the focus target to a shadow root.
     ShadowRoot(HtmlFocusDelegateShadowRoot),
+    /// Whether the autofocus delegate for `whereToLook` is nonnull.
     AutofocusDelegatePresent(bool),
+    /// Whether another descendant of `whereToLook` exists in tree order. `false`
+    /// means actual exhaustion.
     DescendantPresent(bool),
+    /// Whether the current descendant is sequentially focusable.
     SequentiallyFocusable(bool),
+    /// Whether the current descendant is a focusable area.
     FocusableArea(bool),
+    /// Whether getting the focusable area for the current descendant returned a
+    /// nonnull area.
     ResolvedAreaPresent(bool),
+    /// The pending preparation effect was fulfilled.
     Applied,
 }
+/// Why a focus delegate cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFocusDelegateError {
     kind: HtmlFocusDelegateErrorKind,
@@ -147,12 +194,15 @@ pub struct HtmlFocusDelegateCursor {
     target_kind: HtmlFocusDelegateTargetKind,
 }
 impl HtmlFocusDelegateCursor {
+    /// Starts the focus delegate of HTML877d #focus-processing-model. The target kind
+    /// selects the descendant test that applies to a `dialog` element.
     pub const fn new(target_kind: HtmlFocusDelegateTargetKind) -> Self {
         Self {
             pending: HtmlFocusDelegateAction::ReadShadowRoot,
             target_kind,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlFocusDelegateAction {
         self.pending
     }
@@ -209,6 +259,8 @@ impl HtmlFocusDelegateCursor {
     }
 }
 
+/// The read or effect that the adapter must fulfill next for the autofocus
+/// delegate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofocusDelegateAction {
     /// Initialize ordinary descendants of this call's actual target/root in
@@ -219,6 +271,8 @@ pub enum HtmlAutofocusDelegateAction {
     /// Read actual qualified autofocus presence, using autofocus_presence for
     /// actual Elements. Traversal itself must not silently filter non-Elements.
     ReadAutofocus,
+    /// Read whether the descendant with an `autofocus` attribute is itself a
+    /// focusable area.
     ReadFocusableArea,
     /// Run real called resolution with the original actual trigger and retain
     /// its nullable area. Non-Element input-domain uncertainty is unavailable
@@ -227,19 +281,32 @@ pub enum HtmlAutofocusDelegateAction {
     /// Read actual click focusability of the selected actual area, which may
     /// differ from its DOM anchor and from the current descendant.
     ReadClickFocusable {
+        /// Which area was selected, for the click focusability read.
         candidate: HtmlFocusDelegateCandidate,
     },
+    /// The autofocus delegate is finished with this result. No reply is accepted
+    /// afterward.
     Complete(HtmlAutofocusDelegateOutcome),
 }
+/// Observations and acknowledgments for the autofocus delegate cursor. Each reply
+/// answers exactly the pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAutofocusDelegateReply {
+    /// Whether another descendant exists in tree order.
     DescendantPresent(bool),
+    /// Whether the current descendant has an `autofocus` content attribute.
     Autofocus(bool),
+    /// Whether the descendant is a focusable area.
     FocusableArea(bool),
+    /// Whether getting the focusable area for the descendant returned a nonnull area.
     ResolvedAreaPresent(bool),
+    /// Whether the selected area is click focusable.
     ClickFocusable(bool),
+    /// The pending traversal effect was fulfilled.
     Applied,
 }
+/// Why an autofocus delegate cursor refused a reply, queried through `is_*`
+/// predicates. The cursor stays unchanged after a refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlAutofocusDelegateError {
     kind: HtmlAutofocusDelegateErrorKind,
@@ -299,12 +366,15 @@ pub struct HtmlAutofocusDelegateCursor {
     trigger_kind: HtmlFocusTriggerKind,
 }
 impl HtmlAutofocusDelegateCursor {
+    /// Starts the autofocus delegate of HTML877d #focus-processing-model. Only a `click`
+    /// trigger requires the selected area to be click focusable.
     pub const fn new(trigger_kind: HtmlFocusTriggerKind) -> Self {
         Self {
             pending: HtmlAutofocusDelegateAction::BeginDescendants,
             trigger_kind,
         }
     }
+    /// Returns the read or effect that must be fulfilled before the next reply.
     pub const fn action(&self) -> HtmlAutofocusDelegateAction {
         self.pending
     }

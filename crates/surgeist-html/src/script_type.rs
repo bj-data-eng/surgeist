@@ -9,9 +9,17 @@ use crate::DocumentString;
 /// This value alone does not establish preparation, saved metadata or execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptKind {
+    /// A classic script: the type string matches a JavaScript MIME type essence, ignoring ASCII
+    /// case (#prepare-the-script-element step 9). In preparation an explicit `type` also matches
+    /// after leading and trailing ASCII whitespace is stripped. An absent or empty selection is
+    /// Classic as well.
     Classic,
+    /// A module script: the type string is ASCII case-insensitively `module`.
     Module,
+    /// An import map: the type string is ASCII case-insensitively `importmap`.
     ImportMap,
+    /// A speculation rules script: the type string is ASCII case-insensitively
+    /// `speculationrules`.
     SpeculationRules,
 }
 
@@ -44,6 +52,9 @@ const KEYWORDS: [(&[u8], HtmlScriptKind); 3] = [
 /// map these concrete credits to their existing categories; no controller is held.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeWork {
+    /// Charge this many visits before a read: two for the initial selection of the input, then,
+    /// for each candidate comparison, one to start it and one for its length step, which precedes
+    /// any unit comparison.
     RecordVisit(u64),
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),
@@ -51,6 +62,7 @@ pub enum HtmlScriptTypeWork {
 /// Borrowed ASCII-insensitive virtual-prefix/range matcher consumed by
 /// [`HtmlScriptTypeCursor`]. Credits precede length comparison and each read;
 /// a completed result has no further work.
+#[derive(Debug)]
 pub(crate) struct ScriptTypeMatchCursor<'a> {
     prefix: &'static [u8],
     value: &'a DocumentString,
@@ -138,6 +150,7 @@ enum Pass {
     Keywords,
 }
 /// A scan stage; only the matching stage owns a matcher.
+#[derive(Debug)]
 enum Stage<'a> {
     Candidate,
     Match(ScriptTypeMatchCursor<'a>),
@@ -146,6 +159,7 @@ enum Stage<'a> {
 }
 
 /// A classification over one established nonempty input.
+#[derive(Debug)]
 struct Scan<'a> {
     value: &'a DocumentString,
     prefix: &'static [u8],
@@ -254,6 +268,7 @@ impl<'a> Scan<'a> {
     }
 }
 
+#[derive(Debug)]
 enum State<'a> {
     Initial {
         explicit: Option<&'a DocumentString>,
@@ -270,6 +285,7 @@ enum State<'a> {
 /// Finite work: sixteen raw matches, at most two linear trim passes and sixteen
 /// stripped matches for explicit preparation, then three exact keyword matches.
 /// A virtual language prefix never allocates a concatenated string.
+#[derive(Debug)]
 pub struct HtmlScriptTypeCursor<'a> {
     state: State<'a>,
 }

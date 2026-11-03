@@ -17,6 +17,8 @@ pub struct HtmlCspDocumentId {
     pub(super) serial: u64,
 }
 impl HtmlCspDocumentId {
+    /// Returns the owner that issued this document identity. Identities from
+    /// different owners never compare equal and are rejected as foreign.
     pub fn owner(&self) -> &HtmlCspOwnerId {
         &self.owner
     }
@@ -39,6 +41,9 @@ pub struct HtmlCspProcessorProfile {
     pub(super) version: u64,
 }
 impl HtmlCspProcessorProfile {
+    /// Returns the backend's declared semantic version. Two profiles qualify only if
+    /// both the issuing processor and this version are equal; it has no ordering
+    /// meaning here.
     pub fn semantic_version(&self) -> u64 {
         self.version
     }

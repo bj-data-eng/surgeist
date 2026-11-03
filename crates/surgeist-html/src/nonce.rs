@@ -5,21 +5,29 @@ use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI}
 /// Actual captured cryptographic slot; content attributes are independent.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedNonce {
+    /// The captured slot was not supplied, so no decision may assume a value.
     Unavailable,
+    /// The captured `[[CryptographicNonce]]` value, with exact UTF-16 code units.
     Value(DocumentString),
 }
 /// Actual Document browsing-context association.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlBrowsingContextPresence {
+    /// The caller could not establish whether the Document has a browsing context.
     Unavailable,
+    /// The Document has no browsing context.
     Absent,
+    /// The Document has a browsing context.
     Present,
 }
 /// Whether the actual policy container has a header-delivered CSP.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlHeaderDeliveredCsp {
+    /// The caller could not establish whether the policy container has a header-delivered CSP.
     Unavailable,
+    /// The policy container has no header-delivered Content Security Policy.
     Absent,
+    /// The policy container has at least one header-delivered Content Security Policy.
     Present,
 }
 /// Independently supplied Document facts; this does not parse or enforce CSP.
@@ -29,6 +37,7 @@ pub struct HtmlNonceDocumentEnvironment {
     header_delivered_csp: HtmlHeaderDeliveredCsp,
 }
 impl HtmlNonceDocumentEnvironment {
+    /// Pairs the two independently supplied Document facts. Neither is inferred from the other.
     pub fn new(
         browsing_context: HtmlBrowsingContextPresence,
         header_delivered_csp: HtmlHeaderDeliveredCsp,
@@ -38,9 +47,11 @@ impl HtmlNonceDocumentEnvironment {
             header_delivered_csp,
         }
     }
+    /// The supplied browsing-context association.
     pub fn browsing_context(self) -> HtmlBrowsingContextPresence {
         self.browsing_context
     }
+    /// The supplied header-delivered CSP presence.
     pub fn header_delivered_csp(self) -> HtmlHeaderDeliveredCsp {
         self.header_delivered_csp
     }
@@ -48,30 +59,49 @@ impl HtmlNonceDocumentEnvironment {
 /// Current insertion eligibility, derived from the actual shadow-including root.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNonceConnection {
+    /// The element's shadow-including root is not a Document with a browsing context.
     NotBrowsingContextConnected,
+    /// The element's shadow-including root is a Document with a browsing context.
     BrowsingContextConnected,
+    /// The caller could not establish connectedness.
     Unavailable,
 }
+/// The Document fact that an `Unavailable` insertion decision still needs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNonceMissing {
+    /// Whether the element is browsing-context connected.
     Connection,
+    /// Whether the policy container has a header-delivered CSP.
     HeaderDeliveredCsp,
 }
+/// The outcome of the nonce insertion steps; see [`nonce_insertion_effect`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNonceInsertionEffect {
+    /// Leave the `nonce` content attribute unchanged: a known false condition means the hiding
+    /// steps do not apply.
     KeepContent,
+    /// Set the `nonce` content attribute to the empty string while the cryptographic nonce slot
+    /// keeps its value, so the nonce is not exposed to attribute selectors.
     HideContentPreservingSlot,
+    /// The decision depends on an unsupplied fact; the carried value names which one.
     Unavailable(HtmlNonceMissing),
 }
+/// The outcome of the nonce attribute change steps; see [`nonce_attribute_change`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNonceAttributeEffect<'a> {
+    /// Not a nonce attribute change on a nonce-capable element: leave the slot untouched.
     Ignore,
+    /// The attribute was removed: set the cryptographic nonce slot to the empty string.
     ClearSlot,
+    /// The attribute now has this value: set the cryptographic nonce slot to it.
     CopyValue(&'a DocumentString),
 }
 
 // Length rejection precedes inspection. Even arbitrary unmatched inputs cannot
 // cause more than these fixed literal lengths to be read by one decision.
+/// The most UTF-16 code units one nonce decision can inspect: three namespace URI literals of
+/// at most 40 units each, plus the five units of `nonce`. A length mismatch is rejected before
+/// any unit is read.
 pub const NONCE_INSPECTION_BOUND: usize = 3 * 40 + 5;
 fn exact(value: &DocumentString, literal: &[u8]) -> bool {
     value.len() == literal.len()
@@ -81,6 +111,8 @@ fn exact(value: &DocumentString, literal: &[u8]) -> bool {
             .zip(literal)
             .all(|(&a, &b)| a == u16::from(b))
 }
+/// Whether `name` is in the HTML, SVG or MathML namespace, the elements that implement the
+/// nonce mixin. Compares the exact expanded namespace URI, not the prefix.
 pub fn nonce_element(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
     name.namespace_uri().is_some_and(|uri| {
         [

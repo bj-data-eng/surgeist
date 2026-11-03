@@ -24,6 +24,7 @@ enum NativeLoopIndex {
 }
 
 impl HtmlMarqueeState {
+    /// A newly created marquee: turned on, current loop index zero.
     pub const fn fresh() -> Self {
         Self {
             turned_on: true,
@@ -31,6 +32,8 @@ impl HtmlMarqueeState {
         }
     }
 
+    /// Whether the marquee is turned on. Only [`start`](Self::start) and [`stop`](Self::stop)
+    /// change it.
     pub const fn turned_on(self) -> bool {
         self.turned_on
     }
@@ -42,10 +45,12 @@ impl HtmlMarqueeState {
         }
     }
 
+    /// Turns the marquee on, leaving the current loop index unchanged. Idempotent.
     pub fn start(&mut self) {
         self.turned_on = true;
     }
 
+    /// Turns the marquee off, leaving the current loop index unchanged. Idempotent.
     pub fn stop(&mut self) {
         self.turned_on = false;
     }

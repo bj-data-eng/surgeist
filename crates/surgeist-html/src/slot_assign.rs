@@ -6,36 +6,58 @@
 /// One source read or effect, admitted and performed by the consuming owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSlotAssignAction {
+    /// Step 1: set the manual slot assignment of the target's previous manually assigned node at
+    /// this ordinal to null.
     ClearPreviousManualInverse {
+        /// Zero-based position in the target's previous manually assigned nodes.
         previous_ordinal: usize,
     },
+    /// Step 2: create the empty ordered set that will replace the target's manually assigned nodes.
     BeginPendingManualSet,
+    /// Step 3.1, first half: read whether the incoming node at this ordinal has a manual slot
+    /// assignment referring to a slot; reply `ManualAssignmentPresent`.
     ReadIncomingManualAssignment {
+        /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
     },
+    /// Step 3.1, second half: remove the incoming node at this ordinal from the manually assigned
+    /// nodes of the slot its manual assignment referred to.
     RemoveIncomingFromReferredManualSet {
+        /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
     },
+    /// Step 3.2: set the incoming node's manual slot assignment to the target slot.
     SetIncomingManualAssignmentToTarget {
+        /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
     },
+    /// Step 3.3 deduplication: test whether the incoming node at `ordinal` is the same node as the
+    /// earlier incoming node at `previous_ordinal`; reply `SameNode`.
     CompareIncoming {
+        /// Zero-based position of the later raw incoming node.
         ordinal: usize,
+        /// Zero-based position of an earlier raw incoming node, always below `ordinal`.
         previous_ordinal: usize,
     },
+    /// Step 3.3: append the incoming node at this ordinal to the pending ordered set, because no
+    /// earlier incoming node was the same node.
     AppendIncomingToPendingSet {
+        /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
     },
+    /// Step 4: set the target's manually assigned nodes to the pending ordered set.
     ReplaceTargetManualSet,
     /// DOM's assign-slottables-for-a-tree operation for this target's root only.
     /// Do not refresh former roots or infer a globally consistent inverse.
     AssignSlottablesForTargetRoot,
+    /// Every step has been performed; no further reply is accepted.
     Complete,
 }
 
 /// Actual acknowledged effects or established identity/slot-pointer reads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSlotAssignReply {
+    /// The pending effect was performed, with no data to report.
     Applied,
     /// From the current raw input's actual manual pointer, after prior effects.
     /// A present pointer is retained by the adapter for the next remove action.
@@ -44,6 +66,10 @@ pub enum HtmlSlotAssignReply {
     SameNode(bool),
 }
 
+/// A reply that does not match the pending slot-assign action.
+///
+/// The cause is private; query it with [`is_reply`](Self::is_reply). A refused reply leaves the
+/// cursor unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSlotAssignCursorError {
     kind: HtmlSlotAssignCursorErrorKind,
@@ -120,6 +146,11 @@ pub struct HtmlSlotAssignCursor {
     phase: Phase,
 }
 impl HtmlSlotAssignCursor {
+    /// Starts `slot.assign()` for a target with `previous_manual_count` manually assigned nodes
+    /// and `raw_incoming_count` arguments, duplicates included.
+    ///
+    /// The counts are the complete extents, not estimates. The first action clears the previous
+    /// nodes' inverse, or begins the pending set when there are none.
     pub const fn new(previous_manual_count: usize, raw_incoming_count: usize) -> Self {
         Self {
             previous_count: previous_manual_count,
@@ -132,6 +163,7 @@ impl HtmlSlotAssignCursor {
         }
     }
 
+    /// The action the consuming owner must perform next; `Complete` once every step is done.
     pub fn action(&self) -> HtmlSlotAssignAction {
         use HtmlSlotAssignAction as A;
         match self.phase {

@@ -4,13 +4,24 @@ use super::*;
 /// Conforming author keywords. Historical processing states are excluded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaPragma {
+    /// The `content-type` keyword: the Encoding declaration state, an
+    /// alternative form of the `charset` attribute (HTML877d #pragma-directives).
     ContentType,
+    /// The `default-style` keyword: sets the name of the default CSS style sheet
+    /// set (HTML877d #pragma-directives).
     DefaultStyle,
+    /// The `refresh` keyword: a timed redirect or reload (HTML877d #pragma-directives).
     Refresh,
+    /// The `x-ua-compatible` keyword, whose `content` must be `IE=edge`
+    /// compared ASCII case-insensitively (HTML877d #pragma-directives).
     XUaCompatible,
+    /// The `content-security-policy` keyword, whose `content` must be a valid Content Security
+    /// Policy that contains no `report-uri`, `frame-ancestors` or `sandbox` directive
+    /// (HTML877d #pragma-directives).
     ContentSecurityPolicy,
 }
 impl HtmlMetaPragma {
+    /// The exact lowercase keyword that authors write for this pragma.
     pub fn canonical_keyword(self) -> &'static str {
         match self {
             Self::ContentType => "content-type",
@@ -20,6 +31,8 @@ impl HtmlMetaPragma {
             Self::ContentSecurityPolicy => "content-security-policy",
         }
     }
+    /// Builds the no-namespace `http-equiv` attribute with the canonical
+    /// keyword. The pragma's `content` requirements are not part of it.
     pub fn into_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::HttpEquiv.qualified_name(),
@@ -31,12 +44,21 @@ impl HtmlMetaPragma {
 /// Intrinsic states, including source-required nonconforming legacy processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaPragmaState {
+    /// The `content-language` keyword. Nonconforming; it sets the pragma-set
+    /// default language (HTML877d #pragma-directives).
     ContentLanguage,
+    /// The `content-type` keyword, the Encoding declaration state, which is a
+    /// character encoding declaration (HTML877d #pragma-directives).
     EncodingDeclaration,
+    /// The `default-style` keyword.
     DefaultStyle,
+    /// The `refresh` keyword.
     Refresh,
+    /// The `set-cookie` keyword. Nonconforming (HTML877d #pragma-directives).
     SetCookie,
+    /// The `x-ua-compatible` keyword.
     XUaCompatible,
+    /// The `content-security-policy` keyword.
     ContentSecurityPolicy,
 }
 const HTTP_EQUIV: EnumRule<HtmlMetaPragmaState> = EnumRule {

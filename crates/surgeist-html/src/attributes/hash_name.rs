@@ -9,7 +9,10 @@ const PROCESSING_SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/8
 /// Local form only; LeadingHashName does not establish a same-tree name witness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlHashNameAuthorForm {
+    /// The operand is absent, so there is no reference to classify.
     Missing,
+    /// The value does not start with U+0023 (`#`), so it is not a valid
+    /// hash-name reference whatever the tree contains.
     NoLeadingHash,
     /// Includes the empty name following a lone #.
     LeadingHashName,
@@ -18,9 +21,15 @@ pub enum HtmlHashNameAuthorForm {
 /// Local processing observation before any specified-type tree lookup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlHashNameProcessing {
+    /// The operand is absent, so the rules for parsing a hash-name reference
+    /// have nothing to parse.
     Missing,
+    /// The value contains no U+0023 (`#`), so parsing returns null.
     NoHash,
+    /// The first `#` is the last code unit, so parsing returns null.
     EmptyTail,
+    /// A nonempty suffix follows the first `#`. It is the name that the tree
+    /// lookup of the parsing rules would search for.
     Name,
 }
 
@@ -33,6 +42,8 @@ pub struct HtmlHashNameReferenceReport {
     processing: HtmlHashNameProcessing,
 }
 impl HtmlHashNameReferenceReport {
+    /// The exact raw value, retained by shared handle. `None` is an absent
+    /// operand; an empty value is `Some`.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.raw.as_ref()
     }
@@ -40,9 +51,13 @@ impl HtmlHashNameReferenceReport {
     pub fn first_hash_offset(&self) -> Option<usize> {
         self.first_hash
     }
+    /// Whether the value has the leading-`#` shape of a valid hash-name
+    /// reference. The name after it is not checked against any tree.
     pub fn author_form(&self) -> HtmlHashNameAuthorForm {
         self.author_form
     }
+    /// How the rules for parsing a hash-name reference classify the value,
+    /// before any lookup in a tree.
     pub fn processing(&self) -> HtmlHashNameProcessing {
         self.processing
     }
@@ -56,15 +71,20 @@ impl HtmlHashNameReferenceReport {
                 .code_units()[1..]
         })
     }
+    /// The UTF-16 code units after the first `#`, exactly as the parsing rules
+    /// take them. `Some` only for `HtmlHashNameProcessing::Name`.
     pub fn processing_name_units(&self) -> Option<&[u16]> {
         (self.processing == HtmlHashNameProcessing::Name).then(|| {
             &self.raw.as_ref().expect("present hash").code_units()
                 [self.first_hash.expect("recognized hash") + 1..]
         })
     }
+    /// The clause that defines a valid hash-name reference (HTML877d #syntax-references).
     pub fn author_source_clause(&self) -> &'static str {
         AUTHOR_SOURCE
     }
+    /// The clause that defines the rules for parsing a hash-name reference
+    /// (HTML877d #syntax-references).
     pub fn processing_source_clause(&self) -> &'static str {
         PROCESSING_SOURCE
     }
@@ -88,9 +108,12 @@ pub struct HtmlUsemapReference {
     name: HtmlSpaceToken,
 }
 impl HtmlUsemapReference {
+    /// Wraps a map name that is already a nonempty token without whitespace.
+    /// The name is kept exactly; the `#` is added only when emitted.
     pub fn for_map_name(name: HtmlSpaceToken) -> Self {
         Self { name }
     }
+    /// The exact map name, without the leading `#`.
     pub fn map_name(&self) -> &HtmlSpaceToken {
         &self.name
     }
@@ -135,25 +158,39 @@ impl HtmlValueInterpreter {
 
 /// One consumed state per action. Ready completion is separate from the last
 /// unit read, so the caller can admit work before exact raw-handle retention.
+///
+/// The scan is a consuming cursor: it is not `Clone`, so one state cannot be
+/// stepped twice. It borrows the raw value for `'raw`.
+#[derive(Debug)]
 pub struct HashNameScan<'raw> {
     raw: &'raw DocumentString,
     len: usize,
     phase: HashNameScanPhase,
 }
+#[derive(Debug)]
 enum HashNameScanPhase {
     Searching(usize),
     Ready(Option<usize>),
 }
+/// The result of one `HashNameScan::step`.
+#[derive(Debug)]
 pub enum HashNameScanStep<'raw> {
+    /// The scan has more steps. Step this state to continue.
     Continue(HashNameScan<'raw>),
+    /// The scan is finished. The report holds the shared raw handle and the
+    /// local classification.
     Complete(HtmlHashNameReferenceReport),
 }
 impl<'raw> HashNameScan<'raw> {
     // Action-accounting contract, not a CPU-instruction count. Begin observes
     // length. Search charges bounds/read/compare/advance; Ready charges author
     // classification/processing classification/raw retention/report write.
+    /// Work units a driver charges once, when the scan begins.
     pub const BEGIN_WORK: usize = 1;
+    /// Work units a driver charges for each call to `step`.
     pub const STEP_WORK: usize = 4;
+    /// Begins a scan of a borrowed raw value. An empty value is ready to
+    /// complete immediately; otherwise the scan starts at the first code unit.
     pub fn new(raw: &'raw DocumentString) -> Self {
         let len = raw.len();
         Self {
@@ -166,6 +203,9 @@ impl<'raw> HashNameScan<'raw> {
             },
         }
     }
+    /// Consumes this state and performs one action. A searching step reads one
+    /// code unit; the following step completes the report after the first `#`
+    /// or the last unit.
     pub fn step(mut self) -> HashNameScanStep<'raw> {
         match self.phase {
             HashNameScanPhase::Searching(offset) => {

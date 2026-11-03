@@ -13,11 +13,17 @@ use std::fmt;
 /// Actual unvalidated raw slots, not conformance or captured-context proof.
 #[derive(Debug)]
 pub struct HtmlMeterAttributeInput<'a, A: HtmlAttributeInput> {
+    /// The raw `value` slot; `None` means the attribute is absent. The slot is not validated.
     pub value: Option<&'a A>,
+    /// The raw `min` slot; `None` means the attribute is absent.
     pub minimum: Option<&'a A>,
+    /// The raw `max` slot; `None` means the attribute is absent.
     pub maximum: Option<&'a A>,
+    /// The raw `low` slot; `None` means the attribute is absent.
     pub low: Option<&'a A>,
+    /// The raw `high` slot; `None` means the attribute is absent.
     pub high: Option<&'a A>,
+    /// The raw `optimum` slot; `None` means the attribute is absent.
     pub optimum: Option<&'a A>,
 }
 impl<A: HtmlAttributeInput> Copy for HtmlMeterAttributeInput<'_, A> {}
@@ -42,11 +48,17 @@ impl<'a, A: HtmlAttributeInput> HtmlMeterAttributeInput<'a, A> {
 /// The six authored content-number roles, distinct from processed quantities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMeterNumberRole {
+    /// The `value` attribute, the only one the standard requires (HTML877d #the-meter-element).
     Value,
+    /// The `min` attribute; absent, the authoring inequalities use 0.
     Minimum,
+    /// The `max` attribute; absent, the authoring inequalities use 1.0.
     Maximum,
+    /// The `low` attribute, the upper limit of the gauge's low segment.
     Low,
+    /// The `high` attribute, the lower limit of the gauge's high segment.
     High,
+    /// The `optimum` attribute, the position the gauge treats as best.
     Optimum,
 }
 const ROLES: [HtmlMeterNumberRole; 6] = [
@@ -98,26 +110,44 @@ impl HtmlMeterNumberRole {
 /// Strict grammar only. All applicable pairwise requirements are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMeterNumberAuthorState {
+    /// The required `value` attribute is absent.
     MissingRequired,
+    /// An optional attribute (`min`, `max`, `low`, `high` or `optimum`) is absent, which is
+    /// conforming.
     MissingOptional,
+    /// The attribute is present and its text is a valid floating-point number in the checked exact
+    /// representation.
     Conforming,
+    /// The attribute is present but its text is not a valid floating-point number. The payload
+    /// names the first syntax failure.
     Nonconforming(HtmlValueSyntaxError),
     /// Checked exact-key representation bounds, not binary64 overflow or syntax.
     RepresentationUnavailable,
+    /// The rule does not apply because the element is not an HTML `meter` or the supplied attribute
+    /// is not one the rule covers, so no author verdict exists for this slot.
     Unapplied,
 }
 
 /// Each variant is one source-defined mathematical <= comparison.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMeterAuthorRelation {
+    /// The standard's `minimum ≤ value` inequality.
     MinimumValue,
+    /// The standard's `value ≤ maximum` inequality.
     ValueMaximum,
+    /// The standard's `minimum ≤ low` inequality, applicable only when `low` is present.
     MinimumLow,
+    /// The standard's `low ≤ maximum` inequality, applicable only when `low` is present.
     LowMaximum,
+    /// The standard's `minimum ≤ high` inequality, applicable only when `high` is present.
     MinimumHigh,
+    /// The standard's `high ≤ maximum` inequality, applicable only when `high` is present.
     HighMaximum,
+    /// The standard's `minimum ≤ optimum` inequality, applicable only when `optimum` is present.
     MinimumOptimum,
+    /// The standard's `optimum ≤ maximum` inequality, applicable only when `optimum` is present.
     OptimumMaximum,
+    /// The standard's `low ≤ high` inequality, applicable only when both are present.
     LowHigh,
 }
 const RELATIONS: [HtmlMeterAuthorRelation; 9] = [
@@ -160,19 +190,33 @@ impl HtmlMeterAuthorRelation {
         }
     }
 }
+/// Why an authoring inequality has no verdict. A missing required `value` is reported first;
+/// otherwise the first operand that cannot be compared, left operand first, supplies the reason.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlMeterRelationUnavailable {
+    /// The required `value` attribute is absent, so any inequality that involves it has no verdict.
     MissingRequiredValue,
+    /// The named role's text is present but not a valid floating-point number.
     Syntax(HtmlMeterNumberRole),
+    /// An operand is valid but its exact key exceeds the checked representation bounds, so the
+    /// comparison cannot be made.
     Representation,
 }
+/// The verdict for one authoring inequality in a [`HtmlMeterAttributeReport`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMeterRelationState {
+    /// The inequality is not required because an optional operand (`low`, `high` or `optimum`) is
+    /// absent.
     NotRequired,
+    /// Both operands are known and the inequality holds.
     Conforming,
+    /// Both operands are known and the inequality does not hold, so the markup is nonconforming.
     Violated,
+    /// The inequality cannot be decided; the payload gives the reason.
     Unavailable(HtmlMeterRelationUnavailable),
+    /// The rule does not apply because the element is not an HTML `meter` or the supplied attribute
+    /// is not one the rule covers.
     Unapplied,
 }
 
@@ -196,6 +240,8 @@ impl HtmlMeterNumberReport {
     ) -> Option<&HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>> {
         self.common.as_ref()
     }
+    /// The strict-grammar verdict for this slot, including the checked exact-representation limit.
+    /// It is independent of the pairwise relations, which only the attribute report states.
     pub fn author(&self) -> HtmlMeterNumberAuthorState {
         self.author
     }
@@ -213,21 +259,27 @@ pub struct HtmlMeterAttributeReport {
     relations: [HtmlMeterRelationState; 9],
 }
 impl HtmlMeterAttributeReport {
+    /// The report for the required `value` attribute.
     pub fn value(&self) -> &HtmlMeterNumberReport {
         &self.slots[0]
     }
+    /// The report for the `min` attribute; absence is `MissingOptional`, not a default of 0.
     pub fn minimum(&self) -> &HtmlMeterNumberReport {
         &self.slots[1]
     }
+    /// The report for the `max` attribute; absence is `MissingOptional`, not a default of 1.0.
     pub fn maximum(&self) -> &HtmlMeterNumberReport {
         &self.slots[2]
     }
+    /// The report for the `low` attribute.
     pub fn low(&self) -> &HtmlMeterNumberReport {
         &self.slots[3]
     }
+    /// The report for the `high` attribute.
     pub fn high(&self) -> &HtmlMeterNumberReport {
         &self.slots[4]
     }
+    /// The report for the `optimum` attribute.
     pub fn optimum(&self) -> &HtmlMeterNumberReport {
         &self.slots[5]
     }
@@ -391,11 +443,20 @@ fn meter_relations(facts: &[ExactFact; 6], applicable: bool) -> [HtmlMeterRelati
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlMeterNativeError {
+    /// A slot's text is not a valid floating-point number. The first slot in value, min, max, low,
+    /// high, optimum order that fails is reported.
     Syntax {
+        /// The slot whose text failed.
         role: HtmlMeterNumberRole,
+        /// The first syntax failure in that slot's text.
         error: HtmlValueSyntaxError,
     },
+    /// All slots are valid but an authoring inequality fails. The payload is the first failing
+    /// relation in declaration order.
     RelationViolation(HtmlMeterAuthorRelation),
+    /// An exact key or comparison exceeds the checked representation bounds, so the
+    /// inequalities cannot be decided. Slots are examined in slot order and the first syntax or
+    /// key failure is returned, so a later slot may also have a syntax failure.
     RepresentationUnavailable,
 }
 impl fmt::Display for HtmlMeterNumberRole {
@@ -509,21 +570,28 @@ impl HtmlMeterAttributes {
             optimum,
         })
     }
+    /// The exact `value` text as authored, in UTF-16 code units, without trimming or numeric
+    /// conversion.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
+    /// The exact `min` text, or `None` when the attribute was absent.
     pub fn minimum(&self) -> Option<&DocumentString> {
         self.minimum.as_ref()
     }
+    /// The exact `max` text, or `None` when the attribute was absent.
     pub fn maximum(&self) -> Option<&DocumentString> {
         self.maximum.as_ref()
     }
+    /// The exact `low` text, or `None` when the attribute was absent.
     pub fn low(&self) -> Option<&DocumentString> {
         self.low.as_ref()
     }
+    /// The exact `high` text, or `None` when the attribute was absent.
     pub fn high(&self) -> Option<&DocumentString> {
         self.high.as_ref()
     }
+    /// The exact `optimum` text, or `None` when the attribute was absent.
     pub fn optimum(&self) -> Option<&DocumentString> {
         self.optimum.as_ref()
     }

@@ -287,6 +287,11 @@ pub struct FiniteDecimalIngressCursor {
     result: Option<Result<u64, RangeNumericError>>,
 }
 impl FiniteDecimalIngressCursor {
+    /// Starts converting the decimal described by `parts`, whose offsets index a source of
+    /// `source_len` UTF-16 code units, to the nearest finite binary64 value. The offsets must be
+    /// ordered and within the source, the `Right` scratch buffer must be empty, and the decimal
+    /// needs at least one digit. A broken precondition is `Integrity`, no digits is
+    /// `InvalidSyntax`, and a length that cannot be represented is `Representation`.
     pub fn new(
         parts: RangeDecimalParts,
         source_len: usize,
@@ -339,12 +344,19 @@ impl FiniteDecimalIngressCursor {
             result: None,
         })
     }
+    /// The next effect the cursor needs from its caller, or `None` once the cursor has finished.
+    /// Perform and admit it, then pass the matching `RangeNumericReply` to `reply`; the same
+    /// request stays pending until a valid reply arrives.
     pub fn request(&self) -> Option<RangeNumericRequest> {
         self.io.request
     }
+    /// The cursor's copy of the buffer headers, as updated by the replies it accepted.
     pub fn headers(&self) -> RangeNumericHeaders {
         self.io.headers
     }
+    /// Once the cursor has finished, the raw IEEE 754 binary64 bits of the nearest finite value,
+    /// with ties resolved to even, or the error such as `Overflow` when the value exceeds the
+    /// finite range. `None` while it is running.
     pub fn result(&self) -> Option<Result<u64, RangeNumericError>> {
         self.result
     }
@@ -383,6 +395,9 @@ impl FiniteDecimalIngressCursor {
             ActiveHelper::Compare(..) => 3,
         }
     }
+    /// Accepts the caller's answer to the pending request and advances. A reply that does not match
+    /// the request, or violates the headers, returns an error and leaves the cursor exactly as it
+    /// was.
     pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
@@ -701,6 +716,7 @@ impl FiniteDecimalIngressCursor {
 }
 
 impl FiniteDecimalIngressCursor {
+    /// The fixed state and message sizes of this cursor.
     pub const fn layout() -> RangeNumericLayout {
         RangeNumericLayout {
             registers: size_of::<Self>(),

@@ -15,6 +15,8 @@ use std::{cmp::Ordering, error::Error, fmt};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlControlLengthError {
+    /// A supplied raw value (minimum, maximum or initial text) was refused by
+    /// raw-value admission, before any name, context or syntax processing.
     Admission(HtmlValueAdmissionError),
     /// The sum of supplied UTF-16 lengths cannot be represented by usize.
     InputCodeUnitsOverflow,
@@ -48,44 +50,75 @@ impl Error for HtmlControlLengthError {
 /// Whole-value authorship is independent of numeric prefix recovery and context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlIntegerAuthorState {
+    /// The attribute is absent, so nothing is authored.
     Missing,
+    /// The whole value is a valid non-negative integer (a positive one for
+    /// input `size`).
     Conforming,
+    /// The whole value is not a valid non-negative integer. The failure is the
+    /// syntax or representation cause.
     Nonconforming(HtmlValueFailure),
     /// Only input size requires a strictly positive authored number.
     ZeroMustBePositive,
+    /// The rule does not apply to these names or this context, so no author
+    /// check was made.
     Unapplied,
 }
 
 /// Application of the content bound/advisory, not reflected getter recognition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlAttributeApplication {
+    /// The attribute takes effect: the element is a textarea, or an input whose
+    /// supplied state is Text, Search, Telephone, Url, Email or Password.
     Applicable,
+    /// The element is an input and no actual input state was supplied, so
+    /// whether the attribute takes effect cannot be decided.
     InputStateRequired,
+    /// The supplied input state is not one that honours the attribute. The
+    /// attribute has no effect, and its presence is nonconforming.
     IgnoredInputState,
+    /// The rule does not apply to these names or this context. The payload is
+    /// the reason, as reported for every attribute rule.
     Unapplied(HtmlAttributeApplicability),
 }
 
 /// A reflected getter's fallback cause. No content default follows from this.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlGetterOrigin {
+    /// The recovered number is within the getter's range and is returned as is.
     Recovered,
+    /// The attribute is absent, so the getter returns its IDL default.
     MissingDefault,
+    /// Parsing the value failed, so the getter returns its IDL default.
     ParseFailureDefault,
+    /// The recovered number exceeds 2147483647, the largest value the getter
+    /// can return, so the getter returns its IDL default.
     OutOfRangeDefault,
     /// Input size's positive-only getter rejects recovered zero.
     ZeroDefault,
 }
 
+/// The content effect of an applicable input `size` attribute.
+///
+/// The `size` attribute is defined in HTML877d #the-size-attribute.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlInputSizeValue {
+    /// A positive number of characters was requested. The number is the exact
+    /// recovered value and may exceed what the getter can return.
     PositiveCharacters(HtmlNonNegativeInteger),
+    /// No positive size was requested: the attribute is missing, its value does
+    /// not parse, or it recovers to zero. This is not the getter's default of
+    /// 20, which only `reflected_getter` applies.
     NoPositiveRequest,
 }
 
 /// A source-null bound differs from an ignored, unresolved or unapplied rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlControlLengthValue {
+    /// The exact recovered bound in UTF-16 code units. Zero is a genuine bound.
     Bound(HtmlNonNegativeInteger),
+    /// The attribute is missing or its value does not parse, so the source
+    /// defines no bound.
     NoBound,
 }
 
@@ -144,15 +177,21 @@ pub struct HtmlControlLengthReport {
 macro_rules! integer_observation_accessors {
     ($report:ident) => {
         impl $report {
+            /// The exact element name, including any stored prefix.
             pub fn element(&self) -> &QualifiedName {
                 self.integer.attribute.element()
             }
+            /// The exact supplied attribute name, prefix and value, if present.
             pub fn raw_attribute(&self) -> Option<&Attribute> {
                 self.integer.attribute.raw_attribute()
             }
+            /// The exact supplied raw value. `None` is an absent attribute; an
+            /// empty value is `Some`.
             pub fn raw(&self) -> Option<&DocumentString> {
                 self.integer.attribute.raw()
             }
+            /// Whether the attribute is absent, empty or nonempty, independent of
+            /// validity.
             pub fn observation(&self) -> HtmlAttributeObservation {
                 self.integer.attribute.observation()
             }
@@ -160,38 +199,60 @@ macro_rules! integer_observation_accessors {
             pub fn applicability(&self) -> HtmlAttributeApplicability {
                 self.integer.attribute.applicability()
             }
+            /// The selected standard attribute (`size`, `minlength` or
+            /// `maxlength`), not raw recognition of the supplied name.
             pub fn attribute(&self) -> KnownHtmlAttribute {
                 self.integer.attribute.attribute()
             }
+            /// The original index row identifiers that this defining rule covers.
             pub fn inventory_rows(&self) -> &'static [u16] {
                 self.integer.attribute.inventory_rows()
             }
+            /// The normative clause in the pinned edition that defines the
+            /// attribute for this element, not an index summary.
             pub fn source_clause(&self) -> &'static str {
                 self.integer.attribute.source_clause()
             }
+            /// The clause that defines reflecting a content attribute in an IDL
+            /// attribute (HTML877d #reflecting-content-attributes-in-idl-attributes).
             pub fn getter_source_clause(&self) -> &'static str {
                 source!("reflecting-content-attributes-in-idl-attributes")
             }
+            /// The supplied actual input state, if any. It is evidence from the
+            /// caller and is never inferred from a `type` attribute.
             pub fn input_state(&self) -> Option<HtmlInputType> {
                 self.integer.attribute.input_state()
             }
+            /// The clause that defines the supplied input state, if one was
+            /// supplied.
             pub fn input_state_source_clause(&self) -> Option<&'static str> {
                 self.input_state().map(input_state_source)
             }
+            /// The UTF-16 code units in the raw value that was admitted, or zero
+            /// when the attribute is absent.
             pub fn input_code_units(&self) -> usize {
                 self.integer.attribute.input_code_units()
             }
+            /// The shared non-negative integer report for the raw value: parse
+            /// result, author state and recovery. `None` when the rule is
+            /// unapplied, because no value was interpreted.
             pub fn common(
                 &self,
             ) -> Option<&HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>> {
                 self.integer.common.as_ref()
             }
+            /// Whether the whole value is a valid non-negative integer. This is
+            /// independent of numeric prefix recovery and of context.
             pub fn author(&self) -> HtmlControlIntegerAuthorState {
                 self.integer.author
             }
+            /// The extra author-context check selected for this attribute. For an
+            /// input it reports whether the supplied state permits the attribute.
             pub fn context_author(&self) -> HtmlAttributeContextAuthorState {
                 self.integer.attribute.context_author()
             }
+            /// Whether the attribute takes effect for the supplied element and
+            /// input state.
             pub fn application(&self) -> HtmlControlAttributeApplication {
                 self.integer.application
             }
@@ -206,6 +267,8 @@ integer_observation_accessors!(HtmlInputSizeReport);
 integer_observation_accessors!(HtmlControlLengthReport);
 
 impl HtmlInputSizeReport {
+    /// The clause that defines the `size` IDL attribute, or `None` when the
+    /// element is not an input.
     pub fn getter_definition_source_clause(&self) -> Option<&'static str> {
         (KnownHtmlElement::from_name(self.element()) == Some(KnownHtmlElement::Input))
             .then_some(source!("dom-input-size"))
@@ -224,12 +287,16 @@ impl HtmlInputSizeReport {
             }
         })
     }
+    /// Why the `size` getter returns what `reflected_getter` reports. `None`
+    /// when the rule is unapplied.
     pub fn getter_origin(&self) -> Option<HtmlControlGetterOrigin> {
         self.integer.getter(true).map(|(_, origin)| origin)
     }
 }
 
 impl HtmlControlLengthReport {
+    /// The clause that defines the matching `minLength` or `maxLength` IDL
+    /// attribute, or `None` when the element is neither an input nor a textarea.
     pub fn getter_definition_source_clause(&self) -> Option<&'static str> {
         match (
             KnownHtmlElement::from_name(self.element()),
@@ -250,9 +317,13 @@ impl HtmlControlLengthReport {
             _ => None,
         }
     }
+    /// The clause that defines the `ReflectNonNegative` limitation applied by
+    /// the getter (HTML877d #reflecting-content-attributes-in-idl-attributes).
     pub fn getter_limitation_source_clause(&self) -> &'static str {
         source!("xattr-reflectnonnegative")
     }
+    /// The content bound, or `None` when the attribute is ignored, unresolved
+    /// or unapplied. `Some(NoBound)` is the source-defined absence of a bound.
     pub fn content(&self) -> Option<&HtmlControlLengthValue> {
         self.content.as_ref()
     }
@@ -267,9 +338,13 @@ impl HtmlControlLengthReport {
             }
         })
     }
+    /// Why the getter returns what `reflected_getter` reports. `None` when the
+    /// rule is unapplied.
     pub fn getter_origin(&self) -> Option<HtmlControlGetterOrigin> {
         self.integer.getter(false).map(|(_, origin)| origin)
     }
+    /// The clause that defines how the form control `minlength` or `maxlength`
+    /// attribute is processed (HTML877d #attr-fe-maxlength and #attr-fe-minlength).
     pub fn processing_source_clause(&self) -> &'static str {
         if self.attribute() == KnownHtmlAttribute::Minlength {
             source!("attr-fe-minlength")
@@ -283,7 +358,12 @@ impl HtmlControlLengthReport {
 /// Input absence is established absence, not an unavailable current value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlControlInitialText {
+    /// An input's authored `value` attribute. `None` is an established absent
+    /// attribute. A present attribute must be named `value`, or the check
+    /// reports `DifferentValueAttribute`.
     InputValue(Option<Attribute>),
+    /// A textarea's descendant text, exactly as authored and before line break
+    /// normalization.
     TextareaDescendantText(DocumentString),
 }
 
@@ -299,24 +379,52 @@ impl HtmlControlInitialText {
 /// Only the common minimum≤maximum author requirement is checked here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlLengthPairState {
+    /// One or both attributes have no recovered number, or an ignored input
+    /// state makes the pair moot, so no ordering is required.
     NotRequired,
+    /// Both attributes have numbers, but the input state that decides whether
+    /// they apply was not supplied.
     Unchecked,
+    /// Both bounds apply and the minimum does not exceed the maximum.
     Conforming,
+    /// Both bounds apply and the minimum is greater than the maximum, which the
+    /// source forbids.
     MinimumExceedsMaximum,
+    /// The rule does not apply to these names or this context.
     Unapplied,
 }
 
 /// Initial authored text's maximum-length check, not runtime tooLong/tooShort.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlInitialTextState {
+    /// There is no maximum number, or the input has no authored value, so the
+    /// source requires nothing of the initial text.
     NotRequired,
+    /// A maximum applies but no initial text was supplied to compare with it.
     Unchecked,
+    /// A maximum number exists, but the input state that decides whether it
+    /// applies was not supplied.
     InputStateRequired,
+    /// The supplied input state ignores `maxlength`, so the text is unchecked.
     IgnoredInputState,
+    /// The supplied text kind does not belong to the element: input text for a
+    /// textarea or textarea text for an input.
     DifferentContext,
+    /// The input's supplied attribute is not named `value`.
     DifferentValueAttribute,
-    Conforming { code_units: usize },
-    ExceedsMaximum { code_units: usize },
+    /// The text length is within the maximum.
+    Conforming {
+        /// UTF-16 code units of the text, counted after textarea line break
+        /// normalization where it applies.
+        code_units: usize,
+    },
+    /// The text length is greater than the maximum.
+    ExceedsMaximum {
+        /// UTF-16 code units of the text, counted after textarea line break
+        /// normalization where it applies.
+        code_units: usize,
+    },
+    /// The rule does not apply to these names or this context.
     Unapplied,
 }
 
@@ -337,27 +445,37 @@ pub struct HtmlControlLengthBoundsReport {
 }
 
 impl HtmlControlLengthBoundsReport {
+    /// The independent observation of the `minlength` attribute.
     pub fn minimum(&self) -> &HtmlControlLengthReport {
         &self.minimum
     }
+    /// The independent observation of the `maxlength` attribute.
     pub fn maximum(&self) -> &HtmlControlLengthReport {
         &self.maximum
     }
+    /// The supplied initial text, retained exactly as it was given.
     pub fn initial_text(&self) -> Option<&HtmlControlInitialText> {
         self.initial_text.as_ref()
     }
+    /// Whether the minimum does not exceed the maximum.
     pub fn pair_author(&self) -> HtmlControlLengthPairState {
         self.pair
     }
+    /// Whether the supplied initial text fits within the maximum.
     pub fn initial_text_author(&self) -> HtmlControlInitialTextState {
         self.text
     }
+    /// The checked sum of the admitted raw value lengths in UTF-16 code units:
+    /// minimum, maximum and initial text. It is not another aggregate limit.
     pub fn input_code_units(&self) -> usize {
         self.input_code_units
     }
+    /// The clause that defines the minimum-not-above-maximum requirement.
     pub fn pair_source_clause(&self) -> &'static str {
         source!("attr-fe-minlength")
     }
+    /// The clause that defines the initial text length requirement for the
+    /// maximum's element, or `None` for any other element.
     pub fn initial_text_source_clause(&self) -> Option<&'static str> {
         match KnownHtmlElement::from_name(self.maximum.element()) {
             Some(KnownHtmlElement::Input) => Some(source!("attr-input-maxlength")),
@@ -365,6 +483,8 @@ impl HtmlControlLengthBoundsReport {
             _ => None,
         }
     }
+    /// The clause that defines textarea line break normalization, which sets the
+    /// counted length of textarea text. `None` for any other element.
     pub fn newline_source_clause(&self) -> Option<&'static str> {
         (KnownHtmlElement::from_name(self.maximum.element()) == Some(KnownHtmlElement::Textarea))
             .then_some(source!("textarea-line-break-normalisation-transformation"))
@@ -709,6 +829,8 @@ fn normalized_text_length(raw: &DocumentString) -> usize {
     length
 }
 
+/// The refusal to emit input `size` for zero, which the source forbids because
+/// the attribute must be a positive integer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputSizeZeroError;
 impl fmt::Display for HtmlInputSizeZeroError {

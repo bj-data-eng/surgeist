@@ -9,7 +9,12 @@ use super::*;
 /// value or converted/serialized color is produced.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputColorSpace {
+    /// The `limited-srgb` keyword: the serialized CSS color is converted to
+    /// sRGB and limited to 8 bits per component (HTML877d #attr-input-colorspace). It is also
+    /// the missing and invalid default.
     LimitedSrgb,
+    /// The `display-p3` keyword: the serialized CSS color is converted to the
+    /// Display P3 color space (HTML877d #attr-input-colorspace).
     DisplayP3,
 }
 

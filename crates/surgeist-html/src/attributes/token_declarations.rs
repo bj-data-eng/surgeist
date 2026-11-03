@@ -14,15 +14,24 @@ use std::{error::Error, fmt};
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlTokenDeclarationError {
+    /// Two tokens were identical under the attribute's comparison; the payload names the repeat.
     Duplicate(HtmlDuplicateTokenError),
+    /// An `accesskey` token is not exactly one Unicode code point.
     AccessKeyLength {
+        /// The zero-based index of the offending token among the attribute's tokens.
         token_index: usize,
     },
+    /// A `blocking` token is not exactly the lowercase `render` keyword. The author check is case
+    /// sensitive, so `RENDER` is refused here even though explicit render detection ignores case.
     InvalidBlockingToken {
+        /// The zero-based index of the offending token among the attribute's tokens.
         token_index: usize,
     },
+    /// A `sizes` token is not `any` or a valid `WIDTHxHEIGHT` icon size.
     InvalidIconSize {
+        /// The zero-based index of the offending token among the attribute's tokens.
         token_index: usize,
+        /// The reason the token is not a valid icon size.
         reason: HtmlIconSizeError,
     },
 }
@@ -59,11 +68,17 @@ impl Error for HtmlTokenDeclarationError {
     }
 }
 
+/// The author-conformance verdict for an `accesskey`, `blocking` or `sizes` token list.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlTokenDeclarationAuthorState {
+    /// The attribute is absent, which is conforming.
     Missing,
+    /// The attribute is present and every token and the set as a whole satisfy the local rules.
     Conforming,
+    /// The attribute is present but breaks a local rule; the payload names the first rule checked
+    /// that failed. Other violations stay in the report.
     Nonconforming(HtmlTokenDeclarationError),
+    /// The rule does not apply to the supplied element.
     Unapplied,
 }
 
@@ -74,6 +89,11 @@ pub struct HtmlAccessKeys {
     tokens: HtmlOrderedTokenSet,
 }
 impl HtmlAccessKeys {
+    /// Builds an ordered set of access keys.
+    ///
+    /// Returns `Duplicate` when two tokens are identical code unit for code unit (comparison is
+    /// case-sensitive). Otherwise returns `AccessKeyLength` for the first token that is not exactly
+    /// one code point.
     pub fn new(
         tokens: impl IntoIterator<Item = HtmlSpaceToken>,
     ) -> Result<Self, HtmlTokenDeclarationError> {
@@ -85,6 +105,7 @@ impl HtmlAccessKeys {
         }
         Ok(Self { tokens })
     }
+    /// The access keys in source order, each a single code point.
     pub fn tokens(&self) -> &[HtmlSpaceToken] {
         self.tokens.tokens()
     }
@@ -104,10 +125,14 @@ fn single_code_point(token: &HtmlSpaceToken) -> bool {
 /// potentially-render-blocking behavior or establish current render blocking.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlBlockingTokens {
+    /// No `render` token is present: the attribute is absent, empty, or holds only other tokens.
+    /// This does not exclude implicit render blocking.
     Empty,
+    /// The attribute holds the `render` token.
     Render,
 }
 impl HtmlBlockingTokens {
+    /// Emits a no-namespace `blocking` attribute whose value is empty or `render`.
     pub fn into_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Blocking.qualified_name(),
@@ -126,12 +151,17 @@ pub struct HtmlBitmapIconSize {
     width: HtmlNonNegativeInteger,
     height: HtmlNonNegativeInteger,
 }
+/// Why text is not a valid icon size. The enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlIconSizeError {
+    /// A bitmap size has a width or height of zero, which the standard does not allow.
     ZeroDimension,
+    /// A dimension starts with the digit zero.
     LeadingZero,
+    /// The text does not contain exactly one `x` or `X` separating the dimensions.
     Separator,
+    /// A dimension is empty or contains something other than ASCII digits.
     DimensionDigits,
 }
 impl fmt::Display for HtmlIconSizeError {
@@ -146,6 +176,9 @@ impl fmt::Display for HtmlIconSizeError {
 }
 impl Error for HtmlIconSizeError {}
 impl HtmlBitmapIconSize {
+    /// Builds a bitmap size from exact dimensions.
+    ///
+    /// Returns `ZeroDimension` when `width` or `height` is zero.
     pub fn new(
         width: HtmlNonNegativeInteger,
         height: HtmlNonNegativeInteger,
@@ -155,9 +188,11 @@ impl HtmlBitmapIconSize {
         }
         Ok(Self { width, height })
     }
+    /// The width in pixels, always greater than zero.
     pub fn width(&self) -> &HtmlNonNegativeInteger {
         &self.width
     }
+    /// The height in pixels, always greater than zero.
     pub fn height(&self) -> &HtmlNonNegativeInteger {
         &self.height
     }
@@ -170,9 +205,12 @@ impl HtmlBitmapIconSize {
         .expect("positive integer digits and x form one space token")
     }
 }
+/// One icon size keyword (HTML877d #rel-icon).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlIconSize {
+    /// The `any` keyword: the resource is a scalable icon such as an SVG image.
     Scalable,
+    /// A bitmap size in raw pixels, written `WIDTHxHEIGHT`.
     Bitmap(HtmlBitmapIconSize),
 }
 impl HtmlIconSize {
@@ -190,6 +228,10 @@ pub struct HtmlIconSizes {
     tokens: HtmlUnorderedTokenSet,
 }
 impl HtmlIconSizes {
+    /// Builds a set of icon sizes.
+    ///
+    /// Returns the repeat when two sizes serialize to the same token under ASCII case-insensitive
+    /// comparison.
     pub fn new(
         sizes: impl IntoIterator<Item = HtmlIconSize>,
     ) -> Result<Self, HtmlDuplicateTokenError> {
@@ -200,6 +242,7 @@ impl HtmlIconSizes {
             )?,
         })
     }
+    /// The size tokens in the chosen serialization order.
     pub fn tokens(&self) -> &[HtmlSpaceToken] {
         self.tokens.tokens()
     }
@@ -224,30 +267,40 @@ pub struct HtmlTokenDeclarationInput {
     rel_observed: bool,
 }
 impl HtmlTokenDeclarationInput {
+    /// The exact element name that was supplied, including any stored prefix.
     pub fn element(&self) -> &QualifiedName {
         self.input.element()
     }
+    /// The exact supplied attribute (name, prefix and value), or `None` when it was absent.
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.input.raw_attribute()
     }
+    /// The exact raw value in UTF-16 code units, distinguishing an absent attribute from an empty
+    /// one.
     pub fn raw(&self) -> Option<&DocumentString> {
         self.input.raw()
     }
+    /// Whether the attribute was absent, present and empty, or present and nonempty.
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.input.observation()
     }
+    /// Whether the attribute's rule applies to the supplied element.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.input.applicability()
     }
+    /// The standard attribute this report is about.
     pub fn attribute(&self) -> KnownHtmlAttribute {
         self.input.attribute()
     }
+    /// The rows of the pinned specification's attribute index that this rule reproduces.
     pub fn inventory_rows(&self) -> &'static [u16] {
         self.input.inventory_rows()
     }
+    /// The URL of the attribute's definition in the pinned HTML Standard snapshot.
     pub fn source_clause(&self) -> &'static str {
         self.input.source_clause()
     }
+    /// The length of the raw value in UTF-16 code units, as admitted against the per-value cap.
     pub fn input_code_units(&self) -> usize {
         self.input.input_code_units()
     }
@@ -257,6 +310,8 @@ impl HtmlTokenDeclarationInput {
     ) -> Option<&HtmlValueReport<HtmlSpaceSeparatedTokens, HtmlSpaceSeparatedTokens>> {
         self.common.as_ref()
     }
+    /// The local author verdict. A duplicate token may also be present in `duplicate` when another
+    /// violation is reported here.
     pub fn author(&self) -> &HtmlTokenDeclarationAuthorState {
         &self.author
     }
@@ -264,9 +319,11 @@ impl HtmlTokenDeclarationInput {
     pub fn duplicate(&self) -> Option<&HtmlDuplicateTokenError> {
         self.duplicate.as_ref()
     }
+    /// The wider author-context verdict, which depends on the element and companion attributes.
     pub fn context_author(&self) -> HtmlAttributeContextAuthorState {
         self.input.context_author()
     }
+    /// The supplied `script` element facts, even when the rule is unapplied.
     pub fn script_context(&self) -> Option<HtmlScriptAttributeContext> {
         self.input.script_context()
     }
@@ -274,9 +331,13 @@ impl HtmlTokenDeclarationInput {
     pub fn rel_attribute(&self) -> Option<&Attribute> {
         self.rel.as_ref()
     }
+    /// Whether the evaluation was given a companion attribute set from which `rel` was selected,
+    /// whether or not `rel` was present.
     pub fn rel_observed(&self) -> bool {
         self.rel_observed
     }
+    /// The URL of the pinned standard's definition of the supplied context facts: the `script`
+    /// element or the `link` `rel` attribute. It is `None` when neither was supplied.
     pub fn context_source_clause(&self) -> Option<&'static str> {
         if self.script_context().is_some() {
             Some(SCRIPT_SOURCE)
@@ -293,11 +354,13 @@ impl HtmlTokenDeclarationInput {
         }
     }
 }
+/// The `accesskey` token list with the single-code-point candidates the standard processes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlAccessKeyReport {
     input: HtmlTokenDeclarationInput,
 }
 impl HtmlAccessKeyReport {
+    /// The shared exact observations of the attribute.
     pub fn input(&self) -> &HtmlTokenDeclarationInput {
         &self.input
     }
@@ -309,16 +372,19 @@ impl HtmlAccessKeyReport {
             .iter()
             .filter(|token| single_code_point(token))
     }
+    /// The URL of the pinned standard's keyboard shortcut processing model.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("keyboard-shortcuts-processing-model")
     }
 }
+/// The `blocking` token list with its explicit processing set.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlBlockingReport {
     input: HtmlTokenDeclarationInput,
     explicit: Option<HtmlBlockingTokens>,
 }
 impl HtmlBlockingReport {
+    /// The shared exact observations of the attribute.
     pub fn input(&self) -> &HtmlTokenDeclarationInput {
         &self.input
     }
@@ -326,29 +392,35 @@ impl HtmlBlockingReport {
     pub fn explicit_tokens(&self) -> Option<HtmlBlockingTokens> {
         self.explicit
     }
+    /// The URL of the pinned standard's blocking tokens set.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("blocking-tokens-set")
     }
 }
+/// The result of reading one `sizes` token as an icon size keyword.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlIconSizeKeyword {
     token_index: usize,
     result: Result<HtmlIconSize, HtmlIconSizeError>,
 }
 impl HtmlIconSizeKeyword {
+    /// The zero-based index of the token among all tokens of the attribute.
     pub fn token_index(&self) -> usize {
         self.token_index
     }
+    /// The token read as an icon size, or the reason it is not one.
     pub fn result(&self) -> Result<&HtmlIconSize, HtmlIconSizeError> {
         self.result.as_ref().map_err(|&e| e)
     }
 }
+/// The `sizes` token list with the per-keyword reading of each token.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlIconSizesReport {
     input: HtmlTokenDeclarationInput,
     keywords: Option<Vec<HtmlIconSizeKeyword>>,
 }
 impl HtmlIconSizesReport {
+    /// The shared exact observations of the attribute.
     pub fn input(&self) -> &HtmlTokenDeclarationInput {
         &self.input
     }
@@ -357,6 +429,7 @@ impl HtmlIconSizesReport {
     pub fn keywords(&self) -> Option<&[HtmlIconSizeKeyword]> {
         self.keywords.as_deref()
     }
+    /// The URL of the pinned standard's definition of the `icon` link type.
     pub fn processing_source_clause(&self) -> &'static str {
         source!("rel-icon")
     }
@@ -376,14 +449,20 @@ impl HtmlIconSizesReport {
 /// precision and exact authored UTF-16; callers choose materialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IconSizeShape {
+    /// The token is `any`, compared ASCII case-insensitively.
     Scalable,
+    /// The token is a `WIDTHxHEIGHT` bitmap size.
     Bitmap {
+        /// The offsets of the width digits in the token, in UTF-16 code units. The range is
+        /// nonempty and starts with a nonzero digit.
         width: std::ops::Range<usize>,
+        /// The offsets of the height digits in the token, in UTF-16 code units. The range is
+        /// nonempty and starts with a nonzero digit.
         height: std::ops::Range<usize>,
     },
 }
 /// The grammar stage; each stage owns the data it requires.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum IconSizeStage {
     /// Compare the whole token with `any`.
     Any,
@@ -397,6 +476,9 @@ enum IconSizeStage {
     /// Check the height digits after this separator.
     Height(usize),
 }
+/// A stepper that reads one icon size token over a borrowed slice of UTF-16 code units, one bounded
+/// action per step. It performs no allocation.
+#[derive(Clone, Debug)]
 pub struct IconSizeCursor<'a> {
     units: &'a [u16],
     stage: IconSizeStage,
@@ -407,7 +489,9 @@ impl<'a> IconSizeCursor<'a> {
     // Seven bounded grammar actions: phase/range selection, original-unit read,
     // ASCII classification, error selection, position update, result/transition.
     // No dimension materialization is hidden behind this borrowed operation.
+    /// The work units that one [`IconSizeCursor::step`] charges.
     pub const STEP_WORK: usize = 7;
+    /// Starts reading `units`, a single token, before its first step.
     pub fn new(units: &'a [u16]) -> Self {
         Self {
             units,
@@ -416,9 +500,11 @@ impl<'a> IconSizeCursor<'a> {
             result: None,
         }
     }
+    /// Whether the grammar has produced a result.
     pub fn is_complete(&self) -> bool {
         self.result.is_some()
     }
+    /// The grammar result once complete, or `None` while steps remain.
     pub fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
         self.result.as_ref()
     }
@@ -431,6 +517,8 @@ impl<'a> IconSizeCursor<'a> {
             self.step();
         }
     }
+    /// Performs one bounded grammar action. Callers stop stepping once
+    /// [`IconSizeCursor::is_complete`] returns true.
     pub fn step(&mut self) {
         match self.stage {
             IconSizeStage::Any => {
