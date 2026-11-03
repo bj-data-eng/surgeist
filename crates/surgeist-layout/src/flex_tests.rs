@@ -33,3 +33,6 @@ mod items;
 mod lines_distribution;
 #[path = "flex_tests/wrap_edges_tests.rs"]
 mod wrap_edges_tests;
+
+#[path = "flex_tests/maximum_cross_authority.rs"]
+mod maximum_cross_authority;
