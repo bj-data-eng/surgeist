@@ -484,6 +484,47 @@ fn work_added_by_each_doubling_of_candidate_metas_in_a_nested_moved_subtree_is_n
 }
 
 #[test]
+fn work_the_adoption_agency_adds_by_moving_children_at_most_doubles_with_their_number() {
+    // HTML 877d 13.2.6.4.7, adoption agency step 18 (line 4952 of
+    // `references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`):
+    // "take all of the child nodes of furthestBlock and append them to the
+    // element created in the last step". `</b>` finds the formatting element
+    // `b` with the furthest block `p`, which holds the n comments, the cheapest
+    // nodes, so their number dominates. The same document without `</b>` moves
+    // nothing, so the work the move adds is the difference of the two.
+    //
+    // Moving n children is n moves of constant work each, so the work added is
+    // a*n + b with b the fixed cost of the algorithm and no negative term:
+    // E(2n) = 2*a*n + b <= 2*E(n). A tenth more is left for the geometric
+    // capacity steps of the new parent's child order. Taking each child from
+    // the front of an order that shifts every later entry, after finding it by
+    // a walk from the end, adds a term quadratic in n: E(2n) approaches
+    // 4*E(n).
+    const BOUND_TENTHS: u64 = 22;
+    let sizes = [100usize, 200, 400, 800];
+    let added: Vec<u64> = sizes
+        .iter()
+        .map(|&n| {
+            let comments = "<!--c-->".repeat(n);
+            let moved = parse_work(format!("<!doctype html><b><p>{comments}</b>")).visited;
+            let unmoved = parse_work(format!("<!doctype html><b><p>{comments}")).visited;
+            moved - unmoved
+        })
+        .collect();
+    for (pair, window) in sizes.windows(2).zip(added.windows(2)) {
+        assert!(
+            window[1] * 10 <= BOUND_TENTHS * window[0],
+            "moving {} children added {} record visits and moving {} added {}: the work added \
+             grew faster than linearly (all measured: {added:?})",
+            pair[0],
+            window[0],
+            pair[1],
+            window[1],
+        );
+    }
+}
+
+#[test]
 fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_times() {
     // Each selected option updates the select's selectedcontent. The pinned
     // algorithm "update a select's descendant selectedcontent elements" lists
