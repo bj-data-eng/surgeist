@@ -180,7 +180,7 @@ impl Phases for Silent {
     fn phase(&mut self, _: &'static str, _: &dyn std::fmt::Debug) {}
 }
 fn report(l: &Literal, cuts: &[usize], utf16: bool, phases: &mut dyn Phases) -> HtmlParseReport {
-    use super::super::{report::ImmutableParseReport, seal::SealedOrdinaryConstruction};
+    use super::super::{report::HtmlParseReport, seal::SealedOrdinaryConstruction};
     let source = if utf16 {
         HtmlSource::utf16(DocumentString::from(l.input.as_str()))
     } else {
@@ -200,7 +200,7 @@ fn report(l: &Literal, cuts: &[usize], utf16: bool, phases: &mut dyn Phases) -> 
     };
     let mut owner =
         Some(SealedOrdinaryConstruction::take(&mut Some(request), &mut Some(parts)).unwrap());
-    let report = ImmutableParseReport::take_document(&mut owner).unwrap();
+    let report = HtmlParseReport::take_document(&mut owner).unwrap();
     phases.phase("seal_and_report", report.usage());
     assert_eq!(report.source().identity(), &identity);
     cancellation.cancel();

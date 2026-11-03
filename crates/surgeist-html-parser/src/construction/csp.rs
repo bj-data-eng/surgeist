@@ -34,7 +34,7 @@ pub(super) struct State {
     initial: Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>,
     owner_usage: Storage,
 }
-fn protocol(c: &mut ParseControl, e: surgeist_html::HtmlCspError<ParseStop>) -> SessionError {
+fn protocol(c: &mut ParseControl, e: surgeist_html::HtmlCspError<HtmlParseStop>) -> SessionError {
     match e {
         surgeist_html::HtmlCspError::Interrupted(s) => s.into(),
         surgeist_html::HtmlCspError::Protocol(p) => {
@@ -55,10 +55,10 @@ fn native_storage(
     };
     let next = account.live.add(s).ok_or(SessionError::WrongToken)?;
     for (category, credits) in [
-        (WorkCategory::ReserveByte, bytes as u64),
-        (WorkCategory::CopyByte, bytes as u64),
-        (WorkCategory::RecordWrite, 1),
-        (WorkCategory::ProviderCall, 2),
+        (HtmlParseWorkCategory::ReserveByte, bytes as u64),
+        (HtmlParseWorkCategory::CopyByte, bytes as u64),
+        (HtmlParseWorkCategory::RecordWrite, 1),
+        (HtmlParseWorkCategory::ProviderCall, 2),
     ] {
         c.charge(category, credits)?;
     }
@@ -126,7 +126,7 @@ impl SessionStorage {
             })
             .ok_or(SessionError::WrongToken)?;
         for row in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let usage = match row {
                 RetainedPayload::CspPolicy(v) => {
                     let mut usage = Storage {
@@ -232,7 +232,7 @@ impl SessionStorage {
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
         for row in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Document {
                 node: Some(node),
                 meta,
@@ -272,7 +272,7 @@ impl SessionStorage {
             state.account.settle(c)?;
             if document == 0 {
                 payload_write::<Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>>(c, 1)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 state.initial = Some((
                     association.policy().id().clone(),
                     association.policy().revision(),
@@ -366,7 +366,7 @@ impl SessionStorage {
         let Some(index) = self.csp_slot() else {
             return Ok(true);
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let RetainedPayload::CspState(Some(state)) = self.payloads.row(c, index)? else {
             return Err(SessionError::WrongToken);
         };
@@ -441,7 +441,7 @@ impl SessionStorage {
                     .map_err(|_| SessionError::WrongToken)?;
                 let storage = Storage::from(layout.storage());
                 c.charge(
-                    WorkCategory::ProviderCall,
+                    HtmlParseWorkCategory::ProviderCall,
                     layout
                         .disposal()
                         .work_credits()
@@ -487,7 +487,7 @@ impl SessionStorage {
                             c,
                             pending.document,
                             pending.subject,
-                            meta::MetaMissingKind::CspProcessing(reason),
+                            meta::HtmlParseMetaMissingKind::CspProcessing(reason),
                         )?;
                         return Ok(());
                     }
@@ -596,8 +596,9 @@ mod tests {
                 RetainedPayload::CspPolicy(Box::new(Policy { value: None }));
             Ok(())
         });
-        let invariant =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
         assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
         assert_eq!(c.stop(), Some(invariant));
         storage.csp_slot = None;
@@ -613,8 +614,9 @@ mod tests {
         assert_eq!(storage.csp_pending(&mut c), Ok(false));
         storage.csp_slot = Some(storage.payloads.values.len());
         let result = storage.csp_pending(&mut c);
-        let invariant =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
         assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
         assert_eq!(c.stop(), Some(invariant));
         storage.csp_slot = None;
@@ -624,7 +626,7 @@ mod tests {
 
     /// The stop for an owner call that the account cannot cover, with the
     /// account an association was admitted to replaced by an empty one.
-    fn uncovered_owner_call() -> Option<ParseStop> {
+    fn uncovered_owner_call() -> Option<HtmlParseStop> {
         let request = request("<body><div id=a>");
         let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
         c.admit_source(request.source()).unwrap();
@@ -657,8 +659,8 @@ mod tests {
     fn an_owner_call_the_parser_account_cannot_cover_is_a_capacity_mismatch() {
         assert_eq!(
             uncovered_owner_call(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::CapacityMismatch
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::CapacityMismatch
             ))
         );
     }
@@ -687,7 +689,7 @@ mod tests {
             &mut |a| short.admit(&mut c, a, Caller::Processor),
         );
         assert!(refused.is_err());
-        assert_eq!(c.stop(), Some(ParseStop::CspProcessing));
+        assert_eq!(c.stop(), Some(HtmlParseStop::CspProcessing));
     }
 
     /// Once the processor has admitted or released through the account, a gap
@@ -728,6 +730,6 @@ mod tests {
             &mut |a| short.admit(&mut c, a, Caller::Parser),
         );
         assert!(refused.is_err());
-        assert_eq!(c.stop(), Some(ParseStop::CspProcessing));
+        assert_eq!(c.stop(), Some(HtmlParseStop::CspProcessing));
     }
 }

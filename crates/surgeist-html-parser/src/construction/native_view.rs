@@ -72,7 +72,10 @@ impl ParserArenaSession {
     ) -> Result<NativeView<'a>, SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        control.charge(WorkCategory::CopyByte, mem::size_of::<NativeView>() as u64)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<NativeView>() as u64,
+        )?;
         Ok(NativeView { storage, control })
     }
 }
@@ -82,7 +85,7 @@ impl<'a> NativeView<'a> {
         self.control
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.control.usage()
     }
     #[cfg(test)]
@@ -118,13 +121,15 @@ impl<'a> NativeView<'a> {
     #[cfg(test)]
     pub(crate) fn kind(&mut self, node: &ParserNode) -> Result<NativeKind<'a>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<HtmlNodeKind>() as u64,
         )?;
-        self.control
-            .charge(WorkCategory::CopyByte, mem::size_of::<NativeKind>() as u64)?;
+        self.control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<NativeKind>() as u64,
+        )?;
         Ok(
             match &self
                 .storage
@@ -158,20 +163,22 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<u16>, SessionError> {
         self.storage.require(self.control)?;
         self.control.require_identity(value.owner)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if index >= value.len {
             return Ok(None);
         }
-        self.control
-            .charge(WorkCategory::InspectByte, mem::size_of::<u16>() as u64)?;
+        self.control.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<u16>() as u64,
+        )?;
         Ok(Some(value.value.code_units()[index]))
     }
     #[cfg(test)]
     pub(crate) fn attribute_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<HtmlNodeKind>() as u64,
         )?;
         match &self
@@ -192,7 +199,7 @@ impl<'a> NativeView<'a> {
         position: usize,
     ) -> Result<Option<NativeAttribute<'a>>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .storage
             .construction
@@ -205,13 +212,13 @@ impl<'a> NativeView<'a> {
         if position >= element.attributes().len() {
             return Ok(None);
         }
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<Attribute>() as u64,
         )?;
         self.control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<NativeAttribute>() as u64,
         )?;
         let attribute = &element.attributes().as_slice()[position];
@@ -223,7 +230,7 @@ impl<'a> NativeView<'a> {
     #[cfg(test)]
     pub(crate) fn child_count(&mut self, node: &ParserNode) -> Result<usize, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self
             .storage
             .construction
@@ -238,7 +245,7 @@ impl<'a> NativeView<'a> {
         position: usize,
     ) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if position
             >= self
                 .storage
@@ -249,7 +256,7 @@ impl<'a> NativeView<'a> {
         {
             return Ok(None);
         }
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let child = self
             .storage
             .construction
@@ -263,7 +270,7 @@ impl<'a> NativeView<'a> {
     #[cfg(test)]
     pub(crate) fn parent(&mut self, node: &ParserNode) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.storage
             .construction
             .node_at(index)
@@ -278,7 +285,7 @@ impl<'a> NativeView<'a> {
         node: &ParserNode,
     ) -> Result<Option<ParserNode>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.storage
             .construction
             .node_at(index)
@@ -290,7 +297,7 @@ impl<'a> NativeView<'a> {
     #[cfg(test)]
     fn association_node(&mut self, node: &HtmlNodeId) -> Result<ParserNode, SessionError> {
         self.storage.require(self.control)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = self
             .storage
             .construction
@@ -306,7 +313,7 @@ impl<'a> NativeView<'a> {
         node: &ParserNode,
     ) -> Result<Option<NativeFragmentOwner>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .storage
             .construction
@@ -323,7 +330,7 @@ impl<'a> NativeView<'a> {
             None => {
                 if let Some(fragment) = &self.storage.fragment {
                     for effect in fragment.effects.as_slice() {
-                        self.control.charge(WorkCategory::RecordVisit, 1)?;
+                        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let context::ContextEffect::AttachShadow {
                             host: context::ShadowHostKey::Captured(host),
                             contents: Some(root),
@@ -331,7 +338,8 @@ impl<'a> NativeView<'a> {
                         } = effect
                             && *root == index
                         {
-                            self.control.charge(WorkCategory::ProviderCall, 1)?;
+                            self.control
+                                .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                             payload_write::<NativeFragmentOwner>(self.control, 1)?;
                             return Ok(Some(NativeFragmentOwner::CapturedShadowHost(host.clone())));
                         }
@@ -347,7 +355,7 @@ impl<'a> NativeView<'a> {
         node: &ParserNode,
     ) -> Result<Option<NativeShadow>, SessionError> {
         let index = self.storage.index(self.control, node)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(shadow) = self
             .storage
             .construction
@@ -358,15 +366,16 @@ impl<'a> NativeView<'a> {
             return Ok(None);
         };
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<HtmlShadowRootProperties>() as u64,
         )?;
         self.control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<NativeShadow>() as u64,
         )?;
         let state = if self.storage.fragment.is_some() {
-            self.control.charge(WorkCategory::ProviderCall, 1)?;
+            self.control
+                .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let position = self
                 .storage
                 .construction

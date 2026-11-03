@@ -738,7 +738,7 @@ impl FragmentRequestParts {
 mod tests {
     use super::*;
     use crate::HtmlParseResource;
-    use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+    use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
 
     fn limits(source_units: u64, work_credits: u64) -> HtmlParseLimits {
         HtmlParseLimits::builder()
@@ -772,7 +772,7 @@ mod tests {
         request.cancellation().cancel();
         assert_eq!(
             control.admit_source(request.source()),
-            Err(ParseStop::Cancelled)
+            Err(HtmlParseStop::Cancelled)
         );
         assert_eq!(
             control
@@ -788,7 +788,7 @@ mod tests {
                 .current,
             0
         );
-        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(control.stop(), Some(HtmlParseStop::Cancelled));
     }
 
     #[test]
@@ -812,8 +812,11 @@ mod tests {
                 .current,
             6
         );
-        assert_eq!(control.usage().work(WorkCategory::RecordVisit), 1);
-        assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::RecordVisit), 1);
+        assert_eq!(
+            control.usage().work(HtmlParseWorkCategory::InputUnitRead),
+            0
+        );
         assert_eq!(control.stop(), None);
     }
 

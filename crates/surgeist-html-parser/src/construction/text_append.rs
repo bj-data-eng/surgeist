@@ -12,7 +12,10 @@ fn admit_work(
     wrapper_prepared: bool,
 ) -> Result<(), SessionError> {
     control.admit_atomic_layout(work.atomic_layout_bytes)?;
-    control.charge(WorkCategory::RecordVisit, work.record_visits as u64)?;
+    control.charge(
+        HtmlParseWorkCategory::RecordVisit,
+        work.record_visits as u64,
+    )?;
     let Some(provider_calls) = work
         .provider_calls
         .checked_sub(usize::from(wrapper_prepared))
@@ -21,10 +24,16 @@ fn admit_work(
         // counts fewer differs from the work already charged for it.
         return Err(plan_below_charge(control));
     };
-    control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-    control.charge(WorkCategory::InspectByte, work.inspected_bytes as u64)?;
-    control.charge(WorkCategory::CopyByte, work.copied_bytes as u64)?;
-    control.charge(WorkCategory::RecordWrite, work.record_writes as u64)?;
+    control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+    control.charge(
+        HtmlParseWorkCategory::InspectByte,
+        work.inspected_bytes as u64,
+    )?;
+    control.charge(HtmlParseWorkCategory::CopyByte, work.copied_bytes as u64)?;
+    control.charge(
+        HtmlParseWorkCategory::RecordWrite,
+        work.record_writes as u64,
+    )?;
     Ok(())
 }
 
@@ -294,7 +303,7 @@ impl SessionStorage {
             incoming,
             dispose_old,
         } = append;
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::Text(old) = self
             .construction
             .node_at(index)
@@ -318,11 +327,11 @@ impl SessionStorage {
         payload_write::<StringLocation>(control, 1)?;
         // At most registry-strong drop, incoming drop, discarded-original
         // drop, and the final registry clone; Weak work is ticket-owned.
-        control.charge(WorkCategory::ProviderCall, 4)?;
+        control.charge(HtmlParseWorkCategory::ProviderCall, 4)?;
         // Prepay the actual two native-view headers used during commit/recovery.
-        control.charge(WorkCategory::RecordVisit, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         control.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             const { (2 * mem::size_of::<DocumentString>()) as u64 },
         )?;
         // The exclusive owner is taken before anything changes, and goes back
@@ -350,7 +359,7 @@ impl SessionStorage {
             loop {
                 // Same fixed descriptor/header admission as the generic
                 // PendingConstruction driver: phase, target and Vec headers.
-                control.charge(WorkCategory::RecordVisit, 3)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                 let Some(owner) = operation.as_mut() else {
                     return Err(latch_registry_row(control));
                 };
@@ -634,8 +643,9 @@ mod tests {
     /// plan differs from the work already charged for it. No row is missing.
     #[test]
     fn a_work_plan_below_the_prepaid_provider_call_reports_the_capacity_mismatch() {
-        let mismatch =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch);
+        let mismatch = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::CapacityMismatch,
+        );
         let mut c = crate::construction::tests::control();
         let before = c.usage().clone();
         assert_eq!(

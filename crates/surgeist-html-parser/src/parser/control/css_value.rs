@@ -17,7 +17,7 @@ struct ProviderReceipt {
     units: u64,
 }
 impl ProviderReceipt {
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         c.release_retained_provider(&self.owner, self.bytes, self.units, 0)
     }
 }
@@ -30,9 +30,9 @@ impl CssSchemeValue {
     pub(crate) fn report(&self) -> &Arc<CssColorSchemeParseReport> {
         &self.report
     }
-    pub(crate) fn require(&self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn require(&self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         c.require_identity(&self.receipt.owner)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let usage = self.report.retained_storage();
         if self.receipt.bytes != usage.bytes() as u64
             || self.receipt.units != usage.utf16_units() as u64
@@ -45,11 +45,11 @@ impl CssSchemeValue {
                 .current
                 < self.receipt.units
         {
-            return Err(c.fail_invariant(Invariant::CapacityMismatch));
+            return Err(c.fail_invariant(HtmlParseInvariant::CapacityMismatch));
         }
         Ok(())
     }
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let Self { report, receipt } = self;
         drop(report);
         receipt.release(c)
@@ -77,7 +77,7 @@ struct SchemeCallbacks<'c> {
     live: Cell<(u64, u64)>,
     owner: ControlIdentity,
     reentered: Cell<bool>,
-    release_error: Cell<Option<ParseStop>>,
+    release_error: Cell<Option<HtmlParseStop>>,
 }
 /// What the callbacks leave behind once the parser has returned.
 struct Finished<'c> {
@@ -86,7 +86,7 @@ struct Finished<'c> {
     live: (u64, u64),
     owner: ControlIdentity,
     /// The first refusal of a callback, already latched on `control`.
-    refusal: Option<ParseStop>,
+    refusal: Option<HtmlParseStop>,
 }
 impl<'c> SchemeCallbacks<'c> {
     fn new(control: &'c mut ParseControl) -> Self {
@@ -104,11 +104,11 @@ impl<'c> SchemeCallbacks<'c> {
     /// The stop handed to a parser that entered a callback while another still
     /// held the controller. The controller is out of reach there, so `finish`
     /// latches it once the parser has returned.
-    fn refuse_reentry(&self) -> ParseStop {
+    fn refuse_reentry(&self) -> HtmlParseStop {
         self.reentered.set(true);
-        ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback)
+        HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback)
     }
-    fn admit(&self, event: Admission) -> Result<(), ParseStop> {
+    fn admit(&self, event: Admission) -> Result<(), HtmlParseStop> {
         let live = if let Admission::Live(next) = event {
             Some((next.bytes() as u64, next.utf16_units() as u64))
         } else {
@@ -118,21 +118,21 @@ impl<'c> SchemeCallbacks<'c> {
     }
     /// One admission event: its step, and for a live-storage observation the
     /// growth over the storage already admitted.
-    fn admit_live(&self, next: Option<(u64, u64)>) -> Result<(), ParseStop> {
+    fn admit_live(&self, next: Option<(u64, u64)>) -> Result<(), HtmlParseStop> {
         let Ok(mut c) = self.control.try_borrow_mut() else {
             return Err(self.refuse_reentry());
         };
-        c.charge(WorkCategory::StateStep, 1)?;
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
         if let Some(next) = next {
             let old = self.live.get();
             let bytes = next
                 .0
                 .checked_sub(old.0)
-                .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::ReleaseUnderflow))?;
             let units = next
                 .1
                 .checked_sub(old.1)
-                .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::ReleaseUnderflow))?;
             c.acquire_retained_provider(bytes, units, 0)?;
             self.live.set(next);
         }
@@ -157,7 +157,9 @@ impl<'c> SchemeCallbacks<'c> {
         let old = self.live.get();
         let released = match old.0.checked_sub(next.0).zip(old.1.checked_sub(next.1)) {
             Some((bytes, units)) => c.release_retained_provider(&self.owner, bytes, units, 0),
-            None => c.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow)),
+            None => c.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ReleaseUnderflow,
+            )),
         };
         match released {
             Ok(()) => self.live.set(next),
@@ -185,7 +187,7 @@ impl<'c> SchemeCallbacks<'c> {
             live
         };
         let refusal = if reentered {
-            Some(control.fail_invariant(Invariant::ReentrantProviderCallback))
+            Some(control.fail_invariant(HtmlParseInvariant::ReentrantProviderCallback))
         } else {
             release_error
         };
@@ -199,18 +201,18 @@ impl<'c> SchemeCallbacks<'c> {
 }
 
 impl ParseControl {
-    fn remaining_css(&mut self, resource: HtmlParseResource) -> Result<usize, ParseStop> {
+    fn remaining_css(&mut self, resource: HtmlParseResource) -> Result<usize, HtmlParseStop> {
         self.checkpoint()?;
         let remaining = self
             .limits
             .copy(resource)
             .checked_sub(self.usage.resource(resource).current)
-            .ok_or_else(|| self.fail_invariant(Invariant::ReleaseUnderflow))?;
+            .ok_or_else(|| self.fail_invariant(HtmlParseInvariant::ReleaseUnderflow))?;
         Ok(usize::try_from(remaining).unwrap_or(usize::MAX))
     }
     fn css_scheme_limits(
         &mut self,
-    ) -> Result<(CssUtf16PropertyValueLimits, CssComponentValueLimits), ParseStop> {
+    ) -> Result<(CssUtf16PropertyValueLimits, CssComponentValueLimits), HtmlParseStop> {
         let bytes = self
             .remaining_css(HtmlParseResource::ManagedCapacityBytes)?
             .min(self.remaining_css(HtmlParseResource::PeakTransientBytes)?);
@@ -224,7 +226,7 @@ impl ParseControl {
         const DEPTH_CEILING: u32 = 256;
         let depth = u32::try_from(entries.min(DEPTH_CEILING as usize)).unwrap_or(DEPTH_CEILING);
         let Some(syntax) = CssComponentValueLimits::try_new(depth, entries, bytes) else {
-            return Err(self.fail_invariant(Invariant::CapacityMismatch));
+            return Err(self.fail_invariant(HtmlParseInvariant::CapacityMismatch));
         };
         let limits = CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits {
@@ -247,7 +249,7 @@ impl ParseControl {
     fn css_scheme_input(
         &mut self,
         raw: &[u16],
-    ) -> Result<(Arc<Vec<u16>>, ProviderReceipt), ParseStop> {
+    ) -> Result<(Arc<Vec<u16>>, ProviderReceipt), HtmlParseStop> {
         let mut buffer = Utf16Buffer::new(self)?;
         if let Err(stop) = buffer.extend_units(raw, self) {
             buffer.release(self)?;
@@ -261,7 +263,10 @@ impl ParseControl {
                 .checked_mul(size_of::<u16>() as u64)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>() as u64))
                 .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
-            self.charge(WorkCategory::CopyByte, size_of::<Arc<Vec<u16>>>() as u64)?;
+            self.charge(
+                HtmlParseWorkCategory::CopyByte,
+                size_of::<Arc<Vec<u16>>>() as u64,
+            )?;
             // Last fallible operation; the existing backing remains admitted.
             self.acquire(HtmlParseResource::ManagedUtf16Units, units)?;
             Ok((bytes, units))
@@ -302,7 +307,7 @@ impl ParseControl {
         &mut self,
         raw: &[u16],
         mode: crate::HtmlDocumentMode,
-    ) -> Result<CssSchemeValue, ParseStop> {
+    ) -> Result<CssSchemeValue, HtmlParseStop> {
         let (input, input_receipt) = self.css_scheme_input(raw)?;
         let result = (|| {
             let (limits, syntax) = self.css_scheme_limits()?;
@@ -341,10 +346,10 @@ impl ParseControl {
                         Err(refusal) => refusal,
                     };
                     if let Some(resource) = refusal.exhausted_limit() {
-                        return c.fail(ParseStop::CssPropertyLimit { resource });
+                        return c.fail(HtmlParseStop::CssPropertyLimit { resource });
                     }
                     if refusal.is_allocation_failure() {
-                        return c.fail(ParseStop::CssPropertyAllocationFailed);
+                        return c.fail(HtmlParseStop::CssPropertyAllocationFailed);
                     }
                     // A capacity overflow.
                     return c.representation(HtmlParseResource::ManagedCapacityBytes);
@@ -354,14 +359,14 @@ impl ParseControl {
             if live != (usage.bytes() as u64, usage.utf16_units() as u64) {
                 // The parser returns exactly the storage it kept admitted.
                 drop(report);
-                let stop = c.fail_invariant(Invariant::CapacityMismatch);
+                let stop = c.fail_invariant(HtmlParseInvariant::CapacityMismatch);
                 let _ = c.release_retained_provider(&original, live.0, live.1, 0);
                 return Err(stop);
             }
             // Admit the heap report body while the inline report is still live.
             let header = size_of::<CssColorSchemeParseReport>() as u64;
             if let Err(stop) = c
-                .charge(WorkCategory::CopyByte, header)
+                .charge(HtmlParseWorkCategory::CopyByte, header)
                 .and_then(|()| c.acquire_retained_provider(header, 0, 0))
             {
                 drop(report);
@@ -483,7 +488,7 @@ mod tests {
         };
         assert!(matches!(
             error,
-            ParseStop::LimitExceeded { .. } | ParseStop::CssPropertyLimit { .. }
+            HtmlParseStop::LimitExceeded { .. } | HtmlParseStop::CssPropertyLimit { .. }
         ));
         assert_eq!(c.stop(), Some(error));
         empty(&c);
@@ -499,11 +504,11 @@ mod tests {
             )
             .unwrap();
         c.cancellation.cancel();
-        assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+        assert_eq!(c.checkpoint(), Err(HtmlParseStop::Cancelled));
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current();
         value.release(&mut c).unwrap();
         empty(&c);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current(),
             work
@@ -512,7 +517,7 @@ mod tests {
     #[test]
     fn a_callback_entered_while_another_runs_stops_the_parse_without_panicking() {
         let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
-        let stop = ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback);
+        let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback);
         let callbacks = SchemeCallbacks::new(&mut c);
         {
             // The parser cannot reach this through the closures it is given:
@@ -541,7 +546,7 @@ mod tests {
             owner,
             refusal,
         } = callbacks.finish();
-        let underflow = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
+        let underflow = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReleaseUnderflow);
         assert_eq!(refusal, Some(underflow));
         assert_eq!(c.stop(), Some(underflow));
         assert_eq!(live, (10, 4), "the ledger is left as it was");
@@ -563,7 +568,7 @@ mod tests {
         // The skipped release leaves more live than the parser later reports,
         // so its next admission underflows first; `finish` keeps that first
         // stop in place of the reentry it also records.
-        let underflow = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
+        let underflow = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReleaseUnderflow);
         let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
         c.css_scheme_fault = Some(SchemeFault::ReentrantRelease);
         let raw: Vec<_> = "only dark".encode_utf16().collect();
@@ -580,7 +585,7 @@ mod tests {
     }
     #[test]
     fn characterization_storage_admitted_beyond_the_report_is_a_capacity_mismatch_and_credited() {
-        let mismatch = ParseStop::InternalInvariant(Invariant::CapacityMismatch);
+        let mismatch = HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch);
         let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
         c.css_scheme_fault = Some(SchemeFault::LiveDrift);
         let raw: Vec<_> = "only dark".encode_utf16().collect();

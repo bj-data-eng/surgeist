@@ -146,12 +146,12 @@ impl SharedReportStorage<'_, '_> {
 /// Why a prepared report could not be published.
 pub(crate) enum PublishFault {
     /// The stop is already the controller's first.
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     /// The prepared history held no custody of what the report needs.
     Unpublishable,
 }
-impl From<ParseStop> for PublishFault {
-    fn from(stop: ParseStop) -> Self {
+impl From<HtmlParseStop> for PublishFault {
+    fn from(stop: HtmlParseStop) -> Self {
         Self::Stop(stop)
     }
 }
@@ -200,9 +200,9 @@ impl<'a> PreparedReportStorage<'a> {
         let mut associated_slot = None;
         let mut associated_usage = associated::AssociatedStorageUsage::default();
         for (payload_index, payload) in storage.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<RetainedPayload>() as u64,
             )?;
             let node = metadata_node(payload);
@@ -218,20 +218,20 @@ impl<'a> PreparedReportStorage<'a> {
                     // handle destruction before the publication checkpoint.
                     // Unused Vec capacity needs no per-element destruction.
                     payload_write::<RetainedPayload>(c, 1)?;
-                    c.charge(WorkCategory::ProviderCall, 2)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
                     for _ in &inputs.encoding_urls {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     }
                     if inputs.template.is_some() {
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     }
                     if inputs.parser_document.is_some() {
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     }
                     for _ in &inputs.captured {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     }
                     for (resource, amount) in usage.resources() {
                         if c.usage().resource(resource).current < amount {
@@ -251,7 +251,7 @@ impl<'a> PreparedReportStorage<'a> {
                         checked_raw(storage, raw, c)?;
                     }
                     if let Some(cause) = &state.cause {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if storage
                             .evidence
                             .as_ref()
@@ -308,7 +308,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::AssociatedFacts);
                     }
                     if let Some(cause) = &state.cause {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if storage
                             .evidence
                             .as_ref()
@@ -325,7 +325,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::AssociatedFacts);
                     }
                     if let Some(cause) = &state.cause {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if storage
                             .evidence
                             .as_ref()
@@ -339,13 +339,13 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 RetainedPayload::BaseDocument { node, facts, first } => {
                     checked_document(storage, &DocumentRef::Owned(*node), c)?;
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let mut inert = false;
                     let mut auxiliary = false;
                     for p in &storage.payloads.values {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let RetainedPayload::AssociatedInputs { inputs, .. } = p {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             if *node == 0
                                 && storage.fragment.is_some()
                                 && inputs
@@ -363,7 +363,7 @@ impl<'a> PreparedReportStorage<'a> {
                                 .is_some_and(|original| facts.same_owner(original))
                         {
                             for candidate in &storage.payloads.values {
-                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                                 if matches!(candidate, RetainedPayload::Document { node: Some(bound), state: template::DocumentState::InertTemplate, .. } if bound == node)
                                 {
                                     inert = true;
@@ -390,12 +390,12 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::WrongToken);
                     }
                     if let base::BaseValue::Unavailable { missing, .. } = frozen {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !matches!(
                             storage.payloads.values.get(*missing),
                             Some(RetainedPayload::MetaMissing {
-                                kind: meta::MetaMissingKind::Csp
-                                    | meta::MetaMissingKind::CspProcessing(_),
+                                kind: meta::HtmlParseMetaMissingKind::Csp
+                                    | meta::HtmlParseMetaMissingKind::CspProcessing(_),
                                 ..
                             })
                         ) {
@@ -415,7 +415,7 @@ impl<'a> PreparedReportStorage<'a> {
                 } => {
                     let node = node.ok_or(SessionError::WrongToken)?;
                     let record = checked_node(arena, node, c)?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let HtmlNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::WrongToken);
                     };
@@ -426,7 +426,7 @@ impl<'a> PreparedReportStorage<'a> {
                     // Document, so publication requires one. Not every node has
                     // one: nodes created without a document, such as implied
                     // and text nodes of a fragment, get none.
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let slot = storage.payloads.joined(c, node, Join::NodeDocument)?;
                     if !matches!(
                         slot.and_then(|slot| storage.payloads.values.get(slot)),
@@ -453,7 +453,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::InputMetadataUnavailable);
                     }
                     checked_raw(storage, *raw, c)?;
-                    c.charge(WorkCategory::RecordVisit, 2)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                     if state.flags.input_type() == crate::HtmlInputType::File
                         && !state.selected_files_empty
                     {
@@ -476,9 +476,9 @@ impl<'a> PreparedReportStorage<'a> {
                     state: SelectMetadata::Option(state),
                     ..
                 } => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<Option<usize>>() as u64,
                     )?;
                     if let Some(select) = state.cached_nearest_select() {
@@ -489,7 +489,7 @@ impl<'a> PreparedReportStorage<'a> {
                     let node = node.ok_or(SessionError::NonceMetadataUnavailable)?;
                     let record = checked_node(arena, node, c)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
                     )?;
                     let HtmlNodeKind::Element(element) = record.kind() else {
@@ -532,11 +532,11 @@ impl<'a> PreparedReportStorage<'a> {
                             |step| match step {
                                 surgeist_html::bounded::HtmlElementNameRead::NamespaceHeader
                                 | surgeist_html::bounded::HtmlElementNameRead::LocalNameHeader => {
-                                    c.charge(WorkCategory::RecordVisit, 1)
+                                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                                 }
                                 surgeist_html::bounded::HtmlElementNameRead::NamespacePair
                                 | surgeist_html::bounded::HtmlElementNameRead::LocalNamePair => {
-                                    c.charge(WorkCategory::InspectByte, 3)
+                                    c.charge_unit_literal_comparison()
                                 }
                             },
                         )?;
@@ -565,7 +565,7 @@ impl<'a> PreparedReportStorage<'a> {
                                 let mut count = 0usize;
                                 for candidate in &storage.payloads.values {
                                     if charged {
-                                        c.charge(WorkCategory::RecordVisit, 1)?;
+                                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                                     }
                                     if matches!((family, candidate),
                                         (1, RetainedPayload::Hyperlink { node, .. })
@@ -649,9 +649,9 @@ impl<'a> PreparedReportStorage<'a> {
                     if let Some(raw) = meta.language {
                         checked_raw(storage, raw, c)?;
                     }
-                    // `MetadataDocumentMeta` reads these rows without a controller.
+                    // `HtmlParseDocumentMeta` reads these rows without a controller.
                     for slot in [meta.csp, meta.base_csp].into_iter().flatten() {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !matches!(
                             storage.payloads.values.get(slot),
                             Some(RetainedPayload::CspPolicy(_))
@@ -680,8 +680,8 @@ impl<'a> PreparedReportStorage<'a> {
                         }
                     }
                     let mut earliest = None;
-                    for domain in meta::MetaDomain::ALL {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                    for domain in meta::HtmlParseMetaDomain::ALL {
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let Some(gap) = meta.gaps.copy(domain) {
                             let Some(RetainedPayload::MetaMissing {
                                 document: owner,
@@ -712,7 +712,7 @@ impl<'a> PreparedReportStorage<'a> {
                     checked_document(storage, &DocumentRef::Owned(*document), c)?;
                     checked_node(arena, *subject, c)?;
                     if let Some(cause) = cause {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if storage
                             .evidence
                             .as_ref()
@@ -774,7 +774,7 @@ fn checked_document(
     document: &DocumentRef,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     match document {
         DocumentRef::Owned(index) => {
             if !matches!(
@@ -806,7 +806,7 @@ fn checked_node<'a>(
     node: usize,
     c: &mut ParseControl,
 ) -> Result<crate::bounded::HtmlConstructionNode<'a>, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     arena.node_at(node).ok_or(SessionError::ForeignNode)
 }
 fn checked_select(
@@ -815,7 +815,7 @@ fn checked_select(
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
     let record = checked_node(arena, node, c)?;
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let HtmlNodeKind::Element(element) = record.kind() else {
         return Err(SessionError::SelectMetadataUnavailable);
     };
@@ -834,7 +834,7 @@ fn checked_raw(
     slot: usize,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(RetainedPayload::String {
         value, allocation, ..
     }) = storage.payloads.values.get(slot)
@@ -851,7 +851,7 @@ fn checked_dialog_missing(
 ) -> Result<(), SessionError> {
     checked_node(arena(storage), missing.subject, c)?;
     checked_document(storage, &missing.document, c)?;
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if let Some(cause) = &missing.cause
         && storage
             .evidence
@@ -919,13 +919,13 @@ impl ReportStorage {
     pub(crate) fn release_execution_inputs(
         &mut self,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let Some(slot) = self.associated_slot else {
             return Ok(());
         };
         let row = self.history.storage_mut().payloads.values.get_mut(slot);
         let Some(row) = row else {
-            return Err(c.fail_invariant(crate::parser::control::Invariant::RegistryRow));
+            return Err(c.fail_invariant(crate::parser::control::HtmlParseInvariant::RegistryRow));
         };
         match mem::replace(row, RetainedPayload::Retired) {
             RetainedPayload::AssociatedInputs { inputs, usage } => {
@@ -938,15 +938,18 @@ impl ReportStorage {
             // Another kind of row is put back where it was.
             other => {
                 *row = other;
-                Err(c.fail_invariant(crate::parser::control::Invariant::RegistryRow))
+                Err(c.fail_invariant(crate::parser::control::HtmlParseInvariant::RegistryRow))
             }
         }
     }
     pub(crate) fn fragment_parser_document<'a>(
         &'a self,
         source: &'a crate::HtmlSource,
-    ) -> Result<fragment_document::FragmentParserDocument<'a>, read::UnresolvedReference> {
-        fragment_document::FragmentParserDocument::new(&self.history, source)
+    ) -> Result<
+        fragment_document::HtmlParseFragmentParserDocument<'a>,
+        read::HtmlParseUnresolvedReference,
+    > {
+        fragment_document::HtmlParseFragmentParserDocument::new(&self.history, source)
     }
     pub(crate) fn history(&self) -> &FrozenHistory {
         &self.history
@@ -960,12 +963,12 @@ impl ReportStorage {
         self.history.evidence()
     }
     /// The effects of a fragment report; a Document report holds none.
-    pub(crate) fn effects(&self) -> Option<context::FrozenFragmentEffects<'_>> {
+    pub(crate) fn effects(&self) -> Option<context::HtmlParseEffects<'_>> {
         self.history.storage().fragment_effects()
     }
-    pub(crate) fn metadata(&self) -> MetadataCursor<'_> {
+    pub(crate) fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         let storage = self.history.storage();
-        MetadataCursor {
+        HtmlParseMetadataCursor {
             history: &self.history,
             closed_common: self.closed_common,
             storage,
@@ -975,46 +978,46 @@ impl ReportStorage {
         }
     }
 }
-pub struct MetadataCursor<'a> {
+pub struct HtmlParseMetadataCursor<'a> {
     closed_common: bool,
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     next: usize,
-    fault: Option<read::UnresolvedReference>,
+    fault: Option<read::HtmlParseUnresolvedReference>,
 }
 #[expect(
     clippy::large_enum_variant,
     reason = "The record holds what it resolved, and is lent by value so the read path allocates nothing; boxing it would add an allocation where no controller exists to charge it"
 )]
-pub enum MetadataStep<'a> {
-    Record(MetadataRef<'a>),
+pub enum HtmlParseMetadataStep<'a> {
+    Record(HtmlParseMetadata<'a>),
     /// A slot that holds no metadata record.
     Skipped,
     Complete,
     /// The record of this slot names a reference the report cannot resolve.
     /// The cursor stays faulted, so a caller that continues is told again.
-    Fault(read::UnresolvedReference),
+    Fault(read::HtmlParseUnresolvedReference),
 }
-impl<'a> MetadataCursor<'a> {
+impl<'a> HtmlParseMetadataCursor<'a> {
     /// One actual canonical slot, never a next-match loop or materialization.
-    pub fn advance(&mut self) -> MetadataStep<'a> {
+    pub fn advance(&mut self) -> HtmlParseMetadataStep<'a> {
         if let Some(fault) = self.fault {
-            return MetadataStep::Fault(fault);
+            return HtmlParseMetadataStep::Fault(fault);
         }
         let Some(payload) = self.storage.payloads.values.get(self.next) else {
-            return MetadataStep::Complete;
+            return HtmlParseMetadataStep::Complete;
         };
         // `next` named a registry row, so it is below the address space.
         self.next = self.next.saturating_add(1);
         let node = match metadata_node(payload) {
             MetadataNode::Bound(node) => node,
-            MetadataNode::None => return MetadataStep::Skipped,
+            MetadataNode::None => return HtmlParseMetadataStep::Skipped,
             // Publication refuses a row bound to no node.
             MetadataNode::Unbound => {
-                let fault = unresolved(read::UnresolvedKind::Node);
+                let fault = unresolved(read::HtmlParseUnresolvedKind::Node);
                 self.fault = Some(fault);
-                return MetadataStep::Fault(fault);
+                return HtmlParseMetadataStep::Fault(fault);
             }
         };
         let resolver = Resolver {
@@ -1022,11 +1025,11 @@ impl<'a> MetadataCursor<'a> {
             storage: self.storage,
             arena: self.arena,
         };
-        match MetadataRef::issue(resolver, self.closed_common, node, payload) {
-            Ok(record) => MetadataStep::Record(record),
+        match HtmlParseMetadata::issue(resolver, self.closed_common, node, payload) {
+            Ok(record) => HtmlParseMetadataStep::Record(record),
             Err(fault) => {
                 self.fault = Some(fault);
-                MetadataStep::Fault(fault)
+                HtmlParseMetadataStep::Fault(fault)
             }
         }
     }
@@ -1039,16 +1042,16 @@ struct Resolver<'a> {
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
 }
-type Fault = read::UnresolvedReference;
-fn unresolved(kind: read::UnresolvedKind) -> Fault {
-    read::UnresolvedReference::new(kind)
+type Fault = read::HtmlParseUnresolvedReference;
+fn unresolved(kind: read::HtmlParseUnresolvedKind) -> Fault {
+    read::HtmlParseUnresolvedReference::new(kind)
 }
 impl<'a> Resolver<'a> {
     fn native(&self, index: usize) -> Result<HtmlNode<'a>, Fault> {
         self.arena
             .node_at(index)
             .map(|node| node.as_node())
-            .ok_or(unresolved(read::UnresolvedKind::Node))
+            .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))
     }
     fn optional_native(&self, index: Option<usize>) -> Result<Option<HtmlNode<'a>>, Fault> {
         index.map(|index| self.native(index)).transpose()
@@ -1056,13 +1059,13 @@ impl<'a> Resolver<'a> {
     fn raw(&self, slot: usize) -> Result<&'a DocumentString, Fault> {
         match self.storage.payloads.values.get(slot) {
             Some(RetainedPayload::String { value, .. }) => Ok(value),
-            _ => Err(unresolved(read::UnresolvedKind::Fact)),
+            _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         }
     }
     fn policy(&self, slot: usize) -> Result<Option<&'a surgeist_html::HtmlCspAssociation>, Fault> {
         match self.storage.payloads.values.get(slot) {
             Some(RetainedPayload::CspPolicy(value)) => Ok(value.value.as_ref()),
-            _ => Err(unresolved(read::UnresolvedKind::Fact)),
+            _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         }
     }
     fn cause(
@@ -1076,36 +1079,36 @@ impl<'a> Resolver<'a> {
                     .evidence()
                     .retained_cause(cause)
                     .map(|cause| read::HtmlParseCause::qualified(self.history, cause))
-                    .ok_or(unresolved(read::UnresolvedKind::Cause))
+                    .ok_or(unresolved(read::HtmlParseUnresolvedKind::Cause))
             })
             .transpose()
     }
-    fn document(&self, document: &DocumentRef) -> Result<MetadataDocument<'a>, Fault> {
+    fn document(&self, document: &DocumentRef) -> Result<HtmlParseMetadataDocument<'a>, Fault> {
         match document {
-            DocumentRef::Owned(index) => self.native(*index).map(MetadataDocument::Owned),
+            DocumentRef::Owned(index) => self.native(*index).map(HtmlParseMetadataDocument::Owned),
             DocumentRef::Captured(index) => self
                 .storage
                 .fragment
                 .as_ref()
-                .ok_or(unresolved(read::UnresolvedKind::Fragment))?
+                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fragment))?
                 .context
                 .capture()
                 .node(index.subject())
-                .map(MetadataDocument::Captured)
-                .map_err(|_| unresolved(read::UnresolvedKind::CapturedNode)),
+                .map(HtmlParseMetadataDocument::Captured)
+                .map_err(|_| unresolved(read::HtmlParseUnresolvedKind::CapturedNode)),
         }
     }
     fn optional_document(
         &self,
         document: Option<&DocumentRef>,
-    ) -> Result<Option<MetadataDocument<'a>>, Fault> {
+    ) -> Result<Option<HtmlParseMetadataDocument<'a>>, Fault> {
         document.map(|document| self.document(document)).transpose()
     }
     fn dialog_missing(
         &self,
         missing: &dialog::Missing,
-    ) -> Result<MetadataDialogMissing<'a>, Fault> {
-        Ok(MetadataDialogMissing {
+    ) -> Result<HtmlParseDialogMissing<'a>, Fault> {
+        Ok(HtmlParseDialogMissing {
             subject: self.native(missing.subject)?,
             document: self.document(&missing.document)?,
             action: missing.action,
@@ -1115,13 +1118,13 @@ impl<'a> Resolver<'a> {
     fn disposition(
         &self,
         first: Option<&dialog::Missing>,
-    ) -> Result<MetadataDialogDisposition<'a>, Fault> {
+    ) -> Result<HtmlParseDialogDisposition<'a>, Fault> {
         Ok(match first {
-            None => MetadataDialogDisposition::Closed,
-            Some(missing) => MetadataDialogDisposition::Unavailable(self.dialog_missing(missing)?),
+            None => HtmlParseDialogDisposition::Closed,
+            Some(missing) => HtmlParseDialogDisposition::Unavailable(self.dialog_missing(missing)?),
         })
     }
-    fn meta_missing(&self, slot: usize) -> Result<MetadataMetaMissing<'a>, Fault> {
+    fn meta_missing(&self, slot: usize) -> Result<HtmlParseMetaMissing<'a>, Fault> {
         let Some(RetainedPayload::MetaMissing {
             document,
             subject,
@@ -1129,17 +1132,17 @@ impl<'a> Resolver<'a> {
             cause,
         }) = self.storage.payloads.values.get(slot)
         else {
-            return Err(unresolved(read::UnresolvedKind::Fact));
+            return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
         };
-        Ok(MetadataMetaMissing {
+        Ok(HtmlParseMetaMissing {
             document: self.native(*document)?,
             subject: self.native(*subject)?,
             kind,
             cause: self.cause(cause)?,
         })
     }
-    fn base(&self, value: &'a base::FrozenBase) -> Result<MetadataBase<'a>, Fault> {
-        Ok(MetadataBase {
+    fn base(&self, value: &'a base::FrozenBase) -> Result<HtmlParseBase<'a>, Fault> {
+        Ok(HtmlParseBase {
             value: &value.value,
             document: self.native(value.document)?,
             revision: value.environment.document().revision(),
@@ -1150,7 +1153,7 @@ impl<'a> Resolver<'a> {
         &self,
         document: usize,
         meta: &'a meta::MetaHistory,
-    ) -> Result<MetadataDocumentMeta<'a>, Fault> {
+    ) -> Result<HtmlParseDocumentMeta<'a>, Fault> {
         let mut fault = None;
         let gaps = meta.gaps.map(|slot| {
             let slot = slot?;
@@ -1166,7 +1169,7 @@ impl<'a> Resolver<'a> {
             return Err(fault);
         }
         // The policy of a domain with a gap is not an answer.
-        let csp = match (meta.gaps.get(meta::MetaDomain::Csp), meta.csp) {
+        let csp = match (meta.gaps.get(meta::HtmlParseMetaDomain::Csp), meta.csp) {
             (None, Some(slot)) => self.policy(slot)?,
             _ => None,
         };
@@ -1178,10 +1181,10 @@ impl<'a> Resolver<'a> {
             .first
             .map(|domain| {
                 gaps.copy(domain)
-                    .ok_or(unresolved(read::UnresolvedKind::Fact))
+                    .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))
             })
             .transpose()?;
-        Ok(MetadataDocumentMeta {
+        Ok(HtmlParseDocumentMeta {
             document: self.native(document)?,
             meta,
             csp,
@@ -1207,25 +1210,28 @@ enum Refs<'a> {
     },
     Creation(Option<&'a DocumentString>),
     Owner(Option<HtmlNode<'a>>),
-    Dialog(MetadataDialog<'a>),
+    Dialog(HtmlParseDialog<'a>),
     Document {
-        interaction: MetadataDocumentInteraction<'a>,
-        meta: MetadataDocumentMeta<'a>,
+        interaction: HtmlParseDocumentInteraction<'a>,
+        meta: HtmlParseDocumentMeta<'a>,
         inert: Option<HtmlNode<'a>>,
     },
-    Style(MetadataStyle<'a>),
-    Hyperlink(MetadataHyperlink<'a>),
-    Image(MetadataImage<'a>),
-    Base(MetadataBaseState<'a>),
+    Style(HtmlParseStyle<'a>),
+    Hyperlink(HtmlParseHyperlink<'a>),
+    Image(HtmlParseImage<'a>),
+    Base(HtmlParseBaseState<'a>),
     FirstBase(Option<HtmlNode<'a>>),
     Link {
-        parser_document: Option<MetadataDocument<'a>>,
+        parser_document: Option<HtmlParseMetadataDocument<'a>>,
         flags: crate::HtmlLinkFlags,
         history: crate::HtmlLinkHistory,
     },
-    NodeDocument(MetadataDocument<'a>),
-    Script(Option<MetadataDocument<'a>>, Option<MetadataDocument<'a>>),
-    Template(MetadataTemplate<'a>),
+    NodeDocument(HtmlParseMetadataDocument<'a>),
+    Script(
+        Option<HtmlParseMetadataDocument<'a>>,
+        Option<HtmlParseMetadataDocument<'a>>,
+    ),
+    Template(HtmlParseTemplate<'a>),
 }
 impl<'a> Refs<'a> {
     fn resolve(
@@ -1257,7 +1263,7 @@ impl<'a> Refs<'a> {
                 state: SelectMetadata::Option(state),
                 ..
             } => Self::Owner(r.optional_native(state.cached_nearest_select())?),
-            RetainedPayload::Dialog { state, .. } => Self::Dialog(MetadataDialog {
+            RetainedPayload::Dialog { state, .. } => Self::Dialog(HtmlParseDialog {
                 value: r.raw(state.value)?,
                 disposition: r.disposition(state.first.as_ref())?,
             }),
@@ -1268,7 +1274,7 @@ impl<'a> Refs<'a> {
                 interaction,
                 ..
             } => Self::Document {
-                interaction: MetadataDocumentInteraction {
+                interaction: HtmlParseDocumentInteraction {
                     document: r.native(*document)?,
                     disposition: r.disposition(interaction.first.as_ref())?,
                 },
@@ -1278,36 +1284,36 @@ impl<'a> Refs<'a> {
                     template::DocumentState::InertTemplate => None,
                 },
             },
-            RetainedPayload::Style { state, .. } => Self::Style(MetadataStyle {
+            RetainedPayload::Style { state, .. } => Self::Style(HtmlParseStyle {
                 state: state.state,
                 parser_document: r.optional_document(state.parser_document.as_ref())?,
                 cause: r.cause(&state.cause)?,
             }),
-            RetainedPayload::Hyperlink { state, .. } => Self::Hyperlink(MetadataHyperlink {
+            RetainedPayload::Hyperlink { state, .. } => Self::Hyperlink(HtmlParseHyperlink {
                 document: r.document(&state.document)?,
                 cause: r.cause(&state.cause)?,
                 raw: state.raw.map(|slot| r.raw(slot)).transpose()?,
                 state: match &state.value {
-                    associated::HyperlinkValue::Absent => MetadataHyperlinkState::AbsentHref,
+                    associated::HyperlinkValue::Absent => HtmlParseHyperlinkState::AbsentHref,
                     associated::HyperlinkValue::Observed(value) => {
-                        MetadataHyperlinkState::Observed(value)
+                        HtmlParseHyperlinkState::Observed(value)
                     }
                     associated::HyperlinkValue::Unavailable(error) => {
-                        MetadataHyperlinkState::Unavailable(error)
+                        HtmlParseHyperlinkState::Unavailable(error)
                     }
                 },
             }),
-            RetainedPayload::Image { state, .. } => Self::Image(MetadataImage {
+            RetainedPayload::Image { state, .. } => Self::Image(HtmlParseImage {
                 state,
                 dimension_source: r.native(state.dimension_source)?,
                 cause: r.cause(&state.cause)?,
                 subject: node,
             }),
             RetainedPayload::Base { frozen, .. } => Self::Base(match frozen {
-                base::BaseValue::Unfrozen => MetadataBaseState::Unfrozen,
-                base::BaseValue::Frozen(value) => MetadataBaseState::Frozen(r.base(value)?),
+                base::BaseValue::Unfrozen => HtmlParseBaseState::Unfrozen,
+                base::BaseValue::Frozen(value) => HtmlParseBaseState::Frozen(r.base(value)?),
                 base::BaseValue::Unavailable { missing, previous } => {
-                    MetadataBaseState::Unavailable {
+                    HtmlParseBaseState::Unavailable {
                         missing: r.meta_missing(*missing)?,
                         previous: previous.as_ref().map(|value| r.base(value)).transpose()?,
                     }
@@ -1321,13 +1327,13 @@ impl<'a> Refs<'a> {
                 parser_document,
             } => {
                 let HtmlNodeKind::Element(element) = node.kind() else {
-                    return Err(unresolved(read::UnresolvedKind::Node));
+                    return Err(unresolved(read::HtmlParseUnresolvedKind::Node));
                 };
                 let flags = element
                     .link_flags()
-                    .ok_or(unresolved(read::UnresolvedKind::Node))?;
+                    .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
                 // The row the join names must be this link's own.
-                let link = link.ok_or(unresolved(read::UnresolvedKind::Node))?;
+                let link = link.ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))?;
                 let current = match r
                     .storage
                     .payloads
@@ -1338,7 +1344,7 @@ impl<'a> Refs<'a> {
                         node: Some(owner),
                         document,
                     }) if *owner == link => document,
-                    _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+                    _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
                 };
                 Self::Link {
                     parser_document: r.optional_document(parser_document.as_ref())?,
@@ -1356,7 +1362,7 @@ impl<'a> Refs<'a> {
                 r.optional_document(metadata.parser_document.as_ref())?,
                 r.optional_document(metadata.preparation_document.as_ref())?,
             ),
-            RetainedPayload::Template { state, .. } => Self::Template(MetadataTemplate {
+            RetainedPayload::Template { state, .. } => Self::Template(HtmlParseTemplate {
                 contents: r.native(state.contents)?,
                 target: r.optional_native(state.target)?,
                 start: r.optional_native(state.start)?,
@@ -1369,36 +1375,36 @@ impl<'a> Refs<'a> {
 /// Issued only by the qualified report's fixed slot observation. No caller can
 /// supply a raw payload index or mix this lender with another result's arena.
 /// Every reference the record holds was resolved when it was issued.
-pub struct MetadataRef<'a> {
+pub struct HtmlParseMetadata<'a> {
     node: HtmlNode<'a>,
     closed_common: bool,
     payload: &'a RetainedPayload,
     refs: Refs<'a>,
 }
 #[derive(Clone, Copy)]
-pub enum MetadataDocument<'a> {
+pub enum HtmlParseMetadataDocument<'a> {
     Owned(HtmlNode<'a>),
     Captured(crate::HtmlCapturedNode<'a>),
 }
 /// Current source-qualified closed-services prefix, or its first real gap.
 /// Closed does not assert that the Dialog lacks an open content attribute.
 #[derive(Clone, Copy)]
-pub enum MetadataDialogDisposition<'a> {
+pub enum HtmlParseDialogDisposition<'a> {
     Closed,
-    Unavailable(MetadataDialogMissing<'a>),
+    Unavailable(HtmlParseDialogMissing<'a>),
 }
 #[derive(Clone, Copy)]
-pub struct MetadataDialogMissing<'a> {
+pub struct HtmlParseDialogMissing<'a> {
     subject: HtmlNode<'a>,
-    document: MetadataDocument<'a>,
+    document: HtmlParseMetadataDocument<'a>,
     action: surgeist_html::HtmlDialogAction,
     cause: Option<read::HtmlParseCause<'a>>,
 }
-impl<'a> MetadataDialogMissing<'a> {
+impl<'a> HtmlParseDialogMissing<'a> {
     pub fn subject(&self) -> HtmlNode<'a> {
         self.subject
     }
-    pub fn document(&self) -> MetadataDocument<'a> {
+    pub fn document(&self) -> HtmlParseMetadataDocument<'a> {
         self.document
     }
     pub fn action(&self) -> surgeist_html::HtmlDialogAction {
@@ -1409,33 +1415,33 @@ impl<'a> MetadataDialogMissing<'a> {
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataDialog<'a> {
+pub struct HtmlParseDialog<'a> {
     value: &'a DocumentString,
-    disposition: MetadataDialogDisposition<'a>,
+    disposition: HtmlParseDialogDisposition<'a>,
 }
-impl<'a> MetadataDialog<'a> {
+impl<'a> HtmlParseDialog<'a> {
     pub fn return_value(&self) -> &'a DocumentString {
         self.value
     }
-    pub fn disposition(&self) -> MetadataDialogDisposition<'a> {
+    pub fn disposition(&self) -> HtmlParseDialogDisposition<'a> {
         self.disposition
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataDocumentInteraction<'a> {
+pub struct HtmlParseDocumentInteraction<'a> {
     document: HtmlNode<'a>,
-    disposition: MetadataDialogDisposition<'a>,
+    disposition: HtmlParseDialogDisposition<'a>,
 }
-impl<'a> MetadataDocumentInteraction<'a> {
+impl<'a> HtmlParseDocumentInteraction<'a> {
     pub fn document(&self) -> HtmlNode<'a> {
         self.document
     }
-    pub fn disposition(&self) -> MetadataDialogDisposition<'a> {
+    pub fn disposition(&self) -> HtmlParseDialogDisposition<'a> {
         self.disposition
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataTemplate<'a> {
+pub struct HtmlParseTemplate<'a> {
     pub(crate) contents: HtmlNode<'a>,
     pub(crate) target: Option<HtmlNode<'a>>,
     pub(crate) start: Option<HtmlNode<'a>>,
@@ -1443,46 +1449,46 @@ pub struct MetadataTemplate<'a> {
 }
 /// Qualified current Base state; old snapshots are historical, never defaults.
 #[derive(Clone, Copy)]
-pub enum MetadataBaseState<'a> {
+pub enum HtmlParseBaseState<'a> {
     Unfrozen,
-    Frozen(MetadataBase<'a>),
+    Frozen(HtmlParseBase<'a>),
     Unavailable {
-        missing: MetadataMetaMissing<'a>,
-        previous: Option<MetadataBase<'a>>,
+        missing: HtmlParseMetaMissing<'a>,
+        previous: Option<HtmlParseBase<'a>>,
     },
 }
 /// A completed intrinsic/external domain or its actual first missing operation.
 #[derive(Clone, Copy)]
-pub enum MetadataMetaDisposition<'a> {
+pub enum HtmlParseMetaDisposition<'a> {
     Complete,
-    Unavailable(MetadataMetaMissing<'a>),
+    Unavailable(HtmlParseMetaMissing<'a>),
 }
 #[derive(Clone, Copy)]
-pub enum MetadataMetaRefresh<'a> {
+pub enum HtmlParseMetaRefresh<'a> {
     Known(bool),
-    Unavailable(MetadataMetaMissing<'a>),
+    Unavailable(HtmlParseMetaMissing<'a>),
 }
 /// Original-controller closed offline policy. This value is not a native
 /// initialization token and conveys no canonical target UI association proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MetadataMetaProfile {
+pub enum HtmlParseMetaProfile {
     OfflineDoNothingNoUi,
 }
 #[derive(Clone, Copy)]
-pub struct MetadataMetaMissing<'a> {
+pub struct HtmlParseMetaMissing<'a> {
     document: HtmlNode<'a>,
     subject: HtmlNode<'a>,
-    kind: &'a meta::MetaMissingKind,
+    kind: &'a meta::HtmlParseMetaMissingKind,
     cause: Option<read::HtmlParseCause<'a>>,
 }
-impl<'a> MetadataMetaMissing<'a> {
+impl<'a> HtmlParseMetaMissing<'a> {
     pub fn document(&self) -> HtmlNode<'a> {
         self.document
     }
     pub fn subject(&self) -> HtmlNode<'a> {
         self.subject
     }
-    pub fn kind(&self) -> &'a meta::MetaMissingKind {
+    pub fn kind(&self) -> &'a meta::HtmlParseMetaMissingKind {
         self.kind
     }
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
@@ -1490,16 +1496,16 @@ impl<'a> MetadataMetaMissing<'a> {
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataDocumentMeta<'a> {
+pub struct HtmlParseDocumentMeta<'a> {
     document: HtmlNode<'a>,
     meta: &'a meta::MetaHistory,
     csp: Option<&'a surgeist_html::HtmlCspAssociation>,
     base_policy: Option<&'a surgeist_html::HtmlCspAssociation>,
     language: Option<&'a DocumentString>,
-    gaps: meta::MetaDomainTable<Option<MetadataMetaMissing<'a>>>,
-    first: Option<MetadataMetaMissing<'a>>,
+    gaps: meta::MetaDomainTable<Option<HtmlParseMetaMissing<'a>>>,
+    first: Option<HtmlParseMetaMissing<'a>>,
 }
-impl<'a> MetadataDocumentMeta<'a> {
+impl<'a> HtmlParseDocumentMeta<'a> {
     /// Exact original construction policy; absent means no protocol qualification.
     pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
         self.csp
@@ -1514,16 +1520,16 @@ impl<'a> MetadataDocumentMeta<'a> {
     pub fn document(&self) -> HtmlNode<'a> {
         self.document
     }
-    pub fn profile(&self) -> MetadataMetaProfile {
-        MetadataMetaProfile::OfflineDoNothingNoUi
+    pub fn profile(&self) -> HtmlParseMetaProfile {
+        HtmlParseMetaProfile::OfflineDoNothingNoUi
     }
     /// Known absent and Known tag: both are original-controller current values.
     pub fn pragma_language(&self) -> Option<&'a DocumentString> {
         self.language
     }
     /// Last completed original-controller selection, or its reached missing dependency.
-    pub fn theme_color(&self) -> Result<Option<surgeist_color::Color>, MetadataMetaMissing<'a>> {
-        match self.gaps.copy(meta::MetaDomain::ThemeColor) {
+    pub fn theme_color(&self) -> Result<Option<surgeist_color::Color>, HtmlParseMetaMissing<'a>> {
+        match self.gaps.copy(meta::HtmlParseMetaDomain::ThemeColor) {
             Some(missing) => Err(missing),
             None => Ok(self.meta.theme),
         }
@@ -1540,30 +1546,30 @@ impl<'a> MetadataDocumentMeta<'a> {
     pub fn referrer_policy(&self) -> HtmlReferrerPolicy {
         self.meta.referrer
     }
-    pub fn refresh(&self) -> MetadataMetaRefresh<'a> {
-        match self.gaps.copy(meta::MetaDomain::Refresh) {
-            Some(missing) => MetadataMetaRefresh::Unavailable(missing),
-            None => MetadataMetaRefresh::Known(self.meta.refresh),
+    pub fn refresh(&self) -> HtmlParseMetaRefresh<'a> {
+        match self.gaps.copy(meta::HtmlParseMetaDomain::Refresh) {
+            Some(missing) => HtmlParseMetaRefresh::Unavailable(missing),
+            None => HtmlParseMetaRefresh::Known(self.meta.refresh),
         }
     }
-    pub fn disposition(&self, domain: meta::MetaDomain) -> MetadataMetaDisposition<'a> {
+    pub fn disposition(&self, domain: meta::HtmlParseMetaDomain) -> HtmlParseMetaDisposition<'a> {
         match self.gaps.copy(domain) {
-            Some(missing) => MetadataMetaDisposition::Unavailable(missing),
-            None => MetadataMetaDisposition::Complete,
+            Some(missing) => HtmlParseMetaDisposition::Unavailable(missing),
+            None => HtmlParseMetaDisposition::Complete,
         }
     }
-    pub fn first_missing(&self) -> Option<MetadataMetaMissing<'a>> {
+    pub fn first_missing(&self) -> Option<HtmlParseMetaMissing<'a>> {
         self.first
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataBase<'a> {
+pub struct HtmlParseBase<'a> {
     value: &'a crate::HtmlBaseUrlRecord,
     document: HtmlNode<'a>,
     revision: &'a crate::HtmlBaseFactsRevision,
     responded: bool,
 }
-impl<'a> MetadataBase<'a> {
+impl<'a> HtmlParseBase<'a> {
     pub fn value(&self) -> &'a crate::HtmlBaseUrlRecord {
         self.value
     }
@@ -1578,23 +1584,23 @@ impl<'a> MetadataBase<'a> {
     }
 }
 #[derive(Clone, Copy)]
-pub enum MetadataHyperlinkState<'a> {
+pub enum HtmlParseHyperlinkState<'a> {
     AbsentHref,
     Observed(&'a surgeist_html_semantics::HtmlHyperlinkUrlSnapshot),
-    Unavailable(&'a associated::HyperlinkUnavailable),
+    Unavailable(&'a associated::HtmlParseHyperlinkUnavailable),
 }
 #[derive(Clone, Copy)]
-pub struct MetadataHyperlink<'a> {
-    document: MetadataDocument<'a>,
-    state: MetadataHyperlinkState<'a>,
+pub struct HtmlParseHyperlink<'a> {
+    document: HtmlParseMetadataDocument<'a>,
+    state: HtmlParseHyperlinkState<'a>,
     cause: Option<read::HtmlParseCause<'a>>,
     raw: Option<&'a DocumentString>,
 }
-impl<'a> MetadataHyperlink<'a> {
-    pub fn document(&self) -> &MetadataDocument<'a> {
+impl<'a> HtmlParseHyperlink<'a> {
+    pub fn document(&self) -> &HtmlParseMetadataDocument<'a> {
         &self.document
     }
-    pub fn state(&self) -> &MetadataHyperlinkState<'a> {
+    pub fn state(&self) -> &HtmlParseHyperlinkState<'a> {
         &self.state
     }
     pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
@@ -1605,7 +1611,7 @@ impl<'a> MetadataHyperlink<'a> {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MetadataImageUpdate {
+pub enum HtmlParseImageUpdate {
     Waiting {
         generation: u64,
         flags: surgeist_html::HtmlImageUpdateFlags,
@@ -1615,13 +1621,13 @@ pub enum MetadataImageUpdate {
     },
 }
 #[derive(Clone, Copy)]
-pub struct MetadataImage<'a> {
+pub struct HtmlParseImage<'a> {
     state: &'a associated::ImageMetadata,
     dimension_source: HtmlNode<'a>,
     cause: Option<read::HtmlParseCause<'a>>,
     subject: HtmlNode<'a>,
 }
-impl<'a> MetadataImage<'a> {
+impl<'a> HtmlParseImage<'a> {
     pub fn state(&self) -> &'a surgeist_html::HtmlImgFreshState {
         &self.state.fresh
     }
@@ -1635,13 +1641,13 @@ impl<'a> MetadataImage<'a> {
         self.cause
     }
 
-    pub fn update(&self) -> MetadataImageUpdate {
+    pub fn update(&self) -> HtmlParseImageUpdate {
         match self.state.waiting {
-            Some(flags) => MetadataImageUpdate::Waiting {
+            Some(flags) => HtmlParseImageUpdate::Waiting {
                 generation: self.state.latest,
                 flags,
             },
-            None => MetadataImageUpdate::UnavailableActivity {
+            None => HtmlParseImageUpdate::UnavailableActivity {
                 latest_started: self.state.latest,
             },
         }
@@ -1651,26 +1657,26 @@ impl<'a> MetadataImage<'a> {
     }
 }
 #[derive(Clone, Copy)]
-pub struct MetadataStyle<'a> {
+pub struct HtmlParseStyle<'a> {
     state: surgeist_html::HtmlStyleState,
-    parser_document: Option<MetadataDocument<'a>>,
+    parser_document: Option<HtmlParseMetadataDocument<'a>>,
     cause: Option<read::HtmlParseCause<'a>>,
 }
-impl<'a> MetadataStyle<'a> {
+impl<'a> HtmlParseStyle<'a> {
     pub fn state(&self) -> surgeist_html::HtmlStyleState {
         self.state
     }
-    pub fn creating_parser_document(&self) -> Option<&MetadataDocument<'a>> {
+    pub fn creating_parser_document(&self) -> Option<&HtmlParseMetadataDocument<'a>> {
         self.parser_document.as_ref()
     }
     pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
         self.cause.as_ref()
     }
-    pub fn association(&self) -> style::StyleAssociation {
-        style::StyleAssociation::Pending
+    pub fn association(&self) -> style::HtmlParseStyleAssociation {
+        style::HtmlParseStyleAssociation::Pending
     }
 }
-impl<'a> MetadataRef<'a> {
+impl<'a> HtmlParseMetadata<'a> {
     /// Every reference the record holds is resolved here, so that the readers
     /// of the record cannot fail. A reference the report cannot resolve is the
     /// fault.
@@ -1711,7 +1717,7 @@ impl<'a> MetadataRef<'a> {
     }
 
     /// Fixed current Dialog state issued by the actual original controller.
-    pub fn dialog(&self) -> Option<MetadataDialog<'a>> {
+    pub fn dialog(&self) -> Option<HtmlParseDialog<'a>> {
         match self.refs {
             Refs::Dialog(dialog) => Some(dialog),
             _ => None,
@@ -1719,25 +1725,25 @@ impl<'a> MetadataRef<'a> {
     }
     /// Interaction history of this actual newly owned Document, not a captured
     /// target's whole list state and not native-constructor evidence.
-    pub fn document_interaction(&self) -> Option<MetadataDocumentInteraction<'a>> {
+    pub fn document_interaction(&self) -> Option<HtmlParseDocumentInteraction<'a>> {
         match self.refs {
             Refs::Document { interaction, .. } => Some(interaction),
             _ => None,
         }
     }
-    pub fn style(&self) -> Option<MetadataStyle<'a>> {
+    pub fn style(&self) -> Option<HtmlParseStyle<'a>> {
         match self.refs {
             Refs::Style(style) => Some(style),
             _ => None,
         }
     }
-    pub fn hyperlink(&self) -> Option<MetadataHyperlink<'a>> {
+    pub fn hyperlink(&self) -> Option<HtmlParseHyperlink<'a>> {
         match self.refs {
             Refs::Hyperlink(hyperlink) => Some(hyperlink),
             _ => None,
         }
     }
-    pub fn image(&self) -> Option<MetadataImage<'a>> {
+    pub fn image(&self) -> Option<HtmlParseImage<'a>> {
         match self.refs {
             Refs::Image(image) => Some(image),
             _ => None,
@@ -1746,14 +1752,14 @@ impl<'a> MetadataRef<'a> {
 
     /// Wrong row is None. Unfrozen and unavailable current state are distinct;
     /// a genuine prior frozen value remains historical inside Unavailable.
-    pub fn base_state(&self) -> Option<MetadataBaseState<'a>> {
+    pub fn base_state(&self) -> Option<HtmlParseBaseState<'a>> {
         match self.refs {
             Refs::Base(state) => Some(state),
             _ => None,
         }
     }
     /// Actual per-Document history. No getter traverses the tree or replays Meta.
-    pub fn document_meta(&self) -> Option<MetadataDocumentMeta<'a>> {
+    pub fn document_meta(&self) -> Option<HtmlParseDocumentMeta<'a>> {
         match self.refs {
             Refs::Document { meta, .. } => Some(meta),
             _ => None,
@@ -1773,7 +1779,7 @@ impl<'a> MetadataRef<'a> {
     }
     /// Actual link flags and creating-parser document. The current node document
     /// is exposed by its separate canonical NodeDocument metadata record.
-    pub fn link_parser_document(&self) -> Option<Option<MetadataDocument<'a>>> {
+    pub fn link_parser_document(&self) -> Option<Option<HtmlParseMetadataDocument<'a>>> {
         match self.refs {
             Refs::Link {
                 parser_document, ..
@@ -1805,7 +1811,7 @@ impl<'a> MetadataRef<'a> {
             _ => None,
         }
     }
-    pub fn node_document(&self) -> Option<MetadataDocument<'a>> {
+    pub fn node_document(&self) -> Option<HtmlParseMetadataDocument<'a>> {
         match self.refs {
             Refs::NodeDocument(document) => Some(document),
             _ => None,
@@ -1813,13 +1819,16 @@ impl<'a> MetadataRef<'a> {
     }
     pub fn script_documents(
         &self,
-    ) -> Option<(Option<MetadataDocument<'a>>, Option<MetadataDocument<'a>>)> {
+    ) -> Option<(
+        Option<HtmlParseMetadataDocument<'a>>,
+        Option<HtmlParseMetadataDocument<'a>>,
+    )> {
         match self.refs {
             Refs::Script(parser, preparation) => Some((parser, preparation)),
             _ => None,
         }
     }
-    pub fn template(&self) -> Option<MetadataTemplate<'a>> {
+    pub fn template(&self) -> Option<HtmlParseTemplate<'a>> {
         match self.refs {
             Refs::Template(template) => Some(template),
             _ => None,
@@ -1982,7 +1991,7 @@ impl<'a> MetadataRef<'a> {
     }
 }
 
-impl MetadataTemplate<'_> {
+impl HtmlParseTemplate<'_> {
     pub fn contents(&self) -> HtmlNode<'_> {
         self.contents
     }
@@ -2023,8 +2032,8 @@ mod tests {
         (c, frozen, index)
     }
 
-    fn registry_row() -> ParseStop {
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    fn registry_row() -> HtmlParseStop {
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
     }
     fn published() -> crate::HtmlParseReport {
         crate::HtmlDocumentParseRequest::offline(
@@ -2117,7 +2126,7 @@ mod tests {
                 result.unwrap();
             } else {
                 let first = c.stop().unwrap();
-                assert!(matches!(first, ParseStop::LimitExceeded {
+                assert!(matches!(first, HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits, current, requested_delta: 3, ..
                 } if current == base + cost - 3));
                 assert_eq!(result, Err(SessionError::Stop(first)));
@@ -2130,7 +2139,7 @@ mod tests {
             if extra == cost {
                 // Exact qualifier budget is exhausted; latch a real stop so
                 // disposal of the admitted nonce backing uses terminal cleanup.
-                c.charge(WorkCategory::StateStep, 1).unwrap_err();
+                c.charge(HtmlParseWorkCategory::StateStep, 1).unwrap_err();
             }
             let stop = c.stop();
             frozen.release(&mut c).unwrap();
@@ -2157,7 +2166,7 @@ mod tests {
     fn a_publish_fault_reports_a_stop_as_it_is_and_latches_a_custody_fault_first() {
         let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
         // A stop is already the controller's first; reporting it latches nothing.
-        let stop = ParseStop::Cancelled;
+        let stop = HtmlParseStop::Cancelled;
         assert_eq!(
             PublishFault::from(stop).latch(&mut c),
             SessionError::Stop(stop)

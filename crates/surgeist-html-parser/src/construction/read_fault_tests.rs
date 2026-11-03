@@ -4,10 +4,10 @@
 //! follows it to report the fault as a typed error, never to panic and never
 //! to answer as though the reference were absent.
 use super::*;
-use history::{FrozenHistory, HistoryFrame, HistoryReadError, HistoryStep};
+use history::{FrozenHistory, HtmlParseHistoryError, HtmlParseHistoryFrame, HtmlParseHistoryStep};
 use provenance::{GroupBody, LeafValue, NativeDestination};
-use read::{HtmlParseReverseStep, UnresolvedKind as Kind, UnresolvedReference};
-use report::MetadataStep;
+use read::{HtmlParseReverseStep, HtmlParseUnresolvedKind as Kind, HtmlParseUnresolvedReference};
+use report::HtmlParseMetadataStep;
 
 fn parse(html: &str) -> crate::HtmlParseReport {
     crate::HtmlDocumentParseRequest::offline(
@@ -23,27 +23,29 @@ fn history(report: &mut crate::HtmlParseReport) -> &mut FrozenHistory {
 fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
     history(report).storage_mut()
 }
-fn fault(kind: Kind) -> UnresolvedReference {
-    UnresolvedReference::new(kind)
+fn fault(kind: Kind) -> HtmlParseUnresolvedReference {
+    HtmlParseUnresolvedReference::new(kind)
 }
 
 // ---- the history ----
 
 /// Walks the history of `group` and returns its first fault, after requiring
 /// the cursor to stay faulted.
-fn walk(report: &crate::HtmlParseReport, group: usize) -> Option<UnresolvedReference> {
+fn walk(report: &crate::HtmlParseReport, group: usize) -> Option<HtmlParseUnresolvedReference> {
     let view = report.history_view();
     let group = view.group(group).unwrap();
-    let mut scratch = vec![HistoryFrame::default(); view.len()];
+    let mut scratch = vec![HtmlParseHistoryFrame::default(); view.len()];
     let mut cursor = view.cursor(group, &mut scratch, None).unwrap();
     for _ in 0..10_000 {
         match cursor.advance() {
-            HistoryStep::Fault(first) => {
-                assert!(matches!(cursor.advance(), HistoryStep::Fault(again) if again == first));
+            HtmlParseHistoryStep::Fault(first) => {
+                assert!(
+                    matches!(cursor.advance(), HtmlParseHistoryStep::Fault(again) if again == first)
+                );
                 return Some(first);
             }
-            HistoryStep::Complete | HistoryStep::Cancelled => return None,
-            HistoryStep::Progress | HistoryStep::Leaf(_) => {}
+            HtmlParseHistoryStep::Complete | HtmlParseHistoryStep::Cancelled => return None,
+            HtmlParseHistoryStep::Progress | HtmlParseHistoryStep::Leaf(_) => {}
         }
     }
     panic!("a history walk ends")
@@ -69,7 +71,7 @@ fn a_group_naming_a_missing_cause_has_no_header() {
     let group = view.group(index).unwrap();
     assert_eq!(
         view.header(group).err(),
-        Some(HistoryReadError::Unresolved(fault(Kind::Cause)))
+        Some(HtmlParseHistoryError::Unresolved(fault(Kind::Cause)))
     );
 }
 
@@ -82,7 +84,7 @@ fn a_group_naming_a_missing_retirement_cause_has_no_header() {
     let group = view.group(index).unwrap();
     assert_eq!(
         view.header(group).err(),
-        Some(HistoryReadError::Unresolved(fault(Kind::Cause)))
+        Some(HtmlParseHistoryError::Unresolved(fault(Kind::Cause)))
     );
 }
 
@@ -215,7 +217,10 @@ fn first_sourced_row(report: &mut crate::HtmlParseReport) -> usize {
         .position(|row| row.source.is_some())
         .expect("a sourced row")
 }
-fn row_fault(report: &crate::HtmlParseReport, index: usize) -> Option<UnresolvedReference> {
+fn row_fault(
+    report: &crate::HtmlParseReport,
+    index: usize,
+) -> Option<HtmlParseUnresolvedReference> {
     report.associations().row(index).err()
 }
 
@@ -244,7 +249,7 @@ fn a_row_with_an_unresolvable_destination_is_reported_when_it_is_lent() {
             "raw",
             NativeDestination::Raw {
                 node: usize::MAX,
-                kind: provenance::RawFieldKind::Input,
+                kind: provenance::HtmlParseRawField::Input,
             },
             Kind::Node,
         ),
@@ -536,13 +541,14 @@ fn a_range_computation_naming_a_missing_original_or_operand_reports_it() {
     range.original = provenance::RangeOriginal::Group(edge);
     *range
         .operands
-        .get_mut(provenance::RangeOperandRole::Minimum) = provenance::RangeOperand::Finite(edge);
+        .get_mut(provenance::HtmlParseRangeOperandRole::Minimum) =
+        provenance::RangeOperand::Finite(edge);
     let view = report.history_view();
     let header = view.header(view.group(group).unwrap()).unwrap();
     let computation = header.cause.range_computation().unwrap();
     assert_eq!(computation.original_group().err(), Some(fault(Kind::Group)));
     assert_eq!(computation.original_cause().err(), Some(fault(Kind::Cause)));
-    let operand = computation.operand(provenance::RangeOperandRole::Minimum);
+    let operand = computation.operand(provenance::HtmlParseRangeOperandRole::Minimum);
     assert_eq!(operand.group().err(), Some(fault(Kind::Group)));
     assert_eq!(operand.cause().err(), Some(fault(Kind::Cause)));
 }
@@ -563,14 +569,16 @@ fn a_color_computation_naming_a_missing_group_reports_it() {
         panic!("a Color computation")
     };
     color.original = Some(edge);
-    *color.operands.get_mut(provenance::ColorOperandRole::Alpha) = Some(edge);
+    *color
+        .operands
+        .get_mut(provenance::HtmlParseColorOperandRole::Alpha) = Some(edge);
     let view = report.history_view();
     let header = view.header(view.group(group).unwrap()).unwrap();
     let computation = header.cause.color_computation().unwrap();
     assert_eq!(computation.original_group().err(), Some(fault(Kind::Group)));
     assert_eq!(
         computation
-            .operand_group(provenance::ColorOperandRole::Alpha)
+            .operand_group(provenance::HtmlParseColorOperandRole::Alpha)
             .err(),
         Some(fault(Kind::Group))
     );
@@ -580,16 +588,18 @@ fn a_color_computation_naming_a_missing_group_reports_it() {
 
 /// The fault a metadata cursor reports, requiring it to stay faulted, and the
 /// number of records lent before it.
-fn metadata_fault(report: &crate::HtmlParseReport) -> Option<UnresolvedReference> {
+fn metadata_fault(report: &crate::HtmlParseReport) -> Option<HtmlParseUnresolvedReference> {
     let mut cursor = report.metadata();
     loop {
         match cursor.advance() {
-            MetadataStep::Fault(first) => {
-                assert!(matches!(cursor.advance(), MetadataStep::Fault(again) if again == first));
+            HtmlParseMetadataStep::Fault(first) => {
+                assert!(
+                    matches!(cursor.advance(), HtmlParseMetadataStep::Fault(again) if again == first)
+                );
                 return Some(first);
             }
-            MetadataStep::Complete => return None,
-            MetadataStep::Record(_) | MetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => return None,
+            HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
         }
     }
 }
@@ -783,7 +793,7 @@ fn a_document_naming_a_missing_gap_row_faults_the_cursor() {
     let mut report = parse("<p>A");
     corrupt_row(&mut report, |row| match row {
         RetainedPayload::Document { meta, .. } => {
-            *meta.gaps.get_mut(meta::MetaDomain::Refresh) = Some(usize::MAX);
+            *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Refresh) = Some(usize::MAX);
             true
         }
         _ => false,
@@ -796,8 +806,8 @@ fn a_document_whose_first_gap_has_no_row_faults_the_cursor() {
     let mut report = parse("<p>A");
     corrupt_row(&mut report, |row| match row {
         RetainedPayload::Document { meta, .. } => {
-            meta.first = Some(meta::MetaDomain::Csp);
-            *meta.gaps.get_mut(meta::MetaDomain::Csp) = None;
+            meta.first = Some(meta::HtmlParseMetaDomain::Csp);
+            *meta.gaps.get_mut(meta::HtmlParseMetaDomain::Csp) = None;
             true
         }
         _ => false,
@@ -970,7 +980,7 @@ fn an_unresolved_reference_names_what_it_denotes_in_words() {
 #[test]
 fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
     use std::error::Error;
-    let unresolved = HistoryReadError::Unresolved(fault(Kind::Cause));
+    let unresolved = HtmlParseHistoryError::Unresolved(fault(Kind::Cause));
     assert_eq!(
         unresolved.to_string(),
         "the report's history holds a reference it cannot resolve"
@@ -980,12 +990,12 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
         Some(fault(Kind::Cause).to_string())
     );
     assert_eq!(
-        HistoryReadError::ForeignOwner.to_string(),
+        HtmlParseHistoryError::ForeignOwner.to_string(),
         "the group belongs to another report"
     );
-    assert!(HistoryReadError::ForeignOwner.source().is_none());
+    assert!(HtmlParseHistoryError::ForeignOwner.source().is_none());
     assert_eq!(
-        HistoryReadError::InsufficientScratch {
+        HtmlParseHistoryError::InsufficientScratch {
             required: 3,
             supplied: 2
         }
@@ -1039,12 +1049,12 @@ fn an_uncorrupted_link_reports_its_flags_and_its_node_document_join() {
     let mut checked = false;
     loop {
         match cursor.advance() {
-            MetadataStep::Record(record) if record.link_flags().is_some() => {
+            HtmlParseMetadataStep::Record(record) if record.link_flags().is_some() => {
                 assert!(record.link_history().is_some());
                 checked = true;
             }
-            MetadataStep::Complete => break,
-            MetadataStep::Fault(fault) => panic!("{fault}"),
+            HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }

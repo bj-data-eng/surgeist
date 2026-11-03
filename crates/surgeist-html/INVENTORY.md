@@ -960,7 +960,7 @@ queries do not mutate selection. The private standalone parser's
 [select construction owner](../surgeist-html-parser/src/construction/select.rs) performs
 its own source-qualified creation/reset, option-pop, topology and selectedcontent
 effects, with [managed cloning](../surgeist-html-parser/src/construction/clone.rs) and
-[private tests](../surgeist-html-parser/src/construction.rs). Its pending-work
+[private tests](../surgeist-html-parser/src/construction/tests.rs). Its pending-work
 freeze refusal and source-defined FIFO checkpoints precede the separate
 [public completed-report boundary](../../docs/reference/html-operations.md#decoded-unicode-parsing). Live DOM
 selection mutations, UI and event dispatch remain separate.

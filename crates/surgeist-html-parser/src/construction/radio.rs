@@ -18,7 +18,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<(usize, InputState)>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::Input {
                 node: Some(owner),
                 state,
@@ -26,7 +26,10 @@ impl SessionStorage {
             }) = self.payloads.values.get(slot)
                 && *owner == node
             {
-                c.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<InputState>() as u64,
+                )?;
                 return Ok(Some((slot, *state)));
             }
         }
@@ -51,12 +54,12 @@ impl SessionStorage {
         let Some(name) = self.form_attribute(c, node, "name")? else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if name.is_empty() {
             return Ok(());
         }
         let root = self.ordinary_root(c, node, detached)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if root == node
             && self
                 .construction
@@ -70,7 +73,7 @@ impl SessionStorage {
         payload_write::<Option<RadioProgress>>(c, 1)?;
         if self.effects.radio.is_some() {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         self.effects.radio = Some(RadioProgress {
@@ -81,10 +84,10 @@ impl SessionStorage {
         });
         let result = (|| {
             loop {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.admit_atomic_layout(mem::size_of::<Option<RadioProgress>>())?;
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<Option<RadioProgress>>() as u64,
                 )?;
                 let Some(progress) = self.effects.radio else {
@@ -106,7 +109,7 @@ impl SessionStorage {
                             let subject_name = self
                                 .form_attribute(c, progress.subject, "name")?
                                 .ok_or(SessionError::InputMetadataUnavailable)?;
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             if !peer_name.is_empty()
                                 && exact_string_equal(c, subject_name, peer_name)?
                             {
@@ -119,7 +122,7 @@ impl SessionStorage {
                                 let (_, peer_owner) =
                                     find_form_association_state(&self.payloads, c, peer)?
                                         .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
-                                c.charge(WorkCategory::ProviderCall, 1)?;
+                                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                                 if subject_owner.owner == peer_owner.owner {
                                     state.flags = state.flags.radio_peer_unchecked();
                                     self.write_input_state(c, slot, state)?;
@@ -144,14 +147,16 @@ impl SessionStorage {
                             let subject_name = self
                                 .form_attribute(c, progress.subject, "name")?
                                 .ok_or(SessionError::InputMetadataUnavailable)?;
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             if !peer_name.is_empty()
                                 && exact_string_equal(c, subject_name, peer_name)?
                             {
                                 // The group cannot be evaluated without state
                                 // the closed environment never gave the peer.
                                 return Err(c
-                                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                                    .stop_unsupported_standalone(
+                                        HtmlParseUnsupportedState::Provenance,
+                                    )
                                     .into());
                             }
                         }

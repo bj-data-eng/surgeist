@@ -6,10 +6,12 @@ use crate::keyed::{Table, slots};
 mod lexical;
 #[path = "reverse.rs"]
 pub(crate) mod reverse;
-use crate::parser::{control::Invariant, tokenizer::token::OriginKind};
-pub use lexical::{LexicalDisposition, LexicalKind, LexicalRole, OmissionKind};
+use crate::parser::{control::HtmlParseInvariant, tokenizer::token::HtmlParseOriginKind};
+pub use lexical::{
+    HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseOmissionKind,
+};
 pub(crate) use lexical::{LexicalOccurrence, LexicalOmission, LexicalPart, LexicalRef};
-pub(crate) use reverse::{AssociationRelation, AssociationView};
+pub(crate) use reverse::{AssociationView, HtmlParseAssociationRelation};
 
 /// Local indices never leave their evidence identity through an unchecked API.
 pub(crate) struct OriginGroupRef {
@@ -31,19 +33,19 @@ impl ConstructionCauseRef {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ParserRule {
-    Prologue(crate::parser::tree_builder::prologue::PrologueMode),
-    Tree(crate::parser::tree_builder::head::InsertionMode),
+pub enum HtmlParserRule {
+    Prologue(crate::parser::tree_builder::prologue::HtmlPrologueMode),
+    Tree(crate::parser::tree_builder::head::HtmlInsertionMode),
     Foreign,
 }
 pub(crate) struct ParserTrigger<'a> {
     pub(crate) source: &'a crate::HtmlSourceRange,
-    pub(crate) rule: ParserRule,
-    pub(crate) family: evidence::DiagnosticToken,
+    pub(crate) rule: HtmlParserRule,
+    pub(crate) family: evidence::HtmlParseTokenFamily,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConstructionOperation {
+pub enum HtmlParseConstructionOperation {
     SourceIndependent,
     Request,
     Token,
@@ -58,7 +60,7 @@ pub enum ConstructionOperation {
 
 /// Source-ordered generated Range replacement, not a digit-origin claim.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeBranch {
+pub enum HtmlParseRangeBranch {
     InvalidDefaultMidpoint,
     InvalidDefaultMinimum,
     Underflow,
@@ -66,28 +68,28 @@ pub enum RangeBranch {
     StepCorrection,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeOperandRole {
+pub enum HtmlParseRangeOperandRole {
     Minimum,
     Maximum,
     Step,
     ValueContent,
 }
-slots!(RangeOperandRole, RANGE_OPERAND_COUNT, {
+slots!(HtmlParseRangeOperandRole, RANGE_OPERAND_COUNT, {
     Minimum => 0,
     Maximum => 1,
     Step => 2,
     ValueContent => 3,
 });
 const RANGE_OPERAND_COUNT: usize = 4;
-/// One value per [`RangeOperandRole`]; a lookup cannot be out of range.
-pub(crate) type RangeOperandTable<T> = Table<RangeOperandRole, T, RANGE_OPERAND_COUNT>;
-impl RangeOperandRole {
+/// One value per [`HtmlParseRangeOperandRole`]; a lookup cannot be out of range.
+pub(crate) type RangeOperandTable<T> = Table<HtmlParseRangeOperandRole, T, RANGE_OPERAND_COUNT>;
+impl HtmlParseRangeOperandRole {
     pub(crate) fn index(self) -> usize {
         self as usize
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeOperandKind {
+pub enum HtmlParseRangeOperandKind {
     NotConsulted,
     Absent,
     ConversionFailed,
@@ -113,13 +115,13 @@ pub(crate) enum RangeOperand {
     Any(RangeEdge),
 }
 impl RangeOperand {
-    pub(crate) fn kind(self) -> RangeOperandKind {
+    pub(crate) fn kind(self) -> HtmlParseRangeOperandKind {
         match self {
-            Self::NotConsulted => RangeOperandKind::NotConsulted,
-            Self::Absent => RangeOperandKind::Absent,
-            Self::ConversionFailed(_) => RangeOperandKind::ConversionFailed,
-            Self::Finite(_) => RangeOperandKind::Finite,
-            Self::Any(_) => RangeOperandKind::Any,
+            Self::NotConsulted => HtmlParseRangeOperandKind::NotConsulted,
+            Self::Absent => HtmlParseRangeOperandKind::Absent,
+            Self::ConversionFailed(_) => HtmlParseRangeOperandKind::ConversionFailed,
+            Self::Finite(_) => HtmlParseRangeOperandKind::Finite,
+            Self::Any(_) => HtmlParseRangeOperandKind::Any,
         }
     }
     pub(crate) fn edge(self) -> Option<RangeEdge> {
@@ -133,7 +135,7 @@ impl RangeOperand {
 /// reuse their existing HTML input owner; generated defaults are not raw facts.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RangeComputation {
-    pub(crate) branch: RangeBranch,
+    pub(crate) branch: HtmlParseRangeBranch,
     pub(crate) original: RangeOriginal,
     pub(crate) operands: RangeOperandTable<RangeOperand>,
     pub(crate) minimum: Option<crate::HtmlInputNumericBoundOrigin>,
@@ -148,10 +150,12 @@ impl RangeComputation {
                 RangeOriginal::FreshEmpty => None,
                 RangeOriginal::Group(edge) => Some(edge),
             },
-            self.operands.get(RangeOperandRole::Minimum).edge(),
-            self.operands.get(RangeOperandRole::Maximum).edge(),
-            self.operands.get(RangeOperandRole::Step).edge(),
-            self.operands.get(RangeOperandRole::ValueContent).edge(),
+            self.operands.get(HtmlParseRangeOperandRole::Minimum).edge(),
+            self.operands.get(HtmlParseRangeOperandRole::Maximum).edge(),
+            self.operands.get(HtmlParseRangeOperandRole::Step).edge(),
+            self.operands
+                .get(HtmlParseRangeOperandRole::ValueContent)
+                .edge(),
         ]
     }
 }
@@ -159,31 +163,31 @@ impl RangeComputation {
 /// The actual source selected by the Color update algorithm. A missing
 /// installed default is distinct from an installed empty string.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ColorValueSource {
+pub enum HtmlParseColorValueSource {
     MissingInstalledValue,
     InstalledValue,
     CurrentValue,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ColorOperandRole {
+pub enum HtmlParseColorOperandRole {
     Alpha,
     Colorspace,
 }
-slots!(ColorOperandRole, COLOR_OPERAND_COUNT, {
+slots!(HtmlParseColorOperandRole, COLOR_OPERAND_COUNT, {
     Alpha => 0,
     Colorspace => 1,
 });
 const COLOR_OPERAND_COUNT: usize = 2;
-/// One value per [`ColorOperandRole`]; a lookup cannot be out of range.
-pub(crate) type ColorOperandTable<T> = Table<ColorOperandRole, T, COLOR_OPERAND_COUNT>;
-impl ColorOperandRole {
+/// One value per [`HtmlParseColorOperandRole`]; a lookup cannot be out of range.
+pub(crate) type ColorOperandTable<T> = Table<HtmlParseColorOperandRole, T, COLOR_OPERAND_COUNT>;
+impl HtmlParseColorOperandRole {
     pub(crate) fn index(self) -> usize {
         self as usize
     }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ColorComputation {
-    pub(crate) source: ColorValueSource,
+    pub(crate) source: HtmlParseColorValueSource,
     pub(crate) original: Option<RangeEdge>,
     pub(crate) operands: ColorOperandTable<Option<RangeEdge>>,
     pub(crate) space: crate::HtmlInputColorSpace,
@@ -212,8 +216,8 @@ impl InputValueComputation {
             Self::Range(value) => value.edges(),
             Self::Color(value) => [
                 value.original,
-                value.operands.copy(ColorOperandRole::Alpha),
-                value.operands.copy(ColorOperandRole::Colorspace),
+                value.operands.copy(HtmlParseColorOperandRole::Alpha),
+                value.operands.copy(HtmlParseColorOperandRole::Colorspace),
                 None,
                 None,
             ],
@@ -222,11 +226,11 @@ impl InputValueComputation {
 }
 
 pub(crate) struct ConstructionCause {
-    pub(crate) operation: ConstructionOperation,
+    pub(crate) operation: HtmlParseConstructionOperation,
     pub(crate) source: Option<crate::HtmlSourceRange>,
     pub(crate) captured: Option<CapturedConstructionContext>,
-    pub(crate) rule: Option<ParserRule>,
-    pub(crate) family: Option<evidence::DiagnosticToken>,
+    pub(crate) rule: Option<HtmlParserRule>,
+    pub(crate) family: Option<evidence::HtmlParseTokenFamily>,
     pub(crate) original_cause: Option<usize>,
     pub(crate) retired_destination: Option<StringLocation>,
     pub(crate) original_node: Option<usize>,
@@ -245,7 +249,7 @@ pub(crate) struct OriginGroup {
 /// Canonical fixed storage, lent only after the actual D1/lexical EOF proof.
 pub(super) struct HistoryData<'a> {
     pub(super) source: &'a crate::HtmlSource,
-    pub(super) origins: &'a [TextOrigin],
+    pub(super) origins: &'a [HtmlParseTextOrigin],
     pub(super) groups: &'a [OriginGroup],
     pub(super) causes: &'a [ConstructionCause],
 }
@@ -313,7 +317,7 @@ impl GroupLeafCursor {
             return Err(stop.into());
         }
         if let Err(stop) = payload_write::<Self>(c, 1).and_then(|()| {
-            c.charge(WorkCategory::ProviderCall, 2)
+            c.charge(HtmlParseWorkCategory::ProviderCall, 2)
                 .map_err(SessionError::from)
         }) {
             frames.release(c)?;
@@ -330,9 +334,9 @@ impl GroupLeafCursor {
         if self.frames.is_none() {
             return Err(SessionError::Consumed);
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if self.issuer.as_ptr() != Arc::as_ptr(&evidence.identity) {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence).into());
+            return Err(c.fail_invariant(HtmlParseInvariant::ForeignEvidence).into());
         }
         Ok(())
     }
@@ -348,9 +352,9 @@ impl GroupLeafCursor {
             .ok_or(SessionError::Consumed)?
             .try_pop(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<OriginGroup>() as u64,
             )?;
             let group = evidence
@@ -381,8 +385,11 @@ impl GroupLeafCursor {
                     }));
                 }
                 GroupBody::Alias { original } => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    c.charge(
+                        HtmlParseWorkCategory::InspectByte,
+                        mem::size_of::<usize>() as u64,
+                    )?;
                     if original >= frame.index
                         || evidence
                             .native
@@ -409,9 +416,9 @@ impl GroupLeafCursor {
                     incoming,
                     offset,
                 } => {
-                    c.charge(WorkCategory::RecordVisit, 2)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         const { (2 * mem::size_of::<usize>()) as u64 },
                     )?;
                     if original >= frame.index || incoming >= frame.index {
@@ -496,21 +503,21 @@ impl GroupOriginCursor {
         &mut self,
         evidence: &ParseEvidence,
         c: &mut ParseControl,
-    ) -> Result<Option<TextOrigin>, SessionError> {
+    ) -> Result<Option<HtmlParseTextOrigin>, SessionError> {
         self.leaves.require(evidence, c)?;
         loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 const { (mem::size_of::<Option<LeafChunk>>() + mem::size_of::<usize>()) as u64 },
             )?;
             if let Some(leaf) = self.current
                 && self.position < leaf.length
             {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
-                    mem::size_of::<TextOrigin>() as u64,
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<HtmlParseTextOrigin>() as u64,
                 )?;
                 // Leaf chunks are issued only for ranges inside the origins.
                 let origin = leaf
@@ -529,12 +536,12 @@ impl GroupOriginCursor {
                     .offset
                     .checked_add(origin.end)
                     .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
-                payload_write::<TextOrigin>(c, 1)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                payload_write::<HtmlParseTextOrigin>(c, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 payload_write::<usize>(c, 1)?;
                 // `position < leaf.length` held on entry to this branch.
                 self.position = self.position.saturating_add(1);
-                return Ok(Some(TextOrigin {
+                return Ok(Some(HtmlParseTextOrigin {
                     start,
                     end,
                     source: origin.source.clone(),
@@ -561,7 +568,7 @@ pub(crate) enum NativeDestination {
     Node(usize),
     Raw {
         node: usize,
-        kind: RawFieldKind,
+        kind: HtmlParseRawField,
     },
     Lexical {
         occurrence: usize,
@@ -572,26 +579,26 @@ pub(crate) enum NativeDestination {
     Cause(usize),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RawFieldKind {
+pub enum HtmlParseRawField {
     Nonce,
     Input,
     Textarea,
 }
 pub(crate) struct NativeAssociation {
     pub(crate) group: Option<usize>,
-    pub(crate) relation: AssociationRelation,
+    pub(crate) relation: HtmlParseAssociationRelation,
     pub(crate) destination: NativeDestination,
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) source: Option<crate::HtmlSourceRange>,
-    pub(crate) kind: Option<OriginKind>,
+    pub(crate) kind: Option<HtmlParseOriginKind>,
     pub(crate) cause: usize,
 }
 /// Mutable production and immutable groups have one flat owner. Pending suffixes
 /// have no group/projection proof and are reclaimed on the original stop.
 pub(super) struct NativeProvenance {
     source: Option<crate::HtmlSource>,
-    origins: OwnedVec<TextOrigin>,
+    origins: OwnedVec<HtmlParseTextOrigin>,
     groups: OwnedVec<OriginGroup>,
     causes: OwnedVec<ConstructionCause>,
     current: Option<usize>,
@@ -601,7 +608,7 @@ pub(super) struct NativeProvenance {
     lexical: lexical::LexicalStorage,
 }
 impl NativeProvenance {
-    pub(super) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(super) fn new(c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let mut groups = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let mut causes = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
@@ -625,18 +632,24 @@ impl NativeProvenance {
     /// their source handles own no separately charged storage.
     /// No vector is moved until foreign ownership, representation and aggregate
     /// ledger underflow have been ruled out under the actual stopped controller.
-    pub(super) fn preflight_failed_disposal(&self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        fn extent<T>(values: &OwnedVec<T>, c: &mut ParseControl) -> Result<(u64, u64), ParseStop> {
+    pub(super) fn preflight_failed_disposal(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
+        fn extent<T>(
+            values: &OwnedVec<T>,
+            c: &mut ParseControl,
+        ) -> Result<(u64, u64), HtmlParseStop> {
             values.require_disposal_owner(c)?;
             let Some(bytes) = values
                 .capacity()
                 .checked_mul(mem::size_of::<T>())
                 .and_then(|bytes| u64::try_from(bytes).ok())
             else {
-                return Err(c.fail_invariant(Invariant::CapacityMismatch));
+                return Err(c.fail_invariant(HtmlParseInvariant::CapacityMismatch));
             };
             let Ok(units) = u64::try_from(values.len()) else {
-                return Err(c.fail_invariant(Invariant::CapacityMismatch));
+                return Err(c.fail_invariant(HtmlParseInvariant::CapacityMismatch));
             };
             Ok((units, bytes))
         }
@@ -657,7 +670,7 @@ impl NativeProvenance {
             let (Some(units), Some(bytes)) =
                 (total.0.checked_add(units), total.1.checked_add(bytes))
             else {
-                return Err(c.fail_invariant(Invariant::CapacityMismatch));
+                return Err(c.fail_invariant(HtmlParseInvariant::CapacityMismatch));
             };
             total = (units, bytes);
         }
@@ -670,11 +683,11 @@ impl NativeProvenance {
                     .resource(HtmlParseResource::ManagedCapacityBytes)
                     .current
         {
-            return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+            return Err(c.fail_invariant(HtmlParseInvariant::ReleaseUnderflow));
         }
         Ok(())
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if let Some(projection) = self.projection {
             projection.release(c)?;
         }
@@ -705,7 +718,7 @@ impl ParseEvidence {
                     LeafValue::Empty if leaf.units == 0 => {}
                     LeafValue::Empty => return Err(SessionError::WrongToken),
                     LeafValue::Payload(slot) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let RetainedPayload::String {
                             value: text,
                             allocation,
@@ -719,7 +732,7 @@ impl ParseEvidence {
                             return Err(SessionError::WrongToken);
                         }
                         for index in 0..leaf.units {
-                            c.charge(WorkCategory::InspectByte, 4)?;
+                            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
                             let position = leaf.offset.checked_add(index).ok_or_else(|| {
                                 c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                             })?;
@@ -755,21 +768,21 @@ impl ParseEvidence {
         &self,
         c: &mut ParseControl,
         group: &OriginGroupRef,
-        rows: &OwnedVec<TextOrigin>,
+        rows: &OwnedVec<HtmlParseTextOrigin>,
     ) -> Result<bool, SessionError> {
         rows.require_disposal_owner(c)?;
         let mut cursor = GroupOriginCursor::new(self, group, c)?;
         let read = (|| {
             for expected in rows.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
-                    mem::size_of::<TextOrigin>() as u64,
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<HtmlParseTextOrigin>() as u64,
                 )?;
                 let Some(actual) = cursor.next(self, c)? else {
                     return Ok(false);
                 };
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if actual.start != expected.start
                     || actual.end != expected.end
                     || actual.kind != expected.kind
@@ -809,7 +822,7 @@ impl ParseEvidence {
                     LeafValue::Empty if leaf.units == 0 => {}
                     LeafValue::Empty => return Err(SessionError::WrongToken),
                     LeafValue::Payload(slot) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let RetainedPayload::String {
                             value, allocation, ..
                         } = payloads.values.get(slot).ok_or(SessionError::WrongToken)?
@@ -867,7 +880,7 @@ impl ParseEvidence {
         let mut cursor = GroupOriginCursor::new(self, group, c)?;
         let read = (|| {
             while let Some(origin) = cursor.next(self, c)? {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.require_source_range(&origin.source)?;
                 let output = value
                     .get(origin.start..origin.end)
@@ -878,16 +891,16 @@ impl ParseEvidence {
                     return Err(SessionError::WrongToken);
                 }
                 match origin.kind {
-                    OriginKind::Literal | OriginKind::AsciiLowercase => {
+                    HtmlParseOriginKind::Literal | HtmlParseOriginKind::AsciiLowercase => {
                         c.charge(
-                            WorkCategory::InspectByte,
+                            HtmlParseWorkCategory::InspectByte,
                             (origin.source.len() as u64)
                                 .saturating_mul(if source.as_utf8().is_some() { 1 } else { 2 }),
                         )?;
                         let mut offset = 0;
                         let mut compare = |unit: u16| -> Result<(), SessionError> {
-                            c.charge(WorkCategory::InspectByte, 2)?;
-                            let expected = if origin.kind == OriginKind::AsciiLowercase
+                            c.charge_unit_inspection()?;
+                            let expected = if origin.kind == HtmlParseOriginKind::AsciiLowercase
                                 && (65..=90).contains(&unit)
                             {
                                 unit | 0x20
@@ -927,8 +940,8 @@ impl ParseEvidence {
                             return Err(SessionError::WrongToken);
                         }
                     }
-                    OriginKind::Newline => {
-                        c.charge(WorkCategory::InspectByte, 6)?;
+                    HtmlParseOriginKind::Newline => {
+                        c.charge(HtmlParseWorkCategory::InspectByte, 6)?;
                         let correct = if let Some(text) = source.as_utf8() {
                             matches!(text.get(begin..end), Some("\r" | "\n" | "\r\n"))
                         } else {
@@ -943,8 +956,8 @@ impl ParseEvidence {
                             return Err(SessionError::WrongToken);
                         }
                     }
-                    OriginKind::NullReplacement => {
-                        c.charge(WorkCategory::InspectByte, 4)?;
+                    HtmlParseOriginKind::NullReplacement => {
+                        c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
                         let correct = if let Some(text) = source.as_utf8() {
                             text.get(begin..end) == Some("\0")
                         } else {
@@ -960,11 +973,11 @@ impl ParseEvidence {
                     // These are producer transformations, not raw equality. The
                     // actual token/copy operation preserves its atomic output;
                     // validation must not invent an entity/XML resolver here.
-                    OriginKind::CharacterReference
-                    | OriginKind::RecoverySyntax
-                    | OriginKind::InputValueNormalization => {
+                    HtmlParseOriginKind::CharacterReference
+                    | HtmlParseOriginKind::RecoverySyntax
+                    | HtmlParseOriginKind::InputValueNormalization => {
                         c.charge(
-                            WorkCategory::InspectByte,
+                            HtmlParseWorkCategory::InspectByte,
                             (output.len() as u64).saturating_mul(2),
                         )?;
                         if output.is_empty() || begin == end {
@@ -984,7 +997,7 @@ impl ParseEvidence {
         c: &mut ParseControl,
     ) -> Result<OriginGroupRef, SessionError> {
         payload_write::<OriginGroupRef>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         Ok(OriginGroupRef {
             index,
             issuer: Arc::downgrade(&self.identity),
@@ -999,9 +1012,9 @@ impl ParseEvidence {
         reference: &ConstructionCauseRef,
     ) -> Result<ConstructionCauseRef, SessionError> {
         c.require_identity(&reference.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<Weak<evidence::EvidenceIdentity>>() as u64,
         )?;
         if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity)
@@ -1018,7 +1031,7 @@ impl ParseEvidence {
         c: &mut ParseControl,
     ) -> Result<ConstructionCauseRef, SessionError> {
         payload_write::<ConstructionCauseRef>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         Ok(ConstructionCauseRef {
             index,
             issuer: Arc::downgrade(&self.identity),
@@ -1105,7 +1118,7 @@ impl ParseEvidence {
         )
     }
     #[cfg(test)]
-    pub(super) fn fixed_original_origin(&self, index: usize) -> Option<&TextOrigin> {
+    pub(super) fn fixed_original_origin(&self, index: usize) -> Option<&HtmlParseTextOrigin> {
         self.native.origins.as_slice().get(index)
     }
     #[cfg(test)]
@@ -1113,7 +1126,7 @@ impl ParseEvidence {
         &self,
         group: &OriginGroupRef,
         c: &mut ParseControl,
-    ) -> Result<Vec<TextOrigin>, SessionError> {
+    ) -> Result<Vec<HtmlParseTextOrigin>, SessionError> {
         let mut cursor = GroupOriginCursor::new(self, group, c)?;
         let mut result = Vec::new();
         let read: Result<(), SessionError> = (|| {
@@ -1161,13 +1174,13 @@ impl ParseEvidence {
         c: &mut ParseControl,
         original: &OriginGroupRef,
     ) -> Result<OriginGroupRef, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let group = self.require_group(original)?;
         let (units, original) = (group.units, original.index);
         let cause = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Copy,
+                operation: HtmlParseConstructionOperation::Copy,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1216,11 +1229,11 @@ impl ParseEvidence {
             return Err(SessionError::WrongToken);
         }
         payload_write::<Option<crate::HtmlSource>>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let cause = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Request,
+                operation: HtmlParseConstructionOperation::Request,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1255,11 +1268,11 @@ impl ParseEvidence {
             return Err(SessionError::WrongToken);
         }
         payload_write::<crate::HtmlSourceRange>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let index = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Token,
+                operation: HtmlParseConstructionOperation::Token,
                 source: Some(trigger.source.clone()),
                 captured: None,
                 rule: Some(trigger.rule),
@@ -1286,7 +1299,7 @@ impl ParseEvidence {
         self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::SourceIndependent,
+                operation: HtmlParseConstructionOperation::SourceIndependent,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1305,7 +1318,7 @@ impl ParseEvidence {
     pub(super) fn retain_group(
         &mut self,
         c: &mut ParseControl,
-        mut input: OwnedVec<TextOrigin>,
+        mut input: OwnedVec<HtmlParseTextOrigin>,
         units: usize,
     ) -> Result<OriginGroupRef, SessionError> {
         let result = self.retain_group_parts(c, &mut input, units, true, None);
@@ -1315,7 +1328,7 @@ impl ParseEvidence {
     fn retain_group_parts(
         &mut self,
         c: &mut ParseControl,
-        input: &mut OwnedVec<TextOrigin>,
+        input: &mut OwnedVec<HtmlParseTextOrigin>,
         units: usize,
         contiguous: bool,
         cause: Option<usize>,
@@ -1323,7 +1336,7 @@ impl ParseEvidence {
         input.require_owner(c)?;
         let mut end = 0;
         for origin in input.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if origin.start < end
                 || (contiguous && origin.start != end)
                 || origin.end <= origin.start
@@ -1392,7 +1405,7 @@ impl ParseEvidence {
         let cause = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::SourceIndependent,
+                operation: HtmlParseConstructionOperation::SourceIndependent,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1440,7 +1453,7 @@ impl ParseEvidence {
         c.checkpoint()?;
         old.require_disposal_owner(c)?;
         incoming.require_disposal_owner(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let left = self.require_group(old)?;
         let right = self.require_group(incoming)?;
         if left.units != offset || offset.checked_add(right.units) != Some(total) {
@@ -1449,7 +1462,7 @@ impl ParseEvidence {
         let cause = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Merge,
+                operation: HtmlParseConstructionOperation::Merge,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1496,7 +1509,7 @@ impl SessionStorage {
         input: std::ops::Range<usize>,
         output: std::ops::Range<usize>,
         transformed: bool,
-        maps: &mut OwnedVec<TextOrigin>,
+        maps: &mut OwnedVec<HtmlParseTextOrigin>,
     ) -> Result<(), SessionError> {
         let (begin, end, output_start, output_end) =
             (input.start, input.end, output.start, output.end);
@@ -1525,7 +1538,7 @@ impl SessionStorage {
         let mut covered = begin;
         let read = (|| {
             while let Some(origin) = cursor.next(evidence, c)? {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if origin.end <= begin || origin.start >= end {
                     continue;
                 }
@@ -1533,8 +1546,8 @@ impl SessionStorage {
                     return Err(SessionError::OriginSplitUnavailable);
                 }
                 if !transformed {
-                    payload_write::<TextOrigin>(c, 1)?;
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    payload_write::<HtmlParseTextOrigin>(c, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     // `origin.start == covered >= begin`, and `origin.end > origin.start`.
                     let (Some(from_start), Some(from_end)) = (
                         origin.start.checked_sub(begin),
@@ -1550,7 +1563,7 @@ impl SessionStorage {
                     })?;
                     maps.try_push(
                         c,
-                        TextOrigin {
+                        HtmlParseTextOrigin {
                             start,
                             end,
                             source: origin.source.clone(),
@@ -1578,11 +1591,11 @@ impl SessionStorage {
         if transformed
             && let (Some(source), Some(first), Some(last)) = (&evidence.native.source, first, last)
         {
-            payload_write::<TextOrigin>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            payload_write::<HtmlParseTextOrigin>(c, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             if source.as_utf8().is_some() {
                 c.charge(
-                    WorkCategory::InputUnitRead,
+                    HtmlParseWorkCategory::InputUnitRead,
                     count_set([
                         first != 0 && first != source.len(),
                         last != 0 && last != source.len(),
@@ -1594,11 +1607,11 @@ impl SessionStorage {
                 .map_err(|_| SessionError::WrongToken)?;
             maps.try_push(
                 c,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: output_start,
                     end: output_end,
                     source,
-                    kind: OriginKind::RecoverySyntax,
+                    kind: HtmlParseOriginKind::RecoverySyntax,
                 },
             )?;
         }
@@ -1609,7 +1622,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         value: FrozenUtf16,
-        maps: OwnedVec<TextOrigin>,
+        maps: OwnedVec<HtmlParseTextOrigin>,
     ) -> Result<usize, SessionError> {
         let slot = match self.field_slot(c, StringLocation::ProcessingInstructionData(node)) {
             Ok(slot) => slot,
@@ -1669,7 +1682,7 @@ impl SessionStorage {
         let cause = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Replay,
+                operation: HtmlParseConstructionOperation::Replay,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1735,7 +1748,7 @@ impl SessionStorage {
         let cause = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Replacement,
+                operation: HtmlParseConstructionOperation::Replacement,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1812,7 +1825,7 @@ impl SessionStorage {
         let cause = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Retirement,
+                operation: HtmlParseConstructionOperation::Retirement,
                 source: None,
                 captured: None,
                 rule: None,
@@ -1900,7 +1913,7 @@ impl SessionStorage {
         &self,
         group: &OriginGroupRef,
         c: &mut ParseControl,
-    ) -> Result<Vec<TextOrigin>, SessionError> {
+    ) -> Result<Vec<HtmlParseTextOrigin>, SessionError> {
         self.evidence
             .as_ref()
             .ok_or(SessionError::WrongToken)?
@@ -1922,11 +1935,11 @@ impl SessionStorage {
 /// independently of the later token/rule that triggers installation.
 pub(super) struct FieldCopy {
     pub(super) value: FrozenUtf16,
-    pub(super) origins: OwnedVec<TextOrigin>,
+    pub(super) origins: OwnedVec<HtmlParseTextOrigin>,
     pub(super) original: Option<OriginGroupRef>,
 }
 impl FieldCopy {
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.value.release(c)?;
         self.origins.release(c)
     }
@@ -1955,7 +1968,7 @@ impl ParseEvidence {
                     let LeafValue::Payload(slot) = leaf.value else {
                         return Err(SessionError::WrongToken);
                     };
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let Some(RetainedPayload::String {
                         origins: Some(original),
                         ..
@@ -1965,10 +1978,10 @@ impl ParseEvidence {
                     };
                     let header = self.require_group(original)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<OriginGroup>() as u64,
                     )?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let cause = self
                         .native
                         .causes
@@ -1976,13 +1989,13 @@ impl ParseEvidence {
                         .get(header.cause)
                         .ok_or_else(|| latch_registry_row(c))?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<ConstructionCause>() as u64,
                     )?;
                     let value = cause
                         .computation
                         .ok_or(SessionError::OriginSplitUnavailable)?;
-                    if cause.operation != ConstructionOperation::Replacement {
+                    if cause.operation != HtmlParseConstructionOperation::Replacement {
                         return Err(SessionError::WrongToken);
                     }
                     validate_input_computation(
@@ -2001,10 +2014,10 @@ impl ParseEvidence {
                         .ok_or(SessionError::WrongToken)?;
                     for atom in atoms {
                         c.charge(
-                            WorkCategory::InspectByte,
-                            mem::size_of::<TextOrigin>() as u64,
+                            HtmlParseWorkCategory::InspectByte,
+                            mem::size_of::<HtmlParseTextOrigin>() as u64,
                         )?;
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         c.require_source_range(&atom.source)?;
                         if atom.start != covered || atom.end <= atom.start || atom.end > leaf.units
                         {
@@ -2032,9 +2045,9 @@ impl ParseEvidence {
         group: &OriginGroupRef,
     ) -> Result<RangeEdge, SessionError> {
         c.require_identity(&group.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<OriginGroup>() as u64,
         )?;
         let value = self.require_group(group)?;
@@ -2052,10 +2065,10 @@ pub(super) fn validate_range_computation(
     cause: usize,
 ) -> Result<(), SessionError> {
     c.charge(
-        WorkCategory::InspectByte,
+        HtmlParseWorkCategory::InspectByte,
         mem::size_of::<RangeComputation>() as u64,
     )?;
-    let step_branch = value.branch == RangeBranch::StepCorrection;
+    let step_branch = value.branch == HtmlParseRangeBranch::StepCorrection;
     if value.minimum.is_none()
         || value.maximum.is_none()
         || step_branch != (value.step.is_some() && value.base.is_some())
@@ -2064,22 +2077,22 @@ pub(super) fn validate_range_computation(
         return Err(SessionError::WrongToken);
     }
     if matches!(
-        value.operands.get(RangeOperandRole::Minimum),
+        value.operands.get(HtmlParseRangeOperandRole::Minimum),
         RangeOperand::Any(_)
     ) || matches!(
-        value.operands.get(RangeOperandRole::Maximum),
+        value.operands.get(HtmlParseRangeOperandRole::Maximum),
         RangeOperand::Any(_)
     ) || matches!(
-        value.operands.get(RangeOperandRole::ValueContent),
+        value.operands.get(HtmlParseRangeOperandRole::ValueContent),
         RangeOperand::Any(_)
     ) {
         return Err(SessionError::WrongToken);
     }
     for edge in value.edges() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(edge) = edge {
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<OriginGroup>() as u64,
             )?;
             if edge.cause >= cause
@@ -2103,23 +2116,24 @@ pub(super) fn validate_input_computation(
         InputValueComputation::Range(range) => validate_range_computation(c, range, groups, cause),
         InputValueComputation::Color(color) => {
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<ColorComputation>() as u64,
             )?;
-            if (color.source == ColorValueSource::MissingInstalledValue) != color.original.is_none()
+            if (color.source == HtmlParseColorValueSource::MissingInstalledValue)
+                != color.original.is_none()
                 || color.environment != super::input_color::environment_identity()
             {
                 return Err(SessionError::WrongToken);
             }
             for edge in [
                 color.original,
-                color.operands.copy(ColorOperandRole::Alpha),
-                color.operands.copy(ColorOperandRole::Colorspace),
+                color.operands.copy(HtmlParseColorOperandRole::Alpha),
+                color.operands.copy(HtmlParseColorOperandRole::Colorspace),
             ] {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(edge) = edge {
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<OriginGroup>() as u64,
                     )?;
                     if edge.cause >= cause
@@ -2141,7 +2155,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<RangeEdge, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let RetainedPayload::String {
             origins: Some(group),
             ..
@@ -2194,7 +2208,7 @@ impl SessionStorage {
         let cause = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Replacement,
+                operation: HtmlParseConstructionOperation::Replacement,
                 source: None,
                 captured: None,
                 rule: None,
@@ -2257,7 +2271,7 @@ impl ParseEvidence {
         cause: &ConstructionCauseRef,
     ) -> Result<(), SessionError> {
         cleanup_owner(c, &cause.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if cause.issuer.as_ptr() != Arc::as_ptr(&self.identity)
             || cause.index >= self.native.causes.len()
         {
@@ -2272,7 +2286,7 @@ impl ParseEvidence {
         c: &mut ParseControl,
         group: &OriginGroupRef,
     ) -> Result<OriginGroupRef, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.require_group(group)?;
         self.group_ref(group.index, c)
     }
@@ -2285,7 +2299,7 @@ impl ParseEvidence {
         self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Replacement,
+                operation: HtmlParseConstructionOperation::Replacement,
                 source: None,
                 captured: None,
                 rule: None,
@@ -2424,7 +2438,7 @@ impl NativeAssociations<'_> {
         &mut self,
         index: usize,
         node: &ParserNode,
-        kind: RawFieldKind,
+        kind: HtmlParseRawField,
     ) -> Result<bool, SessionError> {
         let node = self.storage.index(self.control, node)?;
         let Some((row, _)) = self.row(index)? else {
@@ -2438,9 +2452,9 @@ impl NativeAssociations<'_> {
     /// operation on this same controller and evidence issuer.
     #[cfg(test)]
     pub(crate) fn group(&mut self, index: usize) -> Result<Option<&OriginGroup>, SessionError> {
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<OriginGroup>() as u64,
         )?;
         Ok(self.evidence.native.groups.as_slice().get(index))
@@ -2457,7 +2471,7 @@ impl NativeAssociations<'_> {
     pub(crate) fn next_group_origin(
         &mut self,
         cursor: &mut GroupOriginCursor,
-    ) -> Result<Option<TextOrigin>, SessionError> {
+    ) -> Result<Option<HtmlParseTextOrigin>, SessionError> {
         cursor.next(self.evidence, self.control)
     }
     #[cfg(test)]
@@ -2492,7 +2506,7 @@ impl NativeAssociations<'_> {
         &mut self,
         index: usize,
     ) -> Result<Option<&ConstructionCause>, SessionError> {
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.evidence.native.causes.as_slice().get(index))
     }
     #[cfg(test)]
@@ -2533,7 +2547,7 @@ impl NativeAssociations<'_> {
     ) -> Result<bool, SessionError> {
         let node = self.storage.index(self.control, node)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<NativeAssociation>() as u64,
         )?;
         let Some((row, _)) = self.row(index)? else {
@@ -2550,9 +2564,9 @@ impl NativeAssociations<'_> {
             ) => (container, slot),
             _ => return Ok(false),
         };
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<RetainedPayload>() as u64,
         )?;
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
@@ -2566,9 +2580,9 @@ impl NativeAssociations<'_> {
         if *owner != node || actual_slot != slot {
             return Ok(false);
         }
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<Attribute>() as u64,
         )?;
         Ok(values.as_slice().get(actual_slot).is_some())
@@ -2578,7 +2592,7 @@ impl NativeAssociations<'_> {
         &mut self,
         index: usize,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let rows = self
             .evidence
             .native
@@ -2602,7 +2616,7 @@ impl NativeAssociations<'_> {
         &mut self,
         index: usize,
     ) -> Result<Option<(&NativeAssociation, &ConstructionCause)>, SessionError> {
-        self.control.charge(WorkCategory::RecordVisit, 2)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let rows = self
             .evidence
             .native
@@ -2631,7 +2645,7 @@ impl NativeAssociations<'_> {
         reference: &ConstructionCauseRef,
     ) -> Result<&ConstructionCause, SessionError> {
         cleanup_owner(self.control, &reference.control)?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if reference.issuer.as_ptr() != Arc::as_ptr(&self.evidence.identity) {
             return Err(SessionError::WrongToken);
         }
@@ -2650,7 +2664,7 @@ impl ParseEvidence {
         destination: NativeDestination,
         output: std::ops::Range<usize>,
         source: Option<&crate::HtmlSourceRange>,
-        kind: Option<OriginKind>,
+        kind: Option<HtmlParseOriginKind>,
         lineage: (usize, usize),
     ) -> Result<(), SessionError> {
         let (cause, group) = lineage;
@@ -2659,7 +2673,7 @@ impl ParseEvidence {
         }
         payload_write::<NativeAssociation>(c, 1)?;
         if source.is_some() {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
         self.native
             .projection
@@ -2674,7 +2688,7 @@ impl ParseEvidence {
                 c,
                 NativeAssociation {
                     group: Some(group),
-                    relation: AssociationRelation::Output,
+                    relation: HtmlParseAssociationRelation::Output,
                     destination,
                     start: output.start,
                     end: output.end,
@@ -2770,9 +2784,9 @@ impl ParserArenaSession {
         // Successful completed projection certifies every real history leaf,
         // including retired versions that are no longer a native destination.
         for group in evidence.native.groups.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<OriginGroup>() as u64,
             )?;
             if let GroupBody::Leaf { value, .. } = group.body {
@@ -2781,7 +2795,7 @@ impl ParserArenaSession {
                     LeafValue::Empty if group.units == 0 => {}
                     LeafValue::Empty => return Err(SessionError::WrongToken),
                     LeafValue::Payload(slot) => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let RetainedPayload::String {
                             value, allocation, ..
                         } = storage
@@ -2808,29 +2822,29 @@ impl ParserArenaSession {
         payload_write::<Option<OwnedVec<NativeAssociation>>>(c, 1)?;
         evidence.native.projection = Some(rows);
         for (payload_slot, payload) in storage.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let raw = match payload {
                 RetainedPayload::Nonce {
                     node: Some(node),
                     raw,
-                } => Some((*node, *raw, RawFieldKind::Nonce)),
+                } => Some((*node, *raw, HtmlParseRawField::Nonce)),
                 RetainedPayload::Input {
                     node: Some(node),
                     raw,
                     complete: true,
                     ..
-                } => Some((*node, *raw, RawFieldKind::Input)),
+                } => Some((*node, *raw, HtmlParseRawField::Input)),
                 RetainedPayload::Textarea {
                     node: Some(node),
                     state,
-                } => Some((*node, state.raw, RawFieldKind::Textarea)),
+                } => Some((*node, state.raw, HtmlParseRawField::Textarea)),
                 _ => None,
             };
             if let Some((node, slot, kind)) = raw {
                 if node >= storage.construction.storage(c)?.len() {
                     return Err(SessionError::WrongToken);
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let RetainedPayload::String {
                     value,
                     allocation,
@@ -2894,7 +2908,7 @@ impl ParserArenaSession {
                         c,
                         NativeAssociation {
                             group: None,
-                            relation: AssociationRelation::Creation,
+                            relation: HtmlParseAssociationRelation::Creation,
                             destination: NativeDestination::Node(*node),
                             start: 0,
                             end: 0,
@@ -2924,7 +2938,7 @@ impl ParserArenaSession {
             else {
                 continue;
             };
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             if !Arc::ptr_eq(native.shared_code_units(), value.shared_code_units()) {
                 return Err(SessionError::AliasedPayload);
             }
@@ -2988,10 +3002,10 @@ impl ParserArenaSession {
 /// replace the selected capture with unrelated IDs or pretend it is lexical.
 pub(crate) struct CapturedParserTrigger<'a> {
     context: &'a crate::HtmlFragmentContext,
-    role: CapturedCauseRole,
+    role: HtmlParseCapturedCauseRole,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CapturedCauseRole {
+pub enum HtmlParseCapturedCauseRole {
     FragmentBootstrap,
     ContextNamespace,
 }
@@ -3002,10 +3016,13 @@ pub(crate) struct CapturedConstructionContext {
     pub(crate) target: crate::HtmlFragmentTarget,
     pub(crate) context_document: crate::HtmlCaptureDocumentId,
     pub(crate) target_document: crate::HtmlCaptureDocumentId,
-    pub(crate) role: CapturedCauseRole,
+    pub(crate) role: HtmlParseCapturedCauseRole,
 }
 impl<'a> CapturedParserTrigger<'a> {
-    pub(super) fn new(context: &'a crate::HtmlFragmentContext, role: CapturedCauseRole) -> Self {
+    pub(super) fn new(
+        context: &'a crate::HtmlFragmentContext,
+        role: HtmlParseCapturedCauseRole,
+    ) -> Self {
         Self { context, role }
     }
 }
@@ -3018,7 +3035,7 @@ impl ParseEvidence {
         let context = trigger.context;
         // The context already validates all identities against one immutable
         // capture. Fixed clone/layout admission precedes owning these handles.
-        c.charge(WorkCategory::ProviderCall, 7)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 7)?;
         payload_write::<CapturedConstructionContext>(c, 1)?;
         let captured = CapturedConstructionContext {
             capture: context.capture().identity().clone(),
@@ -3032,7 +3049,7 @@ impl ParseEvidence {
         let index = self.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Captured,
+                operation: HtmlParseConstructionOperation::Captured,
                 source: None,
                 captured: Some(captured),
                 rule: None,
@@ -3058,10 +3075,10 @@ impl ParseEvidence {
         trigger: CapturedParserTrigger<'_>,
         actual: &DocumentString,
     ) -> Result<OriginGroupRef, SessionError> {
-        if trigger.role != CapturedCauseRole::ContextNamespace {
+        if trigger.role != HtmlParseCapturedCauseRole::ContextNamespace {
             return Err(SessionError::WrongToken);
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let node = trigger
             .context
             .capture()
@@ -3151,7 +3168,7 @@ impl SessionStorage {
         let index = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Copy,
+                operation: HtmlParseConstructionOperation::Copy,
                 source: None,
                 captured: None,
                 rule: None,
@@ -3188,7 +3205,7 @@ impl SessionStorage {
         let index = evidence.append_cause(
             c,
             ConstructionCause {
-                operation: ConstructionOperation::Replacement,
+                operation: HtmlParseConstructionOperation::Replacement,
                 source: source.cloned(),
                 captured: None,
                 rule: None,
@@ -3323,14 +3340,14 @@ mod captured_tests {
         let bootstrap = evidence
             .retain_captured_cause(
                 &mut c,
-                CapturedParserTrigger::new(&context, CapturedCauseRole::FragmentBootstrap),
+                CapturedParserTrigger::new(&context, HtmlParseCapturedCauseRole::FragmentBootstrap),
             )
             .unwrap();
         let uri = DocumentString::from("http://www.w3.org/2000/svg");
         let group = evidence
             .retain_captured_namespace(
                 &mut c,
-                CapturedParserTrigger::new(&context, CapturedCauseRole::ContextNamespace),
+                CapturedParserTrigger::new(&context, HtmlParseCapturedCauseRole::ContextNamespace),
                 &uri,
             )
             .unwrap();
@@ -3343,7 +3360,7 @@ mod captured_tests {
         let header = evidence.require_group(&group).unwrap();
         assert_eq!(header.units, 26);
         let cause = &evidence.native.causes.as_slice()[header.cause];
-        assert_eq!(cause.operation, ConstructionOperation::Captured);
+        assert_eq!(cause.operation, HtmlParseConstructionOperation::Captured);
         assert!(cause.source.is_none());
         let retained = cause.captured.as_ref().unwrap();
         assert_eq!(&retained.capture, capture.identity());
@@ -3352,13 +3369,13 @@ mod captured_tests {
         assert_eq!(&retained.target, context.target());
         assert_eq!(&retained.context_document, context.context_document());
         assert_eq!(&retained.target_document, context.target_document());
-        assert_eq!(retained.role, CapturedCauseRole::ContextNamespace);
+        assert_eq!(retained.role, HtmlParseCapturedCauseRole::ContextNamespace);
         assert_eq!(cause.trigger, Some(bootstrap.index));
         assert_eq!(evidence.native.causes.len(), 2);
         assert!(matches!(
             evidence.retain_captured_namespace(
                 &mut c,
-                CapturedParserTrigger::new(&context, CapturedCauseRole::ContextNamespace),
+                CapturedParserTrigger::new(&context, HtmlParseCapturedCauseRole::ContextNamespace),
                 &DocumentString::from("other")
             ),
             Err(SessionError::WrongToken)
@@ -3391,11 +3408,11 @@ mod merge_cleanup_tests {
             origins
                 .try_push(
                     &mut c,
-                    TextOrigin {
+                    HtmlParseTextOrigin {
                         start: 0,
                         end: 1,
                         source: source.range(begin, begin + 1).unwrap(),
-                        kind: OriginKind::Literal,
+                        kind: HtmlParseOriginKind::Literal,
                     },
                 )
                 .unwrap();
@@ -3469,7 +3486,7 @@ mod merge_cleanup_tests {
         let before = c.usage().clone();
         assert!(matches!(
             evidence.merge_groups(&mut c, &old, &incoming, 1, 2),
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceMapEntries,
                 limit: 5,
                 current: 5,
@@ -3518,7 +3535,7 @@ mod merge_cleanup_tests {
             .unwrap();
         let (mut c, mut evidence, old, incoming) = inputs(selected, HtmlParseCancellation::new());
         assert!(
-            matches!(evidence.merge_groups(&mut c,&old,&incoming,1,2),Err(SessionError::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::WorkCredits,limit,current,requested_delta:2})) if limit==base+1 && current==base)
+            matches!(evidence.merge_groups(&mut c,&old,&incoming,1,2),Err(SessionError::Stop(HtmlParseStop::LimitExceeded{resource:HtmlParseResource::WorkCredits,limit,current,requested_delta:2})) if limit==base+1 && current==base)
         );
         let first = c.stop();
         assert_original_groups(&evidence, &old, &incoming);
@@ -3559,14 +3576,14 @@ mod merge_cleanup_tests {
                 ))
                 .collect::<Vec<_>>(),
             [
-                (0, 1, 0, 1, OriginKind::Literal),
-                (1, 2, 1, 2, OriginKind::Literal)
+                (0, 1, 0, 1, HtmlParseOriginKind::Literal),
+                (1, 2, 1, 2, HtmlParseOriginKind::Literal)
             ]
         );
         let header = evidence.require_group(&merged).unwrap();
         assert_eq!(header.units, 2);
         let cause = &evidence.native.causes.as_slice()[header.cause];
-        assert_eq!(cause.operation, ConstructionOperation::Merge);
+        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
         assert_eq!(
             (cause.original, cause.incoming),
             (Some(old.index), Some(incoming.index))
@@ -3602,13 +3619,13 @@ mod merge_cleanup_tests {
         cancellation.cancel();
         assert!(matches!(
             evidence.merge_groups(&mut c, &old, &incoming, 1, 2),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         assert_original_groups(&evidence, &old, &incoming);
         assert_eq!(c.usage(), &before);
         drop((old, incoming));
         evidence.release(&mut c).unwrap();
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits),
             before.resource(HtmlParseResource::WorkCredits)

@@ -9,7 +9,8 @@ use crate::bounded::{
 use crate::keyed::{Table, slots};
 use crate::{HtmlInputNumericContent, HtmlInputNumericStep};
 use provenance::{
-    RangeBranch, RangeComputation, RangeOperand, RangeOperandRole, RangeOperandTable, RangeOriginal,
+    HtmlParseRangeBranch, HtmlParseRangeOperandRole, RangeComputation, RangeOperand,
+    RangeOperandTable, RangeOriginal,
 };
 
 const SCRATCH_COUNT: usize = 8;
@@ -211,7 +212,7 @@ impl RangeStaging {
             source,
         })
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         for buffer in self.buffers.into_array() {
             buffer.release(c)?;
         }
@@ -221,9 +222,9 @@ impl RangeStaging {
         Ok(())
     }
     fn headers(&self, c: &mut ParseControl) -> Result<RangeNumericHeaders, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 9)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 9)?;
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<RangeNumericHeaders>() as u64,
         )?;
         // An actual non-ZST Vec obeys the header's allocation invariants; a
@@ -264,12 +265,14 @@ fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionErr
 /// the machine's own sequencing excludes. Faults of the registry rows around
 /// it (a missing stage, a missing attribute row) keep the registry-row label.
 fn integrity(c: &mut ParseControl) -> SessionError {
-    SessionError::Stop(c.fail_invariant(crate::parser::control::Invariant::RangeMachineState))
+    SessionError::Stop(
+        c.fail_invariant(crate::parser::control::HtmlParseInvariant::RangeMachineState),
+    )
 }
 impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
         c.require_identity(&self.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match self.effects.range.as_mut() {
             Some(stage) => Ok(stage),
             None => Err(latch_registry_row(c)),
@@ -278,9 +281,9 @@ impl SessionStorage {
     fn execute_range(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         loop {
             c.require_identity(&self.control)?;
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 const {
                     (mem::size_of::<Option<RangeNumericRequest>>()
                         + mem::size_of::<MachineKind>()
@@ -311,8 +314,8 @@ impl SessionStorage {
             let reply = match request {
                 RangeNumericRequest::SourceUnit { index } => {
                     let source = stage.source;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    c.charge(WorkCategory::InspectByte, 2)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    c.charge_unit_inspection()?;
                     let unit = admitted_input_string(&self.payloads, c, source)?
                         .code_units()
                         .get(index)
@@ -326,8 +329,8 @@ impl SessionStorage {
                         if let Some(cell) = cell {
                             let buffer = stage.buffers.get(cell.role());
                             buffer.require_disposal_owner(c)?;
-                            c.charge(WorkCategory::RecordVisit, 1)?;
-                            c.charge(WorkCategory::InspectByte, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
                             *out = Some(
                                 *buffer
                                     .as_slice()
@@ -361,9 +364,9 @@ impl SessionStorage {
                     // this actual admitted cell commit; normal reply admission polls.
                     #[cfg(test)]
                     {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         c.charge(
-                            WorkCategory::InspectByte,
+                            HtmlParseWorkCategory::InspectByte,
                             mem::size_of::<
                                 Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>,
                             >() as u64,
@@ -378,7 +381,7 @@ impl SessionStorage {
                             payload_write::<
                                 Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>,
                             >(c, 1)?;
-                            c.charge(WorkCategory::ProviderCall, 1)?;
+                            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                             if let Some((_, token)) = self.cancel_after_range_append.take() {
                                 token.cancel();
                             }
@@ -412,7 +415,7 @@ impl SessionStorage {
                     RangeNumericReply::Ack
                 }
                 RangeNumericRequest::ScalarStep => {
-                    c.charge(WorkCategory::StateStep, 1)?;
+                    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                     RangeNumericReply::Ack
                 }
                 RangeNumericRequest::ReserveOutput { required_len } => {
@@ -453,8 +456,8 @@ impl SessionStorage {
                 .ok_or_else(|| integrity(c))?
                 .receiver_bytes();
             c.admit_atomic_layout(receiver)?;
-            c.charge(WorkCategory::CopyByte, receiver as u64)?;
-            c.charge(WorkCategory::RecordWrite, 1)?;
+            c.charge(HtmlParseWorkCategory::CopyByte, receiver as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             self.range_stage(c)?
                 .machine
                 .as_mut()
@@ -465,15 +468,15 @@ impl SessionStorage {
             {
                 // Scheduling only. The real cursor reply above already committed
                 // its fold or power transition. The next normal checkpoint polls.
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<Option<RangeIngressCancellation>>() as u64,
                 )?;
                 if self.cancel_after_range_ingress.is_some() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         (mem::size_of::<MachineKind>()
                             + mem::size_of::<RangeNumericRequest>()
                             + 2 * mem::size_of::<usize>()) as u64,
@@ -497,7 +500,7 @@ impl SessionStorage {
                         let one_cell = coefficient.len() == 1;
                         let raw = admitted_input_string(&self.payloads, c, source)?;
                         let dot_one = if raw.len() == 2 {
-                            c.charge(WorkCategory::InspectByte, 4)?;
+                            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
                             raw.code_units() == [46, 49]
                         } else {
                             false
@@ -536,7 +539,7 @@ impl SessionStorage {
                                 false
                             };
                             if cancel {
-                                c.charge(WorkCategory::ProviderCall, 1)?;
+                                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                                 self.cancel_after_range_ingress
                                     .take()
                                     .unwrap()
@@ -561,12 +564,12 @@ impl SessionStorage {
             payload_write::<FloatingPointGrammarCursor<'_>>(c, 1)?;
             let mut grammar = FloatingPointGrammarCursor::new(raw.code_units(), mode);
             while !grammar.is_finished() {
-                c.charge(WorkCategory::StateStep, 1)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 if grammar.inspects_unit() {
-                    c.charge(WorkCategory::InspectByte, 2)?;
+                    c.charge_unit_inspection()?;
                 }
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<FloatingPointGrammarCursor<'_>>() as u64,
                 )?;
                 grammar.advance();
@@ -608,7 +611,7 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -618,7 +621,7 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
             {
@@ -671,7 +674,7 @@ impl SessionStorage {
         // its staging before it returns, and a stop ends the parse.
         if self.effects.range.is_some() {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         payload_write::<Option<RangeStaging>>(c, 1)?;
@@ -714,7 +717,7 @@ impl SessionStorage {
         let source_edge = self.range_payload_edge(c, source)?;
         let current = self.input_raw_slot(c, slot)?;
         let state = self.read_input_state(c, slot)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::Input { complete, .. }) = self.payloads.values.get(slot) else {
             return Err(integrity(c));
         };
@@ -749,10 +752,10 @@ impl SessionStorage {
         loop {
             // New source-policy receiver/action/reply work is explicit. Numeric
             // requests below retain their existing independent service charges.
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<HtmlInputRangeSanitizationCursor>() as u64,
             )?;
             payload_write::<A>(c, 1)?;
@@ -800,11 +803,11 @@ impl SessionStorage {
                         (None, None)
                     };
                     let branch = match branch {
-                        B::InvalidDefaultMinimum => RangeBranch::InvalidDefaultMinimum,
-                        B::InvalidDefaultMidpoint => RangeBranch::InvalidDefaultMidpoint,
-                        B::Underflow => RangeBranch::Underflow,
-                        B::Overflow => RangeBranch::Overflow,
-                        B::StepCorrection => RangeBranch::StepCorrection,
+                        B::InvalidDefaultMinimum => HtmlParseRangeBranch::InvalidDefaultMinimum,
+                        B::InvalidDefaultMidpoint => HtmlParseRangeBranch::InvalidDefaultMidpoint,
+                        B::Underflow => HtmlParseRangeBranch::Underflow,
+                        B::Overflow => HtmlParseRangeBranch::Overflow,
+                        B::StepCorrection => HtmlParseRangeBranch::StepCorrection,
                     };
                     self.range_emit(
                         c,
@@ -833,14 +836,14 @@ impl SessionStorage {
                         let any = {
                             let raw = admitted_input_string(&self.payloads, c, step_slot)?;
                             let keyword_len = HtmlInputNumericStep::ANY_KEYWORD.len();
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             let mut any = raw.len() == keyword_len;
                             if any {
                                 // The lengths are equal, so the enumeration covers
                                 // the keyword exactly.
                                 for (index, &unit) in raw.code_units().iter().enumerate() {
-                                    c.charge(WorkCategory::InspectByte, 2)?;
-                                    c.charge(WorkCategory::StateStep, 1)?;
+                                    c.charge_unit_inspection()?;
+                                    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                                     if !HtmlInputNumericStep::any_keyword_unit_matches(index, unit)
                                     {
                                         any = false;
@@ -851,14 +854,15 @@ impl SessionStorage {
                             any
                         };
                         if any {
-                            *operands.get_mut(RangeOperandRole::Step) = RangeOperand::Any(edge);
+                            *operands.get_mut(HtmlParseRangeOperandRole::Step) =
+                                RangeOperand::Any(edge);
                             HtmlInputNumericStep::Any
                         } else {
                             let (_, result) =
                                 self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
                             match result {
                                 Some(bits) => {
-                                    *operands.get_mut(RangeOperandRole::Step) =
+                                    *operands.get_mut(HtmlParseRangeOperandRole::Step) =
                                         RangeOperand::Finite(edge);
                                     HtmlInputNumericStep::Value(
                                         crate::HtmlFloatingPointNumber::try_from(f64::from_bits(
@@ -868,21 +872,21 @@ impl SessionStorage {
                                     )
                                 }
                                 None => {
-                                    *operands.get_mut(RangeOperandRole::Step) =
+                                    *operands.get_mut(HtmlParseRangeOperandRole::Step) =
                                         RangeOperand::ConversionFailed(edge);
                                     HtmlInputNumericStep::Failed
                                 }
                             }
                         }
                     } else {
-                        *operands.get_mut(RangeOperandRole::Step) = RangeOperand::Absent;
+                        *operands.get_mut(HtmlParseRangeOperandRole::Step) = RangeOperand::Absent;
                         HtmlInputNumericStep::Absent
                     };
                     R::Step(step)
                 }
                 A::ReadValueContent => {
                     let (content, operand) = self.range_content(c, node, "value")?;
-                    *operands.get_mut(RangeOperandRole::ValueContent) = operand;
+                    *operands.get_mut(HtmlParseRangeOperandRole::ValueContent) = operand;
                     R::ValueContent(content)
                 }
                 A::Lattice {
@@ -1010,13 +1014,13 @@ impl SessionStorage {
 #[cfg(test)]
 mod absent_owner_tests {
     use super::*;
-    use crate::parser::control::Invariant;
+    use crate::parser::control::HtmlParseInvariant;
 
     /// The integrity fault of the range machine is the machine's own staged
     /// buffers and numeric protocol, not a registry row that is missing.
     #[test]
     fn a_range_machine_integrity_fault_reports_the_range_machine_state() {
-        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
+        let state = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RangeMachineState);
         let mut c = crate::construction::tests::control();
         assert_eq!(integrity(&mut c), SessionError::Stop(state));
         assert_eq!(c.stop(), Some(state));
@@ -1029,7 +1033,7 @@ mod absent_owner_tests {
     /// the same staging, not a fault of the machine's own state.
     #[test]
     fn installing_a_range_value_over_held_staging_reports_the_pending_operation() {
-        let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+        let pending = HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects);
         // The default step's arithmetic alone exceeds the ordinary test budget.
         let unbounded = crate::construction::tests::limits()
             .into_builder()
@@ -1078,7 +1082,7 @@ mod absent_owner_tests {
     /// a state its sequencing excludes.
     #[test]
     fn a_row_fault_inside_the_range_policy_reports_the_registry_row() {
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         let unbounded = crate::construction::tests::limits()
             .into_builder()
             .work_credits(u64::MAX)
@@ -1122,7 +1126,7 @@ mod absent_owner_tests {
     /// present, so no registry row is missing: the machine state inside it is.
     #[test]
     fn executing_staging_without_a_machine_reports_the_range_machine_state() {
-        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
+        let state = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RangeMachineState);
         let mut c = crate::construction::tests::control();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let storage = session.active_mut().unwrap();
@@ -1148,7 +1152,7 @@ mod absent_owner_tests {
     /// not an operation that is still owed.
     #[test]
     fn range_work_without_its_owner_reports_the_registry_row() {
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
         for execute in [false, true] {
             let mut c = crate::construction::tests::control();
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();

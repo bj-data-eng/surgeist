@@ -15,7 +15,7 @@
 //! Longest probing stops when a prefix cannot continue, so its input inspections
 //! are bounded by the longest static name plus one, rather than query length.
 
-use super::control::{Invariant, ParseControl, ParseStop, WorkCategory};
+use super::control::{HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, ParseControl};
 #[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::{cmp::Ordering, mem::size_of};
@@ -50,46 +50,50 @@ pub(super) struct ReferenceMatch {
     pub(super) semicolon: bool,
 }
 
-fn admit_result<T>(control: &mut ParseControl) -> Result<(), ParseStop> {
-    control.charge(WorkCategory::CopyByte, size_of::<T>() as u64)?;
-    control.charge(WorkCategory::RecordWrite, 1)
+fn admit_result<T>(control: &mut ParseControl) -> Result<(), HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::CopyByte, size_of::<T>() as u64)?;
+    control.charge(HtmlParseWorkCategory::RecordWrite, 1)
 }
 
 fn record(
     index: usize,
     control: &mut ParseControl,
-) -> Result<&'static (&'static str, ReferenceValue), ParseStop> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+) -> Result<&'static (&'static str, ReferenceValue), HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     data::NAMED_REFERENCES
         .get(index)
-        .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
+        .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::TokenizerState))
 }
 
 fn compare_name(
     name: &str,
     query: &[u32],
     control: &mut ParseControl,
-) -> Result<Ordering, ParseStop> {
+) -> Result<Ordering, HtmlParseStop> {
     for (&point, &byte) in query.iter().zip(name.as_bytes()) {
-        control.charge(WorkCategory::InspectByte, 5)?;
+        control.charge(HtmlParseWorkCategory::InspectByte, 5)?;
         let order = u32::from(byte).cmp(&point);
         if order != Ordering::Equal {
             return Ok(order);
         }
     }
-    control.charge(WorkCategory::StateStep, 1)?;
+    control.charge(HtmlParseWorkCategory::StateStep, 1)?;
     Ok(name.len().cmp(&query.len()))
 }
 
-fn starts_with(name: &str, query: &[u32], control: &mut ParseControl) -> Result<bool, ParseStop> {
-    control.charge(WorkCategory::StateStep, 1)?;
+fn starts_with(
+    name: &str,
+    query: &[u32],
+    control: &mut ParseControl,
+) -> Result<bool, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::StateStep, 1)?;
     if query.len() > name.len() {
         return Ok(false);
     }
     // The query is no longer than the name, so the pairing visits every query
     // point.
     for (&point, &byte) in query.iter().zip(name.as_bytes()) {
-        control.charge(WorkCategory::InspectByte, 5)?;
+        control.charge(HtmlParseWorkCategory::InspectByte, 5)?;
         if u32::from(byte) != point {
             return Ok(false);
         }
@@ -101,12 +105,12 @@ fn starts_with(name: &str, query: &[u32], control: &mut ParseControl) -> Result<
 pub(super) fn lookup_name(
     query: &[u32],
     control: &mut ParseControl,
-) -> Result<NameLookup, ParseStop> {
+) -> Result<NameLookup, HtmlParseStop> {
     control.checkpoint()?;
     let mut lower = 0;
     let mut upper = data::NAMED_REFERENCES.len();
     while lower < upper {
-        control.charge(WorkCategory::StateStep, 1)?;
+        control.charge(HtmlParseWorkCategory::StateStep, 1)?;
         let middle = lower.midpoint(upper);
         let candidate = record(middle, control)?;
         if compare_name(candidate.0, query, control)? == Ordering::Less {
@@ -129,7 +133,7 @@ pub(super) fn lookup_name(
             false
         };
         control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             size_of::<ReferenceValue>() as u64,
         )?;
         admit_result::<NameLookup>(control)?;
@@ -153,7 +157,7 @@ pub(super) fn lookup_name(
 pub(super) fn exact_name(
     query: &[u32],
     control: &mut ParseControl,
-) -> Result<Option<ReferenceValue>, ParseStop> {
+) -> Result<Option<ReferenceValue>, HtmlParseStop> {
     let result = lookup_name(query, control)?;
     admit_result::<Option<ReferenceValue>>(control)?;
     Ok(match result {
@@ -171,17 +175,17 @@ pub(super) fn exact_name(
 pub(super) fn longest_name(
     query: &[u32],
     control: &mut ParseControl,
-) -> Result<Option<ReferenceMatch>, ParseStop> {
+) -> Result<Option<ReferenceMatch>, HtmlParseStop> {
     control.checkpoint()?;
     let mut longest = None;
     for length in 1..=query.len() {
-        control.charge(WorkCategory::StateStep, 1)?;
+        control.charge(HtmlParseWorkCategory::StateStep, 1)?;
         match lookup_name(&query[..length], control)? {
             NameLookup::Complete {
                 value,
                 can_continue,
             } => {
-                control.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+                control.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
                 let semicolon = query[length - 1] == u32::from(b';');
                 admit_result::<Option<ReferenceMatch>>(control)?;
                 longest = Some(ReferenceMatch {
@@ -208,19 +212,22 @@ pub(super) fn longest_name(
 pub(super) fn c1_replacement(
     code_point: u32,
     control: &mut ParseControl,
-) -> Result<Option<char>, ParseStop> {
+) -> Result<Option<char>, HtmlParseStop> {
     control.checkpoint()?;
-    control.charge(WorkCategory::StateStep, 1)?;
-    control.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+    control.charge(HtmlParseWorkCategory::StateStep, 1)?;
+    control.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
     let index = code_point.checked_sub(0x80).filter(|&index| index < 32);
     if let Some(index) = index {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        control.charge(WorkCategory::InspectByte, size_of::<Option<char>>() as u64)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<Option<char>>() as u64,
+        )?;
         admit_result::<Option<char>>(control)?;
         data::C1_REPLACEMENTS
             .get(index as usize)
             .copied()
-            .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
+            .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::TokenizerState))
     } else {
         admit_result::<Option<char>>(control)?;
         Ok(None)
@@ -275,7 +282,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             stop,
-            ParseStop::InternalInvariant(Invariant::TokenizerState)
+            HtmlParseStop::InternalInvariant(HtmlParseInvariant::TokenizerState)
         );
         assert_eq!(control.stop(), Some(stop));
     }
@@ -449,14 +456,14 @@ mod tests {
             c1_replacement(0x80, &mut control).unwrap(),
             Some('\u{20ac}')
         );
-        assert_eq!(control.usage().work(WorkCategory::InspectByte), 8);
-        assert_eq!(control.usage().work(WorkCategory::RecordVisit), 1);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::InspectByte), 8);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::RecordVisit), 1);
         assert_eq!(
-            control.usage().work(WorkCategory::CopyByte),
+            control.usage().work(HtmlParseWorkCategory::CopyByte),
             size_of::<Option<char>>() as u64
         );
-        assert_eq!(control.usage().work(WorkCategory::RecordWrite), 1);
-        assert_eq!(control.usage().work(WorkCategory::ProviderCall), 0);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::RecordWrite), 1);
+        assert_eq!(control.usage().work(HtmlParseWorkCategory::ProviderCall), 0);
     }
 
     #[test]
@@ -475,7 +482,7 @@ mod tests {
         let mut short = controller(credits - 1, HtmlParseCancellation::new());
         assert!(matches!(
             exact_name(&query, &mut short),
-            Err(ParseStop::LimitExceeded {
+            Err(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             })
@@ -505,7 +512,7 @@ mod tests {
         let mut limited = controller(credits, HtmlParseCancellation::new());
         assert!(matches!(
             longest_name(&points("notin;"), &mut limited),
-            Err(ParseStop::LimitExceeded {
+            Err(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             })
@@ -517,15 +524,21 @@ mod tests {
         let cancellation = HtmlParseCancellation::new();
         let mut control = controller(100_000, cancellation.clone());
         cancellation.cancel();
-        assert_eq!(lookup_name(&[], &mut control), Err(ParseStop::Cancelled));
+        assert_eq!(
+            lookup_name(&[], &mut control),
+            Err(HtmlParseStop::Cancelled)
+        );
         assert_eq!(
             exact_name(&points("amp;"), &mut control),
-            Err(ParseStop::Cancelled)
+            Err(HtmlParseStop::Cancelled)
         );
-        assert_eq!(longest_name(&[], &mut control), Err(ParseStop::Cancelled));
+        assert_eq!(
+            longest_name(&[], &mut control),
+            Err(HtmlParseStop::Cancelled)
+        );
         assert_eq!(
             c1_replacement(0x80, &mut control),
-            Err(ParseStop::Cancelled)
+            Err(HtmlParseStop::Cancelled)
         );
         assert_eq!(
             control
@@ -543,7 +556,7 @@ mod tests {
         let first = lookup_name(&points("amp;"), &mut control).unwrap_err();
         assert!(matches!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }

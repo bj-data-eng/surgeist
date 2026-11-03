@@ -18,7 +18,7 @@ use super::super::{
     references::{self, NameLookup, ReferenceValue},
 };
 use super::*;
-use token::DiagnosticCode::*;
+use token::HtmlTokenizerDiagnostic::*;
 
 enum ReferenceMark {
     Complete(InputCheckpoint),
@@ -53,14 +53,14 @@ pub(super) struct ReferenceContinuation {
     end: usize,
 }
 impl ReferenceContinuation {
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.query.release(c)?;
         if let Some(literal) = self.literal {
             literal.release(c)?;
         }
         Ok(())
     }
-    fn phase(&mut self, phase: ReferencePhase, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn phase(&mut self, phase: ReferencePhase, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<ReferencePhase>(), 1, c)?;
         self.phase = phase;
         Ok(())
@@ -82,7 +82,7 @@ impl ReferenceContinuation {
     }
 }
 impl Tokenizer<'_> {
-    fn reference_mark(&self, c: &mut ParseControl) -> Result<ReferenceMark, ParseStop> {
+    fn reference_mark(&self, c: &mut ParseControl) -> Result<ReferenceMark, HtmlParseStop> {
         #[cfg(test)]
         if self.cursor.is_progressive() {
             return Ok(ReferenceMark::Progressive(self.cursor.mark_progressive(c)?));
@@ -93,7 +93,7 @@ impl Tokenizer<'_> {
         &mut self,
         mark: &ReferenceMark,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         match mark {
             ReferenceMark::Complete(mark) => self.cursor.rewind(mark, c)?,
             #[cfg(test)]
@@ -101,7 +101,7 @@ impl Tokenizer<'_> {
         }
         self.sync_proofs(c)
     }
-    fn reference_peek(&self, c: &mut ParseControl) -> Result<InputPoll, ParseStop> {
+    fn reference_peek(&self, c: &mut ParseControl) -> Result<InputPoll, HtmlParseStop> {
         if self.cursor.is_progressive() {
             self.cursor.poll_peek(c)
         } else {
@@ -112,7 +112,7 @@ impl Tokenizer<'_> {
         &mut self,
         attribute: bool,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.save_proof_range(
             ProofRole::Reference,
             self.current.start(),
@@ -147,7 +147,7 @@ impl Tokenizer<'_> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<StepProgress, ParseStop> {
+    ) -> Result<StepProgress, HtmlParseStop> {
         admit_record_write(
             const { size_of::<Option<ReferenceContinuation>>() + size_of::<ReferenceContinuation>() },
             2,
@@ -156,7 +156,7 @@ impl Tokenizer<'_> {
         let mut reference = self
             .reference
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let result = self.reference_steps(&mut reference, c, evidence);
         match result {
             Ok(false) => {
@@ -189,10 +189,10 @@ impl Tokenizer<'_> {
         point: u32,
         attribute: bool,
         source: &HtmlSourceRange,
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if attribute {
             self.attribute_value(point, kind, source, c)
         } else {
@@ -204,9 +204,9 @@ impl Tokenizer<'_> {
         r: &mut ReferenceContinuation,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<bool, ParseStop> {
+    ) -> Result<bool, HtmlParseStop> {
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             match r.phase {
                 ReferencePhase::Start => {
                     let read = match self.reference_peek(c)? {
@@ -226,7 +226,7 @@ impl Tokenizer<'_> {
                                 0x26,
                                 r.attribute,
                                 &r.amp,
-                                OriginKind::Literal,
+                                HtmlParseOriginKind::Literal,
                                 c,
                                 evidence,
                             )?;
@@ -285,9 +285,9 @@ impl Tokenizer<'_> {
                         self.reference_rewind(&r.initial, c)?;
                         let mut literal = DraftText::new(c)?;
                         let added = if r.attribute {
-                            self.attribute_value(0x26, OriginKind::Literal, &r.amp, c)
+                            self.attribute_value(0x26, HtmlParseOriginKind::Literal, &r.amp, c)
                         } else {
-                            literal.push(0x26, &r.amp, OriginKind::Literal, c)
+                            literal.push(0x26, &r.amp, HtmlParseOriginKind::Literal, c)
                         };
                         if let Err(stop) = added {
                             literal.release(c)?;
@@ -315,7 +315,7 @@ impl Tokenizer<'_> {
                                 0x26,
                                 true,
                                 &r.amp,
-                                OriginKind::Literal,
+                                HtmlParseOriginKind::Literal,
                                 c,
                                 evidence,
                             )?;
@@ -329,14 +329,14 @@ impl Tokenizer<'_> {
                     }
                     let value = r
                         .replacement
-                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                     if r.attribute {
                         match value {
                             ReferenceValue::One(a) => self.reference_point(
                                 u32::from(a),
                                 true,
                                 &source,
-                                OriginKind::CharacterReference,
+                                HtmlParseOriginKind::CharacterReference,
                                 c,
                                 evidence,
                             )?,
@@ -345,7 +345,7 @@ impl Tokenizer<'_> {
                                     u32::from(a),
                                     true,
                                     &source,
-                                    OriginKind::CharacterReference,
+                                    HtmlParseOriginKind::CharacterReference,
                                     c,
                                     evidence,
                                 )?;
@@ -353,7 +353,7 @@ impl Tokenizer<'_> {
                                     u32::from(b),
                                     true,
                                     &source,
-                                    OriginKind::CharacterReference,
+                                    HtmlParseOriginKind::CharacterReference,
                                     c,
                                     evidence,
                                 )?;
@@ -365,20 +365,20 @@ impl Tokenizer<'_> {
                                 ReferenceValue::One(a) => text.push(
                                     u32::from(a),
                                     &source,
-                                    OriginKind::CharacterReference,
+                                    HtmlParseOriginKind::CharacterReference,
                                     c,
                                 )?,
                                 ReferenceValue::Two(a, b) => {
                                     text.push(
                                         u32::from(a),
                                         &source,
-                                        OriginKind::CharacterReference,
+                                        HtmlParseOriginKind::CharacterReference,
                                         c,
                                     )?;
                                     text.push(
                                         u32::from(b),
                                         &source,
-                                        OriginKind::CharacterReference,
+                                        HtmlParseOriginKind::CharacterReference,
                                         c,
                                     )?;
                                 }
@@ -416,7 +416,9 @@ impl Tokenizer<'_> {
                             } else {
                                 r.literal
                                     .as_mut()
-                                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
+                                    .ok_or_else(|| {
+                                        c.fail_invariant(HtmlParseInvariant::TokenizerState)
+                                    })?
                                     .push(p, &self.current, self.current_kind, c)?;
                             }
                             continue;
@@ -431,7 +433,7 @@ impl Tokenizer<'_> {
                         let text = r
                             .literal
                             .take()
-                            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
+                            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
                             .freeze(c)?;
                         self.emit(TokenKind::Text(text), r.amp.start(), r.end, c, evidence)?;
                     }
@@ -490,7 +492,7 @@ impl Tokenizer<'_> {
                             0x26,
                             r.attribute,
                             &r.amp,
-                            OriginKind::Literal,
+                            HtmlParseOriginKind::Literal,
                             c,
                             evidence,
                         )?;
@@ -542,7 +544,7 @@ impl Tokenizer<'_> {
                         value,
                         r.attribute,
                         &source,
-                        OriginKind::CharacterReference,
+                        HtmlParseOriginKind::CharacterReference,
                         c,
                         evidence,
                     )?;

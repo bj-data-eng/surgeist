@@ -12,14 +12,14 @@
 
 use super::super::{
     buffer::{FrozenUtf16, Utf16Buffer},
-    control::{OwnedVec, ParseControl, ParseStop, WorkCategory},
+    control::{HtmlParseStop, HtmlParseWorkCategory, OwnedVec, ParseControl},
     input::CodePoint,
 };
 use crate::HtmlParseResource;
 use crate::HtmlSourceRange;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OriginKind {
+pub enum HtmlParseOriginKind {
     Literal,
     Newline,
     AsciiLowercase,
@@ -30,28 +30,28 @@ pub enum OriginKind {
     /// Retains the whole original source interval and field cause.
     InputValueNormalization,
 }
-pub struct TextOrigin {
+pub struct HtmlParseTextOrigin {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) source: HtmlSourceRange,
-    pub(crate) kind: OriginKind,
+    pub(crate) kind: HtmlParseOriginKind,
 }
 pub(crate) struct Text {
     pub(crate) value: FrozenUtf16,
-    pub(crate) origins: OwnedVec<TextOrigin>,
+    pub(crate) origins: OwnedVec<HtmlParseTextOrigin>,
 }
 impl Text {
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.value.release(c)?;
         self.origins.release(c)
     }
 }
 pub(super) struct DraftText {
     pub(super) value: Utf16Buffer,
-    pub(super) origins: OwnedVec<TextOrigin>,
+    pub(super) origins: OwnedVec<HtmlParseTextOrigin>,
 }
 impl DraftText {
-    pub(super) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(super) fn new(c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         Ok(Self {
             value: Utf16Buffer::new(c)?,
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
@@ -61,21 +61,22 @@ impl DraftText {
         &mut self,
         point: u32,
         source: &HtmlSourceRange,
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let start = self.value.len();
-        let point = CodePoint::new(point)
-            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))?;
+        let point = CodePoint::new(point).ok_or_else(|| {
+            c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState)
+        })?;
         self.value.push_code_point(point, c)?;
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             std::mem::size_of::<HtmlSourceRange>() as u64,
         )?;
         self.origins.reserve_geometric(c, 1)?;
         self.origins.try_push(
             c,
-            TextOrigin {
+            HtmlParseTextOrigin {
                 start,
                 end: self.value.len(),
                 source: source.clone(),
@@ -85,14 +86,14 @@ impl DraftText {
     }
     /// Refuses a draft whose units and origin rows are not one to one, which
     /// a caller replaying single-unit code points position by position needs.
-    pub(super) fn require_paired(&self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn require_paired(&self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if self.value.len() == self.origins.len() {
             Ok(())
         } else {
-            Err(c.fail_invariant(super::super::control::Invariant::TokenizerState))
+            Err(c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState))
         }
     }
-    pub(super) fn freeze(self, c: &mut ParseControl) -> Result<Text, ParseStop> {
+    pub(super) fn freeze(self, c: &mut ParseControl) -> Result<Text, HtmlParseStop> {
         let Self { value, origins } = self;
         match value.freeze(c) {
             Ok(value) => Ok(Text { value, origins }),
@@ -102,15 +103,15 @@ impl DraftText {
             }
         }
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.value.release(c)?;
         self.origins.release(c)
     }
     /// Keeps temporary ownership until the last fallible write succeeds.
     pub(super) fn build(
         c: &mut ParseControl,
-        write: impl FnOnce(&mut Self, &mut ParseControl) -> Result<(), ParseStop>,
-    ) -> Result<Text, ParseStop> {
+        write: impl FnOnce(&mut Self, &mut ParseControl) -> Result<(), HtmlParseStop>,
+    ) -> Result<Text, HtmlParseStop> {
         let mut draft = Self::new(c)?;
         if let Err(stop) = write(&mut draft, c) {
             draft.release(c)?;
@@ -123,7 +124,7 @@ pub(super) fn freeze_pair(
     a: DraftText,
     b: DraftText,
     c: &mut ParseControl,
-) -> Result<(Text, Text), ParseStop> {
+) -> Result<(Text, Text), HtmlParseStop> {
     let a = match a.freeze(c) {
         Ok(a) => a,
         Err(stop) => {
@@ -151,7 +152,7 @@ pub(crate) struct Attribute {
     pub(crate) source: HtmlSourceRange,
 }
 impl Attribute {
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.name.release(c)?;
         self.value.release(c)
     }
@@ -183,12 +184,12 @@ pub(crate) struct Token {
     pub(crate) source: HtmlSourceRange,
 }
 impl Token {
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.kind.release(c)
     }
 }
 impl TokenKind {
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         match self {
             TokenKind::Text(t) | TokenKind::Comment(t) => t.release(c),
             TokenKind::Tag(mut t) => {
@@ -212,7 +213,7 @@ impl TokenKind {
 }
 /// Named normative tokenizer conditions, never inferred from inherited prose.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticCode {
+pub enum HtmlTokenizerDiagnostic {
     SurrogateInInputStream,
     NoncharacterInInputStream,
     ControlCharacterInInputStream,
@@ -265,7 +266,7 @@ pub enum DiagnosticCode {
     NoncharacterCharacterReference,
     ControlCharacterReference,
 }
-impl DiagnosticCode {
+impl HtmlTokenizerDiagnostic {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::SurrogateInInputStream => "surrogate-in-input-stream",
@@ -352,7 +353,7 @@ impl DiagnosticCode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticPhase {
+pub enum HtmlTokenizerDiagnosticPhase {
     InputStream,
     Tokenizer,
 }
@@ -367,7 +368,7 @@ pub(crate) enum Event {
     },
 }
 impl Event {
-    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<Option<&Token>, ParseStop> {
+    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<Option<&Token>, HtmlParseStop> {
         match self {
             Self::Token(t) => t.token(c).map(Some),
             _ => Ok(None),
@@ -381,7 +382,7 @@ impl Event {
             _ => None,
         }
     }
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         match self {
             Self::Token(t) => t.release(c),
             Self::Diagnostic(_) => Ok(()),
@@ -395,7 +396,7 @@ pub(crate) struct TokenEvent {
     record: OwnedVec<Token>,
 }
 impl TokenEvent {
-    pub(super) fn new(token: Token, c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(super) fn new(token: Token, c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         let mut record = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         if let Err((stop, token)) = record.try_push_recover(c, token) {
             token.release(c)?;
@@ -405,11 +406,10 @@ impl TokenEvent {
         Ok(Self { record })
     }
     /// The token this event owns until it is released or taken by value.
-    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<&Token, ParseStop> {
-        self.record
-            .as_slice()
-            .first()
-            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))
+    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<&Token, HtmlParseStop> {
+        self.record.as_slice().first().ok_or_else(|| {
+            c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState)
+        })
     }
     /// Test observation of a well-formed event, outside any controller.
     #[cfg(test)]
@@ -418,21 +418,22 @@ impl TokenEvent {
     }
     /// Test hook: the owner no longer holds its token, which is released.
     #[cfg(test)]
-    pub(crate) fn emptied(token: Token, c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(crate) fn emptied(token: Token, c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         let mut event = Self::new(token, c)?;
         if let Some(token) = event.record.try_pop(c)? {
             token.release(c)?;
         }
         Ok(event)
     }
-    pub(crate) fn into_token(mut self, c: &mut ParseControl) -> Result<Token, ParseStop> {
+    pub(crate) fn into_token(mut self, c: &mut ParseControl) -> Result<Token, HtmlParseStop> {
         match self.record.try_pop(c) {
             Ok(Some(token)) => {
                 self.record.release(c)?;
                 Ok(token)
             }
             Ok(None) => {
-                let stop = c.fail_invariant(super::super::control::Invariant::TokenizerState);
+                let stop =
+                    c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState);
                 self.record.release(c)?;
                 Err(stop)
             }
@@ -442,7 +443,7 @@ impl TokenEvent {
             }
         }
     }
-    pub(crate) fn release(mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         loop {
             let token = if c.stop().is_some() {
                 self.record.cleanup_pop(c)?
@@ -461,7 +462,7 @@ impl TokenEvent {
     }
 }
 
-impl DiagnosticCode {
+impl HtmlTokenizerDiagnostic {
     pub(crate) fn rule_anchor(self) -> &'static str {
         match self {
             Self::SurrogateInInputStream => "parse-error-surrogate-in-input-stream",
@@ -559,7 +560,7 @@ impl DiagnosticCode {
     }
 }
 
-impl TextOrigin {
+impl HtmlParseTextOrigin {
     pub fn start(&self) -> usize {
         self.start
     }
@@ -569,7 +570,7 @@ impl TextOrigin {
     pub fn source(&self) -> &HtmlSourceRange {
         &self.source
     }
-    pub fn kind(&self) -> OriginKind {
+    pub fn kind(&self) -> HtmlParseOriginKind {
         self.kind
     }
 }

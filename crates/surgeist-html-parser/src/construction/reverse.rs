@@ -4,7 +4,7 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AssociationRelation {
+pub enum HtmlParseAssociationRelation {
     Output,
     Creation,
     Original,
@@ -15,11 +15,11 @@ pub enum AssociationRelation {
     LexicalAnchor,
     Omission,
     Cause,
-    RangeDependency(RangeOperandRole),
-    ColorDependency(ColorOperandRole),
+    RangeDependency(HtmlParseRangeOperandRole),
+    ColorDependency(HtmlParseColorOperandRole),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ReverseQueryError {
+pub enum HtmlParseReverseError {
     ForeignSource,
     Coordinates,
     Reversed,
@@ -137,12 +137,12 @@ impl<'a> AssociationView<'a> {
         &self,
         query: &'a crate::HtmlSourceRange,
         cancellation: Option<&'a crate::HtmlParseCancellation>,
-    ) -> Result<ReverseCursor<'a>, ReverseQueryError> {
+    ) -> Result<ReverseCursor<'a>, HtmlParseReverseError> {
         if query.source() != self.source.identity() {
-            return Err(ReverseQueryError::ForeignSource);
+            return Err(HtmlParseReverseError::ForeignSource);
         }
         if query.coordinates() != self.source.coordinates() {
-            return Err(ReverseQueryError::Coordinates);
+            return Err(HtmlParseReverseError::Coordinates);
         }
         self.reverse_span(query.start(), query.end(), cancellation)
     }
@@ -151,12 +151,12 @@ impl<'a> AssociationView<'a> {
         start: usize,
         end: usize,
         cancellation: Option<&'a crate::HtmlParseCancellation>,
-    ) -> Result<ReverseCursor<'a>, ReverseQueryError> {
+    ) -> Result<ReverseCursor<'a>, HtmlParseReverseError> {
         if start > end {
-            return Err(ReverseQueryError::Reversed);
+            return Err(HtmlParseReverseError::Reversed);
         }
         if end > self.source.len() {
-            return Err(ReverseQueryError::OutOfBounds);
+            return Err(HtmlParseReverseError::OutOfBounds);
         }
         if let Some(text) = self.source.as_utf8() {
             // Each interior endpoint requires one byte inspection. Boundary
@@ -168,7 +168,7 @@ impl<'a> AssociationView<'a> {
                         .get(offset)
                         .is_some_and(|byte| byte & 0xc0 == 0x80)
                 {
-                    return Err(ReverseQueryError::Utf8Boundary);
+                    return Err(HtmlParseReverseError::Utf8Boundary);
                 }
             }
         }
@@ -188,7 +188,7 @@ impl<'a> AssociationView<'a> {
 struct SpatialLink {
     cause: usize,
     group: Option<usize>,
-    relation: AssociationRelation,
+    relation: HtmlParseAssociationRelation,
     start: usize,
     end: usize,
     historical: bool,
@@ -200,18 +200,22 @@ impl SpatialLink {
         for value in [
             self.group.unwrap_or(usize::MAX),
             match self.relation {
-                AssociationRelation::Output => 0,
-                AssociationRelation::Creation => 1,
-                AssociationRelation::Original => 2,
-                AssociationRelation::Incoming => 3,
-                AssociationRelation::Trigger => 4,
-                AssociationRelation::LexicalEnvelope => 5,
-                AssociationRelation::LexicalPart => 6,
-                AssociationRelation::LexicalAnchor => 7,
-                AssociationRelation::Omission => 8,
-                AssociationRelation::Cause => 9,
-                AssociationRelation::RangeDependency(role) => 10usize.wrapping_add(role.index()),
-                AssociationRelation::ColorDependency(role) => 14usize.wrapping_add(role.index()),
+                HtmlParseAssociationRelation::Output => 0,
+                HtmlParseAssociationRelation::Creation => 1,
+                HtmlParseAssociationRelation::Original => 2,
+                HtmlParseAssociationRelation::Incoming => 3,
+                HtmlParseAssociationRelation::Trigger => 4,
+                HtmlParseAssociationRelation::LexicalEnvelope => 5,
+                HtmlParseAssociationRelation::LexicalPart => 6,
+                HtmlParseAssociationRelation::LexicalAnchor => 7,
+                HtmlParseAssociationRelation::Omission => 8,
+                HtmlParseAssociationRelation::Cause => 9,
+                HtmlParseAssociationRelation::RangeDependency(role) => {
+                    10usize.wrapping_add(role.index())
+                }
+                HtmlParseAssociationRelation::ColorDependency(role) => {
+                    14usize.wrapping_add(role.index())
+                }
             },
             self.start,
             self.end,
@@ -258,7 +262,10 @@ impl SpatialIndex {
                 .get_mut(index, c)?
                 .ok_or(SessionError::WrongToken)?
             {
-                c.charge(WorkCategory::InspectByte, mem::size_of::<u8>() as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<u8>() as u64,
+                )?;
                 if entry.visits & mask != 0 {
                     return Ok((false, false));
                 }
@@ -283,9 +290,9 @@ impl SpatialIndex {
                     next.try_push(c, None)?;
                 }
                 for slot in self.slots.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<Option<SpatialEntry>>() as u64,
                     )?;
                     if let Some(entry) = *slot {
@@ -309,7 +316,10 @@ impl SpatialIndex {
             .get_mut(index, c)?
             .ok_or(SessionError::WrongToken)?;
         if let Some(entry) = slot {
-            c.charge(WorkCategory::InspectByte, mem::size_of::<u8>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                mem::size_of::<u8>() as u64,
+            )?;
             if entry.visits & mask != 0 {
                 return Ok((false, false));
             }
@@ -331,7 +341,7 @@ impl SpatialIndex {
         key: SpatialLink,
     ) -> Result<usize, SessionError> {
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<SpatialLink>() as u64,
         )?;
         let length = slots.len();
@@ -342,7 +352,7 @@ impl SpatialIndex {
         loop {
             let slot = slots.get_mut(index, c)?.ok_or(SessionError::WrongToken)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<Option<SpatialEntry>>() as u64,
             )?;
             if slot.is_none() || slot.as_ref().is_some_and(|entry| entry.key == key) {
@@ -375,9 +385,9 @@ impl ParseEvidence {
             // Token chronology is deliberately absent from this proof.
             reachable.reserve_geometric(c, self.native.causes.len())?;
             for (index, cause) in self.native.causes.as_slice().iter().enumerate() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<ConstructionCause>() as u64,
                 )?;
                 let mut has_source = cause.source.is_some();
@@ -386,17 +396,17 @@ impl ParseEvidence {
                 }
                 let trigger = if matches!(
                     cause.operation,
-                    ConstructionOperation::Merge
-                        | ConstructionOperation::Copy
-                        | ConstructionOperation::Replay
-                        | ConstructionOperation::Replacement
+                    HtmlParseConstructionOperation::Merge
+                        | HtmlParseConstructionOperation::Copy
+                        | HtmlParseConstructionOperation::Replay
+                        | HtmlParseConstructionOperation::Replacement
                 ) {
                     cause.trigger
                 } else {
                     None
                 };
                 for prior in [cause.original_cause, trigger] {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let Some(prior) = prior {
                         if prior >= index {
                             return Err(SessionError::WrongToken);
@@ -405,11 +415,11 @@ impl ParseEvidence {
                     }
                 }
                 for group in [cause.original, cause.incoming] {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let Some(group) = group {
                         let cause = {
                             c.charge(
-                                WorkCategory::InspectByte,
+                                HtmlParseWorkCategory::InspectByte,
                                 mem::size_of::<OriginGroup>() as u64,
                             )?;
                             self.native
@@ -437,14 +447,14 @@ impl ParseEvidence {
                             range.operands.map(RangeOperand::edge).into_array()
                         }
                         InputValueComputation::Color(color) => [
-                            color.operands.copy(ColorOperandRole::Alpha),
-                            color.operands.copy(ColorOperandRole::Colorspace),
+                            color.operands.copy(HtmlParseColorOperandRole::Alpha),
+                            color.operands.copy(HtmlParseColorOperandRole::Colorspace),
                             None,
                             None,
                         ],
                     };
                     for edge in operands {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let Some(edge) = edge {
                             has_source |= Self::spatial_reachable(c, &reachable, edge.cause)?;
                         }
@@ -454,7 +464,7 @@ impl ParseEvidence {
             }
             let mut index = 0;
             while index < self.native.native_rows {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let row = self
                     .native
                     .projection
@@ -464,7 +474,7 @@ impl ParseEvidence {
                     .get(index)
                     .ok_or(SessionError::WrongToken)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<NativeAssociation>() as u64,
                 )?;
                 payload_write::<(NativeDestination, SpatialLink)>(c, 1)?;
@@ -472,7 +482,7 @@ impl ParseEvidence {
                 let mut root = SpatialLink {
                     cause: row.cause,
                     group: row.group,
-                    relation: AssociationRelation::Creation,
+                    relation: HtmlParseAssociationRelation::Creation,
                     start: row.start,
                     end: row.end,
                     historical: false,
@@ -482,7 +492,7 @@ impl ParseEvidence {
                 // destination qualification remain distinct from atom boundaries.
                 if root.group.is_some() {
                     while index < self.native.native_rows {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let next = self
                             .native
                             .projection
@@ -492,7 +502,7 @@ impl ParseEvidence {
                             .get(index)
                             .ok_or_else(|| latch_registry_row(c))?;
                         c.charge(
-                            WorkCategory::InspectByte,
+                            HtmlParseWorkCategory::InspectByte,
                             mem::size_of::<NativeAssociation>() as u64,
                         )?;
                         if next.destination != destination || next.group != root.group {
@@ -534,7 +544,7 @@ impl ParseEvidence {
                             .ok_or(SessionError::WrongToken)?,
                     };
                     c.charge(
-                        WorkCategory::InspectByte,
+                        HtmlParseWorkCategory::InspectByte,
                         mem::size_of::<Option<SpatialSpan>>() as u64,
                     )?;
                     let span = *spans.get_mut(slot, c)?.ok_or(SessionError::WrongToken)?;
@@ -542,9 +552,9 @@ impl ParseEvidence {
                         && (span.start, span.end) == (root.start, root.end)
                     {
                         for row_index in span.begin..span.finish {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             c.charge(
-                                WorkCategory::InspectByte,
+                                HtmlParseWorkCategory::InspectByte,
                                 mem::size_of::<NativeAssociation>() as u64,
                             )?;
                             let original = self
@@ -559,7 +569,7 @@ impl ParseEvidence {
                                 c.require_source_range(source)?;
                             }
                             payload_write::<NativeAssociation>(c, 1)?;
-                            c.charge(WorkCategory::ProviderCall, 1)?;
+                            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                             let row = NativeAssociation {
                                 destination,
                                 group: original.group,
@@ -614,8 +624,11 @@ impl ParseEvidence {
         summary: &OwnedVec<bool>,
         index: usize,
     ) -> Result<bool, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, mem::size_of::<bool>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<bool>() as u64,
+        )?;
         summary
             .as_slice()
             .get(index)
@@ -646,7 +659,7 @@ impl ParseEvidence {
                 if !expand {
                     continue;
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let cause = self
                     .native
                     .causes
@@ -654,13 +667,13 @@ impl ParseEvidence {
                     .get(link.cause)
                     .ok_or(SessionError::WrongToken)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<ConstructionCause>() as u64,
                 )?;
                 if emit && let Some(source) = &cause.source {
                     c.require_source_range(source)?;
                     payload_write::<NativeAssociation>(c, 1)?;
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let row = NativeAssociation {
                         relation: link.relation,
                         group: link.group,
@@ -679,7 +692,7 @@ impl ParseEvidence {
                     rows.reserve_geometric(c, 1)?;
                     rows.try_push(c, row)?;
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 // `validate_spatial_link` named this cause above.
                 let cause = self
                     .native
@@ -687,7 +700,7 @@ impl ParseEvidence {
                     .as_slice()
                     .get(link.cause)
                     .ok_or_else(|| latch_registry_row(c))?;
-                payload_write::<(ConstructionOperation, [Option<usize>; 4])>(c, 1)?;
+                payload_write::<(HtmlParseConstructionOperation, [Option<usize>; 4])>(c, 1)?;
                 let (operation, original, incoming, original_cause, trigger) = (
                     cause.operation,
                     cause.original,
@@ -698,18 +711,21 @@ impl ParseEvidence {
                 if let Some(InputValueComputation::Range(range)) = cause.computation {
                     payload_write::<RangeComputation>(c, 1)?;
                     for role in [
-                        RangeOperandRole::Minimum,
-                        RangeOperandRole::Maximum,
-                        RangeOperandRole::Step,
-                        RangeOperandRole::ValueContent,
+                        HtmlParseRangeOperandRole::Minimum,
+                        HtmlParseRangeOperandRole::Maximum,
+                        HtmlParseRangeOperandRole::Step,
+                        HtmlParseRangeOperandRole::ValueContent,
                     ] {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let Some(edge) = range.operands.get(role).edge() {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
                                 link,
-                                (edge.group, AssociationRelation::RangeDependency(role)),
+                                (
+                                    edge.group,
+                                    HtmlParseAssociationRelation::RangeDependency(role),
+                                ),
                                 link.start..link.end,
                                 true,
                             )?;
@@ -718,14 +734,20 @@ impl ParseEvidence {
                 }
                 if let Some(InputValueComputation::Color(color)) = cause.computation {
                     payload_write::<ColorComputation>(c, 1)?;
-                    for role in [ColorOperandRole::Alpha, ColorOperandRole::Colorspace] {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                    for role in [
+                        HtmlParseColorOperandRole::Alpha,
+                        HtmlParseColorOperandRole::Colorspace,
+                    ] {
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if let Some(edge) = color.operands.copy(role) {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
                                 link,
-                                (edge.group, AssociationRelation::ColorDependency(role)),
+                                (
+                                    edge.group,
+                                    HtmlParseAssociationRelation::ColorDependency(role),
+                                ),
                                 link.start..link.end,
                                 true,
                             )?;
@@ -733,7 +755,7 @@ impl ParseEvidence {
                     }
                 }
                 let body = if let Some(group) = link.group {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     payload_write::<GroupBody>(c, 1)?;
                     // `validate_spatial_link` named this group above.
                     Some(
@@ -750,10 +772,10 @@ impl ParseEvidence {
                 // Chronological Token.trigger is retained in fixed history only.
                 let semantic_trigger = matches!(
                     operation,
-                    ConstructionOperation::Merge
-                        | ConstructionOperation::Copy
-                        | ConstructionOperation::Replay
-                        | ConstructionOperation::Replacement
+                    HtmlParseConstructionOperation::Merge
+                        | HtmlParseConstructionOperation::Copy
+                        | HtmlParseConstructionOperation::Replay
+                        | HtmlParseConstructionOperation::Replacement
                 );
                 let mut trigger_start = link.start;
                 if !link.historical
@@ -770,7 +792,7 @@ impl ParseEvidence {
                         &mut pending,
                         link,
                         cause,
-                        AssociationRelation::Trigger,
+                        HtmlParseAssociationRelation::Trigger,
                         (trigger_start)..(link.end),
                     )?;
                 }
@@ -780,7 +802,7 @@ impl ParseEvidence {
                         &mut pending,
                         link,
                         cause,
-                        AssociationRelation::Original,
+                        HtmlParseAssociationRelation::Original,
                         (link.start)..(link.end),
                     )?;
                 }
@@ -792,13 +814,13 @@ impl ParseEvidence {
                     }) => {
                         if original != Some(left)
                             || incoming != Some(right)
-                            || operation != ConstructionOperation::Merge
+                            || operation != HtmlParseConstructionOperation::Merge
                         {
                             return Err(SessionError::WrongToken);
                         }
-                        c.charge(WorkCategory::RecordVisit, 2)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                         c.charge(
-                            WorkCategory::InspectByte,
+                            HtmlParseWorkCategory::InspectByte,
                             const { (2 * mem::size_of::<usize>()) as u64 },
                         )?;
                         let left_units = self
@@ -834,7 +856,7 @@ impl ParseEvidence {
                             c,
                             &mut pending,
                             link,
-                            (right, AssociationRelation::Incoming),
+                            (right, HtmlParseAssociationRelation::Incoming),
                             (middle)..(link.end),
                             link.historical,
                         )?;
@@ -842,19 +864,19 @@ impl ParseEvidence {
                             c,
                             &mut pending,
                             link,
-                            (left, AssociationRelation::Original),
+                            (left, HtmlParseAssociationRelation::Original),
                             (link.start)..(if link.historical { link.end } else { middle }),
                             link.historical,
                         )?;
                     }
                     Some(GroupBody::Alias { original: data }) => {
-                        if operation == ConstructionOperation::Replacement {
+                        if operation == HtmlParseConstructionOperation::Replacement {
                             if let Some(old) = original {
                                 self.push_spatial_group(
                                     c,
                                     &mut pending,
                                     link,
-                                    (old, AssociationRelation::Original),
+                                    (old, HtmlParseAssociationRelation::Original),
                                     (link.start)..(link.end),
                                     true,
                                 )?;
@@ -866,7 +888,7 @@ impl ParseEvidence {
                                     c,
                                     &mut pending,
                                     link,
-                                    (data, AssociationRelation::Incoming),
+                                    (data, HtmlParseAssociationRelation::Incoming),
                                     (link.start)..(link.end),
                                     link.historical,
                                 )?;
@@ -874,14 +896,16 @@ impl ParseEvidence {
                                 return Err(SessionError::WrongToken);
                             }
                         } else {
-                            if operation != ConstructionOperation::Copy || original != Some(data) {
+                            if operation != HtmlParseConstructionOperation::Copy
+                                || original != Some(data)
+                            {
                                 return Err(SessionError::WrongToken);
                             }
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
                                 link,
-                                (data, AssociationRelation::Original),
+                                (data, HtmlParseAssociationRelation::Original),
                                 (link.start)..(link.end),
                                 link.historical,
                             )?;
@@ -889,8 +913,8 @@ impl ParseEvidence {
                     }
                     Some(GroupBody::Leaf { .. }) | None => {
                         for (group, relation) in [
-                            (incoming, AssociationRelation::Incoming),
-                            (original, AssociationRelation::Original),
+                            (incoming, HtmlParseAssociationRelation::Incoming),
+                            (original, HtmlParseAssociationRelation::Original),
                         ] {
                             if let Some(group) = group {
                                 self.push_spatial_group(
@@ -917,14 +941,14 @@ impl ParseEvidence {
         c: &mut ParseControl,
         link: SpatialLink,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if link.start > link.end || self.native.causes.as_slice().get(link.cause).is_none() {
             return Err(SessionError::WrongToken);
         }
         if let Some(index) = link.group {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<OriginGroup>() as u64,
             )?;
             let group = self
@@ -947,14 +971,17 @@ impl ParseEvidence {
         c: &mut ParseControl,
         pending: &mut OwnedVec<SpatialLink>,
         parent: SpatialLink,
-        target: (usize, AssociationRelation),
+        target: (usize, HtmlParseAssociationRelation),
         extent: std::ops::Range<usize>,
         historical: bool,
     ) -> Result<(), SessionError> {
         let (index, relation) = target;
         let (start, end) = (extent.start, extent.end);
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<usize>() as u64,
+        )?;
         let group = self
             .native
             .groups
@@ -984,7 +1011,7 @@ impl ParseEvidence {
         pending: &mut OwnedVec<SpatialLink>,
         parent: SpatialLink,
         cause: usize,
-        relation: AssociationRelation,
+        relation: HtmlParseAssociationRelation,
         extent: std::ops::Range<usize>,
     ) -> Result<(), SessionError> {
         let (start, end) = (extent.start, extent.end);
@@ -1010,7 +1037,7 @@ impl ParseEvidence {
     /// separately and current field lineage was flattened under parse admission.
     pub(super) fn project_causes(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for index in 0..self.native.causes.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let cause = self
                 .native
                 .causes
@@ -1021,10 +1048,10 @@ impl ParseEvidence {
                 c.require_source_range(source)?;
             }
             payload_write::<NativeAssociation>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let row = NativeAssociation {
                 group: None,
-                relation: AssociationRelation::Cause,
+                relation: HtmlParseAssociationRelation::Cause,
                 destination: NativeDestination::Cause(index),
                 start: 0,
                 end: 0,
@@ -1132,7 +1159,7 @@ mod tests {
     fn make_rows(source: &crate::HtmlSource) -> [NativeAssociation; 5] {
         std::array::from_fn(|index| NativeAssociation {
             group: None,
-            relation: AssociationRelation::Output,
+            relation: HtmlParseAssociationRelation::Output,
             destination: NativeDestination::Node(index),
             start: 0,
             end: 0,
@@ -1179,8 +1206,8 @@ mod tests {
                 &mut c,
                 ParserTrigger {
                     source: &range,
-                    rule: ParserRule::Foreign,
-                    family: evidence::DiagnosticToken::Text,
+                    rule: HtmlParserRule::Foreign,
+                    family: evidence::HtmlParseTokenFamily::Text,
                 },
             )
             .unwrap();
@@ -1189,11 +1216,11 @@ mod tests {
             origins
                 .try_push(
                     &mut c,
-                    TextOrigin {
+                    HtmlParseTextOrigin {
                         start: 0,
                         end: 1,
                         source: source.range(begin, begin + 1).unwrap(),
-                        kind: OriginKind::Literal,
+                        kind: HtmlParseOriginKind::Literal,
                     },
                 )
                 .unwrap();
@@ -1228,7 +1255,8 @@ mod tests {
         let mut incoming = rows
             .iter()
             .filter(|row| {
-                row.destination == destination && row.relation == AssociationRelation::Incoming
+                row.destination == destination
+                    && row.relation == HtmlParseAssociationRelation::Incoming
             })
             .map(|row| {
                 assert_eq!(row.cause, cause.index);
@@ -1244,7 +1272,7 @@ mod tests {
                 row.destination == destination
                     && row.cause == cause.index
                     && row.group == Some(a.index)
-                    && row.relation == AssociationRelation::Original
+                    && row.relation == HtmlParseAssociationRelation::Original
             })
             .map(|row| (row.start, row.end))
             .collect();
@@ -1254,7 +1282,7 @@ mod tests {
                 row.destination == destination
                     && row.cause == cause.index
                     && row.group.is_none()
-                    && row.relation == AssociationRelation::Trigger
+                    && row.relation == HtmlParseAssociationRelation::Trigger
             })
             .map(|row| (row.start, row.end))
             .collect();
@@ -1268,7 +1296,7 @@ mod tests {
                 if original == left.index && incoming == right.index && actual == offset)
             );
             let fixed = &evidence.native.causes.as_slice()[header.cause];
-            assert_eq!(fixed.operation, ConstructionOperation::Merge);
+            assert_eq!(fixed.operation, HtmlParseConstructionOperation::Merge);
             assert_eq!(
                 (fixed.original, fixed.incoming, fixed.trigger),
                 (Some(left.index), Some(right.index), Some(cause.index))
@@ -1283,7 +1311,7 @@ mod tests {
             match cursor.advance() {
                 ReverseStep::Match(actual) => {
                     assert!(std::ptr::eq(actual, row));
-                    if actual.relation == AssociationRelation::Incoming {
+                    if actual.relation == HtmlParseAssociationRelation::Incoming {
                         matched_incoming += 1;
                     }
                 }
@@ -1327,8 +1355,8 @@ mod tests {
                 c,
                 ParserTrigger {
                     source: &range,
-                    rule: ParserRule::Foreign,
-                    family: evidence::DiagnosticToken::Text,
+                    rule: HtmlParserRule::Foreign,
+                    family: evidence::HtmlParseTokenFamily::Text,
                 },
             )
             .unwrap();
@@ -1336,11 +1364,11 @@ mod tests {
         origins
             .try_push(
                 c,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: 0,
                     end: 1,
                     source: range,
-                    kind: OriginKind::Literal,
+                    kind: HtmlParseOriginKind::Literal,
                 },
             )
             .unwrap();
@@ -1383,7 +1411,7 @@ mod tests {
             if cap == 12 {
                 assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         limit: 12,
                         current: 12,
@@ -1411,7 +1439,7 @@ mod tests {
                 for (row, node) in rows[2..].iter().zip([7, 8]) {
                     assert!(row.destination == NativeDestination::Node(node));
                     assert_eq!((row.start, row.end), (0, 1));
-                    assert_eq!(row.relation, AssociationRelation::Creation);
+                    assert_eq!(row.relation, HtmlParseAssociationRelation::Creation);
                     assert_eq!(row.group, Some(0));
                     assert_eq!(row.cause, 1);
                     assert_eq!(row.source.as_ref(), Some(&source.range(0, 1).unwrap()));
@@ -1467,7 +1495,7 @@ mod tests {
         cancel.cancel();
         assert_eq!(
             evidence.project_lineage(&mut c),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         let first = c.first_stop_usage().unwrap().clone();
         assert_eq!(
@@ -1479,14 +1507,14 @@ mod tests {
         let work = c.usage().clone();
         evidence.release(&mut c).unwrap();
         for category in [
-            WorkCategory::StateStep,
-            WorkCategory::InputUnitRead,
-            WorkCategory::InspectByte,
-            WorkCategory::CopyByte,
-            WorkCategory::RecordVisit,
-            WorkCategory::RecordWrite,
-            WorkCategory::ReserveByte,
-            WorkCategory::ProviderCall,
+            HtmlParseWorkCategory::StateStep,
+            HtmlParseWorkCategory::InputUnitRead,
+            HtmlParseWorkCategory::InspectByte,
+            HtmlParseWorkCategory::CopyByte,
+            HtmlParseWorkCategory::RecordVisit,
+            HtmlParseWorkCategory::RecordWrite,
+            HtmlParseWorkCategory::ReserveByte,
+            HtmlParseWorkCategory::ProviderCall,
         ] {
             assert_eq!(c.usage().work(category), work.work(category));
         }
@@ -1496,8 +1524,9 @@ mod tests {
 
     #[test]
     fn lineage_over_more_native_rows_than_the_projection_holds_reports_the_registry_row() {
-        let registry_row =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let registry_row = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
         let source = crate::HtmlSource::utf8("A");
         let mut c = ParseControl::new(
             crate::parser::tree_builder::tests::limits(100),
@@ -1580,20 +1609,20 @@ mod tests {
         let view = make_view(&source, &rows);
         assert!(matches!(
             view.reverse_span(3, 4, None),
-            Err(ReverseQueryError::Utf8Boundary)
+            Err(HtmlParseReverseError::Utf8Boundary)
         ));
         assert!(matches!(
             view.reverse_span(2, 7, None),
-            Err(ReverseQueryError::OutOfBounds)
+            Err(HtmlParseReverseError::OutOfBounds)
         ));
         assert!(matches!(
             view.reverse_span(2, 1, None),
-            Err(ReverseQueryError::Reversed)
+            Err(HtmlParseReverseError::Reversed)
         ));
         let foreign = crate::HtmlSource::utf8("AB😀").range(0, 1).unwrap();
         assert!(matches!(
             view.reverse(&foreign, None),
-            Err(ReverseQueryError::ForeignSource)
+            Err(HtmlParseReverseError::ForeignSource)
         ));
         let source =
             crate::HtmlSource::utf16(DocumentString::from_utf16(vec![0xd83d, 0xde00, 0xd800]));
@@ -1615,8 +1644,8 @@ mod tests {
                 c,
                 ParserTrigger {
                     source: &range,
-                    rule: ParserRule::Foreign,
-                    family: evidence::DiagnosticToken::Text,
+                    rule: HtmlParserRule::Foreign,
+                    family: evidence::HtmlParseTokenFamily::Text,
                 },
             )
             .unwrap();
@@ -1626,11 +1655,11 @@ mod tests {
             origins
                 .try_push(
                     c,
-                    TextOrigin {
+                    HtmlParseTextOrigin {
                         start: 0,
                         end: input.len(),
                         source: range,
-                        kind: OriginKind::Literal,
+                        kind: HtmlParseOriginKind::Literal,
                     },
                 )
                 .unwrap();
@@ -1648,8 +1677,8 @@ mod tests {
                 c,
                 ParserTrigger {
                     source: &source.range(at, at + 1).unwrap(),
-                    rule: ParserRule::Foreign,
-                    family: evidence::DiagnosticToken::Text,
+                    rule: HtmlParserRule::Foreign,
+                    family: evidence::HtmlParseTokenFamily::Text,
                 },
             )
             .unwrap()
@@ -1672,7 +1701,7 @@ mod tests {
     }
     type SpatialObservation = (
         usize,
-        AssociationRelation,
+        HtmlParseAssociationRelation,
         usize,
         usize,
         usize,
@@ -1738,7 +1767,7 @@ mod tests {
             for expected in [
                 (
                     node,
-                    AssociationRelation::Original,
+                    HtmlParseAssociationRelation::Original,
                     0,
                     2,
                     0,
@@ -1748,7 +1777,7 @@ mod tests {
                 ),
                 (
                     node,
-                    AssociationRelation::Incoming,
+                    HtmlParseAssociationRelation::Incoming,
                     2,
                     3,
                     3,
@@ -1758,7 +1787,7 @@ mod tests {
                 ),
                 (
                     node,
-                    AssociationRelation::Trigger,
+                    HtmlParseAssociationRelation::Trigger,
                     0,
                     2,
                     2,
@@ -1768,7 +1797,7 @@ mod tests {
                 ),
                 (
                     node,
-                    AssociationRelation::Trigger,
+                    HtmlParseAssociationRelation::Trigger,
                     2,
                     3,
                     3,
@@ -1811,7 +1840,7 @@ mod tests {
             vec![
                 (
                     7,
-                    AssociationRelation::Original,
+                    HtmlParseAssociationRelation::Original,
                     0,
                     1,
                     0,
@@ -1819,10 +1848,19 @@ mod tests {
                     Some(a.index),
                     a_cause
                 ),
-                (7, AssociationRelation::Trigger, 1, 3, 0, 1, None, a_cause),
                 (
                     7,
-                    AssociationRelation::Incoming,
+                    HtmlParseAssociationRelation::Trigger,
+                    1,
+                    3,
+                    0,
+                    1,
+                    None,
+                    a_cause
+                ),
+                (
+                    7,
+                    HtmlParseAssociationRelation::Incoming,
                     3,
                     4,
                     0,
@@ -1830,10 +1868,19 @@ mod tests {
                     Some(a.index),
                     a_cause
                 ),
-                (7, AssociationRelation::Trigger, 3, 4, 0, 1, None, a_cause),
                 (
                     7,
-                    AssociationRelation::Incoming,
+                    HtmlParseAssociationRelation::Trigger,
+                    3,
+                    4,
+                    0,
+                    1,
+                    None,
+                    a_cause
+                ),
+                (
+                    7,
+                    HtmlParseAssociationRelation::Incoming,
                     4,
                     4,
                     1,
@@ -1843,7 +1890,7 @@ mod tests {
                 ),
                 (
                     7,
-                    AssociationRelation::Trigger,
+                    HtmlParseAssociationRelation::Trigger,
                     4,
                     4,
                     1,
@@ -1878,7 +1925,7 @@ mod tests {
             vec![
                 (
                     7,
-                    AssociationRelation::Creation,
+                    HtmlParseAssociationRelation::Creation,
                     0,
                     1,
                     0,
@@ -1888,7 +1935,7 @@ mod tests {
                 ),
                 (
                     8,
-                    AssociationRelation::Creation,
+                    HtmlParseAssociationRelation::Creation,
                     0,
                     1,
                     1,
@@ -1927,7 +1974,7 @@ mod tests {
         let rows = spatial_rows(evidence);
         let cause =
             &evidence.native.causes.as_slice()[evidence.require_group(&group).unwrap().cause];
-        assert_eq!(cause.operation, ConstructionOperation::Replay);
+        assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
         assert_eq!(cause.original_cause, Some(original.index));
         assert_eq!(cause.trigger, Some(trigger.index));
         session.release(&mut c).unwrap();
@@ -1937,7 +1984,7 @@ mod tests {
             vec![
                 (
                     7,
-                    AssociationRelation::Original,
+                    HtmlParseAssociationRelation::Original,
                     0,
                     3,
                     0,
@@ -1947,7 +1994,7 @@ mod tests {
                 ),
                 (
                     7,
-                    AssociationRelation::Trigger,
+                    HtmlParseAssociationRelation::Trigger,
                     0,
                     3,
                     1,
@@ -2029,7 +2076,10 @@ mod tests {
             );
             let reset_cause =
                 &evidence.native.causes.as_slice()[evidence.require_group(&reset).unwrap().cause];
-            assert_eq!(reset_cause.operation, ConstructionOperation::Replacement);
+            assert_eq!(
+                reset_cause.operation,
+                HtmlParseConstructionOperation::Replacement
+            );
             assert_eq!(reset_cause.original, Some(old_id));
             let actual_incoming = reset_cause.incoming.unwrap();
             session.release(&mut c).unwrap();
@@ -2038,7 +2088,7 @@ mod tests {
             for expected in [
                 (
                     7,
-                    AssociationRelation::Original,
+                    HtmlParseAssociationRelation::Original,
                     0,
                     units,
                     0,
@@ -2048,7 +2098,7 @@ mod tests {
                 ),
                 (
                     7,
-                    AssociationRelation::Incoming,
+                    HtmlParseAssociationRelation::Incoming,
                     0,
                     units,
                     if empty { 3 } else { 2 },
@@ -2058,7 +2108,7 @@ mod tests {
                 ),
                 (
                     7,
-                    AssociationRelation::Trigger,
+                    HtmlParseAssociationRelation::Trigger,
                     0,
                     units,
                     3,
@@ -2090,7 +2140,7 @@ mod tests {
             if cap == 7 {
                 assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::SourceMapEntries,
                         limit: 7,
                         current: 7,
@@ -2157,14 +2207,14 @@ mod tests {
             for (group, original) in [(&once, a.index), (&twice, once.index)] {
                 let cause = &evidence.native.causes.as_slice()
                     [evidence.require_group(group).unwrap().cause];
-                assert_eq!(cause.operation, ConstructionOperation::Copy);
+                assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
                 assert_eq!(cause.original, Some(original));
                 assert_eq!(cause.trigger, Some(trigger.index));
             }
             if cap == 23 {
                 assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         limit: 23,
                         current: 23,
@@ -2203,7 +2253,7 @@ mod tests {
                     vec![
                         (
                             7,
-                            AssociationRelation::Original,
+                            HtmlParseAssociationRelation::Original,
                             0,
                             1,
                             0,
@@ -2213,7 +2263,7 @@ mod tests {
                         ),
                         (
                             7,
-                            AssociationRelation::Trigger,
+                            HtmlParseAssociationRelation::Trigger,
                             0,
                             1,
                             1,
@@ -2267,7 +2317,7 @@ mod tests {
             if cap == 42 {
                 assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         limit: 42,
                         current: 42,
@@ -2303,11 +2353,32 @@ mod tests {
                 crate::parser::tree_builder::tests::assert_released(&c);
                 assert_eq!(rows.len(), 5);
                 for (role, start, end, begin, finish, group) in [
-                    (AssociationRelation::Original, 0, 1, 0, 1, Some(a.index)),
-                    (AssociationRelation::Incoming, 1, 2, 1, 2, Some(b.index)),
-                    (AssociationRelation::Incoming, 2, 3, 2, 3, Some(third.index)),
-                    (AssociationRelation::Trigger, 1, 2, 1, 2, None),
-                    (AssociationRelation::Trigger, 2, 3, 2, 3, None),
+                    (
+                        HtmlParseAssociationRelation::Original,
+                        0,
+                        1,
+                        0,
+                        1,
+                        Some(a.index),
+                    ),
+                    (
+                        HtmlParseAssociationRelation::Incoming,
+                        1,
+                        2,
+                        1,
+                        2,
+                        Some(b.index),
+                    ),
+                    (
+                        HtmlParseAssociationRelation::Incoming,
+                        2,
+                        3,
+                        2,
+                        3,
+                        Some(third.index),
+                    ),
+                    (HtmlParseAssociationRelation::Trigger, 1, 2, 1, 2, None),
+                    (HtmlParseAssociationRelation::Trigger, 2, 3, 2, 3, None),
                 ] {
                     assert_eq!(
                         rows.iter()
@@ -2359,11 +2430,11 @@ mod tests {
         let mut maps = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
         maps.try_push(
             &mut c,
-            TextOrigin {
+            HtmlParseTextOrigin {
                 start: 0,
                 end: 1,
                 source: source.range(0, 1).unwrap(),
-                kind: OriginKind::AsciiLowercase,
+                kind: HtmlParseOriginKind::AsciiLowercase,
             },
         )
         .unwrap();
@@ -2409,7 +2480,7 @@ mod tests {
         assert_eq!(origins.len(), 1);
         assert_eq!(
             (origins[0].start, origins[0].end, origins[0].kind),
-            (0, 1, OriginKind::AsciiLowercase)
+            (0, 1, HtmlParseOriginKind::AsciiLowercase)
         );
         assert_eq!(origins[0].source, source.range(0, 1).unwrap());
         let mut materialized = Some(
@@ -2430,7 +2501,7 @@ mod tests {
         assert!(matches!(header.body, GroupBody::Leaf { .. }));
         assert_eq!(
             evidence.native.causes.as_slice()[header.cause].operation,
-            ConstructionOperation::Replacement
+            HtmlParseConstructionOperation::Replacement
         );
         assert!(
             evidence.native.groups.as_slice()[original_id]
@@ -2438,7 +2509,7 @@ mod tests {
                 .is_some()
         );
         let direct = &evidence.native.projection.as_ref().unwrap().as_slice()[0];
-        assert_eq!(direct.kind, Some(OriginKind::AsciiLowercase));
+        assert_eq!(direct.kind, Some(HtmlParseOriginKind::AsciiLowercase));
         assert_eq!(direct.source, Some(source.range(0, 1).unwrap()));
         assert_eq!(direct.group, Some(group.index));
         session.release(&mut c).unwrap();
@@ -2447,7 +2518,7 @@ mod tests {
         for expected in [
             (
                 7,
-                AssociationRelation::Original,
+                HtmlParseAssociationRelation::Original,
                 0,
                 1,
                 0,
@@ -2457,7 +2528,7 @@ mod tests {
             ),
             (
                 7,
-                AssociationRelation::Trigger,
+                HtmlParseAssociationRelation::Trigger,
                 0,
                 1,
                 0,
@@ -2467,7 +2538,7 @@ mod tests {
             ),
             (
                 7,
-                AssociationRelation::Trigger,
+                HtmlParseAssociationRelation::Trigger,
                 0,
                 1,
                 1,
@@ -2517,7 +2588,7 @@ mod tests {
         );
         assert!(matches!(
             evidence.project_lineage(&mut c),
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             }))
@@ -2573,7 +2644,7 @@ mod tests {
             assert_eq!(
                 (cause.operation, cause.original, cause.trigger),
                 (
-                    ConstructionOperation::Copy,
+                    HtmlParseConstructionOperation::Copy,
                     Some(prior),
                     Some(original_cause)
                 )
@@ -2587,9 +2658,9 @@ mod tests {
                 .unwrap();
         }
         evidence.native.native_rows = DESTINATIONS;
-        let before = c.usage().work(WorkCategory::RecordVisit);
+        let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
         evidence.project_lineage(&mut c).unwrap();
-        let visits = c.usage().work(WorkCategory::RecordVisit) - before;
+        let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
         let rows = spatial_rows(&evidence);
         assert_eq!(evidence.history_counts(), (1, COPIES + 1, COPIES + 2));
         assert_eq!(
@@ -2607,7 +2678,7 @@ mod tests {
                 &[
                     (
                         node,
-                        AssociationRelation::Original,
+                        HtmlParseAssociationRelation::Original,
                         0,
                         1,
                         0,
@@ -2617,7 +2688,7 @@ mod tests {
                     ),
                     (
                         node,
-                        AssociationRelation::Trigger,
+                        HtmlParseAssociationRelation::Trigger,
                         0,
                         1,
                         0,
