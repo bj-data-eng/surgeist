@@ -125,6 +125,15 @@ declarations on distinct axes retain their role. Minimum/maximum getters keep
 their existing genuine computed projection before the shared mapping. Gap shorthand
 repeats a value only when one component was authored. An unsupported second
 component remains absent for validation and cannot be replaced by the first.
+Padding and inset inline-start/inline-end declarations share one mapping through
+that node's actual writing mode and direction. CSSOM supplies expanded logical
+longhands for authored inline shorthands. Physical and logical declarations on
+the same physical side refuse with `Root context: ConflictingEdgeDeclarations`;
+distinct or opposite sides remain independent, with existing literal, calc and
+percentage projection checks. The absolute-root-local source closure refuses
+logical block padding/inset declarations with
+`Root context: UnrepresentedLogicalBlockEdges`; this does not add block-edge,
+border or margin normalization or a cascade interpreter.
 Broader source profiles or a changed base asset need independent qualification.
 
 Extents come from the standards-mode unscaled CSSOM viewport after scrollbar

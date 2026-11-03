@@ -465,10 +465,15 @@ function qualifyRootLocalSubtree(root, unshifted) {
     const value = root.style.getPropertyValue(property);
     if (/(?:^|[^a-z-])(?:stretch|fit-content|(?:-webkit-)?fill-available|available|contain)(?:$|[^a-z-])/i.test(value)) fail('RootLocalBlockSizeDependency');
   }
+  const logicalBlockEdges = ['padding-block-start', 'padding-block-end',
+    'inset-block-start', 'inset-block-end'];
   const pending = [root];
   while (pending.length) {
     const node = pending.pop();
     const style = getComputedStyle(node);
+    if (logicalBlockEdges.some(property => styleDeclarationValue(node.style, property))) {
+      fail('UnrepresentedLogicalBlockEdges');
+    }
     if (node !== root && !['static', 'relative', 'absolute'].includes(style.position)) fail('RootLocalExternalFrame');
     if (!unshifted(style) || style.clipPath !== 'none' ||
         !['normal', 'none'].includes(style.content)) fail('RootLocalExternalFrame');
@@ -920,6 +925,20 @@ function representedEdges(edges) {
     requireSizingProjection(edges[edge], projected?.[edge]);
   }
   return projected;
+}
+
+function representedInlineEdges(edges, inlineStart, inlineEnd, computedStyle) {
+  for (const [edge, input] of [
+    [inlineStartEdge(computedStyle), inlineStart],
+    [inlineEndEdge(computedStyle), inlineEnd],
+  ]) {
+    if (!input) continue;
+    // Physical and logical declarations on the same side need cascade authority
+    // that this closed descriptor does not provide. Opposite sides remain valid.
+    if (edges[edge]) throw new Error('Root context: ConflictingEdgeDeclarations');
+    edges[edge] = input;
+  }
+  return representedEdges(edges);
 }
 
 function representedGaps(styleValue) {
@@ -1476,12 +1495,12 @@ function describeElement(e, expectedElement = null) {
 
       margin: parseEffectiveMargin(e, computedStyle),
 
-      padding: representedEdges({
+      padding: representedInlineEdges({
         left: lengthStyleValue("paddingLeft"),
         right: lengthStyleValue("paddingRight"),
         top: lengthStyleValue("paddingTop"),
         bottom: lengthStyleValue("paddingBottom"),
-      }),
+      }, lengthStyleValue("paddingInlineStart"), lengthStyleValue("paddingInlineEnd"), computedStyle),
 
       border: representedEdges({
         left: lengthStyleValue("borderLeftWidth"),
@@ -1490,12 +1509,12 @@ function describeElement(e, expectedElement = null) {
         bottom: lengthStyleValue("borderBottomWidth"),
       }),
 
-      inset: representedEdges({
+      inset: representedInlineEdges({
         left: lengthStyleValue("left"),
         right: lengthStyleValue("right"),
         top: lengthStyleValue("top"),
         bottom: lengthStyleValue("bottom"),
-      }),
+      }, lengthStyleValue("insetInlineStart"), lengthStyleValue("insetInlineEnd"), computedStyle),
     },
 
     // The textContent is used for generating intrinsic sizing measure funcs
