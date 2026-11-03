@@ -21,6 +21,9 @@ pub(super) struct HeaderMemo {
     column: Option<bool>,
     /// Whether no data cell shares a column with the header (scope auto).
     row: Option<bool>,
+    /// Whether the cell is empty: it holds no element and only ASCII
+    /// whitespace as text.
+    empty: Option<bool>,
 }
 
 /// The finished row and column lines.
@@ -31,11 +34,14 @@ struct Axes<'s> {
 }
 
 /// The scratch a header scan works in: the headers found for the principal
-/// cell, the block and opaque cells of the scan in progress, what is known of
-/// each header, and the finished lines.
+/// cell, the block of the scan in progress and the extents hidden so far, what
+/// is known of each header, and the finished lines.
 struct Scan<'s> {
     headers: &'s mut Vec<usize>,
-    opaque: &'s mut Vec<usize>,
+    /// A header whose key is stamped with `epoch` is hidden: an opaque header
+    /// of this scan crosses the same lines.
+    stamps: &'s mut Vec<usize>,
+    epoch: usize,
     block: &'s mut Vec<usize>,
     memo: &'s mut Vec<HeaderMemo>,
     /// The lines of a scan that must be scanned one at a time.
@@ -53,6 +59,16 @@ struct Far {
     bottom: usize,
 }
 
+/// What a scan of the lines of one axis has in common: the axis, the key of the
+/// principal cell if it is a header, where the scan starts and its direction.
+#[derive(Clone, Copy)]
+struct Target<'a> {
+    axis: &'a SlotAxis,
+    principal_key: Option<usize>,
+    from: usize,
+    vertical: bool,
+}
+
 /// The cells of one line: the long cells of its run and its short cells.
 #[derive(Clone, Copy)]
 struct Occupants<'a> {
@@ -68,6 +84,37 @@ struct GroupHeaders<'s> {
 }
 
 impl<'a> HtmlSemanticSession<'a> {
+    /// Admits the memo table: one entry per cell, on first use.
+    fn table_memo_ready(
+        &mut self,
+        model: &HtmlTableModel,
+        memo: &mut Vec<HeaderMemo>,
+    ) -> TableResult<()> {
+        if memo.len() != model.cells.len() {
+            self.charge(model.cells.len())?;
+            self.reserve_scratch(memo, model.cells.len())?;
+            memo.resize(model.cells.len(), HeaderMemo::default());
+        }
+        Ok(())
+    }
+    /// Whether cell `index` is empty, read once per cell.
+    fn table_empty_once(
+        &mut self,
+        model: &HtmlTableModel,
+        index: usize,
+        memo: &mut Vec<HeaderMemo>,
+    ) -> TableResult<bool> {
+        self.table_memo_ready(model, memo)?;
+        self.charge(1)?;
+        if let Some(known) = memo.get(index).and_then(|m| m.empty) {
+            return Ok(known);
+        }
+        let empty = self.table_empty(model, index)?;
+        if let Some(entry) = memo.get_mut(index) {
+            entry.empty = Some(empty);
+        }
+        Ok(empty)
+    }
     /// The th scope state of cell `index`, resolved through the HTML-owned rule
     /// the first time this query consults it and reused afterwards. The first
     /// consultation admits the memo table (one entry per cell) and the rule's
@@ -78,11 +125,7 @@ impl<'a> HtmlSemanticSession<'a> {
         index: usize,
         memo: &mut Vec<HeaderMemo>,
     ) -> TableResult<HtmlTableHeaderScopeState> {
-        if memo.len() != model.cells.len() {
-            self.charge(model.cells.len())?;
-            self.reserve_scratch(memo, model.cells.len())?;
-            memo.resize(model.cells.len(), HeaderMemo::default());
-        }
+        self.table_memo_ready(model, memo)?;
         self.charge(1)?;
         if let Some(state) = memo.get(index).and_then(|m| m.scope) {
             return Ok(state);
@@ -166,49 +209,43 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
     /// A data cell reached by a scan ends the header block it follows: the
-    /// block's cells become opaque to earlier headers of the same extent.
+    /// block's extents become opaque to earlier headers that cross the same
+    /// lines.
     fn table_end_block(&mut self, scan: &mut Scan<'_>) -> TableResult<()> {
         if !scan.in_block {
             return Ok(());
         }
         scan.in_block = false;
         scan.live = false;
-        for index in scan.block.iter() {
+        for position in 0..scan.block.len() {
             self.charge(1)?;
-            self.table_scratch(scan.opaque, *index)?;
+            if let Some(key) = scan.block.get(position)
+                && let Some(stamp) = scan.stamps.get_mut(*key)
+            {
+                *stamp = scan.epoch;
+            }
         }
         self.charge(1)?;
         scan.block.clear();
         Ok(())
     }
     /// A header cell reached by a scan joins the current block, and is a
-    /// header of the principal cell unless an opaque header of the same extent
-    /// hides it or it is not a header of the scan's kind.
+    /// header of the principal cell unless an opaque header that crosses the
+    /// same lines hides it or it is not a header of the scan's kind.
     fn table_reach_header(
         &mut self,
         model: &HtmlTableModel,
         scan: &mut Scan<'_>,
         index: usize,
+        key: usize,
         vertical: bool,
     ) -> TableResult<()> {
         scan.in_block = true;
-        self.table_scratch(scan.block, index)?;
-        let cell = &model.cells[index];
-        let mut blocked = false;
-        for opaque in scan.opaque.iter() {
-            self.charge(1)?;
-            let old = &model.cells[*opaque];
-            if (vertical && old.x == cell.x && old.width == cell.width)
-                || (!vertical && old.y == cell.y && old.height == cell.height)
-            {
-                blocked = true;
-                break;
-            }
-        }
+        self.table_scratch(scan.block, key)?;
+        self.charge(1)?;
+        let mut blocked = scan.stamps.get(key) == Some(&scan.epoch);
         if !blocked {
             scan.live = true;
-        }
-        if !blocked {
             blocked = if vertical {
                 !self.table_column_header(model, index, scan.axes.rows, scan.memo)?
             } else {
@@ -255,6 +292,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 cell.x,
             )
         };
+        let principal_key = self.table_key(axis, cell, vertical)?;
+        let target = Target {
+            axis,
+            principal_key,
+            from,
+            vertical,
+        };
         let runs = axis.runs_of(lines, &mut |work| {
             self.charge(work).map_err(TableStop::from)
         })?;
@@ -280,7 +324,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     self.charge(work).map_err(TableStop::from)
                 })?;
                 let cells = Occupants { long, short };
-                self.table_scan_line(model, scan, principal, cells, from, vertical, irregular)?;
+                self.table_scan_line(model, scan, principal, target, cells, irregular)?;
                 continue;
             }
             // The lines that cannot share the scan of the run's long cells.
@@ -335,7 +379,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 if let Some(first) = shared
                     && first < line
                 {
-                    self.table_scan_shared(model, scan, principal, long, from, vertical)?;
+                    self.table_scan_shared(model, scan, principal, target, long)?;
                     shared = None;
                 }
                 if shared == Some(line) {
@@ -346,12 +390,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 let irregular = axis
                     .irregular_at(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
                 let cells = Occupants { long, short };
-                self.table_scan_line(model, scan, principal, cells, from, vertical, irregular)?;
+                self.table_scan_line(model, scan, principal, target, cells, irregular)?;
             }
             if let Some(first) = shared
                 && first < here.end()
             {
-                self.table_scan_shared(model, scan, principal, long, from, vertical)?;
+                self.table_scan_shared(model, scan, principal, target, long)?;
             }
         }
         Ok(())
@@ -364,15 +408,14 @@ impl<'a> HtmlSemanticSession<'a> {
         model: &HtmlTableModel,
         scan: &mut Scan<'_>,
         principal: usize,
+        target: Target<'_>,
         long: List<'_>,
-        from: usize,
-        vertical: bool,
     ) -> TableResult<()> {
         let cells = Occupants {
             long,
             short: List::EMPTY,
         };
-        self.table_scan_line(model, scan, principal, cells, from, vertical, false)
+        self.table_scan_line(model, scan, principal, target, cells, false)
     }
 
     /// One scan of one line, whose cells are the two lists. Visiting a cell
@@ -383,24 +426,33 @@ impl<'a> HtmlSemanticSession<'a> {
     /// taken a slot at a time, a slot with no occupant or several being
     /// skipped; otherwise the line is its two lists merged, the data cells
     /// between two headers being jumped.
-    #[allow(clippy::too_many_arguments)]
     fn table_scan_line(
         &mut self,
         model: &HtmlTableModel,
         scan: &mut Scan<'_>,
         principal: usize,
+        target: Target<'_>,
         cells: Occupants<'_>,
-        from: usize,
-        vertical: bool,
         irregular: bool,
     ) -> TableResult<()> {
+        let Target {
+            axis,
+            principal_key,
+            from,
+            vertical,
+        } = target;
         self.charge(1)?;
-        scan.opaque.clear();
+        scan.epoch += 1;
         scan.block.clear();
         scan.in_block = model.cells[principal].kind == HtmlTableCellKind::Header;
         scan.live = scan.in_block;
         if scan.in_block {
-            self.table_scratch(scan.block, principal)?;
+            let Some(key) = principal_key else {
+                return Err(self
+                    .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                    .into());
+            };
+            self.table_scratch(scan.block, key)?;
         }
         if irregular {
             let mut slot = from;
@@ -420,8 +472,15 @@ impl<'a> HtmlSemanticSession<'a> {
                     (Cover::One(index), Cover::Empty) | (Cover::Empty, Cover::One(index)) => index,
                     _ => continue,
                 };
-                if model.cells[index].kind == HtmlTableCellKind::Header {
-                    self.table_reach_header(model, scan, index, vertical)?;
+                let other = &model.cells[index];
+                if other.kind == HtmlTableCellKind::Header {
+                    let key = self.table_key(axis, other, vertical)?;
+                    let Some(key) = key else {
+                        return Err(self
+                            .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                            .into());
+                    };
+                    self.table_reach_header(model, scan, index, key, vertical)?;
                 } else {
                     self.table_end_block(scan)?;
                 }
@@ -467,7 +526,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 .chain(header_start(cells.short, last_short))
                 .max();
             if nearest_header == Some(nearest.start) {
-                self.table_reach_header(model, scan, nearest.cell, vertical)?;
+                let Some(key) = nearest.key else {
+                    return Err(self
+                        .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                        .into());
+                };
+                self.table_reach_header(model, scan, nearest.cell, key, vertical)?;
                 bound = nearest.start;
                 if scan.live {
                     continue;
@@ -488,12 +552,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 )?;
                 let other = cells
                     .long
-                    .header_other_than(before_long.checked_sub(1), nearest.key)
+                    .header_other_than(before_long.checked_sub(1), key)
                     .into_iter()
                     .chain(
                         cells
                             .short
-                            .header_other_than(before_short.checked_sub(1), nearest.key),
+                            .header_other_than(before_short.checked_sub(1), key),
                     )
                     .map(|entry| entry.start)
                     .max();
@@ -605,7 +669,8 @@ impl<'a> HtmlSemanticSession<'a> {
         let Scratch {
             document: frames,
             headers,
-            opaque,
+            stamps,
+            seen,
             block,
             memo,
             specials,
@@ -644,9 +709,14 @@ impl<'a> HtmlSemanticSession<'a> {
             row_group: row_group_headers,
             column_group: column_group_headers,
         };
+        let keys = rows.keys.len().max(columns.keys.len());
+        self.charge(keys)?;
+        self.reserve_scratch(stamps, keys)?;
+        stamps.resize(keys, 0);
         let mut scan = Scan {
             headers,
-            opaque,
+            stamps,
+            epoch: 0,
             block,
             memo,
             specials,
@@ -702,21 +772,24 @@ impl<'a> HtmlSemanticSession<'a> {
                     Far { right, bottom },
                 )?;
             }
-            for (position, header) in scan.headers.iter().enumerate() {
+            if !scan.headers.is_empty() && seen.len() != model.cells.len() {
+                self.charge(model.cells.len())?;
+                self.reserve_scratch(seen, model.cells.len())?;
+                seen.resize(model.cells.len(), 0);
+            }
+            for position in 0..scan.headers.len() {
                 self.charge(1)?;
-                let header = *header;
-                if self.table_empty(model, header)? {
+                let header = scan.headers[position];
+                if self.table_empty_once(model, header, scan.memo)? {
                     continue;
                 }
-                let mut duplicate = false;
-                for earlier in &scan.headers[..position] {
-                    self.charge(1)?;
-                    if *earlier == header {
-                        duplicate = true;
-                        break;
-                    }
+                // Each cell is listed once for a principal cell: the first
+                // time it is found, and never the principal cell itself.
+                let first = seen.get(header).is_some_and(|mark| *mark != principal + 1);
+                if let Some(mark) = seen.get_mut(header) {
+                    *mark = principal + 1;
                 }
-                if duplicate || header == principal {
+                if !first || header == principal {
                     continue;
                 }
                 self.table_push(

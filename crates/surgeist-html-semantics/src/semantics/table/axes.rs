@@ -12,7 +12,7 @@
 //! is admitted from the cells' spans before anything is allocated, and every
 //! step is paid for before it is taken.
 
-use super::slots::{Extent, Run, ShortLine, SlotEntry};
+use super::slots::{Extent, Run, ShortLine, SlotAxis, SlotEntry};
 use super::*;
 
 /// How a cell crosses one axis: it spans `count` lines from line `first`, and
@@ -169,6 +169,32 @@ impl<'a> HtmlSemanticSession<'a> {
             model.height()
         };
         let cells = model.cells.len();
+        // The distinct extents of the header cells.
+        let mut headers = 0usize;
+        for cell in &model.cells {
+            self.charge(1)?;
+            if cell.kind == HtmlTableCellKind::Header {
+                headers += 1;
+            }
+        }
+        self.reserve_scratch(&mut axis.keys, headers)?;
+        for cell in &model.cells {
+            self.charge(1)?;
+            if cell.kind == HtmlTableCellKind::Header {
+                let crossing = Crossing::of(cell, vertical);
+                axis.keys.push(Extent {
+                    start: crossing.first,
+                    length: crossing.count,
+                });
+            }
+        }
+        let bits = headers
+            .checked_ilog2()
+            .and_then(|bits| usize::try_from(bits).ok())
+            .unwrap_or(0);
+        self.charge(headers.saturating_mul(1 + bits))?;
+        axis.keys.sort_unstable();
+        axis.keys.dedup();
         // The cells in ascending order of start along their line, and in
         // ascending order of the line they begin at.
         let by_start = |position: usize| {
@@ -302,7 +328,8 @@ impl<'a> HtmlSemanticSession<'a> {
                         .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                         .into());
                 };
-                let entry = tail.entry(cell, placed[position], position, vertical);
+                let key = self.table_key(axis, cell, vertical)?;
+                let entry = tail.entry(cell, placed[position], position, key, vertical);
                 axis.long.push(entry);
             }
             axis.runs.push(Run { first, end });
@@ -351,7 +378,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 tail = Tail::default();
             }
             let at = axis.short.len();
-            let entry = tail.entry(cell, index, at, vertical);
+            let key = self.table_key(axis, cell, vertical)?;
+            let entry = tail.entry(cell, index, at, key, vertical);
             axis.short.push(entry);
         }
         if let Some((line, first)) = open {
@@ -454,6 +482,35 @@ impl<'a> HtmlSemanticSession<'a> {
     }
 }
 
+impl<'a> HtmlSemanticSession<'a> {
+    /// The key of `cell` on an axis whose keys are built: its extent's place
+    /// among the header extents, for a header.
+    pub(super) fn table_key(
+        &mut self,
+        axis: &SlotAxis,
+        cell: &HtmlTableCell,
+        vertical: bool,
+    ) -> TableResult<Option<usize>> {
+        if cell.kind != HtmlTableCellKind::Header {
+            return Ok(None);
+        }
+        let crossing = Crossing::of(cell, vertical);
+        let lines = Extent {
+            start: crossing.first,
+            length: crossing.count,
+        };
+        let key = axis.key_of(lines, &mut |work| {
+            self.charge(work).map_err(TableStop::from)
+        })?;
+        match key {
+            Some(key) => Ok(Some(key)),
+            None => Err(self
+                .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                .into()),
+        }
+    }
+}
+
 /// What a line's entries carry from the entries before them.
 #[derive(Default)]
 struct Tail {
@@ -465,7 +522,7 @@ struct Tail {
 #[derive(Clone, Copy)]
 struct LastHeader {
     at: usize,
-    key: Extent,
+    key: usize,
     differs: Option<usize>,
 }
 
@@ -476,16 +533,13 @@ impl Tail {
         cell: &HtmlTableCell,
         index: usize,
         at: usize,
+        key: Option<usize>,
         vertical: bool,
     ) -> SlotEntry {
         let crossing = Crossing::of(cell, vertical);
-        let key = Extent {
-            start: crossing.first,
-            length: crossing.count,
-        };
         self.reach = self.reach.max(crossing.end);
         let mut differs = None;
-        if cell.kind == HtmlTableCellKind::Header {
+        if let Some(key) = key {
             differs = match self.header {
                 Some(last) if last.key != key => Some(last.at),
                 Some(last) => last.differs,

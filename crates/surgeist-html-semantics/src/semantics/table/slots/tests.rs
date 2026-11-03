@@ -43,10 +43,7 @@ fn line(rng: &mut Rng, count: usize, width: usize, overlap: bool) -> Vec<SlotEnt
             cell,
             reach,
             header,
-            key: Extent {
-                start: 0,
-                length: 1,
-            },
+            key: None,
             differs: None,
         });
     }
@@ -207,10 +204,7 @@ fn short_entry(start: usize, cell: usize) -> SlotEntry {
         cell,
         reach: start + 1,
         header: None,
-        key: Extent {
-            start: 0,
-            length: 1,
-        },
+        key: None,
         differs: None,
     }
 }
@@ -367,10 +361,7 @@ fn a_list_finds_the_nearest_header_at_or_before_a_position() {
             reach: position + 1,
             // Table indexes: a header at table index 11 (list position 1).
             header: [None, Some(11), Some(11), Some(13)][position],
-            key: Extent {
-                start: 0,
-                length: 1,
-            },
+            key: None,
             differs: None,
         })
         .collect();
@@ -387,16 +378,7 @@ fn a_list_finds_the_nearest_header_at_or_before_a_position() {
 
 #[test]
 fn headers_crossing_other_lines_are_found_past_those_crossing_the_same_ones() {
-    let (a, b) = (
-        Extent {
-            start: 0,
-            length: 1,
-        },
-        Extent {
-            start: 1,
-            length: 1,
-        },
-    );
+    let (a, b) = (0usize, 1usize);
     // Headers at positions 0 and 2 cross line a, 3 crosses b, 4 crosses a;
     // positions 1 and 5 are data cells.
     let spec = [
@@ -416,7 +398,7 @@ fn headers_crossing_other_lines_are_found_past_those_crossing_the_same_ones() {
             cell: position,
             reach: position + 1,
             header: *header,
-            key: *key,
+            key: Some(*key),
             differs: *differs,
         })
         .collect();

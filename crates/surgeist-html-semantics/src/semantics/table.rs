@@ -209,7 +209,11 @@ struct Scratch<'a> {
     footers: Vec<HtmlCaptureSubjectId>,
     placement: Placement,
     headers: Vec<usize>,
-    opaque: Vec<usize>,
+    /// Per header key, the scan it last hid headers of that key in.
+    stamps: Vec<usize>,
+    /// Per cell, the principal cell it last appeared in a header list of.
+    seen: Vec<usize>,
+    /// The keys of the headers in the current block.
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
     memo: Vec<HeaderMemo>,
@@ -239,7 +243,8 @@ impl Scratch<'_> {
         [
             self.footers.capacity(),
             self.headers.capacity(),
-            self.opaque.capacity(),
+            self.stamps.capacity(),
+            self.seen.capacity(),
             self.block.capacity(),
             self.document.capacity(),
             self.memo.capacity(),

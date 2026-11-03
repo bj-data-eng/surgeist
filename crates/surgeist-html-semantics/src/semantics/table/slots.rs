@@ -35,16 +35,17 @@ pub(super) struct SlotEntry {
     /// Index in the axis' entry table of the nearest header cell at or before
     /// this entry in its line.
     pub(super) header: Option<usize>,
-    /// The lines the cell crosses. A scan hides a header behind an earlier
-    /// header that crosses the same lines.
-    pub(super) key: Extent,
+    /// For a header, which lines it crosses, as the position of that extent
+    /// among the axis' header extents. A scan hides a header behind an earlier
+    /// header that crosses the same lines, so this is what is compared.
+    pub(super) key: Option<usize>,
     /// For a header, the table index of the nearest earlier header of its line
     /// that crosses other lines.
     pub(super) differs: Option<usize>,
 }
 
 /// Where a group of lines, or of cells, lies.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct Extent {
     pub(super) start: usize,
     pub(super) length: usize,
@@ -75,10 +76,10 @@ impl<'a> List<'a> {
     pub(super) fn header_other_than(
         &self,
         position: Option<usize>,
-        key: Extent,
+        key: usize,
     ) -> Option<&'a SlotEntry> {
         let header = self.entries.get(self.header_at(position?)?)?;
-        if header.key != key {
+        if header.key != Some(key) {
             return Some(header);
         }
         let earlier = header.differs?.checked_sub(self.first)?;
@@ -168,6 +169,9 @@ pub(super) struct SlotAxis {
     pub(super) data: DataSpans,
     /// Lines where two cells share a slot, merged and sorted.
     pub(super) irregular: Vec<Extent>,
+    /// The distinct extents of the header cells, sorted: a header's key is its
+    /// extent's position here.
+    pub(super) keys: Vec<Extent>,
 }
 
 impl SlotAxis {
@@ -183,8 +187,28 @@ impl SlotAxis {
             self.data.starts.capacity(),
             self.data.reach.capacity(),
             self.irregular.capacity(),
+            self.keys.capacity(),
         ]
         .into_iter()
+    }
+
+    /// The key of a header that crosses `lines`.
+    pub(super) fn key_of<E>(
+        &self,
+        lines: Extent,
+        charge: &mut impl Charge<E>,
+    ) -> Result<Option<usize>, E> {
+        let before = leading_by(
+            self.keys.len(),
+            |index| self.keys.get(index).is_some_and(|key| *key < lines),
+            charge,
+        )?;
+        charge(1)?;
+        Ok(self
+            .keys
+            .get(before)
+            .filter(|key| **key == lines)
+            .map(|_| before))
     }
 
     pub(super) fn run(&self, index: usize) -> Option<List<'_>> {

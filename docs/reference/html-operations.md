@@ -2213,15 +2213,27 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     crosses and upward each column. The rows of one run hold the same tall
     cells, so a single scan serves every row of the run that has no cell of its
     own before the scanning cell and no overlap; any other row is scanned on
-    its own, and a scan costs a binary search, one visit per header cell met
-    and one step for each run of data cells, however long. A table of `n` by
-    `n` cells whose headers are a first row and first column, with or without
-    a `tbody`, and tall header cells with data cells between them beside later
-    rows that hold their own cells to the right, therefore cost `O(C log C)`:
-    the work grows by about four for each quadrupling of the cells. A line made
-    only of header cells costs a visit per header for each cell that scans it,
-    up to `O(C * (W + H))`, and a row with its own header cell before a tall
-    cell is scanned for that cell: that row's header may be one of the tall
+    its own. A scan costs a binary search, one visit per header cell met that
+    no earlier header of the scan hides, and one step for each run of data
+    cells, however long. A header is hidden when an earlier header of the scan,
+    after a data cell, crosses the same rows (or columns): that is one stamp
+    per extent, so a check is constant, and a scan whose block is hidden skips
+    to the nearest header that crosses other lines. Each association costs a
+    constant: a cell is listed once per principal cell by a stamp, and whether
+    a cell is empty is read once. Header assignment is therefore
+    `O((C + A + V + L) log C)`, where `A` is the number of associations and
+    `V` the number of unhidden headers visited without being listed (a header
+    that is no header of the scan's kind, as `scope=col` is for a row scan). A
+    table of `n` by `n` cells whose headers are a first row and first column,
+    with or without a `tbody`; tall header cells with data cells between them
+    beside later rows that hold their own cells to the right; tall header cells
+    whose row ends all differ, which take quadratically many associations; and
+    a column of `th` cells that each take every `th` above, cost `A` and the
+    cell count up to a logarithmic factor, which the model work tests pin. A
+    scan that meets many unhidden headers it does not list, such as a column of
+    `th` cells that all share rows with data cells, still visits each: `V` is
+    up to `O(C * (W + H))`. A row with its own header cell before a tall cell
+    is scanned for that cell, since that row's header may be one of the tall
     cell's. A cell in a row group (or column group) tests only the header cells
     whose `scope` names its group, after reading, once, the `scope` of every
     header cell when the table has such groups: a table with a row or column
@@ -2239,8 +2251,9 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     `NestedOutputRecords`.
   [The model work tests](../../crates/surgeist-html-semantics/tests/semantics/tables/model_work.rs)
   pin the growth for `n` by `n` grids of data cells and of data cells under a
-  first row and column of header cells (outside and inside a `tbody`), and for
-  tall cells beside later rows.
+  first row and column of header cells (outside and inside a `tbody`), for tall
+  cells beside later rows, and the work per association for staggered tall
+  header cells and for a stacked header column.
 - **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
   for two shapes. The query prefix, a lookup (1), `D` and `K(6)` come first.
   With a sectioning ancestor, each ancestor costs one parent step (1) and a
