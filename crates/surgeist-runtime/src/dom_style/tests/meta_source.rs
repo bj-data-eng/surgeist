@@ -4,6 +4,7 @@ mod events;
 use super::meta::*;
 use super::*;
 use surgeist_dom::{DocumentString, DomSourceProgress, DomSourceRequest};
+use surgeist_html::values::Namespace;
 
 #[test]
 fn one_source_subtree_preserves_b_then_a_order_and_one_final_producer_basis() {
@@ -434,21 +435,25 @@ fn source_retained_bank_refusal_parks_the_original_edit_and_retry_keeps_spent_wo
 #[test]
 fn native_installation_returns_the_original_mapping_with_its_meta_publication() {
     let (mut session, document) = native_session();
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
     )
     .unwrap();
     builder
         .append_element(
             &builder.root(),
-            surgeist_html::QualifiedName::new(Namespace::html(), None, "meta"),
-            surgeist_html::OrderedAttributes::new([
-                surgeist_html::Attribute::new(
-                    surgeist_html::QualifiedName::new(Namespace::none(), None, "http-equiv"),
+            surgeist_html::values::QualifiedName::new(Namespace::html(), None, "meta"),
+            surgeist_html::values::OrderedAttributes::new([
+                surgeist_html::values::Attribute::new(
+                    surgeist_html::values::QualifiedName::new(
+                        Namespace::none(),
+                        None,
+                        "http-equiv",
+                    ),
                     "default-style",
                 ),
-                surgeist_html::Attribute::new(
-                    surgeist_html::QualifiedName::new(Namespace::none(), None, "content"),
+                surgeist_html::values::Attribute::new(
+                    surgeist_html::values::QualifiedName::new(Namespace::none(), None, "content"),
                     "B",
                 ),
             ])

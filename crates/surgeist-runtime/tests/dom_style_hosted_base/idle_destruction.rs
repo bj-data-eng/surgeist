@@ -1,6 +1,10 @@
 //! An idle Style owner remains a real hosted-destruction obligation.
 use super::*;
 use surgeist_cssom::CssomEditGuard;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{DocumentString, Namespace},
+};
 
 struct IdleDocument {
     session: DomSession,

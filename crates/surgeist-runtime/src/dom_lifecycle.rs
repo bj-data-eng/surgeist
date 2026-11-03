@@ -288,7 +288,7 @@ impl DomHostedSettings {
     /// Missing/unfrozen source facts refuse rather than guessing from URL text.
     pub fn document_base_url(
         &self,
-    ) -> Result<&surgeist_html::DocumentString, surgeist_dom::DomError> {
+    ) -> Result<&surgeist_html::values::DocumentString, surgeist_dom::DomError> {
         self.document().document_base_url()
     }
     /// Canonical supported initial Permissions Policy from that current Document.

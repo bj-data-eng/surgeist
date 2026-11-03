@@ -202,7 +202,7 @@ impl NativeElementRegistry {
     /// custom/foreign names are outside this profile. `forms` selects template
     /// syntax policy independently of HTML's attribute value descriptions.
     pub fn from_html_metadata(forms: AttributeRule) -> Result<Self, RegistryError> {
-        use surgeist_html::{KnownHtmlElement, attribute_inventory};
+        use surgeist_html::vocabulary::{KnownHtmlElement, attribute_inventory};
 
         let mut specs = Vec::new();
         for element in KnownHtmlElement::ALL {

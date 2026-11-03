@@ -5,7 +5,8 @@ use surgeist_dom::{
     DomHostedPolicyPublication, DomPermissionsPolicyValue, DomResource, DomSourceUrlObservation,
     DomSourceUrlOrigin, DomSourceUrlRequest,
 };
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
+use surgeist_html::values::Namespace;
 use surgeist_html_semantics::{HtmlBaseAllowed, HtmlBaseUrlRecord, HtmlBaseUrlScheme};
 
 struct Pending {

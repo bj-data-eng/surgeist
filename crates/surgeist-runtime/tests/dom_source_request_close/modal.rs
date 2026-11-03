@@ -1,5 +1,6 @@
 //! HTML877d46708–23,46625–36,46684–705 through genuine completed modal setup.
 use super::*;
+use surgeist_html::values::DocumentString;
 
 fn layer(snapshot: &DomSnapshot, document: DocumentId, subject: NodeId, pending: bool) {
     let layer = snapshot.document(document).unwrap().top_layer().unwrap();

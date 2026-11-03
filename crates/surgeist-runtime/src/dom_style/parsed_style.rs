@@ -6,7 +6,7 @@ use surgeist_dom::{
     DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleQualification,
     DomParsedHtmlStyleRenderingProgress,
 };
-use surgeist_html::HtmlCspAssociation;
+use surgeist_html::security::csp::HtmlCspAssociation;
 mod admission;
 mod meta_occurrence;
 pub use meta_occurrence::{DomStyleParsedMetaOccurrenceError, DomStyleParsedMetaOccurrenceOutcome};
@@ -250,7 +250,7 @@ impl DomStyleRuntime {
         // DOM also checks the actual report/Document and stored profile.
         Ok(hold.exclude_script_bookkeeping(
             qualification,
-            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
             cancel,
         )?)
     }

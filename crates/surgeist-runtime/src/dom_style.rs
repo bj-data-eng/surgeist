@@ -53,8 +53,11 @@ use surgeist_dom::{
     DomStyleNotificationToken, DomStyleRequest, DomStyleSheetPlacement, DomStyleSource, NodeId,
 };
 use surgeist_html::{
-    HtmlDocumentMode, HtmlStyleExecutionProfile, HtmlStyleNotificationAction,
-    HtmlStyleNotificationCursor, HtmlStyleNotificationReply, HtmlStyleUpdateAction,
+    construction::HtmlDocumentMode,
+    elements::style::{
+        HtmlStyleExecutionProfile, HtmlStyleNotificationAction, HtmlStyleNotificationCursor,
+        HtmlStyleNotificationReply, HtmlStyleUpdateAction,
+    },
 };
 
 /// Independent orchestration bounds. CSS and CSSOM retain their own input,
@@ -2826,6 +2829,7 @@ mod tests {
     use surgeist_dom::{
         DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, DomSourceProgress, Namespace,
     };
+
     struct Context {
         styles: DomStyleRuntime,
         source: DomSourceRuntime,
@@ -2913,7 +2917,9 @@ mod tests {
         let host = batch.create_element_ns(&document, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Open),
+            surgeist_dom::DomShadowRootInit::new(
+                surgeist_html::construction::HtmlShadowRootMode::Open,
+            ),
         );
         batch.insert_before(&container, &document, None);
         batch.insert_before(&host, &container, None);
@@ -4961,7 +4967,9 @@ mod tests {
         let host = batch.create_element_ns(initial, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Open),
+            surgeist_dom::DomShadowRootInit::new(
+                surgeist_html::construction::HtmlShadowRootMode::Open,
+            ),
         );
         let done = owner.apply(batch, &cancel).unwrap();
         let host = done.created(&host).unwrap().unwrap();
@@ -5426,7 +5434,9 @@ mod tests {
         let host = batch.create_element_ns(&document, Namespace::html(), "div");
         let shadow = batch.attach_shadow(
             &host,
-            surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Open),
+            surgeist_dom::DomShadowRootInit::new(
+                surgeist_html::construction::HtmlShadowRootMode::Open,
+            ),
         );
         batch.insert_before(&host, &document, None);
         let done = owner.apply(batch, &cancel).unwrap();
@@ -5884,6 +5894,7 @@ mod replacement_test {
     use crate::{DomEventCallback, DomEventListenerOptions, DomEventRegistryLimits, DomEventType};
     use surgeist_cssom::CssomStore;
     use surgeist_dom::{DomBatch, DomLimits, DomSourceEdit, DomSourceLimits, Namespace};
+
     struct Context {
         styles: DomStyleRuntime,
         source: DomSourceRuntime,

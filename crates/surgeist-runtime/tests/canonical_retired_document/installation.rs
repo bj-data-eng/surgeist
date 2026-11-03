@@ -3,7 +3,7 @@
 use super::support::{HostedFixture, body, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlConstructionLimits, HtmlDoctype, HtmlFragment};
+use surgeist_html::construction::{HtmlConstructionLimits, HtmlDoctype, HtmlFragment};
 use surgeist_runtime::*;
 
 fn authoring() -> HtmlConstructionLimits {
@@ -333,8 +333,8 @@ fn retired_native_installation_keeps_family_cause_and_late_failure_atomic() {
         refused(&mut fixture, &source, target, installation_limits(), &cancel()),
         DomNativeHtmlInstallError::Source {
             subject,
-            error: DomError::NativeInitializationRequired(surgeist_html::HtmlElementClass::KnownHtml(
-                surgeist_html::KnownHtmlElement::Audio,
+            error: DomError::NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                surgeist_html::vocabulary::KnownHtmlElement::Audio,
             )),
         } if subject == audio
     ));

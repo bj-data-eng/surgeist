@@ -625,7 +625,7 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
                     };
                     assert_eq!(
                         request.action(),
-                        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                        surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
                     );
                     assert_eq!(request.operation(), child.operation());
                     assert_eq!(request.subject(), child.subject());

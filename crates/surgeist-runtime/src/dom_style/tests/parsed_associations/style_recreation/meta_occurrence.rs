@@ -2,6 +2,7 @@
 use super::*;
 use std::sync::Arc;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAssociationOccurrenceId as Occurrence, HtmlParseReport,
     HtmlSource,

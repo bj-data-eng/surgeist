@@ -94,7 +94,7 @@ fn parked_insertion() -> Insertion {
         };
         assert_eq!(
             request.action(),
-            surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+            surgeist_html::focus::HtmlAutofocusInsertionAction::ReadAllowFocus
         );
         assert_eq!(request.subject(), subject);
         assert_eq!(

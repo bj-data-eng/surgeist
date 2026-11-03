@@ -18,7 +18,7 @@ use surgeist_dom::{
     DomDetailsToggleIntention, DomDetailsToggleTransfer, DomError, DomOwnerId, DomRevision,
     DomSnapshot,
 };
-use surgeist_html::{HtmlDetailsState, HtmlDetailsToggleEvent};
+use surgeist_html::elements::details::{HtmlDetailsState, HtmlDetailsToggleEvent};
 
 /// Finite bounds for this source task owner, independent of event-path limits.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -752,8 +752,8 @@ impl ElementTaskState {
         };
         let remaining_tasks = if matches!(
             request.action(),
-            surgeist_html::HtmlDialogAction::QueueToggle {
-                source: surgeist_html::HtmlDialogEventSource::OperationSource,
+            surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle {
+                source: surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
                 ..
             }
         ) {

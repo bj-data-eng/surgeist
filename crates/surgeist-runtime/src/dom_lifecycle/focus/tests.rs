@@ -7,7 +7,8 @@ use crate::{
     DomSourceServices, DomStyleRuntimeLimits,
 };
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogAction, HtmlDialogEventSource, HtmlDialogState};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogEventSource, HtmlDialogState};
+use surgeist_html::values::Namespace;
 
 fn source_limits(work: u64) -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, work, 128, 4096, 4096, 4)
@@ -181,7 +182,7 @@ fn request(lease: &mut DomSourceLease<'_>, action: HtmlDialogAction) -> DomSourc
 }
 fn focusing_request(
     lease: &mut DomSourceLease<'_>,
-    action: surgeist_html::HtmlDialogFocusingAction,
+    action: surgeist_html::elements::dialog::HtmlDialogFocusingAction,
 ) -> DomSourceDialogFocusingRequest {
     let DomSourceProgress::Request(DomSourceRequest::DialogFocusing(request)) =
         lease.advance(&AtomicBool::new(false)).unwrap()
@@ -194,7 +195,7 @@ fn focusing_request(
 fn allow_request(lease: &mut DomSourceLease<'_>) -> DomFocusRequest {
     DomFocusRequest::AllowDialog(focusing_request(
         lease,
-        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus,
+        surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus,
     ))
 }
 // Measure only canonical preparation/retention and one resume on this exact
