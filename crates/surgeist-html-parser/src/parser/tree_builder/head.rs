@@ -1050,7 +1050,9 @@ impl HeadState<'_> {
                     .whitespace_pending
                     .take()
                     .ok_or(HeadError::MissingInput)?;
-                if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
+                if let Err((stop, text)) =
+                    self.before.whitespace.try_push_recover_geometric(c, text)
+                {
                     self.whitespace_pending = Some(text);
                     return Err(stop.into());
                 }
@@ -2137,7 +2139,8 @@ mod event_retention_tests {
     }
 
     #[test]
-    fn fresh_event_capacity_clips_and_one_short_keeps_the_pending_preprocessing_ticket() {
+    fn fresh_event_capacity_admits_the_doubled_target_and_a_refusal_keeps_the_pending_preprocessing_ticket()
+     {
         let source = HtmlSource::utf8("<!--\r\n\r\n\r\n-->");
         let footprint = first_comment_event_footprint(&source);
         // CommentStart queues the first preprocessing Event and reconsumes
@@ -2150,21 +2153,27 @@ mod event_retention_tests {
         let origin = size_of::<crate::parser::tokenizer::token::HtmlParseTextOrigin>() as u64;
         let range = size_of::<crate::HtmlSourceRange>() as u64;
         // Three source-defined CRLFs produce three one-range Event tickets,
-        // three LF units and a four-slot geometric DraftText origin capacity.
-        // Existing two Event slots are replaced by exactly three when four
-        // cannot fit. Peak overlaps only the old/new vector being replaced.
-        let final_bytes = base + 6 + 4 * origin + 3 * range + 3 * event;
-        let peak = (base + 6 + 6 * origin + 3 * range + 2 * event)
-            .max(base + 6 + 4 * origin + 3 * range + 5 * event)
+        // three LF units in a four-unit (eight-byte) geometric DraftText value
+        // and a four-slot origin capacity. The two Event slots double to four,
+        // whatever the limits are. Peak overlaps only the old/new vector being
+        // replaced. A limit that holds the three required Event slots but not
+        // the doubled four refuses.
+        let final_bytes = base + 8 + 4 * origin + 3 * range + 4 * event;
+        let peak = (base + 8 + 6 * origin + 3 * range + 2 * event)
+            .max(base + 8 + 4 * origin + 3 * range + 6 * event)
             .max(
                 footprint
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
             );
-        for short in [false, true] {
+        for (short, managed) in [
+            (false, final_bytes),
+            (true, final_bytes - 1),
+            (true, final_bytes - event),
+        ] {
             let caps = limits(100)
                 .into_builder()
-                .managed_capacity_bytes(final_bytes - u64::from(short))
+                .managed_capacity_bytes(managed)
                 .peak_transient_bytes(peak)
                 .finish()
                 .unwrap();
@@ -2201,7 +2210,7 @@ mod event_retention_tests {
                 preprocessing(driver.event.as_ref().unwrap(), &source, 8);
                 assert_eq!(
                     driver.control.usage().actual_capacity_bytes,
-                    final_bytes - event
+                    final_bytes - 2 * event
                 );
                 let before = driver.control.usage().clone();
                 let stop = driver.control.stop();
@@ -2216,7 +2225,7 @@ mod event_retention_tests {
                         driver.lexical.as_ref().unwrap().len(),
                         driver.lexical.as_ref().unwrap().capacity()
                     ),
-                    (3, 3)
+                    (3, 4)
                 );
                 assert!(driver.event.is_none());
                 assert_eq!(driver.control.usage().actual_capacity_bytes, final_bytes);

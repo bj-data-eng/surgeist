@@ -1236,8 +1236,8 @@ impl ParseControl {
         // physical ownership must remain releasable even when logical work ends.
         Self::record_vector_capacity(vector, allocation, result)
     }
-    /// Local append-owner growth. Other callers retain their exact policy.
-    /// Spare capacity is submitted and charged, never counted as live entries.
+    /// Geometric growth of an actual vector. Spare capacity is submitted and
+    /// charged, never counted as live entries.
     pub(crate) fn reserve_vector_geometric<T>(
         &mut self,
         vector: &mut Vec<T>,
@@ -1323,6 +1323,16 @@ impl ParseControl {
     }
     /// Geometric growth of a bank whose element layout is only known by size.
     /// Spare capacity beyond `final_len` slots is never planned.
+    ///
+    /// The plan is `None` when the capacity already suffices. Otherwise the target
+    /// is the greater of the required length and double the capacity (never beyond
+    /// `final_len`). It depends only on the vector, never on a limit, as in
+    /// `surgeist-html`'s amortized growth: the allocation path of an input is then
+    /// the same under every limit, so a parse that succeeds under one limit succeeds
+    /// under every larger one. The reserve gate admits the target before it is
+    /// allocated, and a limit that cannot hold it refuses the reservation. The one
+    /// exception is a target whose layout is not a valid allocation size: that
+    /// depends on the vector alone too, and the exact plan is used instead.
     fn geometric_sized(
         &self,
         element_size: usize,
@@ -1331,75 +1341,28 @@ impl ParseControl {
         additional: usize,
         final_len: usize,
     ) -> Result<Option<ReservationPlan>, HtmlParseStop> {
-        Ok(self
-            .geometric_pair(element_size, len, capacity, additional, final_len)?
-            .map(|(_, geometric)| geometric))
-    }
-    /// The exact plan for `additional` slots and the geometric plan that
-    /// contains it, or `None` when the capacity already suffices. The two are
-    /// the same plan when the exact layout cannot fit the limits.
-    fn geometric_pair(
-        &self,
-        element_size: usize,
-        len: usize,
-        capacity: usize,
-        additional: usize,
-        final_len: usize,
-    ) -> Result<Option<(ReservationPlan, ReservationPlan)>, HtmlParseStop> {
         let Some(exact) = ReservationPlan::for_sized(element_size, len, capacity, additional)?
         else {
             return Ok(None);
         };
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let without_old =
-            current
-                .checked_sub(exact.old_bytes)
-                .ok_or(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::CapacityMismatch,
-                ))?;
-        let ceiling = (isize::MAX as u64)
-            .min(
-                self.limits
-                    .copy(HtmlParseResource::ManagedCapacityBytes)
-                    .saturating_sub(without_old),
-            )
-            .min(
-                self.limits
-                    .copy(HtmlParseResource::PeakTransientBytes)
-                    .saturating_sub(current),
-            )
-            .min(self.limits.copy(HtmlParseResource::AtomicLayoutBytes));
-        // A required layout that cannot fit is submitted to the existing
-        // reserve gate, preserving its concrete limit precedence and stop.
-        if exact.new_bytes > ceiling {
-            return Ok(Some((exact, exact)));
-        }
         let representation = || HtmlParseStop::RepresentationExhausted {
             resource: HtmlParseResource::ManagedCapacityBytes,
         };
-        // `for_sized` refused a zero element size, so the division is total.
-        let slots = ceiling
-            .checked_div(element_size as u64)
-            .and_then(|slots| usize::try_from(slots).ok())
-            .ok_or_else(representation)?;
         let required = len.checked_add(additional).ok_or_else(representation)?;
-        let target = required
-            .max(capacity.saturating_mul(2).min(final_len))
-            .min(slots);
-        Ok(Some((
-            exact,
-            ReservationPlan {
-                additional: target.checked_sub(len).ok_or_else(representation)?,
-                old_bytes: exact.old_bytes,
-                new_bytes: target
-                    .checked_mul(element_size)
-                    .and_then(|bytes| u64::try_from(bytes).ok())
-                    .ok_or_else(representation)?,
-            },
-        )))
+        let target = required.max(capacity.saturating_mul(2).min(final_len));
+        let layout = target
+            .checked_mul(element_size)
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .and_then(|bytes| u64::try_from(bytes).ok());
+        let Some(new_bytes) = layout else {
+            return Ok(Some(exact));
+        };
+        Ok(Some(ReservationPlan {
+            additional: target.checked_sub(len).ok_or_else(representation)?,
+            needed: exact.needed,
+            old_bytes: exact.old_bytes,
+            new_bytes,
+        }))
     }
     fn record_vector_capacity<T>(
         vector: &Vec<T>,
@@ -1826,7 +1789,11 @@ impl ParseControl {
         self.set(HtmlParseResource::PeakTransientBytes, overlap);
         self.set(HtmlParseResource::AtomicLayoutBytes, plan.new_bytes);
         self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(plan.new_bytes);
-        if vector.try_reserve_exact(plan.additional).is_err() {
+        // Only an allocator refusal of the spare room falls back to the slots
+        // that are needed; a limit that refuses the target never does.
+        if vector.try_reserve_exact(plan.additional).is_err()
+            && (plan.needed >= plan.additional || vector.try_reserve_exact(plan.needed).is_err())
+        {
             self.set(HtmlParseResource::PeakTransientBytes, current);
             return self.fail(HtmlParseStop::AllocationFailed {
                 resource: HtmlParseResource::ManagedCapacityBytes,
@@ -2141,11 +2108,10 @@ impl ParseControl {
         source: &surgeist_html::values::DocumentString,
     ) -> Result<(surgeist_html::values::DocumentString, usize, usize), HtmlParseStop> {
         let mut buffer = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
-        for &unit in source.code_units() {
-            if let Err(stop) = buffer.try_push(self, unit) {
-                buffer.release(self)?;
-                return Err(stop);
-            }
+        // The final length is known, so one reservation admits the whole copy.
+        if let Err(stop) = buffer.try_extend_from_slice(self, source.code_units()) {
+            buffer.release(self)?;
+            return Err(stop);
         }
         let (text, allocation) = self.freeze_document_string(buffer)?;
         let Some(bytes) = allocation
@@ -2297,7 +2263,11 @@ impl DocumentStringAllocation {
 /// Checked layout only; it neither allocates nor admits logical storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ReservationPlan {
+    /// The slots requested: the required ones, plus amortized spare room.
     additional: usize,
+    /// The slots the caller needs. The allocator is asked for them alone only
+    /// when it refuses `additional`.
+    needed: usize,
     old_bytes: u64,
     new_bytes: u64,
 }
@@ -2342,6 +2312,7 @@ impl ReservationPlan {
         };
         Ok(Some(Self {
             additional,
+            needed: additional,
             old_bytes: layout(capacity)?,
             new_bytes: layout(length)?,
         }))
@@ -2353,8 +2324,8 @@ impl ReservationPlan {
 enum Growth {
     /// Exactly the slots required.
     Exact,
-    /// Spare capacity that at least doubles it, clamped to the finite limits
-    /// and never planned beyond the given final length (`usize::MAX`: unknown).
+    /// Spare capacity that at least doubles it, never planned beyond the given
+    /// final length (`usize::MAX`: unknown). Independent of every limit.
     Geometric(usize),
 }
 
@@ -2586,97 +2557,15 @@ impl<T> OwnedVec<T> {
         }
         Ok(())
     }
-    /// Pair-local spare capacity must leave room for the other required slot.
-    /// Only fixed Vec headers are probed here, without latching the other side's
-    /// representation failure or moving its owner/work/logical admission earlier.
-    /// The caller has already admitted the original combined atomic layout.
-    fn prepare_pair_slot<U>(
-        &mut self,
-        other: &OwnedVec<U>,
-        control: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
+    /// One side of a consumed pair: the same geometric reservation as a lone
+    /// push, so a pair's capacity does not depend on any limit either. The
+    /// caller has already admitted the original combined atomic layout.
+    fn prepare_pair_slot(&mut self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let pair = match control.geometric_pair(
-            size_of::<T>(),
-            self.vector.len(),
-            self.vector.capacity(),
-            1,
-            usize::MAX,
-        ) {
-            Ok(pair) => pair,
+        let plan = match control.geometric_plan_toward(&self.vector, 1, usize::MAX) {
+            Ok(plan) => plan,
             Err(stop) => return control.fail(stop),
-        };
-        let plan = if let Some((exact, mut plan)) = pair {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            match ReservationPlan::for_vec(&other.vector, 1) {
-                Ok(Some(required)) => {
-                    // After this reserve, the other required reserve must fit
-                    // both retained capacity and old/new transient overlap.
-                    let (Some(without_old), Some(required_growth)) = (
-                        control
-                            .usage
-                            .resource(HtmlParseResource::ManagedCapacityBytes)
-                            .current
-                            .checked_sub(plan.old_bytes),
-                        required.new_bytes.checked_sub(required.old_bytes),
-                    ) else {
-                        return control.fail(HtmlParseStop::InternalInvariant(
-                            HtmlParseInvariant::CapacityMismatch,
-                        ));
-                    };
-                    let ceiling = control
-                        .limits
-                        .copy(HtmlParseResource::ManagedCapacityBytes)
-                        .saturating_sub(without_old)
-                        .saturating_sub(required_growth)
-                        .min(
-                            control
-                                .limits
-                                .copy(HtmlParseResource::PeakTransientBytes)
-                                .saturating_sub(without_old)
-                                .saturating_sub(required.new_bytes),
-                        );
-                    let clipped = plan.new_bytes.min(ceiling);
-                    if clipped < exact.new_bytes {
-                        // Keep the first exact preparation and let the second
-                        // required operation report its original concrete refusal.
-                        plan = exact;
-                    } else {
-                        let element = size_of::<T>() as u64;
-                        let Some(slots) = clipped
-                            .checked_div(element)
-                            .and_then(|slots| usize::try_from(slots).ok())
-                        else {
-                            return control.fail(HtmlParseStop::InternalInvariant(
-                                HtmlParseInvariant::CapacityMismatch,
-                            ));
-                        };
-                        // `clipped` covers the exact layout, so the slots
-                        // exceed the length and their bytes fit `clipped`.
-                        let (Some(additional), Some(new_bytes)) = (
-                            slots.checked_sub(self.vector.len()),
-                            u64::try_from(slots)
-                                .ok()
-                                .and_then(|slots| slots.checked_mul(element)),
-                        ) else {
-                            return control.fail(HtmlParseStop::InternalInvariant(
-                                HtmlParseInvariant::CapacityMismatch,
-                            ));
-                        };
-                        plan.additional = additional;
-                        plan.new_bytes = new_bytes;
-                    }
-                }
-                Ok(None) => {}
-                Err(_) => {
-                    // Do not fail on the second side before its original turn.
-                    plan = exact;
-                }
-            }
-            Some(plan)
-        } else {
-            None
         };
         self.prepare_plan(control, 1, size_of::<T>() as u64, 1, plan)
     }
@@ -2712,7 +2601,9 @@ impl<T> OwnedVec<T> {
     }
     /// `try_push` for a list that grows with the document: the same admission
     /// in the same order, but a full vector reserves geometric spare capacity
-    /// (charged and clamped to the limits) instead of exactly one more slot.
+    /// instead of exactly one more slot. The target is admitted before it is
+    /// allocated and charged in full: spare room counts against the limits, and
+    /// a limit that cannot hold the target refuses the reservation.
     pub(crate) fn try_push_geometric(
         &mut self,
         control: &mut ParseControl,
@@ -2762,8 +2653,8 @@ impl<T> OwnedVec<T> {
             .checked_add(size_of::<U>())
             .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::CapacityMismatch))?;
         control.admit_atomic_layout(bytes)?;
-        self.prepare_pair_slot(other, control)?;
-        other.prepare_pair_slot(self, control)?;
+        self.prepare_pair_slot(control)?;
+        other.prepare_pair_slot(control)?;
         control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
         // No fallible operation follows admission. Record is published last.
         other.vector.push(other_value);
@@ -2878,8 +2769,26 @@ impl<T: Copy> OwnedVec<T> {
         control: &mut ParseControl,
         values: &[T],
     ) -> Result<(), HtmlParseStop> {
+        self.extend_with(control, values, Growth::Exact)
+    }
+    /// `try_extend_from_slice` for a list that keeps growing: a full vector
+    /// reserves the geometric target of `try_push_geometric`, so repeated
+    /// appends copy each element a constant number of times.
+    pub(crate) fn try_extend_from_slice_geometric(
+        &mut self,
+        control: &mut ParseControl,
+        values: &[T],
+    ) -> Result<(), HtmlParseStop> {
+        self.extend_with(control, values, Growth::Geometric(usize::MAX))
+    }
+    fn extend_with(
+        &mut self,
+        control: &mut ParseControl,
+        values: &[T],
+        growth: Growth,
+    ) -> Result<(), HtmlParseStop> {
         control.checkpoint()?;
-        self.prepare(control, values.len(), 0, 0, Growth::Exact)?;
+        self.prepare(control, values.len(), 0, 0, growth)?;
         // A zero-sized element has no byte stride; refuse it when this is compiled.
         let stride = const {
             assert!(size_of::<T>() != 0);
@@ -3438,7 +3347,9 @@ mod tests {
     }
 
     #[test]
-    fn local_geometric_growth_charges_spare_capacity_and_clamps_to_finite_limits() {
+    fn local_geometric_growth_charges_spare_capacity_and_a_limit_refuses_the_target() {
+        // Six bytes hold three u16 slots, which exact growth fills. Geometric growth asks for
+        // 1, 2 and then 4 slots: the fourth slot's eight bytes do not fit.
         let caps = limits()
             .into_builder()
             .managed_capacity_bytes(6)
@@ -3448,74 +3359,158 @@ mod tests {
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         let (mut values, mut ticket) = c.new_vector::<u16>().unwrap();
-        for capacity in [1, 2, 3] {
+        for capacity in [1, 2] {
             c.reserve_vector_geometric(&mut values, &mut ticket, 1)
                 .unwrap();
             assert_eq!(values.capacity(), capacity);
             values.push(7);
         }
-        assert_eq!(c.usage().work(HtmlParseWorkCategory::ReserveByte), 18); // 2 +(2+4) +(4+6)
-        assert_eq!(c.usage().actual_capacity_bytes, 6);
-        assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::PeakTransientBytes)
-                .high_water,
-            10
-        );
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::ReserveByte), 8); // 2 + (2+4)
+        assert_eq!(c.usage().actual_capacity_bytes, 4);
         let reserve = c.usage().work(HtmlParseWorkCategory::ReserveByte);
-        // Existing exact caller still submits its required layout, without a
-        // geometric fallback or a change to the other callers' policy.
-        assert!(matches!(
-            c.reserve_vector(&mut values, &mut ticket, 1),
+        // The target is submitted whole to the reserve gate, which refuses it without
+        // shrinking the request to the room that is left.
+        assert_eq!(
+            c.reserve_vector_geometric(&mut values, &mut ticket, 1),
             Err(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: 6,
-                current: 6,
-                requested_delta: 2
+                current: 4,
+                requested_delta: 4,
             })
-        ));
-        assert_eq!(values, [7, 7, 7]);
+        );
+        assert_eq!(values, [7, 7]);
+        assert_eq!(values.capacity(), 2);
         assert_eq!(
             c.usage().work(HtmlParseWorkCategory::ReserveByte),
-            reserve + 14
+            reserve + 12 // the target's old and new layouts: 4 + 8
         );
         let at_stop = c.first_stop_usage().unwrap().clone();
         c.release_vector(values, ticket).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         assert_eq!(c.first_stop_usage(), Some(&at_stop));
         assert_eq!(c.usage().work, at_stop.work);
+
+        // The exact policy still fits the same limits with its three slots.
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let (mut values, mut ticket) = c.new_vector::<u16>().unwrap();
+        c.reserve_vector(&mut values, &mut ticket, 3).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 6);
+        c.release_vector(values, ticket).unwrap();
+    }
+
+    /// A forged plan stands in for an allocator that refuses the spare room. `try_reserve_exact`
+    /// refuses a request whose byte size exceeds `isize::MAX` as a capacity overflow, before any
+    /// allocator call, so asking for `usize::MAX - len` extra slots fails exactly as an
+    /// allocator refusal of a larger target would. The reservation must then ask for the one
+    /// slot that is needed, and account the capacity it actually reached.
+    #[test]
+    fn a_refused_larger_target_still_reserves_the_slot_that_is_needed() {
+        let mut c = control();
+        let mut values: Vec<u64> = vec![1, 2, 3];
+        values.resize(values.capacity(), 9);
+        let before = values.clone();
+        let len = values.len();
+        let old_bytes = (len * size_of::<u64>()) as u64;
+        let new_bytes = ((len + 1) * size_of::<u64>()) as u64;
+        c.set(HtmlParseResource::ManagedCapacityBytes, old_bytes);
+        // Without the fallback the larger request alone is refused.
+        assert!(values.clone().try_reserve_exact(usize::MAX - len).is_err());
+        let plan = ReservationPlan {
+            additional: usize::MAX - len,
+            needed: 1,
+            old_bytes,
+            new_bytes,
+        };
+        c.reserve(&mut values, plan).unwrap();
+        assert!(values.capacity() > len);
+        assert_eq!(values, before);
+        let actual = (values.capacity() * size_of::<u64>()) as u64;
+        assert_eq!(c.usage().actual_capacity_bytes, actual);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            actual
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::PeakTransientBytes)
+                .current,
+            actual
+        );
+        assert_eq!(c.stop(), None);
+
+        // A plan that needs no more than it asks for has no fallback: the refusal is final.
+        let mut c = control();
+        let mut values: Vec<u64> = vec![1, 2, 3];
+        values.resize(values.capacity(), 9);
+        c.set(HtmlParseResource::ManagedCapacityBytes, old_bytes);
+        let plan = ReservationPlan {
+            additional: usize::MAX - len,
+            needed: usize::MAX - len,
+            old_bytes,
+            new_bytes,
+        };
+        assert!(matches!(
+            c.reserve(&mut values, plan),
+            Err(HtmlParseStop::AllocationFailed { .. })
+        ));
+        assert_eq!(values.capacity(), len);
     }
 
     #[test]
-    fn sized_geometric_growth_doubles_clamps_to_limits_and_defers_to_the_exact_gate() {
-        // A bank described only by its element size: sixteen-byte elements,
-        // room for six, so the clamp falls at ninety-six bytes.
-        let caps = limits()
+    fn sized_geometric_growth_doubles_whatever_the_limits_and_usage_hold() {
+        // A bank described only by its element size: sixteen-byte elements. The plan depends on
+        // the lengths alone, so the same plan is made under a tight and under a roomy limit and
+        // whatever the held bytes.
+        let tight = limits()
             .into_builder()
             .managed_capacity_bytes(96)
             .peak_transient_bytes(200)
             .atomic_layout_bytes(96)
             .finish()
             .unwrap();
-        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
-        let mut additional = |held: u64, len: usize, capacity: usize| {
-            c.set(HtmlParseResource::ManagedCapacityBytes, held);
-            c.geometric_sized(16, len, capacity, 1, usize::MAX)
-                .unwrap()
-                .map(|plan| plan.additional)
-        };
-        // Spare room still fits: no reservation is planned.
-        assert_eq!(additional(32, 1, 2), None);
-        // Doubling two slots to four.
-        assert_eq!(additional(32, 2, 2), Some(2));
-        // Doubling four slots would exceed the limit, so six slots are asked.
-        assert_eq!(additional(64, 4, 4), Some(2));
-        // The required layout alone is over the limit: it is submitted
-        // unchanged so the reserve gate reports its own refusal.
-        assert_eq!(additional(96, 6, 6), Some(1));
+        for caps in [tight, limits()] {
+            let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+            let mut additional = |held: u64, len: usize, capacity: usize| {
+                c.set(HtmlParseResource::ManagedCapacityBytes, held);
+                c.geometric_sized(16, len, capacity, 1, usize::MAX)
+                    .unwrap()
+                    .map(|plan| plan.additional)
+            };
+            // Spare room still fits: no reservation is planned.
+            assert_eq!(additional(32, 1, 2), None);
+            // Doubling two slots to four, four to eight, and six to twelve.
+            assert_eq!(additional(32, 2, 2), Some(2));
+            assert_eq!(additional(64, 4, 4), Some(4));
+            assert_eq!(additional(96, 6, 6), Some(6));
+            // The spare room stops at a known final length, but never below the need.
+            assert_eq!(
+                c.geometric_sized(16, 4, 4, 1, 6)
+                    .unwrap()
+                    .map(|plan| plan.additional),
+                Some(2)
+            );
+            assert_eq!(
+                c.geometric_sized(16, 4, 4, 3, 6)
+                    .unwrap()
+                    .map(|plan| plan.additional),
+                Some(3)
+            );
+            assert_eq!(
+                c.geometric_sized(0, 0, 0, 1, usize::MAX).unwrap_err(),
+                HtmlParseStop::InternalInvariant(HtmlParseInvariant::ZeroSizedStorage)
+            );
+        }
+        // A target whose layout is no valid allocation falls back to the need.
+        let c = control();
+        let huge = isize::MAX as usize / 16 - 1;
         assert_eq!(
-            c.geometric_sized(0, 0, 0, 1, usize::MAX).unwrap_err(),
-            HtmlParseStop::InternalInvariant(HtmlParseInvariant::ZeroSizedStorage)
+            c.geometric_sized(16, huge, huge, 1, usize::MAX)
+                .unwrap()
+                .map(|plan| plan.additional),
+            Some(1)
         );
     }
 
@@ -3542,6 +3537,52 @@ mod tests {
         assert_eq!(c.usage().work(HtmlParseWorkCategory::ReserveByte), 184);
         values.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn copying_a_policy_string_into_a_document_string_reserves_work_linear_in_its_length() {
+        // Each doubling of the policy's length may at most double (with a tenth more for the
+        // fixed cost and capacity steps) the bytes reserved and the total credits.
+        let roomy = HtmlParseLimits::builder()
+            .source_units(1_000_000)
+            .buffered_utf16_units(1_000_000)
+            .token_attributes(1_000)
+            .auxiliary_entries(1_000)
+            .managed_nodes(1_000)
+            .managed_edges(1_000)
+            .managed_attributes(1_000)
+            .managed_utf16_units(1_000_000)
+            .source_map_entries(1_000)
+            .source_map_payload_units(1_000)
+            .diagnostics(1_000)
+            .diagnostic_payload_units(1_000)
+            .context_effects(1_000)
+            .open_elements(1_000)
+            .tree_depth(1_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(1_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .work_credits(100_000_000_000)
+            .finish()
+            .unwrap();
+        let mut reserved = Vec::new();
+        let mut total = Vec::new();
+        for units in [1_000_usize, 2_000, 4_000, 8_000] {
+            let mut c = ParseControl::new(roomy, HtmlParseCancellation::new());
+            let policy = DocumentString::from_utf16(vec![0x61; units]);
+            let (copy, ..) = c.csp_document_string(&policy).unwrap();
+            assert_eq!(copy.code_units(), policy.code_units());
+            reserved.push(c.usage().work(HtmlParseWorkCategory::ReserveByte));
+            total.push(c.usage().resource(HtmlParseResource::WorkCredits).current);
+        }
+        for (name, work) in [("reservation work", reserved), ("total work", total)] {
+            for window in work.windows(2) {
+                assert!(
+                    window[1] * 10 <= window[0] * 22,
+                    "{name} grew faster than linearly with the policy length: {work:?}"
+                );
+            }
+        }
     }
 
     #[test]

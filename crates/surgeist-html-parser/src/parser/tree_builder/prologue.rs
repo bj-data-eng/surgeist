@@ -413,7 +413,7 @@ impl<'a> DocumentPrologue<'a> {
                 .whitespace
                 .as_mut()
                 .ok_or(PrologueError::Consumed)?
-                .try_push_recover(c, prefix)
+                .try_push_recover_geometric(c, prefix)
             {
                 self.whitespace_pending = Some(prefix);
                 return Err(stop.into());

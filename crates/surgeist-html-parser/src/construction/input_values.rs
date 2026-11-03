@@ -449,7 +449,7 @@ fn copy_input_value_core(
                         }
                         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                         payload_write::<HtmlParseTextOrigin>(control, 1)?;
-                        copied.try_push(
+                        copied.try_push_geometric(
                             control,
                             HtmlParseTextOrigin {
                                 start,
