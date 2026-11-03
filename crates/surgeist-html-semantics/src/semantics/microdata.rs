@@ -581,7 +581,9 @@ impl<'a> HtmlSemanticSession<'a> {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
                     // One pass over the tree's IDs answers every token, in
-                    // place of one scan of the tree per token.
+                    // place of one scan of the tree per token. The pass is
+                    // charged before the first token, so a query whose tokens
+                    // match early can reach a work or scratch limit sooner.
                     let index = self.md_id_index(&root)?;
                     let checked = (|| {
                         let mut references = references;
@@ -687,7 +689,8 @@ impl<'a> HtmlSemanticSession<'a> {
                                         }
                                     } else {
                                         for path in paths {
-                                            // Every type path starts at its subject.
+                                            // Every type path holds at least its
+                                            // subject, so it is never empty.
                                             let Some(origin) = path.items.last() else {
                                                 return Err(self.stop(
                                                     HtmlSemanticFailureKind::IntrinsicUnavailable,
