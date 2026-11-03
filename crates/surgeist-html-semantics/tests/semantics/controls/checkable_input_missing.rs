@@ -1,6 +1,7 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
-    cap_resources, result_record_bytes, semantic_limits_with_integer_digits as limits, session,
+    cap_resources, result_record_bytes, semantic_limits_with_integer_digits as limits,
+    semantic_limits_without_nested_output, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -1149,7 +1150,7 @@ fn full_original_name_admission_succeeds_at_exact_units_without_numeric_or_neste
     let mut ss = session(
         &c,
         &cx,
-        HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 0),
+        semantic_limits_without_nested_output(),
         9,
         HtmlSemanticCancellation::new(),
     );

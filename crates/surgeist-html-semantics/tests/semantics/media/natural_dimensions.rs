@@ -1,13 +1,13 @@
 use crate::semantics::support::{
-    Charge, ExpectedUsage, assert_exact_and_one_short_caps, dimension_semantic_limits as limits,
-    result_record_bytes, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, dimension_capture_limits,
+    dimension_semantic_limits as limits, result_record_bytes, session, tenth_capture_limits,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlDimensionApplicability,
-    HtmlDimensionAuthorSyntax, HtmlDimensionOmission, HtmlDimensionPair, HtmlDimensionTolerance,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
+    HtmlCapturedIsValue, HtmlDimensionApplicability, HtmlDimensionAuthorSyntax,
+    HtmlDimensionOmission, HtmlDimensionPair, HtmlDimensionTolerance,
     HtmlEmbeddedDimensionAuthorReadback, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
     HtmlNaturalDimensionFactsError, HtmlNaturalDimensionLimits, HtmlNaturalDimensionMissing,
     HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision, HtmlNaturalDimensionUnsupported,
@@ -33,10 +33,7 @@ fn key() -> HtmlNaturalResourceKey {
     HtmlNaturalResourceKey::new(HtmlNaturalResourceId::fresh(), 11, 13)
 }
 fn fixture(local: &str, attrs: &[(&str, &str)]) -> (HtmlCapture, HtmlCaptureSubjectId) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(dimension_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -715,10 +712,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
             HtmlDimensionApplicability::Inapplicable,
         ),
     ] {
-        let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-            HtmlHostFactsRevision::fresh(),
-        );
+        let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
         let d = b
             .add_document(
                 HtmlDocumentMode::NoQuirks,
@@ -772,10 +766,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
 }
 #[test]
 fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -821,10 +812,7 @@ fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() 
 
 #[test]
 fn isolated_surrogate_author_value_is_preserved_invalid_and_cannot_supply_a_prefix() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,

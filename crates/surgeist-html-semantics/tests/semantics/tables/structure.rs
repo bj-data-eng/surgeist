@@ -1,10 +1,11 @@
 use crate::semantics::support::{
-    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, context,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context,
+    wide_builder_without_registries as builder,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlSemanticCancellation, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
     HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
@@ -12,11 +13,6 @@ use surgeist_html_semantics::{
     HtmlTableModelError,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    builder_with(HtmlCaptureLimits::new(
-        10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216,
-    ))
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,

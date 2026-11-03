@@ -8,15 +8,15 @@
 //! from counting header cells in the fixture, not from the implementation.
 
 use crate::semantics::support::{
-    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, context,
-    result_record_bytes,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
+    wide_builder_without_registries,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFailure,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFailure, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage,
 };
 
 pub(super) fn element(
@@ -57,9 +57,7 @@ pub(super) fn cell(
 /// some other cell, and every cell is a principal cell.
 pub(super) fn fixture(n: usize, scope_units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
     let scope = "x".repeat(scope_units);
-    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
-        10000, 100000, 10000, 1_000_000, 1000, 0, 0, 16_777_216,
-    ));
+    let (mut b, d) = wide_builder_without_registries();
     let table = element(&mut b, &d, "table", &[]);
     let mut rows = Vec::new();
     for y in 0..n {

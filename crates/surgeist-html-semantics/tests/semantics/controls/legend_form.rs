@@ -1,6 +1,7 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
-    cap_resources, semantic_limits_without_nested_output as limits, session,
+    cap_resources, scalar_semantic_limits, semantic_limits_without_nested_output as limits,
+    session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -590,7 +591,7 @@ fn established_owner_uses_no_scratch_or_nested_records_and_physical_batch_storag
             HtmlFormAssociationState::EstablishedCurrent(Some(form.clone())),
         )],
     );
-    let l = HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0);
+    let l = scalar_semantic_limits();
     let mut ss = session(&c, &cx, l, 0, HtmlSemanticCancellation::new());
     let first = ss.query(&[request(&legend)]).unwrap();
     assert_eq!(

@@ -705,7 +705,7 @@ fn reset_traversal_scratch_is_bounded_and_released_on_stop() {
         &f.capture,
         &cx,
         100,
-        HtmlSemanticLimits::new(10000000, 100, 1000, 0, 1000000, 10000),
+        limits(),
         &[request(&f, HtmlSemanticQuery::SubmitterNoValidate)],
         ExpectedUsage {
             output_records: Charge::Exactly(1),

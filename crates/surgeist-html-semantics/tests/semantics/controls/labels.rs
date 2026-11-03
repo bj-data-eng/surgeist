@@ -529,7 +529,7 @@ fn exact_caps_cover_retained_capacity_nested_scratch_and_atomic_failures() {
         &f.capture,
         &c,
         6,
-        HtmlSemanticLimits::new(10000000, 100, 10000, 0, 1000000, 10000),
+        limits(),
         std::slice::from_ref(&req),
         ExpectedUsage {
             output_records: Charge::Exactly(1),
