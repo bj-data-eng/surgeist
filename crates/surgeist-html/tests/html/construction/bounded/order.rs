@@ -222,11 +222,7 @@ fn commit_description(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> (HtmlConstructionStorage, usize, usize) {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(command));
     let mut described = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         if let HtmlConstructionActionDescription::Commit {
@@ -240,9 +236,7 @@ fn commit_description(
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("mutation produced publication")
     };

@@ -665,30 +665,21 @@ fn refused_finish_keeps_caller_facts_mapping_and_original_source() {
 // native authoring front door deliberately does not expose.
 fn storage() -> bounded::HtmlConstructionStorage {
     use bounded::*;
-    let mut value = Some(HtmlConstructionStorage::begin());
-    while let Some(action) = value.as_mut().unwrap().next_action().unwrap() {
+    let mut value = HtmlConstructionStorage::begin();
+    while let Some(action) = value.next_action().unwrap() {
         action.perform().accept();
     }
-    HtmlConstructionInitialization::try_ready(&mut value)
-        .unwrap()
-        .commit()
+    value.try_ready().unwrap().commit()
 }
 fn command(
     storage: bounded::HtmlConstructionStorage,
     command: bounded::HtmlConstructionCommand,
 ) -> bounded::HtmlConstructionCommit {
-    use bounded::*;
-    let mut value = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("prepare")),
-    );
-    while let Some(action) = value.as_mut().unwrap().next_action().unwrap() {
+    let mut value = storage.prepare(command);
+    while let Some(action) = value.next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    HtmlConstructionOperation::try_ready(&mut value)
-        .unwrap()
-        .commit()
+    value.try_ready().unwrap().commit()
 }
 fn change(
     storage: bounded::HtmlConstructionStorage,

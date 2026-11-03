@@ -88,33 +88,47 @@ impl FrozenArena {
         else {
             return Err(SessionError::Consumed);
         };
-        let mut result = Some(match view {
+        let Some(held_lease) = lease.take() else {
+            // The lease was checked above; a missing one is an impossible
+            // custody state, so the owner stays where it was.
+            self.storage = Some(FrozenStorage {
+                view,
+                control: owner,
+                construction,
+                lease: None,
+                payloads,
+                effects,
+                evidence,
+                fragment,
+            });
+            return Err(latch_registry_row(control));
+        };
+        let result = match view {
             HtmlConstructionResult::Document(value) => {
                 bounded::HtmlConstructionResult::Document(value)
             }
             HtmlConstructionResult::Fragment(value) => {
                 bounded::HtmlConstructionResult::Fragment(value)
             }
-        });
-        let recovery = match bounded::HtmlConstructionLease::try_recover(&mut result, &mut lease) {
+        };
+        let recovery = match bounded::HtmlConstructionLease::try_recover(result, held_lease) {
             Ok(recovery) => recovery,
-            Err(error) => {
-                // `try_recover` refuses before it takes the result, so the slot
-                // filled above is still occupied.
-                let view = match result.take() {
-                    Some(bounded::HtmlConstructionResult::Document(value)) => {
+            Err(refusal) => {
+                // A refused recovery hands the result and the lease back.
+                let ((result, held_lease), error) = refusal.into_parts();
+                let view = match result {
+                    bounded::HtmlConstructionResult::Document(value) => {
                         HtmlConstructionResult::Document(value)
                     }
-                    Some(bounded::HtmlConstructionResult::Fragment(value)) => {
+                    bounded::HtmlConstructionResult::Fragment(value) => {
                         HtmlConstructionResult::Fragment(value)
                     }
-                    None => return Err(latch_registry_row(control)),
                 };
                 self.storage = Some(FrozenStorage {
                     view,
                     control: owner,
                     construction,
-                    lease,
+                    lease: Some(held_lease),
                     payloads,
                     effects,
                     evidence,

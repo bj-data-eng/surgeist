@@ -129,11 +129,7 @@ fn aborted_pending(
     command: HtmlConstructionCommand,
     performed: usize,
 ) -> (bool, HtmlConstructionStorage, HtmlConstructionCommand) {
-    let mut operation = Some(
-        owner
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(owner.prepare(command));
     for _ in 0..performed {
         match operation.as_mut().unwrap().next_action().unwrap() {
             Some(action) => action.perform().unwrap().accept(),

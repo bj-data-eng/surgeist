@@ -16,7 +16,7 @@ use std::{
 };
 
 mod policy;
-use policy::{Operation, Pool, Value};
+use policy::{Operation, Pool, State, Value};
 
 /// Known retained payload, excluding opaque Arc and allocator internals.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -691,7 +691,7 @@ macro_rules! concrete_pool {
         impl fmt::Debug for $operation<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.debug_struct(stringify!($operation))
-                    .field("phase", &self.inner.phase)
+                    .field("phase", &self.inner.state.phase())
                     .field("change", &self.inner.change)
                     .finish_non_exhaustive()
             }
@@ -719,25 +719,23 @@ macro_rules! concrete_pool {
                     .as_ref()
                     .ok_or(HtmlValuePoolError::NotReady)?
                     .inner
-                    .phase;
+                    .state
+                    .phase();
                 if !matches!(
                     phase,
                     Phase::Hit | Phase::Miss | Phase::Offered | Phase::Bypassed
                 ) {
                     return Err(HtmlValuePoolError::NotReady);
                 }
-                let operation = owner.take().expect("occupied completed operation");
-                match phase {
-                    Phase::Hit => Ok($result::Hit($candidate {
-                        value: operation
-                            .inner
-                            .candidate
-                            .expect("completed hit retains candidate"),
-                    })),
-                    Phase::Miss => Ok($result::Miss),
-                    Phase::Offered => Ok($result::Offered(operation.inner.change)),
-                    Phase::Bypassed => Ok($result::Bypassed),
-                    _ => unreachable!("completed operation checked"),
+                let operation = owner.take().ok_or(HtmlValuePoolError::NotReady)?;
+                let change = operation.inner.change;
+                match operation.inner.state {
+                    State::Hit(value) => Ok($result::Hit($candidate { value })),
+                    State::Miss => Ok($result::Miss),
+                    State::Offered => Ok($result::Offered(change)),
+                    State::Bypassed => Ok($result::Bypassed),
+                    // The phase check above admitted only the four finished states.
+                    _ => Err(HtmlValuePoolError::NotReady),
                 }
             }
         }

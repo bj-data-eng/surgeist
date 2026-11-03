@@ -240,3 +240,57 @@ pub mod cause {
         HtmlConstructionError::is_allocation_failed,
     );
 }
+
+/// Adapters that keep a construction protocol owner in an `Option` slot, as a driver that stores
+/// it in a field does, and put the owner back when its consuming step refuses it.
+pub mod slots {
+    use surgeist_html::HtmlConstructionError;
+    use surgeist_html::bounded::{
+        HtmlConstructionInitialization, HtmlConstructionLease, HtmlConstructionOperation,
+        HtmlConstructionReadyInitialization, HtmlConstructionReadyOperation,
+        HtmlConstructionRecovery, HtmlConstructionRefusal, HtmlConstructionResult,
+    };
+
+    fn step<T, R>(
+        slot: &mut Option<T>,
+        consume: impl FnOnce(T) -> Result<R, HtmlConstructionRefusal<T>>,
+    ) -> Result<R, HtmlConstructionError> {
+        let owner = slot.take().expect("slot holds its owner");
+        match consume(owner) {
+            Ok(value) => Ok(value),
+            Err(refusal) => {
+                let (owner, reason) = refusal.into_parts();
+                *slot = Some(owner);
+                Err(reason)
+            }
+        }
+    }
+    pub fn initialization(
+        slot: &mut Option<HtmlConstructionInitialization>,
+    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
+        step(slot, HtmlConstructionInitialization::try_ready)
+    }
+    pub fn operation(
+        slot: &mut Option<HtmlConstructionOperation>,
+    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
+        step(slot, HtmlConstructionOperation::try_ready)
+    }
+    pub fn recover(
+        result: &mut Option<HtmlConstructionResult>,
+        lease: &mut Option<HtmlConstructionLease>,
+    ) -> Result<HtmlConstructionRecovery, HtmlConstructionError> {
+        let owners = (
+            result.take().expect("slot holds its result"),
+            lease.take().expect("slot holds its lease"),
+        );
+        match HtmlConstructionLease::try_recover(owners.0, owners.1) {
+            Ok(value) => Ok(value),
+            Err(refusal) => {
+                let ((returned_result, returned_lease), reason) = refusal.into_parts();
+                *result = Some(returned_result);
+                *lease = Some(returned_lease);
+                Err(reason)
+            }
+        }
+    }
+}

@@ -1665,21 +1665,34 @@ impl FrozenArena {
             release_vector(c, joins, joins_allocation)?;
             return Err(SessionError::Consumed);
         };
-        let mut result = Some(view);
-        let recovery = match bounded::HtmlConstructionLease::try_recover(&mut result, &mut lease) {
+        let Some(held_lease) = lease.take() else {
+            // The lease is required before sharing starts; a missing one is an
+            // impossible custody state, so the owner stays where it was.
+            let released = release_vector(c, joins, joins_allocation);
+            self.storage = Some(FrozenStorage {
+                view,
+                control,
+                construction,
+                lease: None,
+                payloads,
+                effects,
+                evidence,
+                fragment,
+            });
+            released?;
+            return Err(latch_registry_row(c));
+        };
+        let recovery = match bounded::HtmlConstructionLease::try_recover(view, held_lease) {
             Ok(value) => value,
-            Err(error) => {
+            Err(refusal) => {
                 let released = release_vector(c, joins, joins_allocation);
-                // `try_recover` refuses before it takes the result, so the slot
-                // filled above is still occupied.
-                let Some(view) = result.take() else {
-                    return Err(latch_registry_row(c));
-                };
+                // A refused recovery hands the result and the lease back.
+                let ((view, held_lease), error) = refusal.into_parts();
                 self.storage = Some(FrozenStorage {
                     view,
                     control,
                     construction,
-                    lease,
+                    lease: Some(held_lease),
                     payloads,
                     effects,
                     evidence,

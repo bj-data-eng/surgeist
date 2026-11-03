@@ -1,8 +1,9 @@
 mod depth;
 mod focus;
 mod order;
+mod refusal;
 mod replace;
-use crate::html::support::{Cause, cause, has_cause};
+use crate::html::support::{Cause, cause, has_cause, slots};
 use std::sync::Arc;
 use surgeist_html::{
     DocumentString, HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
@@ -21,23 +22,17 @@ fn storage() -> HtmlConstructionStorage {
         assert_eq!(observation.allocation().capacity(), 1);
         observation.accept();
     }
-    HtmlConstructionInitialization::try_ready(&mut owner)
-        .unwrap()
-        .commit()
+    slots::initialization(&mut owner).unwrap().commit()
 }
 fn ready(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> HtmlConstructionReadyOperation {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(command));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let ready = slots::operation(&mut operation).unwrap();
     assert!(operation.is_none());
     ready
 }
@@ -91,11 +86,7 @@ fn refuse(
     command: HtmlConstructionCommand,
     expected: Cause,
 ) -> HtmlConstructionStorage {
-    let mut owner = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut owner = Some(storage.prepare(command));
     loop {
         match owner.as_mut().unwrap().next_action() {
             Ok(Some(action)) => match action.perform() {
@@ -116,9 +107,7 @@ fn refuse(
         owner.as_mut().unwrap().next_action().err().as_ref(),
         expected
     ));
-    assert!(
-        matches!(HtmlConstructionOperation::try_ready(&mut owner), Err(error) if error == expected)
-    );
+    assert!(matches!(slots::operation(&mut owner), Err(error) if error == expected));
     owner.unwrap().abort().into_parts().0
 }
 
@@ -155,11 +144,7 @@ fn driven(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> (HtmlConstructionStorage, DescribedWork) {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(command));
     let mut work = DescribedWork::default();
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         let (visits, copied, writes, growth) = match action.description() {
@@ -185,7 +170,7 @@ fn driven(
         }
         action.perform().unwrap().accept();
     }
-    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let ready = slots::operation(&mut operation).unwrap();
     let HtmlConstructionCommit::Changed { storage, .. } = ready.commit() else {
         panic!("mutation produced publication")
     };
@@ -225,15 +210,11 @@ fn append_amortized(
     node: &HtmlBuilderNode,
     parent: &HtmlBuilderNode,
 ) -> (HtmlConstructionStorage, Vec<usize>) {
-    let mut operation = Some(
-        storage
-            .prepare(HtmlConstructionCommand::Insert {
-                node: node.clone(),
-                parent: parent.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(HtmlConstructionCommand::Insert {
+        node: node.clone(),
+        parent: parent.clone(),
+        before: None,
+    }));
     let mut requested = Vec::new();
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         let capacity = match action.description() {
@@ -255,9 +236,7 @@ fn append_amortized(
         observation.accept();
     }
     let HtmlConstructionCommit::Changed { storage, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("mutation produced publication")
     };
@@ -322,15 +301,11 @@ fn a_child_order_allocation_reports_the_deque_that_holds_the_entries() {
     let (owner, b) = create(owner, element("b"));
     let (owner, requested) = append_amortized(owner, &a, &root);
     assert_eq!(requested, [1]);
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b,
-                parent: root,
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b,
+        parent: root,
+        before: None,
+    }));
     let (mut before, mut grown) = (None, None);
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         if let HtmlConstructionActionDescription::Reserve { allocation, .. } = action.description()
@@ -374,15 +349,11 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
         },
     );
     let usage = owner.usage();
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: None,
+    }));
     let mut before = None;
     let grown = loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
@@ -433,15 +404,11 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
     );
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry needs no growth and commits into the retained capacity.
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: None,
+    }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         assert!(!matches!(
             action.description(),
@@ -450,9 +417,7 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -493,15 +458,11 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
         },
     );
     let usage = owner.usage();
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: None,
+    }));
     let failure = loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
         let before = match action.description() {
@@ -528,15 +489,11 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
     let owner = operation.unwrap().abort().into_parts().0;
     assert_eq!(owner.usage(), usage);
     // A capacity no provider can supply returns the unchanged bank report.
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: None,
+    }));
     loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
         if !matches!(
@@ -570,23 +527,17 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
 fn capacity_is_only_accepted_by_a_described_geometric_reserve() {
     let (owner, root) = fragment(storage());
     let (owner, a) = create(owner, element("a"));
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: a,
-                parent: root,
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: a,
+        parent: root,
+        before: None,
+    }));
     let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
     let refused = action.perform_with_capacity(64).err().unwrap();
     assert_eq!(refused.reason(), &cause::CAPACITY_MISMATCH);
     assert!(refused.allocation().is_none());
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::CAPACITY_MISMATCH
     ));
     let owner = operation.unwrap().abort().into_parts().0;
@@ -606,15 +557,11 @@ fn append_cycle_refuses_before_any_child_order_growth() {
         },
     );
     // `inner` has no spare child capacity, yet the cycle is reached first.
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: outer.clone(),
-                parent: inner.clone(),
-                before: None,
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: outer.clone(),
+        parent: inner.clone(),
+        before: None,
+    }));
     let error = loop {
         let action = match operation.as_mut().unwrap().next_action() {
             Ok(Some(action)) => action,
@@ -639,9 +586,7 @@ fn append_cycle_refuses_before_any_child_order_growth() {
 fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal() {
     let mut initialization = Some(HtmlConstructionStorage::begin());
     assert!(has_cause(
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .err()
-            .as_ref(),
+        slots::initialization(&mut initialization).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let observation = initialization
@@ -654,23 +599,15 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
     let ticket = observation.allocation().clone();
     drop(observation);
     assert!(has_cause(
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .err()
-            .as_ref(),
+        slots::initialization(&mut initialization).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let receipt = initialization.unwrap().abort().unwrap();
     assert_eq!(receipt.allocation(), &ticket);
 
-    let mut operation = Some(
-        storage()
-            .prepare(HtmlConstructionCommand::CreateFragment)
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(storage().prepare(HtmlConstructionCommand::CreateFragment));
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     {
@@ -690,9 +627,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
         cause::OPERATION_NOT_READY
     ));
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let (retained, command, retired) = operation.unwrap().abort().into_parts();
@@ -705,13 +640,9 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
 fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
     let text = DocumentString::from_shared_code_units(Arc::new(vec![0xd800, 0, 0xdfff]));
     let alias = text.clone();
-    let mut owner = Some(
-        storage()
-            .prepare(HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Text(text),
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut owner = Some(storage().prepare(HtmlConstructionCommand::Create {
+        kind: HtmlNodeKind::Text(text),
+    }));
     let observed;
     loop {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
@@ -1000,15 +931,13 @@ fn publication_lease_rejects_foreign_or_aliased_results_without_taking_slots() {
     let mut result = Some(result);
     let mut lease = Some(lease);
     assert!(has_cause(
-        HtmlConstructionLease::try_recover(&mut result, &mut Some(other_lease))
+        slots::recover(&mut result, &mut Some(other_lease))
             .err()
             .as_ref(),
         cause::FOREIGN_ALLOCATION
     ));
     assert!(has_cause(
-        HtmlConstructionLease::try_recover(&mut result, &mut lease)
-            .err()
-            .as_ref(),
+        slots::recover(&mut result, &mut lease).err().as_ref(),
         cause::SHARED_ALLOCATION_ALIASED
     ));
     assert!(result.is_some() && lease.is_some());
@@ -1016,7 +945,7 @@ fn publication_lease_rejects_foreign_or_aliased_results_without_taking_slots() {
     drop(alias);
     drop(other);
     let wrapper = lease.as_ref().unwrap().allocation().clone();
-    let (storage, receipt) = HtmlConstructionLease::try_recover(&mut result, &mut lease)
+    let (storage, receipt) = slots::recover(&mut result, &mut lease)
         .unwrap()
         .into_parts();
     assert!(result.is_none() && lease.is_none());
@@ -1034,11 +963,7 @@ fn aborted_after(
     command: HtmlConstructionCommand,
     performed: usize,
 ) -> (bool, HtmlConstructionStorage) {
-    let mut operation = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("preparation")),
-    );
+    let mut operation = Some(storage.prepare(command));
     for _ in 0..performed {
         match operation.as_mut().unwrap().next_action().unwrap() {
             Some(action) => action.perform().unwrap().accept(),
@@ -1144,9 +1069,7 @@ fn children_snapshot(
 fn record_layout_exhaustion_refuses_before_provider_growth_and_preserves_existing_handles() {
     let (owner, root) = fragment(storage());
     let before = owner.usage();
-    let mut sizing = owner
-        .prepare(HtmlConstructionCommand::ReserveRecords { additional: 1 })
-        .unwrap_or_else(|_| panic!());
+    let mut sizing = owner.prepare(HtmlConstructionCommand::ReserveRecords { additional: 1 });
     let size;
     loop {
         let action = sizing.next_action().unwrap().unwrap();
@@ -1173,11 +1096,7 @@ fn record_layout_exhaustion_refuses_before_provider_growth_and_preserves_existin
 fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_identity() {
     let (owner, root) = create(storage(), HtmlConstructionCommand::CreateFragment);
     let root_id = owner.result_id(&root).unwrap();
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::CreateFragment)
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateFragment));
     let old = loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
         let child = matches!(
@@ -1197,11 +1116,7 @@ fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_ide
     assert!(owner.node_at(1).is_none());
     assert_eq!(owner.position(&root), Ok(0));
     assert_eq!(owner.result_id(&root).unwrap(), root_id);
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::CreateFragment)
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateFragment));
     let mut current = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         let child = matches!(
@@ -1218,9 +1133,7 @@ fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_ide
         storage: owner,
         created,
         ..
-    } = HtmlConstructionOperation::try_ready(&mut operation)
-        .unwrap()
-        .commit()
+    } = slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("creation")
     };
@@ -1260,15 +1173,11 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     .0;
     // The order holds one entry in capacity one, so inserting `b` before it
     // grows the parent's actual bank in place, with a new incarnation.
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: Some(a.clone()),
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: Some(a.clone()),
+    }));
     let mut previous = None;
     let mut preflight = false;
     let grown = loop {
@@ -1304,15 +1213,11 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     assert_eq!(children_snapshot(&owner, &root), std::slice::from_ref(&a));
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry finds the grown bank and requests no growth.
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
-                before: Some(a.clone()),
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: b.clone(),
+        parent: root.clone(),
+        before: Some(a.clone()),
+    }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         assert!(!matches!(
             action.description(),
@@ -1321,9 +1226,7 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -1364,19 +1267,15 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
             },
         );
         let usage = owner.usage();
-        let mut operation = Some(
-            owner
-                .prepare(HtmlConstructionCommand::Insert {
-                    node: if before_successor {
-                        a.clone()
-                    } else {
-                        b.clone()
-                    },
-                    parent: root.clone(),
-                    before: before_successor.then(|| b.clone()),
-                })
-                .unwrap_or_else(|_| panic!("retained insertion")),
-        );
+        let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+            node: if before_successor {
+                a.clone()
+            } else {
+                b.clone()
+            },
+            parent: root.clone(),
+            before: before_successor.then(|| b.clone()),
+        }));
         let mut preflight = false;
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             if let HtmlConstructionActionDescription::Preflight { usage: computed } =
@@ -1408,9 +1307,7 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
         }
         assert!(preflight);
         let HtmlConstructionCommit::Changed { storage: owner, .. } =
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            slots::operation(&mut operation).unwrap().commit()
         else {
             panic!()
         };
@@ -1454,15 +1351,11 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
     );
     assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
     assert_eq!(owner.node(&other).unwrap().child_count(), 0);
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::Insert {
-                node: a.clone(),
-                parent: root.clone(),
-                before: Some(a.clone()),
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
+        node: a.clone(),
+        parent: root.clone(),
+        before: Some(a.clone()),
+    }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         assert!(!matches!(
             action.description(),
@@ -1472,9 +1365,7 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -1549,15 +1440,11 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
         )])
         .unwrap();
         let attributes_alias = attributes.shared_attributes().clone();
-        let mut operation = Some(
-            owner
-                .prepare(HtmlConstructionCommand::CreateElement {
-                    name,
-                    attributes,
-                    link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
-                })
-                .unwrap_or_else(|_| panic!()),
-        );
+        let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateElement {
+            name,
+            attributes,
+            link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+        }));
         loop {
             let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
             assert!(!matches!(
@@ -1575,9 +1462,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
             }
         }
         assert!(has_cause(
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .err()
-                .as_ref(),
+            slots::operation(&mut operation).err().as_ref(),
             cause::WRONG_NODE_KIND
         ));
         let (owner, command, _) = operation.unwrap().abort().into_parts();
@@ -1610,15 +1495,11 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
     )])
     .unwrap();
     let backing = attributes.shared_attributes().clone();
-    let mut operation = Some(
-        owner
-            .prepare(HtmlConstructionCommand::CreateElement {
-                name: QualifiedName::new(Namespace::html(), None, "link"),
-                attributes,
-                link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
-            })
-            .unwrap_or_else(|_| panic!()),
-    );
+    let mut operation = Some(owner.prepare(HtmlConstructionCommand::CreateElement {
+        name: QualifiedName::new(Namespace::html(), None, "link"),
+        attributes,
+        link_flags: Some(surgeist_html::HtmlLinkFlags::fresh()),
+    }));
     loop {
         let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
         if matches!(
@@ -1630,9 +1511,7 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
         action.perform().unwrap().accept();
     }
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let (owner, command, _) = operation.unwrap().abort().into_parts();

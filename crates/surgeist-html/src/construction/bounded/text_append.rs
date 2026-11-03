@@ -150,6 +150,75 @@ impl HtmlConstructionTextAppendDescription {
     }
 }
 
+/// What `Inspect` established about the target text node, which every later step reads.
+#[derive(Clone, Copy, Debug)]
+struct Target {
+    /// The text record's ordinal.
+    index: usize,
+    /// The original text's length in UTF-16 units.
+    old_len: usize,
+    /// The least backing capacity that holds the original and the incoming text.
+    required: usize,
+    /// The usage after the append.
+    usage: HtmlConstructionUsage,
+}
+/// The steps that follow the backing choice and every pending step of both. A step carries what
+/// only it needs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Step {
+    /// Reserves capacity; `before` are the candidate's dimensions at that moment.
+    Reserve {
+        before: HtmlConstructionTextAppendCapacity,
+    },
+    Preflight,
+    QualifyTail,
+    /// Copies the incoming text onto the backing, from `tail` units on.
+    CopyTail {
+        tail: usize,
+    },
+    Commit,
+}
+impl Step {
+    /// Whether the candidate backing has been qualified as uniquely owned for the tail writes,
+    /// which only the steps after that qualification can follow.
+    fn tail_is_exclusive(self) -> bool {
+        matches!(self, Self::CopyTail { .. } | Self::Commit)
+    }
+}
+/// Where the append is, together with exactly the data established so far.
+#[derive(Debug)]
+enum Progress {
+    /// Nothing is qualified yet.
+    Inspect,
+    /// The target is qualified; the backing choice is pending.
+    Select(Target),
+    /// The original is aliased, so the append works in a separate copy that is not created yet.
+    Initialize(Target),
+    /// The original backing is uniquely owned, so the append reuses it.
+    InPlace { target: Target, step: Step },
+    /// The separate copy is being filled with the original text, from `prefix` units on. Only a
+    /// copy has a prefix to copy.
+    Prefix {
+        target: Target,
+        copy: DocumentString,
+        prefix: usize,
+    },
+    /// The append works in a separate copy of the original text.
+    Preserved {
+        target: Target,
+        copy: DocumentString,
+        step: Step,
+    },
+    /// Every step of an in-place append was accepted.
+    ReadyInPlace(Target),
+    /// Every step of an append in a separate copy was accepted.
+    ReadyPreserved {
+        target: Target,
+        copy: DocumentString,
+    },
+}
+/// A step tag for tests that drive the append to a named point.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
     Inspect,
@@ -161,9 +230,7 @@ enum Phase {
     QualifyTail,
     CopyTail,
     Commit,
-    Observing,
     Ready,
-    Failed,
 }
 
 /// Exclusive pending owner. No mutable backing or reusable uniqueness proof escapes.
@@ -172,35 +239,41 @@ pub struct HtmlConstructionTextAppend {
     storage: HtmlConstructionStorage,
     node: HtmlBuilderNode,
     incoming: DocumentString,
-    pending: Option<DocumentString>,
-    phase: Phase,
+    progress: Progress,
+    /// An observation awaits `accept`. The progress it reaches is already stored, so a dropped
+    /// observation keeps what the action established.
+    observing: bool,
     failure: Option<HtmlConstructionError>,
-    target: Option<usize>,
-    old_len: usize,
-    required: usize,
-    usage: HtmlConstructionUsage,
-    preserve: bool,
-    exclusive_tail: bool,
-    prefix: usize,
-    tail: usize,
 }
 /// One pending text-append action. It borrows the append exclusively; `perform` consumes it.
 #[derive(Debug)]
 pub struct HtmlConstructionTextAppendAction<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
+    pending: Pending,
 }
 /// The observation after a text-append action. It borrows the append exclusively; `accept` resumes
 /// it.
 #[derive(Debug)]
 pub struct HtmlConstructionTextAppendObservation<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
-    /// The phase this accepted observation resumes.
-    next: Phase,
+}
+/// What a ready append writes when it commits, and what it returns when it aborts.
+#[derive(Debug)]
+enum ReadyBacking {
+    /// The original backing took the tail; an abort truncates it back to `old_len`.
+    InPlace { old_len: usize },
+    /// The separate copy that replaces the original on commit.
+    Preserved(DocumentString),
 }
 /// A text append whose every action was accepted. `commit` applies it; `abort` abandons it.
 #[derive(Debug)]
 pub struct HtmlConstructionTextAppendReady {
-    owner: HtmlConstructionTextAppend,
+    storage: HtmlConstructionStorage,
+    node: HtmlBuilderNode,
+    incoming: DocumentString,
+    index: usize,
+    usage: HtmlConstructionUsage,
+    backing: ReadyBacking,
 }
 
 /// Original operands and actual storage, plus a distinct backing needing retirement.
@@ -227,6 +300,28 @@ impl HtmlConstructionTextAppendCompletion {
         (self.storage, self.node, self.incoming, self.discarded)
     }
 }
+/// The text record's value, if the record is a text node.
+fn text_of(storage: &HtmlConstructionStorage, index: usize) -> Option<&DocumentString> {
+    match &storage.arena.records.get(index)?.kind {
+        HtmlNodeKind::Text(value) => Some(value),
+        _ => None,
+    }
+}
+fn text_of_mut(storage: &mut HtmlConstructionStorage, index: usize) -> Option<&mut DocumentString> {
+    match &mut storage.arena.records.get_mut(index)?.kind {
+        HtmlNodeKind::Text(value) => Some(value),
+        _ => None,
+    }
+}
+/// Removes initialized tail from a reused native backing. The tail qualification proved the
+/// backing uniquely owned, so a backing that is not (which nothing can make it) is left as is.
+fn truncate_tail(storage: &mut HtmlConstructionStorage, index: usize, old_len: usize) {
+    if let Some(backing) =
+        text_of_mut(storage, index).and_then(|value| Arc::get_mut(value.construction_backing_mut()))
+    {
+        backing.truncate(old_len);
+    }
+}
 
 impl HtmlConstructionTextAppend {
     /// Allocation-free. Target identity and kind are qualified by the first action.
@@ -239,43 +334,50 @@ impl HtmlConstructionTextAppend {
             storage,
             node,
             incoming,
-            pending: None,
-            phase: Phase::Inspect,
+            progress: Progress::Inspect,
+            observing: false,
             failure: None,
-            target: None,
-            old_len: 0,
-            required: 0,
-            usage: HtmlConstructionUsage::default(),
-            preserve: false,
-            exclusive_tail: false,
-            prefix: 0,
-            tail: 0,
         }
     }
-    fn original(&self) -> Option<&DocumentString> {
-        match &self.storage.arena.records.get(self.target?)?.kind {
-            HtmlNodeKind::Text(value) => Some(value),
-            _ => None,
-        }
-    }
-    fn original_mut(&mut self) -> &mut DocumentString {
-        match &mut self.storage.arena.records[self.target.expect("qualified target")].kind {
-            HtmlNodeKind::Text(value) => value,
-            _ => unreachable!("qualified text"),
+    #[cfg(test)]
+    fn phase(&self) -> Phase {
+        let step = |step: Step| match step {
+            Step::Reserve { .. } => Phase::Reserve,
+            Step::Preflight => Phase::Preflight,
+            Step::QualifyTail => Phase::QualifyTail,
+            Step::CopyTail { .. } => Phase::CopyTail,
+            Step::Commit => Phase::Commit,
+        };
+        match &self.progress {
+            Progress::Inspect => Phase::Inspect,
+            Progress::Select(_) => Phase::SelectBacking,
+            Progress::Initialize(_) => Phase::InitializeBacking,
+            Progress::Prefix { .. } => Phase::CopyPrefix,
+            Progress::InPlace { step: s, .. } | Progress::Preserved { step: s, .. } => step(*s),
+            Progress::ReadyInPlace(_) | Progress::ReadyPreserved { .. } => Phase::Ready,
         }
     }
     fn candidate(&self) -> Option<&DocumentString> {
-        if self.preserve {
-            self.pending.as_ref()
-        } else {
-            self.original()
+        match &self.progress {
+            Progress::Inspect | Progress::Initialize(_) => None,
+            Progress::Select(target)
+            | Progress::InPlace { target, .. }
+            | Progress::ReadyInPlace(target) => text_of(&self.storage, target.index),
+            Progress::Prefix { copy, .. }
+            | Progress::Preserved { copy, .. }
+            | Progress::ReadyPreserved { copy, .. } => Some(copy),
         }
     }
-    fn candidate_mut(&mut self) -> &mut DocumentString {
-        if self.preserve {
-            self.pending.as_mut().expect("initialized pending backing")
-        } else {
-            self.original_mut()
+    fn tail_is_exclusive(&self) -> bool {
+        match &self.progress {
+            Progress::InPlace { step, .. } | Progress::Preserved { step, .. } => {
+                step.tail_is_exclusive()
+            }
+            Progress::ReadyInPlace(_) | Progress::ReadyPreserved { .. } => true,
+            Progress::Inspect
+            | Progress::Select(_)
+            | Progress::Initialize(_)
+            | Progress::Prefix { .. } => false,
         }
     }
     /// The dimensions of the candidate backing. `None` before the first action has qualified the
@@ -286,14 +388,46 @@ impl HtmlConstructionTextAppend {
     }
     /// True when immutable original aliases require a separate aggregate.
     pub fn preserves_original(&self) -> bool {
-        self.preserve
+        match self.progress {
+            Progress::Initialize(_)
+            | Progress::Prefix { .. }
+            | Progress::Preserved { .. }
+            | Progress::ReadyPreserved { .. } => true,
+            Progress::Inspect
+            | Progress::Select(_)
+            | Progress::InPlace { .. }
+            | Progress::ReadyInPlace(_) => false,
+        }
     }
     /// Only before final tail qualification. Reads and reference providers need admission.
     pub fn backing(&self) -> Option<&DocumentString> {
-        if self.exclusive_tail {
+        if self.tail_is_exclusive() {
             None
         } else {
             self.candidate()
+        }
+    }
+    /// The pending action's kind, or `None` once every step was accepted.
+    fn pending(&self) -> Option<Pending> {
+        match &self.progress {
+            Progress::Inspect => Some(Pending::Inspect),
+            Progress::Select(_) => Some(Pending::Select),
+            Progress::Initialize(_) => Some(Pending::Initialize),
+            Progress::InPlace { target, step } => Some(Pending::Step {
+                target: *target,
+                step: *step,
+                preserved: false,
+            }),
+            Progress::Preserved { target, step, .. } => Some(Pending::Step {
+                target: *target,
+                step: *step,
+                preserved: true,
+            }),
+            Progress::Prefix { target, prefix, .. } => Some(Pending::Prefix {
+                target: *target,
+                prefix: *prefix,
+            }),
+            Progress::ReadyInPlace(_) | Progress::ReadyPreserved { .. } => None,
         }
     }
     /// The next action, `Ok(None)` when the append is ready. It returns the latched failure, or
@@ -304,31 +438,78 @@ impl HtmlConstructionTextAppend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        if self.phase == Phase::Observing {
+        if self.observing {
             return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
-        Ok(
-            (self.phase != Phase::Ready)
-                .then_some(HtmlConstructionTextAppendAction { owner: self }),
-        )
+        Ok(self
+            .pending()
+            .map(|pending| HtmlConstructionTextAppendAction {
+                owner: self,
+                pending,
+            }))
     }
-    /// Takes a ready append out of `owner`. Returns the latched failure, the consumed error for an
-    /// empty owner, or the not-ready error before the last action was accepted; on error the owner
-    /// is left in place.
+    /// Consumes a ready append. Returns the latched failure, or the not-ready error before the
+    /// last action was accepted, or when the qualified target is no longer a text node; either
+    /// way the append is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
-        let append = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(error) = &append.failure {
-            return Err(error.clone());
+        self,
+    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionRefusal<Self>> {
+        if let Some(error) = &self.failure {
+            let error = error.clone();
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
-        if append.phase != Phase::Ready {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
-        }
+        let target = match &self.progress {
+            Progress::ReadyInPlace(target) | Progress::ReadyPreserved { target, .. }
+                if !self.observing && text_of(&self.storage, target.index).is_some() =>
+            {
+                *target
+            }
+            _ => {
+                return Err(HtmlConstructionRefusal::new(
+                    self,
+                    HtmlConstructionErrorKind::OperationNotReady,
+                ));
+            }
+        };
+        let Self {
+            storage,
+            node,
+            incoming,
+            progress,
+            observing,
+            failure,
+        } = self;
+        let backing = match progress {
+            Progress::ReadyInPlace(target) => ReadyBacking::InPlace {
+                old_len: target.old_len,
+            },
+            Progress::ReadyPreserved { copy, .. } => ReadyBacking::Preserved(copy),
+            // The check above admitted only the two ready progresses.
+            progress => {
+                return Err(HtmlConstructionRefusal::new(
+                    Self {
+                        storage,
+                        node,
+                        incoming,
+                        progress,
+                        observing,
+                        failure,
+                    },
+                    HtmlConstructionErrorKind::OperationNotReady,
+                ));
+            }
+        };
         Ok(HtmlConstructionTextAppendReady {
-            owner: owner.take().expect("ready append"),
+            storage,
+            node,
+            incoming,
+            index: target.index,
+            usage: target.usage,
+            backing,
         })
     }
     /// Removes initialized tail from reused native backing before storage escapes.
@@ -336,169 +517,174 @@ impl HtmlConstructionTextAppend {
     /// stopped retention and disposal. Neither copy nor tail becomes native-visible.
     /// Successful growth is retained and remains visible in actual capacity.
     pub fn abort(mut self) -> HtmlConstructionTextAppendCompletion {
-        if self.exclusive_tail && !self.preserve {
-            let old_len = self.old_len;
-            Arc::get_mut(self.candidate_mut().construction_backing_mut())
-                .expect("exclusive tail has no escaping references")
-                .truncate(old_len);
-        }
+        let discarded = match self.progress {
+            Progress::InPlace { target, step } => {
+                if step.tail_is_exclusive() {
+                    truncate_tail(&mut self.storage, target.index, target.old_len);
+                }
+                None
+            }
+            Progress::ReadyInPlace(target) => {
+                truncate_tail(&mut self.storage, target.index, target.old_len);
+                None
+            }
+            Progress::Prefix { copy, .. }
+            | Progress::Preserved { copy, .. }
+            | Progress::ReadyPreserved { copy, .. } => Some(copy),
+            Progress::Inspect | Progress::Select(_) | Progress::Initialize(_) => None,
+        };
         HtmlConstructionTextAppendCompletion {
             storage: self.storage,
             node: self.node,
             incoming: self.incoming,
-            discarded: self.pending,
+            discarded,
         }
     }
-    fn after_reserve(&self) -> Phase {
-        if self.preserve && self.prefix < self.old_len {
-            Phase::CopyPrefix
-        } else {
-            Phase::Preflight
-        }
-    }
+}
+/// The action the append is about to issue, which carries what its description needs.
+#[derive(Clone, Copy, Debug)]
+enum Pending {
+    Inspect,
+    Select,
+    Initialize,
+    /// A step of the reused backing, or of the separate copy when `preserved`.
+    Step {
+        target: Target,
+        step: Step,
+        preserved: bool,
+    },
+    /// Copying the original text into the separate backing, from `prefix` units on.
+    Prefix {
+        target: Target,
+        prefix: usize,
+    },
 }
 
 impl<'a> HtmlConstructionTextAppendAction<'a> {
     /// The original visible tree, available only before tail mutation begins.
     pub fn storage_view(&self) -> Option<&HtmlConstructionStorage> {
-        (self.owner.phase == Phase::Preflight).then_some(&self.owner.storage)
+        match self.pending {
+            Pending::Step {
+                step: Step::Preflight,
+                ..
+            } => Some(&self.owner.storage),
+            _ => None,
+        }
     }
     /// Actual reuse or preserved-copy candidate at the pre-tail boundary.
     pub fn backing(&self) -> Option<&DocumentString> {
-        if self.owner.phase == Phase::Preflight {
-            self.owner.backing()
-        } else {
-            None
-        }
+        self.storage_view()?;
+        self.owner.backing()
     }
     /// Describes the pending action's work. The consumer admits that work before calling
     /// `perform`.
     pub fn description(&self) -> HtmlConstructionTextAppendDescription {
         use HtmlConstructionTextAppendDescription as D;
         let owner = &self.owner;
-        // Every action performs and accepts a phase transition, or latches its
-        // first failure. Include both concrete paths rather than assuming enum
-        // and Option<enum> have identical layouts.
+        // Every action stores the progress it reaches and holds the append with the observing
+        // flag, and accept releases it; a failed action stores its typed failure instead. Admit
+        // the larger concrete path.
         let mut work = HtmlConstructionTextAppendWork {
-            record_writes: 4,
-            copied_bytes: (2 * size_of::<Phase>() + 2 * size_of::<Option<Phase>>())
-                .max(size_of::<Option<HtmlConstructionError>>() + size_of::<Phase>()),
+            record_writes: 3,
+            copied_bytes: (size_of::<Progress>() + 2 * size_of::<bool>())
+                .max(size_of::<Option<HtmlConstructionError>>()),
             atomic_layout_bytes: size_of::<Option<HtmlConstructionError>>()
-                .max(size_of::<Phase>())
-                .max(size_of::<Option<Phase>>()),
+                .max(size_of::<Progress>()),
             ..Default::default()
         };
-        match owner.phase {
-            Phase::Inspect => {
+        match self.pending {
+            Pending::Inspect => {
                 work.record_visits += 6;
                 work.provider_calls += 1;
-                work.record_writes += 4;
-                work.copied_bytes += size_of::<Option<usize>>()
-                    + 2 * size_of::<usize>()
-                    + size_of::<HtmlConstructionUsage>();
                 work.atomic_layout_bytes = work
                     .atomic_layout_bytes
                     .max(size_of::<HtmlConstructionUsage>());
                 D::Inspect(work)
             }
-            Phase::SelectBacking => {
+            Pending::Select => {
                 work.record_visits += 3;
                 work.provider_calls += 1;
-                work.record_writes += 1;
-                work.copied_bytes += size_of::<bool>();
                 D::SelectBacking(work)
             }
-            Phase::InitializeBacking => {
+            Pending::Initialize => {
                 work.provider_calls += 1;
                 work.record_writes += 1;
-                work.copied_bytes += size_of::<Option<DocumentString>>() + size_of::<Vec<u16>>();
-                work.atomic_layout_bytes = work
-                    .atomic_layout_bytes
-                    .max(size_of::<Option<DocumentString>>())
-                    .max(size_of::<Vec<u16>>());
-                D::InitializeBacking(work)
-            }
-            Phase::Reserve => {
-                let before = owner.capacity().expect("actual candidate");
-                work.record_visits += 3;
-                work.provider_calls += 1;
-                work.record_writes += 2;
                 work.copied_bytes += size_of::<Vec<u16>>();
                 work.atomic_layout_bytes = work.atomic_layout_bytes.max(size_of::<Vec<u16>>());
-                work.relocation_bound_bytes = before.capacity * size_of::<u16>();
-                let max_units = isize::MAX as usize / size_of::<u16>();
-                let preferred_capacity = before
-                    .capacity
-                    .saturating_mul(2)
-                    .max(owner.required)
-                    .min(max_units);
-                D::Reserve {
-                    before,
-                    required_capacity: owner.required,
-                    preferred_capacity,
+                D::InitializeBacking(work)
+            }
+            Pending::Prefix { target, prefix } => {
+                let units = (target.old_len - prefix).min(CHUNK_UNITS);
+                copy_work(&mut work, units);
+                D::CopyPrefix {
+                    offset: prefix,
+                    units,
                     work,
                 }
             }
-            Phase::CopyPrefix | Phase::CopyTail => {
-                let (offset, remaining) = if owner.phase == Phase::CopyPrefix {
-                    (owner.prefix, owner.old_len - owner.prefix)
-                } else {
-                    (owner.tail, owner.incoming.len() - owner.tail)
-                };
-                let units = remaining.min(CHUNK_UNITS);
-                work.record_visits += 3;
-                work.provider_calls += 1;
-                work.record_writes += 2;
-                work.copied_bytes += units * size_of::<u16>() + 2 * size_of::<usize>();
-                work.atomic_layout_bytes = work
-                    .atomic_layout_bytes
-                    .max(units * size_of::<u16>())
-                    .max(size_of::<usize>());
-                if owner.phase == Phase::CopyPrefix {
-                    D::CopyPrefix {
-                        offset,
-                        units,
+            Pending::Step {
+                target,
+                step,
+                preserved,
+            } => match step {
+                Step::Reserve { before } => {
+                    work.record_visits += 3;
+                    work.provider_calls += 1;
+                    work.record_writes += 2;
+                    work.copied_bytes += size_of::<Vec<u16>>();
+                    work.atomic_layout_bytes = work.atomic_layout_bytes.max(size_of::<Vec<u16>>());
+                    work.relocation_bound_bytes = before.capacity * size_of::<u16>();
+                    let max_units = isize::MAX as usize / size_of::<u16>();
+                    let preferred_capacity = before
+                        .capacity
+                        .saturating_mul(2)
+                        .max(target.required)
+                        .min(max_units);
+                    D::Reserve {
+                        before,
+                        required_capacity: target.required,
+                        preferred_capacity,
                         work,
                     }
-                } else {
+                }
+                Step::CopyTail { tail } => {
+                    let units = (owner.incoming.len() - tail).min(CHUNK_UNITS);
+                    copy_work(&mut work, units);
                     D::CopyTail {
-                        offset,
+                        offset: tail,
                         units,
                         work,
                     }
                 }
-            }
-            Phase::Preflight => D::Preflight {
-                usage: owner.usage,
-                work,
-            },
-            Phase::QualifyTail => {
-                work.record_visits += 3;
-                work.provider_calls += 1;
-                work.record_writes += 1;
-                work.copied_bytes += size_of::<bool>();
-                D::QualifyTail(work)
-            }
-            Phase::Commit => {
-                // These writes are prepaid here and executed only by Ready::commit.
-                work.record_writes += if owner.preserve { 3 } else { 1 };
-                work.copied_bytes += size_of::<HtmlConstructionUsage>();
-                work.atomic_layout_bytes = work
-                    .atomic_layout_bytes
-                    .max(size_of::<HtmlConstructionUsage>());
-                if owner.preserve {
-                    work.copied_bytes +=
-                        2 * size_of::<DocumentString>() + size_of::<Option<DocumentString>>();
+                Step::Preflight => D::Preflight {
+                    usage: target.usage,
+                    work,
+                },
+                Step::QualifyTail => {
+                    work.record_visits += 3;
+                    work.provider_calls += 1;
+                    D::QualifyTail(work)
+                }
+                Step::Commit => {
+                    // These writes are prepaid here and executed only by Ready::commit.
+                    work.record_writes += if preserved { 3 } else { 1 };
+                    work.copied_bytes += size_of::<HtmlConstructionUsage>();
                     work.atomic_layout_bytes = work
                         .atomic_layout_bytes
-                        .max(size_of::<Option<DocumentString>>());
+                        .max(size_of::<HtmlConstructionUsage>());
+                    if preserved {
+                        work.copied_bytes +=
+                            2 * size_of::<DocumentString>() + size_of::<Option<DocumentString>>();
+                        work.atomic_layout_bytes = work
+                            .atomic_layout_bytes
+                            .max(size_of::<Option<DocumentString>>());
+                    }
+                    D::Commit {
+                        usage: target.usage,
+                        work,
+                    }
                 }
-                D::Commit {
-                    usage: owner.usage,
-                    work,
-                }
-            }
-            _ => unreachable!("only pending actions are issued"),
+            },
         }
     }
     /// Reserve alone accepts a clipped capacity between required and preferred.
@@ -508,145 +694,290 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
         minimum_capacity: Option<usize>,
     ) -> Result<HtmlConstructionTextAppendObservation<'a>, HtmlConstructionError> {
         let owner = self.owner;
-        let result = (|| -> Result<_, HtmlConstructionError> {
-            if owner.phase != Phase::Reserve && minimum_capacity.is_some() {
-                return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
-            }
-            Ok(match owner.phase {
-                Phase::Inspect => {
-                    let target = owner.storage.position(&owner.node)?;
-                    let HtmlNodeKind::Text(value) = &owner.storage.arena.records[target].kind
-                    else {
-                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
-                    };
-                    let old_len = value.len();
-                    let required = old_len
-                        .checked_add(owner.incoming.len())
-                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-                    if required > isize::MAX as usize / size_of::<u16>() {
-                        return Err(HtmlConstructionErrorKind::RepresentationExhausted.into());
-                    }
-                    let mut usage = owner.storage.usage();
-                    usage.utf16_units = usage
-                        .utf16_units
-                        .checked_add(owner.incoming.len())
-                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-                    owner.target = Some(target);
-                    owner.old_len = old_len;
-                    owner.required = required;
-                    owner.usage = usage;
-                    Phase::SelectBacking
+        let HtmlConstructionTextAppend {
+            storage,
+            node,
+            incoming,
+            progress,
+            observing,
+            failure,
+        } = &mut *owner;
+        let result = if minimum_capacity.is_some()
+            && !matches!(
+                self.pending,
+                Pending::Step {
+                    step: Step::Reserve { .. },
+                    ..
                 }
-                Phase::SelectBacking => {
-                    owner.preserve =
-                        Arc::get_mut(owner.original_mut().construction_backing_mut()).is_none();
-                    if owner.preserve {
-                        Phase::InitializeBacking
-                    } else if owner.capacity().expect("candidate").capacity < owner.required {
-                        Phase::Reserve
-                    } else {
-                        Phase::Preflight
-                    }
-                }
-                Phase::InitializeBacking => {
-                    owner.pending = Some(DocumentString::from_utf16(Vec::new()));
-                    if owner.required == 0 {
-                        Phase::Preflight
-                    } else {
-                        Phase::Reserve
-                    }
-                }
-                Phase::Reserve => {
-                    let before = owner.capacity().expect("actual candidate");
-                    let preferred = before
-                        .capacity
-                        .saturating_mul(2)
-                        .max(owner.required)
-                        .min(isize::MAX as usize / size_of::<u16>());
-                    let minimum = minimum_capacity.unwrap_or(preferred);
-                    if minimum < owner.required || minimum > preferred {
-                        return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
-                    }
-                    let backing = Arc::get_mut(owner.candidate_mut().construction_backing_mut())
-                        .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
-                    backing
-                        .try_reserve_exact(minimum - backing.len())
-                        .map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
-                    owner.after_reserve()
-                }
-                Phase::CopyPrefix => {
-                    let start = owner.prefix;
-                    let end = start + (owner.old_len - start).min(CHUNK_UNITS);
-                    let original =
-                        match &owner.storage.arena.records[owner.target.expect("target")].kind {
-                            HtmlNodeKind::Text(value) => value,
-                            _ => unreachable!("qualified text"),
-                        };
-                    let backing = Arc::get_mut(
-                        owner
-                            .pending
-                            .as_mut()
-                            .expect("pending copy")
-                            .construction_backing_mut(),
-                    )
-                    .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
-                    backing.extend_from_slice(&original.code_units()[start..end]);
-                    owner.prefix = end;
-                    if end == owner.old_len {
-                        Phase::Preflight
-                    } else {
-                        Phase::CopyPrefix
-                    }
-                }
-                Phase::Preflight => Phase::QualifyTail,
-                Phase::QualifyTail => {
-                    if Arc::get_mut(owner.candidate_mut().construction_backing_mut()).is_none() {
-                        return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
-                    }
-                    owner.exclusive_tail = true;
-                    if owner.incoming.is_empty() {
-                        Phase::Commit
-                    } else {
-                        Phase::CopyTail
-                    }
-                }
-                Phase::CopyTail => {
-                    let start = owner.tail;
-                    let end = start + (owner.incoming.len() - start).min(CHUNK_UNITS);
-                    let source = &owner.incoming;
-                    let candidate = if owner.preserve {
-                        owner.pending.as_mut().expect("pending copy")
-                    } else {
-                        match &mut owner.storage.arena.records[owner.target.expect("target")].kind {
-                            HtmlNodeKind::Text(value) => value,
-                            _ => unreachable!("qualified text"),
-                        }
-                    };
-                    Arc::get_mut(candidate.construction_backing_mut())
-                        .expect("exclusive tail")
-                        .extend_from_slice(&source.code_units()[start..end]);
-                    owner.tail = end;
-                    if end == owner.incoming.len() {
-                        Phase::Commit
-                    } else {
-                        Phase::CopyTail
-                    }
-                }
-                Phase::Commit => Phase::Ready,
-                _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
-            })
-        })();
+            ) {
+            Err(HtmlConstructionErrorKind::CapacityMismatch.into())
+        } else {
+            advance_progress(storage, node, incoming, progress, minimum_capacity)
+        };
         match result {
-            Ok(next) => {
-                owner.phase = Phase::Observing;
-                Ok(HtmlConstructionTextAppendObservation { owner, next })
+            Ok(()) => {
+                *observing = true;
+                Ok(HtmlConstructionTextAppendObservation { owner })
             }
             Err(error) => {
-                owner.failure = Some(error.clone());
-                owner.phase = Phase::Failed;
+                *failure = Some(error.clone());
                 Err(error)
             }
         }
+    }
+}
+/// The work of copying `units` units of text into a backing: the units themselves and the length
+/// they extend. The progress counter is part of the stored progress.
+fn copy_work(work: &mut HtmlConstructionTextAppendWork, units: usize) {
+    work.record_visits += 3;
+    work.provider_calls += 1;
+    work.record_writes += 1;
+    work.copied_bytes += units * size_of::<u16>() + size_of::<usize>();
+    work.atomic_layout_bytes = work
+        .atomic_layout_bytes
+        .max(units * size_of::<u16>())
+        .max(size_of::<usize>());
+}
+/// The progress that one pending step reaches.
+enum Next {
+    /// Another step of the same backing.
+    Step(Step),
+    /// The reservation finished.
+    Reserved,
+    /// The commit step finished.
+    Ready,
+}
+/// Takes the progress by value so that its payload moves into the next progress, and puts it
+/// back unchanged when the step fails.
+fn advance_progress(
+    storage: &mut HtmlConstructionStorage,
+    node: &HtmlBuilderNode,
+    incoming: &DocumentString,
+    progress: &mut Progress,
+    minimum_capacity: Option<usize>,
+) -> Result<(), HtmlConstructionError> {
+    match std::mem::replace(progress, Progress::Inspect) {
+        Progress::Inspect => {
+            let target = storage.position(node)?;
+            let HtmlNodeKind::Text(value) = &storage.arena.records[target].kind else {
+                return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+            };
+            let old_len = value.len();
+            let required = old_len
+                .checked_add(incoming.len())
+                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            if required > isize::MAX as usize / size_of::<u16>() {
+                return Err(HtmlConstructionErrorKind::RepresentationExhausted.into());
+            }
+            let mut usage = storage.usage();
+            usage.utf16_units = usage
+                .utf16_units
+                .checked_add(incoming.len())
+                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            *progress = Progress::Select(Target {
+                index: target,
+                old_len,
+                required,
+                usage,
+            });
+        }
+        Progress::Select(target) => {
+            *progress = Progress::Select(target);
+            let original = text_of_mut(storage, target.index)
+                .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?;
+            let preserve = Arc::get_mut(original.construction_backing_mut()).is_none();
+            *progress = if preserve {
+                Progress::Initialize(target)
+            } else {
+                let before = HtmlConstructionTextAppendCapacity::of(original);
+                Progress::InPlace {
+                    target,
+                    step: if before.capacity < target.required {
+                        Step::Reserve { before }
+                    } else {
+                        Step::Preflight
+                    },
+                }
+            };
+        }
+        Progress::Initialize(target) => {
+            let copy = DocumentString::from_utf16(Vec::new());
+            let before = HtmlConstructionTextAppendCapacity::of(&copy);
+            *progress = Progress::Preserved {
+                target,
+                copy,
+                step: if target.required == 0 {
+                    Step::Preflight
+                } else {
+                    Step::Reserve { before }
+                },
+            };
+        }
+        Progress::InPlace { target, step } => {
+            match run(storage, incoming, target, step, None, minimum_capacity) {
+                Ok(Next::Step(step)) => *progress = Progress::InPlace { target, step },
+                Ok(Next::Reserved) => {
+                    *progress = Progress::InPlace {
+                        target,
+                        step: Step::Preflight,
+                    }
+                }
+                Ok(Next::Ready) => *progress = Progress::ReadyInPlace(target),
+                Err(error) => {
+                    *progress = Progress::InPlace { target, step };
+                    return Err(error);
+                }
+            }
+        }
+        Progress::Preserved {
+            target,
+            mut copy,
+            step,
+        } => match run(
+            storage,
+            incoming,
+            target,
+            step,
+            Some(&mut copy),
+            minimum_capacity,
+        ) {
+            Ok(Next::Step(step)) => *progress = Progress::Preserved { target, copy, step },
+            Ok(Next::Reserved) => {
+                *progress = if target.old_len > 0 {
+                    Progress::Prefix {
+                        target,
+                        copy,
+                        prefix: 0,
+                    }
+                } else {
+                    Progress::Preserved {
+                        target,
+                        copy,
+                        step: Step::Preflight,
+                    }
+                }
+            }
+            Ok(Next::Ready) => *progress = Progress::ReadyPreserved { target, copy },
+            Err(error) => {
+                *progress = Progress::Preserved { target, copy, step };
+                return Err(error);
+            }
+        },
+        Progress::Prefix {
+            target,
+            mut copy,
+            prefix,
+        } => {
+            let result = (|| -> Result<usize, HtmlConstructionError> {
+                let end = prefix + (target.old_len - prefix).min(CHUNK_UNITS);
+                let original = text_of(storage, target.index)
+                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?;
+                let backing = Arc::get_mut(copy.construction_backing_mut())
+                    .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+                backing.extend_from_slice(&original.code_units()[prefix..end]);
+                Ok(end)
+            })();
+            match result {
+                Ok(end) if end == target.old_len => {
+                    *progress = Progress::Preserved {
+                        target,
+                        copy,
+                        step: Step::Preflight,
+                    }
+                }
+                Ok(end) => {
+                    *progress = Progress::Prefix {
+                        target,
+                        copy,
+                        prefix: end,
+                    }
+                }
+                Err(error) => {
+                    *progress = Progress::Prefix {
+                        target,
+                        copy,
+                        prefix,
+                    };
+                    return Err(error);
+                }
+            }
+        }
+        // A ready append issues no action, so no step performs on it.
+        ready @ (Progress::ReadyInPlace(_) | Progress::ReadyPreserved { .. }) => {
+            *progress = ready;
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        }
+    }
+    Ok(())
+}
+/// Performs one step of a backing that is chosen. `copy` is the separate backing when the append
+/// preserves the original, and the candidate is the original text otherwise.
+fn run(
+    storage: &mut HtmlConstructionStorage,
+    incoming: &DocumentString,
+    target: Target,
+    step: Step,
+    copy: Option<&mut DocumentString>,
+    minimum_capacity: Option<usize>,
+) -> Result<Next, HtmlConstructionError> {
+    match step {
+        Step::Reserve { before } => {
+            let preferred = before
+                .capacity
+                .saturating_mul(2)
+                .max(target.required)
+                .min(isize::MAX as usize / size_of::<u16>());
+            let minimum = minimum_capacity.unwrap_or(preferred);
+            if minimum < target.required || minimum > preferred {
+                return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+            }
+            let candidate = match copy {
+                Some(copy) => copy,
+                None => text_of_mut(storage, target.index)
+                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+            };
+            let backing = Arc::get_mut(candidate.construction_backing_mut())
+                .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+            backing
+                .try_reserve_exact(minimum - backing.len())
+                .map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
+            Ok(Next::Reserved)
+        }
+        Step::Preflight => Ok(Next::Step(Step::QualifyTail)),
+        Step::QualifyTail => {
+            let candidate = match copy {
+                Some(copy) => copy,
+                None => text_of_mut(storage, target.index)
+                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+            };
+            if Arc::get_mut(candidate.construction_backing_mut()).is_none() {
+                return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+            }
+            Ok(Next::Step(if incoming.is_empty() {
+                Step::Commit
+            } else {
+                Step::CopyTail { tail: 0 }
+            }))
+        }
+        Step::CopyTail { tail: start } => {
+            let end = start + (incoming.len() - start).min(CHUNK_UNITS);
+            let candidate = match copy {
+                Some(copy) => copy,
+                None => text_of_mut(storage, target.index)
+                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+            };
+            // The tail qualification proved the backing uniquely owned, and nothing runs
+            // between it and these writes that could share it again.
+            let backing = Arc::get_mut(candidate.construction_backing_mut())
+                .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+            backing.extend_from_slice(&incoming.code_units()[start..end]);
+            Ok(Next::Step(if end == incoming.len() {
+                Step::Commit
+            } else {
+                Step::CopyTail { tail: end }
+            }))
+        }
+        Step::Commit => Ok(Next::Ready),
     }
 }
 impl HtmlConstructionTextAppendObservation<'_> {
@@ -664,31 +995,53 @@ impl HtmlConstructionTextAppendObservation<'_> {
     pub fn backing(&self) -> Option<&DocumentString> {
         self.owner.backing()
     }
-    /// Accepts the observation, which resumes the append at the phase the action selected.
+    /// Accepts the observation, which resumes the append at the progress the action reached.
     pub fn accept(self) {
-        self.owner.phase = self.next;
+        self.owner.observing = false;
     }
 }
 impl HtmlConstructionTextAppendReady {
     /// Abandons the ready append and returns its operands. Any separate preserved copy is returned
     /// for retirement.
-    pub fn abort(self) -> HtmlConstructionTextAppendCompletion {
-        self.owner.abort()
+    pub fn abort(mut self) -> HtmlConstructionTextAppendCompletion {
+        let discarded = match self.backing {
+            ReadyBacking::InPlace { old_len } => {
+                truncate_tail(&mut self.storage, self.index, old_len);
+                None
+            }
+            ReadyBacking::Preserved(copy) => Some(copy),
+        };
+        HtmlConstructionTextAppendCompletion {
+            storage: self.storage,
+            node: self.node,
+            incoming: self.incoming,
+            discarded,
+        }
     }
     /// Only prepaid owning moves and fixed usage writes; no payload copy.
     pub fn commit(mut self) -> HtmlConstructionTextAppendCompletion {
-        let owner = &mut self.owner;
-        let discarded = if owner.preserve {
-            let pending = owner.pending.take().expect("completed preserved copy");
-            Some(std::mem::replace(owner.original_mut(), pending))
-        } else {
-            None
+        let discarded = match self.backing {
+            ReadyBacking::InPlace { .. } => None,
+            ReadyBacking::Preserved(copy) => match text_of_mut(&mut self.storage, self.index) {
+                Some(original) => Some(std::mem::replace(original, copy)),
+                // `try_ready` checked that the target is a text node, and the storage has been
+                // exclusively owned since. A commit that nevertheless finds none commits
+                // nothing, as an abort does, and returns the copy for retirement.
+                None => {
+                    return HtmlConstructionTextAppendCompletion {
+                        storage: self.storage,
+                        node: self.node,
+                        incoming: self.incoming,
+                        discarded: Some(copy),
+                    };
+                }
+            },
         };
-        owner.storage.arena.usage = owner.usage;
+        self.storage.arena.usage = self.usage;
         HtmlConstructionTextAppendCompletion {
-            storage: self.owner.storage,
-            node: self.owner.node,
-            incoming: self.owner.incoming,
+            storage: self.storage,
+            node: self.node,
+            incoming: self.incoming,
             discarded,
         }
     }
@@ -708,14 +1061,8 @@ mod tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
-        let mut operation = Some(
-            storage
-                .prepare(HtmlConstructionCommand::Create { kind })
-                .unwrap_or_else(|_| panic!("new construction operation")),
-        );
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { kind }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -723,9 +1070,7 @@ mod tests {
             storage,
             created: Some(node),
             ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        } = slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("created actual node")
         };
@@ -768,15 +1113,65 @@ mod tests {
             }
             action.perform(None).unwrap().accept();
         }
-        let (storage, node, incoming, discarded) =
-            HtmlConstructionTextAppend::try_ready(&mut owner)
-                .unwrap()
-                .commit()
-                .into_parts();
+        let (storage, node, incoming, discarded) = slots::text_append(&mut owner)
+            .unwrap()
+            .commit()
+            .into_parts();
         (storage, node, incoming, discarded, prefix_units, tail_units)
     }
+    #[test]
+    fn actions_charge_the_progress_store_and_the_two_observation_flag_writes() {
+        // Derived from the writes themselves: an action stores the progress it reaches and sets
+        // the observing flag, accept clears the flag, and a failed action stores its typed failure
+        // instead, so admission covers the larger of the two paths.
+        let transition_bytes = (size_of::<Progress>() + 2 * size_of::<bool>())
+            .max(size_of::<Option<HtmlConstructionError>>());
+        let transition_atomic =
+            size_of::<Progress>().max(size_of::<Option<HtmlConstructionError>>());
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(vec![1, 2])));
+        let mut owner = HtmlConstructionTextAppend::begin(
+            storage,
+            node,
+            DocumentString::from_utf16(vec![3, 4, 5]),
+        );
+        let inspect = owner.next_action().unwrap().unwrap();
+        assert_eq!(
+            inspect.description(),
+            HtmlConstructionTextAppendDescription::Inspect(HtmlConstructionTextAppendWork {
+                record_visits: 6,
+                provider_calls: 1,
+                record_writes: 3,
+                copied_bytes: transition_bytes,
+                atomic_layout_bytes: transition_atomic.max(size_of::<HtmlConstructionUsage>()),
+                ..Default::default()
+            })
+        );
+        inspect.perform(None).unwrap().accept();
+        drive_to(&mut owner, Phase::CopyTail);
+        let copy = owner.next_action().unwrap().unwrap();
+        let units = 3;
+        assert_eq!(
+            copy.description(),
+            HtmlConstructionTextAppendDescription::CopyTail {
+                offset: 0,
+                units,
+                work: HtmlConstructionTextAppendWork {
+                    record_visits: 3,
+                    provider_calls: 1,
+                    // The units extend the backing; the offset counter is part of the progress.
+                    record_writes: 3 + 1,
+                    copied_bytes: transition_bytes + units * size_of::<u16>() + size_of::<usize>(),
+                    atomic_layout_bytes: transition_atomic
+                        .max(units * size_of::<u16>())
+                        .max(size_of::<usize>()),
+                    ..Default::default()
+                },
+            }
+        );
+    }
+
     fn drive_to(owner: &mut HtmlConstructionTextAppend, phase: Phase) {
-        while owner.phase != phase {
+        while owner.phase() != phase {
             owner
                 .next_action()
                 .unwrap()
@@ -932,9 +1327,7 @@ mod tests {
             }
             let actual = owner.capacity().unwrap();
             let completion = if complete_tail {
-                HtmlConstructionTextAppend::try_ready(&mut Some(owner))
-                    .unwrap()
-                    .abort()
+                slots::text_append(&mut Some(owner)).unwrap().abort()
             } else {
                 owner.abort()
             };
@@ -989,7 +1382,7 @@ mod tests {
         drop(weak);
         action.perform(None).unwrap().accept();
         drive_to(&mut owner, Phase::Ready);
-        let (storage, node, _, _) = HtmlConstructionTextAppend::try_ready(&mut Some(owner))
+        let (storage, node, _, _) = slots::text_append(&mut Some(owner))
             .unwrap()
             .commit()
             .into_parts();
@@ -1105,12 +1498,10 @@ mod tests {
             }
             let mut owner = Some(owner);
             let completion = if accept {
-                HtmlConstructionTextAppend::try_ready(&mut owner)
-                    .unwrap()
-                    .abort()
+                slots::text_append(&mut owner).unwrap().abort()
             } else {
                 assert!(matches!(
-                    HtmlConstructionTextAppend::try_ready(&mut owner),
+                    slots::text_append(&mut owner),
                     Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
                 ));
                 owner.take().unwrap().abort()

@@ -67,15 +67,7 @@ impl ConstructionOwner {
         let Some(storage) = self.owner.take() else {
             return Err(latch_registry_row(control));
         };
-        let mut group = match HtmlConstructionAttributeEdit::begin(storage, handle, mode) {
-            Ok(group) => group,
-            Err(rejection) => {
-                // A refusal returns the unchanged storage.
-                let (storage, _, _, reason) = rejection.into_parts();
-                self.owner = Some(storage);
-                return Err(construction_error(control, reason));
-            }
-        };
+        let mut group = HtmlConstructionAttributeEdit::begin(storage, handle, mode);
         let result = (|| {
             while let Some(action) = group
                 .next_action()
@@ -121,9 +113,18 @@ impl ConstructionOwner {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        let completion = HtmlConstructionAttributeEdit::try_finish(&mut self.attribute_edit)
-            .map_err(|e| construction_error(control, e))?;
-        self.adopt_attribute_completion(control, completion)
+        let Some(edit) = self.attribute_edit.take() else {
+            return Err(latch_registry_row(control));
+        };
+        match edit.try_finish() {
+            Ok(completion) => self.adopt_attribute_completion(control, completion),
+            Err(refusal) => {
+                // A refused finish hands the edit back, which stays where it was.
+                let (edit, reason) = refusal.into_parts();
+                self.attribute_edit = Some(edit);
+                Err(construction_error(control, reason))
+            }
+        }
     }
     pub(in crate::construction) fn abort_attributes(
         &mut self,
@@ -310,8 +311,12 @@ impl ConstructionOwner {
                     }
                 }
             }
-            HtmlConstructionAttributeCandidate::try_finish(&mut candidate)
-                .map_err(|e| construction_error(control, e))
+            let Some(candidate) = candidate.take() else {
+                return Err(latch_registry_row(control));
+            };
+            candidate
+                .try_finish()
+                .map_err(|refusal| construction_error(control, refusal.into_parts().1))
         })()
     }
 }
@@ -400,5 +405,9 @@ pub(in crate::construction) fn prepare_attribute_slot<'a>(
             }
         }
     }
-    HtmlConstructionAttributeSlot::try_ready(&mut slot).map_err(|e| construction_error(control, e))
+    let Some(slot) = slot else {
+        return Err(latch_registry_row(control));
+    };
+    slot.try_ready()
+        .map_err(|refusal| construction_error(control, refusal.into_parts().1))
 }

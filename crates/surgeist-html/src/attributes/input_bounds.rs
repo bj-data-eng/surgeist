@@ -289,32 +289,69 @@ pub enum HtmlInputNumericLimitAuthorState {
 /// binary64 domain. A missing Number limit is None; Range falls back to 0/100.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HtmlInputNumericConstraints {
-    minimum: Option<HtmlFloatingPointNumber>,
-    maximum: Option<HtmlFloatingPointNumber>,
-    minimum_origin: HtmlInputNumericBoundOrigin,
-    maximum_origin: HtmlInputNumericBoundOrigin,
+    minimum: NumericBound,
+    maximum: NumericBound,
     allowed_step: Option<HtmlFloatingPointNumber>,
     step_origin: HtmlInputNumericStepOrigin,
     step_base: HtmlFloatingPointNumber,
     step_base_origin: HtmlInputNumericStepBaseOrigin,
     limit_author: HtmlInputNumericLimitAuthorState,
 }
+/// One effective bound together with why it is that value. A recovered bound always carries its
+/// value, so the content that the step base reads back is never separate from the bound.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum NumericBound {
+    Recovered(HtmlFloatingPointNumber),
+    MissingFallback(Option<HtmlFloatingPointNumber>),
+    ParseFailureFallback(Option<HtmlFloatingPointNumber>),
+}
+impl NumericBound {
+    fn select(side: HtmlInputNumericContent, default: Option<HtmlFloatingPointNumber>) -> Self {
+        match side {
+            HtmlInputNumericContent::Value(value) => Self::Recovered(value),
+            HtmlInputNumericContent::Absent => Self::MissingFallback(default),
+            HtmlInputNumericContent::Failed => Self::ParseFailureFallback(default),
+        }
+    }
+    fn value(self) -> Option<HtmlFloatingPointNumber> {
+        match self {
+            Self::Recovered(value) => Some(value),
+            Self::MissingFallback(value) | Self::ParseFailureFallback(value) => value,
+        }
+    }
+    fn origin(self) -> HtmlInputNumericBoundOrigin {
+        match self {
+            Self::Recovered(_) => HtmlInputNumericBoundOrigin::Recovered,
+            Self::MissingFallback(_) => HtmlInputNumericBoundOrigin::MissingFallback,
+            Self::ParseFailureFallback(_) => HtmlInputNumericBoundOrigin::ParseFailureFallback,
+        }
+    }
+    /// The content the step base takes: only a recovered bound is content.
+    fn recovered_content(self) -> HtmlInputNumericContent {
+        match self {
+            Self::Recovered(value) => HtmlInputNumericContent::Value(value),
+            Self::MissingFallback(_) | Self::ParseFailureFallback(_) => {
+                HtmlInputNumericContent::Absent
+            }
+        }
+    }
+}
 impl HtmlInputNumericConstraints {
     /// The effective minimum, or `None` when Number has none.
     pub fn minimum(&self) -> Option<HtmlFloatingPointNumber> {
-        self.minimum
+        self.minimum.value()
     }
     /// The effective maximum, or `None` when Number has none.
     pub fn maximum(&self) -> Option<HtmlFloatingPointNumber> {
-        self.maximum
+        self.maximum.value()
     }
     /// Why the minimum is what it is.
     pub fn minimum_origin(&self) -> HtmlInputNumericBoundOrigin {
-        self.minimum_origin
+        self.minimum.origin()
     }
     /// Why the maximum is what it is.
     pub fn maximum_origin(&self) -> HtmlInputNumericBoundOrigin {
-        self.maximum_origin
+        self.maximum.origin()
     }
     /// None is the source's `any` result, not a failed or unavailable computation.
     pub fn allowed_step(&self) -> Option<HtmlFloatingPointNumber> {
@@ -736,20 +773,6 @@ impl HtmlInputNumericAttributeReport {
         }
     }
 }
-fn bound(
-    side: HtmlInputNumericContent,
-    default: Option<HtmlFloatingPointNumber>,
-) -> (Option<HtmlFloatingPointNumber>, HtmlInputNumericBoundOrigin) {
-    match side {
-        HtmlInputNumericContent::Value(value) => {
-            (Some(value), HtmlInputNumericBoundOrigin::Recovered)
-        }
-        HtmlInputNumericContent::Absent => (default, HtmlInputNumericBoundOrigin::MissingFallback),
-        HtmlInputNumericContent::Failed => {
-            (default, HtmlInputNumericBoundOrigin::ParseFailureFallback)
-        }
-    }
-}
 /// Selects Number/Range limits from already-converted exact content facts.
 /// No source is scanned, copied or reparsed. Other input states return None.
 pub fn select_input_numeric_constraints(
@@ -763,11 +786,11 @@ pub fn select_input_numeric_constraints(
         return None;
     }
     let range = state == HtmlInputType::Range;
-    let (minimum, minimum_origin) = bound(min, range.then(|| number(0.0)));
-    let (maximum, maximum_origin) = bound(max, range.then(|| number(100.0)));
+    let minimum = NumericBound::select(min, range.then(|| number(0.0)));
+    let maximum = NumericBound::select(max, range.then(|| number(100.0)));
     let (allowed_step, step_origin) = select_numeric_step(step);
     let (step_base, step_base_origin) = select_numeric_step_base(min, value);
-    let limit_author = match (minimum, maximum) {
+    let limit_author = match (minimum.value(), maximum.value()) {
         (Some(minimum), Some(maximum)) if minimum.value() > maximum.value() => {
             HtmlInputNumericLimitAuthorState::MinimumExceedsMaximum
         }
@@ -777,8 +800,6 @@ pub fn select_input_numeric_constraints(
     Some(HtmlInputNumericConstraints {
         minimum,
         maximum,
-        minimum_origin,
-        maximum_origin,
         allowed_step,
         step_origin,
         step_base,
@@ -833,11 +854,7 @@ impl HtmlInputNumericConstraints {
         step: HtmlInputNumericStep,
         value: HtmlInputNumericContent,
     ) {
-        let minimum_content = if self.minimum_origin == HtmlInputNumericBoundOrigin::Recovered {
-            HtmlInputNumericContent::Value(self.minimum.expect("recovered numeric minimum"))
-        } else {
-            HtmlInputNumericContent::Absent
-        };
+        let minimum_content = self.minimum.recovered_content();
         let (allowed_step, step_origin) = select_numeric_step(step);
         let (step_base, step_base_origin) = select_numeric_step_base(minimum_content, value);
         self.allowed_step = allowed_step;

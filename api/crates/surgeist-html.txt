@@ -914,7 +914,7 @@ pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>
 impl<'e, 'n> surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'_, 'e, 'n>>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<bool, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>::try_finish(self) -> core::result::Result<bool, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 impl core::ops::drop::Drop for surgeist_html::bounded::HtmlConstructionAttributeCandidate<'_, '_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidate<'_, '_>::drop(&mut self)
 pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>
@@ -939,7 +939,7 @@ pub struct surgeist_html::bounded::HtmlConstructionAttributeEdit
 impl surgeist_html::bounded::HtmlConstructionAttributeEdit
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::abort(self) -> surgeist_html::bounded::HtmlConstructionAttributeCompletion
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::append<'a>(&'a mut self, incoming: &'a mut alloc::vec::Vec<surgeist_html::Attribute>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'a>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::begin(storage: surgeist_html::bounded::HtmlConstructionStorage, element: surgeist_html::HtmlBuilderNode, mode: surgeist_html::bounded::HtmlConstructionAttributeEditMode) -> core::result::Result<Self, surgeist_html::bounded::HtmlConstructionAttributeRejection>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::begin(storage: surgeist_html::bounded::HtmlConstructionStorage, element: surgeist_html::HtmlBuilderNode, mode: surgeist_html::bounded::HtmlConstructionAttributeEditMode) -> Self
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::candidate<'e, 'n>(&'e mut self, index: usize, name: &'n surgeist_html::DocumentString) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCandidate<'e, 'n>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::capacity(&self) -> surgeist_html::bounded::HtmlConstructionAttributeCapacity
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::decision(&self, index: usize) -> core::result::Result<bool, surgeist_html::HtmlConstructionError>
@@ -951,7 +951,7 @@ pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::selected_count(&se
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::storage_view(&self) -> &surgeist_html::bounded::HtmlConstructionStorage
 pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::swap_adjacent(&mut self, index: usize) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCompletion, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeEdit::try_finish(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCompletion, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::HtmlConstructionAttributeObservation<'a>
 impl surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>::accept(self)
@@ -959,14 +959,6 @@ pub fn surgeist_html::bounded::HtmlConstructionAttributeObservation<'_>::allocat
 pub struct surgeist_html::bounded::HtmlConstructionAttributePlanRetirement
 impl surgeist_html::bounded::HtmlConstructionAttributePlanRetirement
 pub fn surgeist_html::bounded::HtmlConstructionAttributePlanRetirement::next_action(&mut self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>>
-pub struct surgeist_html::bounded::HtmlConstructionAttributeRejection
-impl surgeist_html::bounded::HtmlConstructionAttributeRejection
-pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::HtmlBuilderNode, surgeist_html::bounded::HtmlConstructionAttributeEditMode, surgeist_html::HtmlConstructionError)
-impl surgeist_html::bounded::HtmlConstructionAttributeRejection
-pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::reason(&self) -> &surgeist_html::HtmlConstructionError
-impl core::error::Error for surgeist_html::bounded::HtmlConstructionAttributeRejection
-impl core::fmt::Display for surgeist_html::bounded::HtmlConstructionAttributeRejection
-pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'a>
 impl surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
@@ -977,7 +969,7 @@ impl<'e> surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::capacity(&self) -> surgeist_html::bounded::HtmlConstructionAttributeCapacity
 pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'_, 'e>>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::Attribute>>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'e>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'e>::try_ready(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'e>, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 impl core::ops::drop::Drop for surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeSlot<'_>::drop(&mut self)
 pub struct surgeist_html::bounded::HtmlConstructionAttributeSlotAction<'a, 'e>
@@ -1002,7 +994,7 @@ pub struct surgeist_html::bounded::HtmlConstructionInitialization
 impl surgeist_html::bounded::HtmlConstructionInitialization
 pub fn surgeist_html::bounded::HtmlConstructionInitialization::abort(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
 pub fn surgeist_html::bounded::HtmlConstructionInitialization::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionInitializationAction<'_>>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionInitialization::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyInitialization, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionInitialization::try_ready(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyInitialization, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::HtmlConstructionInitializationAction<'a>
 impl<'a> surgeist_html::bounded::HtmlConstructionInitializationAction<'a>
 pub fn surgeist_html::bounded::HtmlConstructionInitializationAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionActionDescription<'_>
@@ -1014,7 +1006,7 @@ pub fn surgeist_html::bounded::HtmlConstructionInitializationObservation<'_>::al
 pub struct surgeist_html::bounded::HtmlConstructionLease
 impl surgeist_html::bounded::HtmlConstructionLease
 pub fn surgeist_html::bounded::HtmlConstructionLease::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
-pub fn surgeist_html::bounded::HtmlConstructionLease::try_recover(result: &mut core::option::Option<surgeist_html::bounded::HtmlConstructionResult>, lease: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionRecovery, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionLease::try_recover(result: surgeist_html::bounded::HtmlConstructionResult, lease: Self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionRecovery, surgeist_html::bounded::HtmlConstructionRefusal<(surgeist_html::bounded::HtmlConstructionResult, Self)>>
 pub struct surgeist_html::bounded::HtmlConstructionNode<'a>
 impl<'a> surgeist_html::bounded::HtmlConstructionNode<'a>
 pub fn surgeist_html::bounded::HtmlConstructionNode<'a>::as_node(self) -> surgeist_html::HtmlNode<'a>
@@ -1042,13 +1034,13 @@ pub struct surgeist_html::bounded::HtmlConstructionOperation
 impl surgeist_html::bounded::HtmlConstructionOperation
 pub fn surgeist_html::bounded::HtmlConstructionOperation::abort(self) -> surgeist_html::bounded::HtmlConstructionAbort
 pub fn surgeist_html::bounded::HtmlConstructionOperation::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionAction<'_>>, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionOperation::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyOperation, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionOperation::try_ready(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionReadyOperation, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'a>
 impl surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'_>
 pub fn surgeist_html::bounded::HtmlConstructionReadyAttributeSlot<'_>::commit(self) -> core::option::Option<surgeist_html::Attribute>
 pub struct surgeist_html::bounded::HtmlConstructionReadyInitialization
 impl surgeist_html::bounded::HtmlConstructionReadyInitialization
-pub fn surgeist_html::bounded::HtmlConstructionReadyInitialization::abort(self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionRetired>
+pub fn surgeist_html::bounded::HtmlConstructionReadyInitialization::abort(self) -> surgeist_html::bounded::HtmlConstructionRetired
 pub fn surgeist_html::bounded::HtmlConstructionReadyInitialization::commit(self) -> surgeist_html::bounded::HtmlConstructionStorage
 pub struct surgeist_html::bounded::HtmlConstructionReadyOperation
 impl surgeist_html::bounded::HtmlConstructionReadyOperation
@@ -1057,14 +1049,14 @@ pub fn surgeist_html::bounded::HtmlConstructionReadyOperation::commit(self) -> s
 pub struct surgeist_html::bounded::HtmlConstructionRecovery
 impl surgeist_html::bounded::HtmlConstructionRecovery
 pub fn surgeist_html::bounded::HtmlConstructionRecovery::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionRetired)
-pub struct surgeist_html::bounded::HtmlConstructionRejection
-impl surgeist_html::bounded::HtmlConstructionRejection
-pub fn surgeist_html::bounded::HtmlConstructionRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionCommand, surgeist_html::HtmlConstructionError)
-impl surgeist_html::bounded::HtmlConstructionRejection
-pub fn surgeist_html::bounded::HtmlConstructionRejection::reason(&self) -> &surgeist_html::HtmlConstructionError
-impl core::error::Error for surgeist_html::bounded::HtmlConstructionRejection
-impl core::fmt::Display for surgeist_html::bounded::HtmlConstructionRejection
-pub fn surgeist_html::bounded::HtmlConstructionRejection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::bounded::HtmlConstructionRefusal<T>
+impl<T> surgeist_html::bounded::HtmlConstructionRefusal<T>
+pub fn surgeist_html::bounded::HtmlConstructionRefusal<T>::into_parts(self) -> (T, surgeist_html::HtmlConstructionError)
+pub fn surgeist_html::bounded::HtmlConstructionRefusal<T>::owner(&self) -> &T
+pub fn surgeist_html::bounded::HtmlConstructionRefusal<T>::reason(&self) -> &surgeist_html::HtmlConstructionError
+impl<T: core::fmt::Debug> core::error::Error for surgeist_html::bounded::HtmlConstructionRefusal<T>
+impl<T> core::fmt::Display for surgeist_html::bounded::HtmlConstructionRefusal<T>
+pub fn surgeist_html::bounded::HtmlConstructionRefusal<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlConstructionRetired
 impl surgeist_html::bounded::HtmlConstructionRetired
 pub fn surgeist_html::bounded::HtmlConstructionRetired::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
@@ -1084,8 +1076,8 @@ pub fn surgeist_html::bounded::HtmlConstructionStorage::node(&self, handle: &sur
 pub fn surgeist_html::bounded::HtmlConstructionStorage::node_at(&self, position: usize) -> core::option::Option<surgeist_html::bounded::HtmlConstructionNode<'_>>
 pub fn surgeist_html::bounded::HtmlConstructionStorage::node_by_result_id(&self, id: &surgeist_html::HtmlNodeId) -> core::result::Result<surgeist_html::bounded::HtmlConstructionNode<'_>, surgeist_html::ForeignHtmlResult>
 pub fn surgeist_html::bounded::HtmlConstructionStorage::position(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<usize, surgeist_html::HtmlConstructionError>
-pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare(self, command: surgeist_html::bounded::HtmlConstructionCommand) -> core::result::Result<surgeist_html::bounded::HtmlConstructionOperation, surgeist_html::bounded::HtmlConstructionRejection>
-pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare_finish(self, root: surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::bounded::HtmlConstructionOperation, surgeist_html::bounded::HtmlConstructionRejection>
+pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare(self, command: surgeist_html::bounded::HtmlConstructionCommand) -> surgeist_html::bounded::HtmlConstructionOperation
+pub fn surgeist_html::bounded::HtmlConstructionStorage::prepare_finish(self, root: surgeist_html::HtmlBuilderNode) -> surgeist_html::bounded::HtmlConstructionOperation
 pub fn surgeist_html::bounded::HtmlConstructionStorage::result_id(&self, handle: &surgeist_html::HtmlBuilderNode) -> core::result::Result<surgeist_html::HtmlNodeId, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionStorage::retire(self) -> surgeist_html::bounded::HtmlConstructionRetirement
 pub fn surgeist_html::bounded::HtmlConstructionStorage::usage(&self) -> surgeist_html::HtmlConstructionUsage
@@ -1097,7 +1089,7 @@ pub fn surgeist_html::bounded::HtmlConstructionTextAppend::begin(storage: surgei
 pub fn surgeist_html::bounded::HtmlConstructionTextAppend::capacity(&self) -> core::option::Option<surgeist_html::bounded::HtmlConstructionTextAppendCapacity>
 pub fn surgeist_html::bounded::HtmlConstructionTextAppend::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::HtmlConstructionTextAppendAction<'_>>, surgeist_html::HtmlConstructionError>
 pub fn surgeist_html::bounded::HtmlConstructionTextAppend::preserves_original(&self) -> bool
-pub fn surgeist_html::bounded::HtmlConstructionTextAppend::try_ready(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionTextAppendReady, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionTextAppend::try_ready(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionTextAppendReady, surgeist_html::bounded::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>
 impl<'a> surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>
 pub fn surgeist_html::bounded::HtmlConstructionTextAppendAction<'a>::backing(&self) -> core::option::Option<&surgeist_html::DocumentString>
@@ -4934,7 +4926,6 @@ pub fn surgeist_html::HtmlConstructionError::is_invalid_output_root(&self) -> bo
 pub fn surgeist_html::HtmlConstructionError::is_invalid_shadow_association(&self) -> bool
 pub fn surgeist_html::HtmlConstructionError::is_invalid_template_association(&self) -> bool
 pub fn surgeist_html::HtmlConstructionError::is_limit_exceeded(&self) -> bool
-pub fn surgeist_html::HtmlConstructionError::is_operation_consumed(&self) -> bool
 pub fn surgeist_html::HtmlConstructionError::is_operation_not_ready(&self) -> bool
 pub fn surgeist_html::HtmlConstructionError::is_parent_cannot_have_children(&self) -> bool
 pub fn surgeist_html::HtmlConstructionError::is_parent_child_conflict(&self) -> bool
