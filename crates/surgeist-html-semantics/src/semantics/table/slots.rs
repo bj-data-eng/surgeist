@@ -163,9 +163,12 @@ pub(super) struct SlotAxis {
     pub(super) long: Vec<SlotEntry>,
     pub(super) short_lines: Vec<ShortLine>,
     pub(super) short: Vec<SlotEntry>,
-    /// A tree over the short lines holding the least start of each one's
-    /// entries, padded with the greatest value.
-    pub(super) least: Vec<usize>,
+    /// Over the short lines, the least start of each one's entries.
+    pub(super) short_least: LeastTree,
+    /// Over the runs, the least start of the long cells that start or end where
+    /// the run begins: a run whose value is below a slot differs, left of that
+    /// slot, from the run before it.
+    pub(super) run_least: LeastTree,
     pub(super) data: DataSpans,
     /// Lines where two cells share a slot, merged and sorted.
     pub(super) irregular: Vec<Extent>,
@@ -183,7 +186,8 @@ impl SlotAxis {
             self.long.capacity(),
             self.short_lines.capacity(),
             self.short.capacity(),
-            self.least.capacity(),
+            self.short_least.nodes.capacity(),
+            self.run_least.nodes.capacity(),
             self.data.starts.capacity(),
             self.data.reach.capacity(),
             self.irregular.capacity(),
@@ -316,35 +320,8 @@ impl SlotAxis {
         charge: &mut impl Charge<E>,
         visit: &mut impl FnMut(usize) -> Result<(), E>,
     ) -> Result<(), E> {
-        let size = self.least.len() / 2;
-        self.descend(1, 0, size, positions, bound, charge, visit)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn descend<E>(
-        &self,
-        node: usize,
-        low: usize,
-        high: usize,
-        positions: LineSpan,
-        bound: usize,
-        charge: &mut impl Charge<E>,
-        visit: &mut impl FnMut(usize) -> Result<(), E>,
-    ) -> Result<(), E> {
-        charge(1)?;
-        if high <= positions.first
-            || positions.last <= low
-            || low >= high
-            || self.least.get(node).is_none_or(|least| *least >= bound)
-        {
-            return Ok(());
-        }
-        if high - low == 1 {
-            return visit(low);
-        }
-        let middle = low + (high - low) / 2;
-        self.descend(2 * node, low, middle, positions, bound, charge, visit)?;
-        self.descend(2 * node + 1, middle, high, positions, bound, charge, visit)
+        self.short_least
+            .visit_below(positions, bound, charge, visit)
     }
 
     /// Whether two cells share a slot of `line`.
@@ -366,6 +343,82 @@ impl SlotAxis {
             .checked_sub(1)
             .and_then(|last| self.irregular.get(last))
             .is_some_and(|e| line < e.end()))
+    }
+}
+
+/// A tree over an array of starts that finds the positions in a range whose
+/// start is below a bound, padded with the greatest value.
+#[derive(Debug, Default)]
+pub(super) struct LeastTree {
+    pub(super) nodes: Vec<usize>,
+}
+
+impl LeastTree {
+    /// The number of leaves a tree over `count` positions has.
+    pub(super) fn leaves_for(count: usize) -> usize {
+        count.max(1).next_power_of_two()
+    }
+
+    /// Visits, in ascending order, each position of `positions` whose start
+    /// is below `bound`.
+    pub(super) fn visit_below<E>(
+        &self,
+        positions: LineSpan,
+        bound: usize,
+        charge: &mut impl Charge<E>,
+        visit: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let size = self.nodes.len() / 2;
+        self.descend(1, 0, size, positions, bound, charge, &mut |position| {
+            visit(position).map(|()| false)
+        })
+        .map(|_| ())
+    }
+
+    /// The first position of `positions` whose start is below `bound`.
+    pub(super) fn first_below<E>(
+        &self,
+        positions: LineSpan,
+        bound: usize,
+        charge: &mut impl Charge<E>,
+    ) -> Result<Option<usize>, E> {
+        let size = self.nodes.len() / 2;
+        let mut found = None;
+        self.descend(1, 0, size, positions, bound, charge, &mut |position| {
+            found = Some(position);
+            Ok(true)
+        })?;
+        Ok(found)
+    }
+
+    /// Visits matches in order until `visit` says to stop; whether it stopped.
+    #[allow(clippy::too_many_arguments)]
+    fn descend<E>(
+        &self,
+        node: usize,
+        low: usize,
+        high: usize,
+        positions: LineSpan,
+        bound: usize,
+        charge: &mut impl Charge<E>,
+        visit: &mut impl FnMut(usize) -> Result<bool, E>,
+    ) -> Result<bool, E> {
+        charge(1)?;
+        if high <= positions.first
+            || positions.last <= low
+            || low >= high
+            || self.nodes.get(node).is_none_or(|least| *least >= bound)
+        {
+            return Ok(false);
+        }
+        if high - low == 1 {
+            return visit(low);
+        }
+        let middle = low + (high - low) / 2;
+        if self.descend(2 * node, low, middle, positions, bound, charge, visit)? {
+            return Ok(true);
+        }
+        self.descend(2 * node + 1, middle, high, positions, bound, charge, visit)
     }
 }
 

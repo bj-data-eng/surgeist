@@ -7,7 +7,7 @@
 //! long it is. A line where cells overlap is scanned one slot at a time, the
 //! slots with no occupant or several being skipped as the algorithm says.
 
-use super::slots::{self, Cover, Extent, List, SlotAxis, SlotEntry};
+use super::slots::{self, Cover, Extent, LineSpan, List, SlotAxis, SlotEntry};
 use super::*;
 
 /// What the header scans remember about one cell. A cell's attributes do not
@@ -302,16 +302,33 @@ impl<'a> HtmlSemanticSession<'a> {
         let runs = axis.runs_of(lines, &mut |work| {
             self.charge(work).map_err(TableStop::from)
         })?;
-        for run in runs.first..runs.last {
+        // The runs of a segment differ from each other only by cells that
+        // start at or after the scanning cell, which a scan does not reach,
+        // so the first run's long cells stand for all of them.
+        let mut run = runs.first;
+        while run < runs.last {
             self.charge(1)?;
+            let next = axis.run_least.first_below(
+                LineSpan {
+                    first: run + 1,
+                    last: runs.last,
+                },
+                from,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            let following = next.unwrap_or(runs.last);
             let Some(long) = axis.run(run) else {
                 return Err(self
                     .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                     .into());
             };
-            let covered = axis.run_lines(run);
-            let start = covered.start.max(lines.start);
-            let end = covered.end().min(lines.end());
+            let start = axis.run_lines(run).start.max(lines.start);
+            let end = if next.is_some() {
+                axis.run_lines(following).start.min(lines.end())
+            } else {
+                lines.end()
+            };
+            run = following;
             let here = Extent {
                 start,
                 length: end.saturating_sub(start),

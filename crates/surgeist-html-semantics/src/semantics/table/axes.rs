@@ -12,7 +12,7 @@
 //! is admitted from the cells' spans before anything is allocated, and every
 //! step is paid for before it is taken.
 
-use super::slots::{Extent, Run, ShortLine, SlotAxis, SlotEntry};
+use super::slots::{Extent, LeastTree, Run, ShortLine, SlotAxis, SlotEntry};
 use super::*;
 
 /// How a cell crosses one axis: it spans `count` lines from line `first`, and
@@ -389,30 +389,50 @@ impl<'a> HtmlSemanticSession<'a> {
                 end: axis.short.len(),
             });
         }
-        // The tree of least starts over the short lines.
-        let size = axis.short_lines.len().max(1).next_power_of_two();
+        // The trees of least starts over the short lines, and over the runs.
+        let size = LeastTree::leaves_for(axis.short_lines.len());
         let nodes = self.table_add(size, size)?;
         self.charge(nodes)?;
-        self.reserve_scratch(&mut axis.least, nodes)?;
-        axis.least.resize(nodes, usize::MAX);
+        axis.short_least.nodes.clear();
+        self.reserve_scratch(&mut axis.short_least.nodes, nodes)?;
+        axis.short_least.nodes.resize(nodes, usize::MAX);
         for (position, line) in axis.short_lines.iter().enumerate() {
             self.charge(1)?;
             let least = axis.short.get(line.first).map_or(usize::MAX, |e| e.start);
-            if let Some(leaf) = axis.least.get_mut(size + position) {
+            if let Some(leaf) = axis.short_least.nodes.get_mut(size + position) {
                 *leaf = least;
             }
         }
-        for node in (1..size).rev() {
+        self.table_least_internal(&mut axis.short_least, size)?;
+        let size = LeastTree::leaves_for(axis.runs.len());
+        let nodes = self.table_add(size, size)?;
+        self.charge(nodes)?;
+        axis.run_least.nodes.clear();
+        self.reserve_scratch(&mut axis.run_least.nodes, nodes)?;
+        axis.run_least.nodes.resize(nodes, usize::MAX);
+        for cell in &model.cells {
             self.charge(1)?;
-            let least = axis
-                .least
-                .get(2 * node)
-                .zip(axis.least.get(2 * node + 1))
-                .map_or(usize::MAX, |(a, b)| *a.min(b));
-            if let Some(slot) = axis.least.get_mut(node) {
-                *slot = least;
+            let crossing = Crossing::of(cell, vertical);
+            if crossing.count < 2 {
+                continue;
+            }
+            for line in [crossing.first, crossing.after()] {
+                if line >= axis.lines {
+                    continue;
+                }
+                let span = axis.runs_of(
+                    Extent {
+                        start: line,
+                        length: 1,
+                    },
+                    &mut |work| self.charge(work).map_err(TableStop::from),
+                )?;
+                if let Some(leaf) = axis.run_least.nodes.get_mut(size + span.first) {
+                    *leaf = (*leaf).min(crossing.start);
+                }
             }
         }
+        self.table_least_internal(&mut axis.run_least, size)?;
         // The data cells' extents in ascending order of the line they begin
         // at, with the greatest end so far.
         let mut data = 0usize;
@@ -483,6 +503,22 @@ impl<'a> HtmlSemanticSession<'a> {
 }
 
 impl<'a> HtmlSemanticSession<'a> {
+    /// Fills the inner nodes of a tree of `size` leaves from its leaves.
+    fn table_least_internal(&mut self, tree: &mut LeastTree, size: usize) -> TableResult<()> {
+        for node in (1..size).rev() {
+            self.charge(1)?;
+            let least = tree
+                .nodes
+                .get(2 * node)
+                .zip(tree.nodes.get(2 * node + 1))
+                .map_or(usize::MAX, |(a, b)| *a.min(b));
+            if let Some(slot) = tree.nodes.get_mut(node) {
+                *slot = least;
+            }
+        }
+        Ok(())
+    }
+
     /// The key of `cell` on an axis whose keys are built: its extent's place
     /// among the header extents, for a header.
     pub(super) fn table_key(

@@ -238,7 +238,7 @@ fn short_axis() -> SlotAxis {
         lines: 12,
         short_lines,
         short,
-        least,
+        short_least: LeastTree { nodes: least },
         ..empty_axis()
     }
 }
@@ -412,4 +412,31 @@ fn headers_crossing_other_lines_are_found_past_those_crossing_the_same_ones() {
     assert_eq!(cell(2, a), None);
     assert_eq!(cell(3, a), Some(3));
     assert_eq!(list.header_other_than(None, a).map(|e| e.cell), None);
+}
+
+#[test]
+fn the_first_position_below_a_bound_is_found_within_a_range() {
+    let starts = [7, 3, 9, 0, 5, 8, 2, 6];
+    let mut nodes = vec![usize::MAX; 16];
+    nodes[8..].copy_from_slice(&starts);
+    for node in (1..8).rev() {
+        nodes[node] = nodes[2 * node].min(nodes[2 * node + 1]);
+    }
+    let tree = LeastTree { nodes };
+    for first in 0..=8 {
+        for last in first..=8 {
+            for bound in 0..11 {
+                let expected = (first..last).find(|p| starts[*p] < bound);
+                let found = tree
+                    .first_below(LineSpan { first, last }, bound, &mut free)
+                    .unwrap();
+                assert_eq!(found, expected, "{first}..{last} below {bound}");
+            }
+        }
+    }
+    // The empty tree has no positions.
+    let none = LeastTree::default()
+        .first_below(LineSpan { first: 0, last: 1 }, 5, &mut free)
+        .unwrap();
+    assert_eq!(none, None);
 }
