@@ -25,7 +25,8 @@ pub(crate) mod input_coordinate;
 
 use crate::{
     internal::microsyntax::numeric::{
-        HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger, borrowed_decimal_remainder,
+        HtmlDecimalColumns, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
+        borrowed_decimal_remainder,
     },
     internal::values::Attribute,
     internal::values::DocumentString,
@@ -2434,15 +2435,21 @@ pub(crate) fn parse_duration(
 }
 fn ordinary_recovery_duration(plan: BorrowedDurationPlan<'_>) -> HtmlParsedDuration {
     let mut cursor = plan.cursor();
-    let mut seconds = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0_u128));
+    // Each component adds its own digits to the column sums, so a long first number followed
+    // by many repeated units costs the digits plus the components, not their product.
+    let mut seconds = HtmlDecimalColumns::default();
     while let Some(component) = cursor.next_component().expect("recognized duration") {
         if let Some(scale) = component.scale() {
-            let quantity =
-                ordinary_decimal(component.integer_digits(), component.fraction_digits());
-            seconds = seconds.added_to(&quantity.multiplied_by(scale));
+            seconds
+                .add_scaled(
+                    component.integer_digits(),
+                    component.fraction_digits(),
+                    scale,
+                )
+                .expect("borrowed recognition checked duration digits");
         }
     }
-    plan.assemble_recovery(seconds)
+    plan.assemble_recovery(seconds.finish())
 }
 
 pub(crate) fn validate_date_with_optional_time(

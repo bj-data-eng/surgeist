@@ -1627,6 +1627,113 @@ impl HtmlNonNegativeDecimal {
     }
 }
 
+/// An exact sum of nonnegative decimal quantities, each scaled by a bounded factor.
+///
+/// The sum keeps one unnormalized column per decimal place, so adding a quantity visits only
+/// that quantity's own digits, whatever the digits of the running total. Carries are resolved
+/// when the sum is read, and also, to keep every column below `u64::MAX`, after at most
+/// `MAX_PENDING` additions. Native storage uses ordinary allocations.
+#[derive(Debug, Default)]
+pub(crate) struct HtmlDecimalColumns {
+    /// Integer places, least significant first.
+    integer: Vec<u64>,
+    /// Fractional places, tenths first.
+    fraction: Vec<u64>,
+    /// Additions since the columns were last normalized.
+    pending: u64,
+}
+
+impl HtmlDecimalColumns {
+    /// One addition raises a column by at most `9 * u32::MAX`, below 2^36; with this many
+    /// additions and the carry into the next place a column stays below 2^64.
+    const MAX_PENDING: u64 = 1 << 27;
+
+    /// Adds `integer.fraction * factor`, validating both digit runs before changing the sum.
+    /// The integer digits must be nonempty; the fraction digits may be empty.
+    pub(crate) fn add_scaled(
+        &mut self,
+        integer: &[u16],
+        fraction: &[u16],
+        factor: u32,
+    ) -> Result<(), HtmlDecimalDigitsError> {
+        check_decimal_digits(integer)?;
+        if !fraction.is_empty() {
+            check_decimal_digits(fraction)?;
+        }
+        if self.pending == Self::MAX_PENDING {
+            self.normalize();
+        }
+        if self.integer.len() < integer.len() {
+            self.integer.resize(integer.len(), 0);
+        }
+        if self.fraction.len() < fraction.len() {
+            self.fraction.resize(fraction.len(), 0);
+        }
+        let factor = u64::from(factor);
+        for (column, &unit) in self.integer.iter_mut().zip(integer.iter().rev()) {
+            *column += u64::from(unit.wrapping_sub(u16::from(b'0'))) * factor;
+        }
+        for (column, &unit) in self.fraction.iter_mut().zip(fraction) {
+            *column += u64::from(unit.wrapping_sub(u16::from(b'0'))) * factor;
+        }
+        self.pending += 1;
+        #[cfg(test)]
+        count_digit_steps(2 * (integer.len() + fraction.len()));
+        Ok(())
+    }
+
+    /// Resolves every carry, leaving each column a single digit.
+    fn normalize(&mut self) {
+        let mut carry = 0_u64;
+        for column in self
+            .fraction
+            .iter_mut()
+            .rev()
+            .chain(self.integer.iter_mut())
+        {
+            let total = *column + carry;
+            *column = total % 10;
+            carry = total / 10;
+        }
+        while carry != 0 {
+            self.integer.push(carry % 10);
+            carry /= 10;
+        }
+        self.pending = 0;
+        #[cfg(test)]
+        count_digit_steps(self.fraction.len() + self.integer.len());
+    }
+
+    /// The canonical exact value: no leading integer zeroes, no trailing fractional zeroes.
+    pub(crate) fn finish(mut self) -> HtmlNonNegativeDecimal {
+        self.normalize();
+        let integer_len = self
+            .integer
+            .iter()
+            .rposition(|&d| d != 0)
+            .map_or(0, |i| i + 1);
+        let fraction_len = self
+            .fraction
+            .iter()
+            .rposition(|&d| d != 0)
+            .map_or(0, |i| i + 1);
+        let digit = |&place: &u64| char::from(b'0'.wrapping_add(place as u8));
+        let mut digits = String::with_capacity(integer_len.max(1));
+        if integer_len == 0 {
+            digits.push('0');
+        } else {
+            digits.extend(self.integer.iter().take(integer_len).rev().map(digit));
+        }
+        let fraction: String = self.fraction.iter().take(fraction_len).map(digit).collect();
+        #[cfg(test)]
+        count_digit_steps(integer_len + fraction_len);
+        HtmlNonNegativeDecimal {
+            integer: HtmlNonNegativeInteger { digits },
+            fraction,
+        }
+    }
+}
+
 impl From<HtmlNonNegativeInteger> for HtmlNonNegativeDecimal {
     fn from(integer: HtmlNonNegativeInteger) -> Self {
         Self {
@@ -3175,6 +3282,77 @@ impl Error for HtmlNumericMaterializationFailure {
 
 #[cfg(test)]
 mod tests {
+    /// The column sums must equal the exact decimal arithmetic that they replace: each
+    /// quantity multiplied by its factor and added to a running total.
+    #[test]
+    fn decimal_columns_equal_exact_scaled_addition_across_carries_and_normalization() {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move |bound: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % bound
+        };
+        for round in 0..300 {
+            let mut columns = HtmlDecimalColumns::default();
+            let mut exact = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0_u128));
+            for step in 0..(1 + next(12)) {
+                let alphabet: &[u8] = if next(2) == 0 { b"09" } else { b"0123456789" };
+                let mut run = |max: u64| -> Vec<u16> {
+                    (0..next(max))
+                        .map(|_| u16::from(alphabet[next(alphabet.len() as u64) as usize]))
+                        .collect()
+                };
+                let mut integer = run(40);
+                if integer.is_empty() {
+                    integer.push(u16::from(b'0'));
+                }
+                let fraction = run(40);
+                let factor = [1, 60, 3600, 86400, 604800, u32::MAX][next(6) as usize];
+                columns.add_scaled(&integer, &fraction, factor).unwrap();
+                let whole = HtmlNonNegativeInteger::from_decimal_digits(
+                    &DocumentString::from_utf16(integer),
+                )
+                .unwrap();
+                let quantity = if fraction.is_empty() {
+                    HtmlNonNegativeDecimal::from(whole)
+                } else {
+                    HtmlNonNegativeDecimal::with_fraction_digits(
+                        whole,
+                        &DocumentString::from_utf16(fraction),
+                    )
+                    .unwrap()
+                };
+                exact = exact.added_to(&quantity.multiplied_by(factor));
+                if (round + step) % 3 == 0 {
+                    columns.normalize();
+                }
+            }
+            assert_eq!(columns.finish(), exact, "round {round}");
+        }
+    }
+
+    #[test]
+    fn decimal_columns_reject_non_digits_without_changing_the_sum() {
+        let mut columns = HtmlDecimalColumns::default();
+        columns.add_scaled(&[u16::from(b'7')], &[], 2).unwrap();
+        assert_eq!(
+            columns.add_scaled(&[u16::from(b'1')], &[u16::from(b'x')], 1),
+            Err(HtmlDecimalDigitsError::NonAsciiDigit {
+                code_unit_offset: 0,
+                code_unit: u16::from(b'x')
+            })
+        );
+        assert_eq!(
+            columns.add_scaled(&[], &[], 1),
+            Err(HtmlDecimalDigitsError::Empty)
+        );
+        assert_eq!(
+            columns.finish().as_document_string().to_utf8().unwrap(),
+            "14"
+        );
+    }
+
     /// 2^-1074 = 5^1074 / 10^1074 (binary64 subnormal minimum): 5^1074 has 751
     /// digits and ends in 5, so the expansion has exactly 1074 fractional digits.
     /// Multiplying by 5 once per power costs about 1074 * 400 digit visits plus a
