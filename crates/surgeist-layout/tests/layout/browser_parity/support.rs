@@ -149,6 +149,25 @@ pub fn assert_surgeist_matches(golden: &Golden) -> Result<(), Error> {
 pub fn assert_surgeist_matches_with_endpoint_accounting(
     golden: &Golden,
 ) -> Result<ComparisonResult, Error> {
+    compare_captured_expectations(golden, &mut NumericComparisonSink::Strict)
+}
+
+/// Collects every requested numeric box/scroll mismatch after real captured
+/// admission and Native computation. Other observation categories are refused;
+/// a returned set does not classify or accept any difference.
+pub fn collect_surgeist_numeric_mismatches(golden: &Golden) -> Result<Vec<NumericMismatch>, Error> {
+    let mut numeric = NumericComparisonSink::CollectNumeric(Vec::new());
+    compare_captured_expectations(golden, &mut numeric)?;
+    let NumericComparisonSink::CollectNumeric(mismatches) = numeric else {
+        unreachable!("numeric collection owns its collecting sink")
+    };
+    Ok(mismatches)
+}
+
+fn compare_captured_expectations(
+    golden: &Golden,
+    numeric: &mut NumericComparisonSink,
+) -> Result<ComparisonResult, Error> {
     let request = root_request(&golden.viewport.root_context)?;
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
     validate_capture_analytic_profile(&tree, &golden.viewport.root_context)?;
@@ -170,7 +189,10 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
             batch.unrounded_inline_fragments(),
             batch.final_inline_fragments(),
         ),
-        ComparisonFrame::RootBorder,
+        ComparisonPolicy {
+            frame: ComparisonFrame::RootBorder,
+            numeric,
+        },
     )
 }
 
@@ -195,7 +217,10 @@ pub(super) fn assert_native_input_matches(
             batch.unrounded_inline_fragments(),
             batch.final_inline_fragments(),
         ),
-        ComparisonFrame::ParentLocal,
+        ComparisonPolicy {
+            frame: ComparisonFrame::ParentLocal,
+            numeric: &mut NumericComparisonSink::Strict,
+        },
     )
     .map(|_| ())
 }
@@ -502,6 +527,54 @@ impl ComparisonResult {
         } else {
             self.endpoint_unobservable_fields.push(field);
         }
+    }
+}
+
+/// One requested numeric field in source-order box comparison.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NumericComparisonField {
+    X,
+    Y,
+    Width,
+    Height,
+    ScrollWidth,
+    ScrollHeight,
+}
+
+impl NumericComparisonField {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::X => "x",
+            Self::Y => "y",
+            Self::Width => "width",
+            Self::Height => "height",
+            Self::ScrollWidth => "scroll width",
+            Self::ScrollHeight => "scroll height",
+        }
+    }
+}
+
+/// An immutable finite observation difference; source admission remains separate.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NumericMismatch {
+    path: String,
+    field: NumericComparisonField,
+    browser_value: Scalar,
+    native_value: Scalar,
+}
+
+impl NumericMismatch {
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+    pub const fn field(&self) -> NumericComparisonField {
+        self.field
+    }
+    pub const fn browser_value(&self) -> Scalar {
+        self.browser_value
+    }
+    pub const fn native_value(&self) -> Scalar {
+        self.native_value
     }
 }
 
@@ -2895,7 +2968,10 @@ fn compare_expectation(
         path,
         use_rounding,
         FragmentCursors::new(unrounded_inline_fragments, final_inline_fragments),
-        ComparisonFrame::ParentLocal,
+        ComparisonPolicy {
+            frame: ComparisonFrame::ParentLocal,
+            numeric: &mut NumericComparisonSink::Strict,
+        },
     )
     .map(|_| ())
 }
@@ -2907,9 +2983,22 @@ fn compare_expectation_with_endpoint_accounting(
     path: &str,
     use_rounding: bool,
     fragment_cursors: FragmentCursors<'_>,
-    frame: ComparisonFrame,
+    policy: ComparisonPolicy<'_>,
 ) -> Result<ComparisonResult, Error> {
-    let root_border_origin = match frame {
+    if policy.numeric.is_collecting()
+        && (!tree.paragraphs.is_empty()
+            || tree
+                .nodes
+                .iter()
+                .any(|node| node.layout_input.as_box().is_none())
+            || !fragment_cursors.unrounded.entries.is_empty()
+            || !fragment_cursors.final_output.entries.is_empty())
+    {
+        return Err(Error::new(format!(
+            "{path}: numeric collection requires box-only source without Text/control/fragment observations"
+        )));
+    }
+    let root_border_origin = match policy.frame {
         #[cfg(test)]
         ComparisonFrame::ParentLocal => None,
         ComparisonFrame::RootBorder => Some((
@@ -2922,6 +3011,7 @@ fn compare_expectation_with_endpoint_accounting(
         )),
     };
     let mut comparison_state = ComparisonState {
+        numeric: policy.numeric,
         root_border_origin,
         fragment_cursors,
         strict_geometry_nodes: BTreeSet::new(),
@@ -3027,7 +3117,64 @@ enum ComparisonFrame {
     RootBorder,
 }
 
+struct ComparisonPolicy<'a> {
+    frame: ComparisonFrame,
+    numeric: &'a mut NumericComparisonSink,
+}
+
+enum NumericComparisonSink {
+    Strict,
+    CollectNumeric(Vec<NumericMismatch>),
+}
+
+impl NumericComparisonSink {
+    fn is_collecting(&self) -> bool {
+        matches!(self, Self::CollectNumeric(_))
+    }
+
+    fn number(
+        &mut self,
+        path: &str,
+        field: NumericComparisonField,
+        actual: Scalar,
+        expected: Scalar,
+    ) -> Result<(), Error> {
+        let Self::CollectNumeric(mismatches) = self else {
+            return compare_number(path, field.as_str(), actual, expected);
+        };
+        if !actual.is_finite() || !expected.is_finite() {
+            return Err(Error::new(format!(
+                "{path}: {} numeric collection requires finite browser/native values (expected {expected}, got {actual})",
+                field.as_str()
+            )));
+        }
+        if !numeric_values_match(actual, expected) {
+            mismatches.push(NumericMismatch {
+                path: path.to_owned(),
+                field,
+                browser_value: expected,
+                native_value: actual,
+            });
+        }
+        Ok(())
+    }
+
+    fn optional_number(
+        &mut self,
+        path: &str,
+        field: NumericComparisonField,
+        actual: Scalar,
+        expected: Option<Scalar>,
+    ) -> Result<(), Error> {
+        match expected {
+            Some(expected) => self.number(path, field, actual, expected),
+            None => Ok(()),
+        }
+    }
+}
+
 struct ComparisonState<'a> {
+    numeric: &'a mut NumericComparisonSink,
     root_border_origin: Option<(usize, layout::Point)>,
     fragment_cursors: FragmentCursors<'a>,
     strict_geometry_nodes: BTreeSet<usize>,
@@ -3091,6 +3238,16 @@ fn compare_expectation_in_source_order(
 ) -> Result<(), Error> {
     validate_observation_expectation_category(expected)
         .map_err(|error| Error::new(format!("{path}: {error}")))?;
+    if comparison_state.numeric.is_collecting()
+        && (expected.fragments.is_some()
+            || expected.range_rectangles.is_some()
+            || expected.browser_control.is_some()
+            || expected.browser_br_font_band.is_some())
+    {
+        return Err(Error::new(format!(
+            "{path}: numeric collection supports only box geometry and scroll observations"
+        )));
+    }
     let selected_output_is_present = if use_rounding {
         tree.nodes[node].final_layout_present
     } else {
@@ -3124,10 +3281,30 @@ fn compare_expectation_in_source_order(
         }
         _ => actual.location,
     };
-    compare_optional_number(path, "x", observation_location.x, expected.x)?;
-    compare_optional_number(path, "y", observation_location.y, expected.y)?;
-    compare_optional_number(path, "width", actual.size.width, expected.width)?;
-    compare_optional_number(path, "height", actual.size.height, expected.height)?;
+    comparison_state.numeric.optional_number(
+        path,
+        NumericComparisonField::X,
+        observation_location.x,
+        expected.x,
+    )?;
+    comparison_state.numeric.optional_number(
+        path,
+        NumericComparisonField::Y,
+        observation_location.y,
+        expected.y,
+    )?;
+    comparison_state.numeric.optional_number(
+        path,
+        NumericComparisonField::Width,
+        actual.size.width,
+        expected.width,
+    )?;
+    comparison_state.numeric.optional_number(
+        path,
+        NumericComparisonField::Height,
+        actual.size.height,
+        expected.height,
+    )?;
     if expected.x.is_some()
         && expected.y.is_some()
         && expected.width.is_some()
@@ -3145,8 +3322,18 @@ fn compare_expectation_in_source_order(
         let range = scroll_geometry.physical_range();
         let x_span = range.x().maximum() - range.x().minimum();
         let y_span = range.y().maximum() - range.y().minimum();
-        compare_number(path, "scroll width", x_span, expected_scroll_size.width)?;
-        compare_number(path, "scroll height", y_span, expected_scroll_size.height)?;
+        comparison_state.numeric.number(
+            path,
+            NumericComparisonField::ScrollWidth,
+            x_span,
+            expected_scroll_size.width,
+        )?;
+        comparison_state.numeric.number(
+            path,
+            NumericComparisonField::ScrollHeight,
+            y_span,
+            expected_scroll_size.height,
+        )?;
     }
 
     let unrounded_fragments = comparison_state
@@ -4189,25 +4376,17 @@ where
     }
 }
 
+fn numeric_values_match(actual: Scalar, expected: Scalar) -> bool {
+    ComparisonTolerance::browser_parity().contains(actual - expected)
+}
+
 fn compare_number(path: &str, field: &str, actual: Scalar, expected: Scalar) -> Result<(), Error> {
-    if ComparisonTolerance::browser_parity().contains(actual - expected) {
+    if numeric_values_match(actual, expected) {
         Ok(())
     } else {
         Err(Error::new(format!(
             "{path}: {field} mismatch, expected {expected}, got {actual}"
         )))
-    }
-}
-
-fn compare_optional_number(
-    path: &str,
-    field: &str,
-    actual: Scalar,
-    expected: Option<Scalar>,
-) -> Result<(), Error> {
-    match expected {
-        Some(expected) => compare_number(path, field, actual, expected),
-        None => Ok(()),
     }
 }
 
@@ -6461,7 +6640,10 @@ mod tests {
                 batch.unrounded_inline_fragments(),
                 batch.final_inline_fragments(),
             ),
-            ComparisonFrame::ParentLocal,
+            ComparisonPolicy {
+                frame: ComparisonFrame::ParentLocal,
+                numeric: &mut NumericComparisonSink::Strict,
+            },
         )
     }
 
@@ -8349,7 +8531,10 @@ mod tests {
             "fri06-c12-t07-endpoint",
             true,
             FragmentCursors::new(&[], &[]),
-            ComparisonFrame::ParentLocal,
+            ComparisonPolicy {
+                frame: ComparisonFrame::ParentLocal,
+                numeric: &mut NumericComparisonSink::Strict,
+            },
         )
         .expect("an exact shared endpoint should be typed as endpoint-unobservable");
         assert_eq!(result.endpoint_unobservable_fields().len(), 1);
@@ -8369,7 +8554,10 @@ mod tests {
             "fri06-c12-t07-endpoint",
             true,
             FragmentCursors::new(&[], &[]),
-            ComparisonFrame::ParentLocal,
+            ComparisonPolicy {
+                frame: ComparisonFrame::ParentLocal,
+                numeric: &mut NumericComparisonSink::Strict,
+            },
         )
         .expect_err("neighbors without one exact shared endpoint must remain strict");
         assert!(
@@ -8389,7 +8577,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("a hidden break must not qualify")
             .to_string()
@@ -8407,7 +8598,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("a nonzero control must not qualify")
             .to_string()
@@ -8424,7 +8618,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("missing unrounded neighbor geometry must fail")
             .to_string()
@@ -8441,7 +8638,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("incomplete strict neighbor comparison must not qualify")
             .to_string()
@@ -8458,7 +8658,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("wrong ordinary neighbor geometry must fail first")
             .to_string()
@@ -8479,7 +8682,10 @@ mod tests {
                 "fri06-c12-t07-endpoint",
                 true,
                 FragmentCursors::new(&[], &[],),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .expect_err("only next_line may be typed endpoint-unobservable")
             .to_string()
@@ -12316,7 +12522,10 @@ mod source_root_frame_tests {
                 batch.unrounded_inline_fragments(),
                 batch.final_inline_fragments(),
             ),
-            ComparisonFrame::RootBorder,
+            ComparisonPolicy {
+                frame: ComparisonFrame::RootBorder,
+                numeric: &mut NumericComparisonSink::Strict,
+            },
         )
         .unwrap();
         // The same assertions in the parent frame must expose the 700px offset.
@@ -12331,7 +12540,10 @@ mod source_root_frame_tests {
                     batch.unrounded_inline_fragments(),
                     batch.final_inline_fragments(),
                 ),
-                ComparisonFrame::ParentLocal,
+                ComparisonPolicy {
+                    frame: ComparisonFrame::ParentLocal,
+                    numeric: &mut NumericComparisonSink::Strict
+                },
             )
             .is_err()
         );
