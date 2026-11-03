@@ -853,3 +853,145 @@ fn work_of_one_long_input_value_at_most_doubles_with_its_length() {
         format!("<!doctype html><input value='{}'>", "x".repeat(n))
     });
 }
+
+/// What one parse of a document cost, for the three shapes below that repeat a trigger that once
+/// rescanned its tree or its registry: records visited, and the high-water mark of the auxiliary
+/// entries the parse retained.
+#[derive(Clone, Copy)]
+struct Rescan {
+    visited: u64,
+    entries: u64,
+}
+
+fn rescan_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Rescan {
+    Rescan {
+        visited: usage.work(HtmlParseWorkCategory::RecordVisit),
+        entries: usage
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .high_water(),
+    }
+}
+
+fn parse_rescan(raw: String) -> Rescan {
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), long_input_limits())
+        .parse()
+        .unwrap_or_else(|_| panic!("the document parses within the long-input limits"));
+    rescan_of(report.usage())
+}
+
+/// Requires each measure at a size to be at most 2.2 times the measure at the size before, for
+/// each of the three doublings of `sizes`. Linear work costs at most double with each doubling
+/// (the fixed cost of the document only lowers the ratio), while a rescan per trigger costs
+/// four times as much and already exceeds 2.2 at the sizes below.
+fn assert_rescans_at_most_two_point_two_times(
+    sizes: [usize; 4],
+    measured: &[Rescan],
+    measures: &[(&str, fn(&Rescan) -> u64)],
+) {
+    for (name, pick) in measures {
+        let values: Vec<u64> = measured.iter().map(pick).collect();
+        for (pair, window) in sizes.windows(2).zip(values.windows(2)) {
+            assert!(
+                window[1].saturating_mul(10) <= window[0].saturating_mul(22),
+                "{name} grew faster than linearly: {} repeats cost {}, {} repeats cost {} \
+                 (all measured: {values:?})",
+                pair[0],
+                window[0],
+                pair[1],
+                window[1],
+            );
+        }
+    }
+}
+
+/// `<?start name='x'?>`, `siblings` empty elements, `<?end?>`, then a `template for=x` whose
+/// content patching moves the siblings between the markers.
+fn template_patching_document(siblings: usize, with_template: bool) -> String {
+    format!(
+        "<!doctype html><body><?start name='x'?>{}<?end?>{}",
+        "<i></i>".repeat(siblings),
+        if with_template {
+            "<template for=x><p>y</template>"
+        } else {
+            ""
+        },
+    )
+}
+
+#[test]
+fn work_of_patching_a_template_from_a_marker_range_at_most_doubles_with_the_siblings() {
+    // "Prepare content patching" and "find markers" (HTML Standard, the template element) walk
+    // the siblings between the start and end markers once each. The control without the
+    // `template for` is measured at the smallest size to show that the patching ran.
+    let sizes = [1_000, 2_000, 4_000, 8_000];
+    let control = parse_rescan(template_patching_document(sizes[0], false));
+    let measured: Vec<Rescan> = sizes
+        .iter()
+        .map(|&n| parse_rescan(template_patching_document(n, true)))
+        .collect();
+    assert!(
+        measured[0].visited > control.visited,
+        "the template patching visited nothing: {} with it, {} without",
+        measured[0].visited,
+        control.visited,
+    );
+    assert_rescans_at_most_two_point_two_times(
+        sizes,
+        &measured,
+        &[("record visits", |work| work.visited)],
+    );
+}
+
+#[test]
+fn work_of_styles_in_template_contents_at_most_doubles_with_their_number() {
+    // The contents of a template are not the main tree, so the order of their styles was walked
+    // and retained again for each style: the visits and the retained entries both grew with the
+    // square of the number of styles.
+    let sizes = [250, 500, 1_000, 2_000];
+    let measured: Vec<Rescan> = sizes
+        .iter()
+        .map(|&n| {
+            parse_rescan(format!(
+                "<!doctype html><body><template>{}",
+                "<style>a{}</style>".repeat(n)
+            ))
+        })
+        .collect();
+    assert_rescans_at_most_two_point_two_times(
+        sizes,
+        &measured,
+        &[
+            ("record visits", |work| work.visited),
+            ("auxiliary entries retained", |work| work.entries),
+        ],
+    );
+}
+
+#[test]
+fn work_of_reached_meta_csp_elements_at_most_doubles_with_their_number() {
+    // The controlled processor reports every policy unchanged, so nothing it returns grows with
+    // the number of metas; only the parser's own bookkeeping around each reached meta can.
+    use crate::parser::construction::meta_csp::Processor;
+    let sizes = [250, 500, 1_000, 2_000];
+    let measured: Vec<Rescan> = sizes
+        .iter()
+        .map(|&n| {
+            let mut processor = Processor::new();
+            let raw = format!(
+                "<!doctype html><head>{}",
+                "<meta http-equiv=content-security-policy content='='>".repeat(n)
+            );
+            let report =
+                HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), long_input_limits())
+                    .parse_with_meta_csp(&mut processor)
+                    .unwrap_or_else(|_| panic!("the document parses within the long-input limits"));
+            assert_eq!(processor.calls, n, "every meta is reached once");
+            rescan_of(report.usage())
+        })
+        .collect();
+    assert_rescans_at_most_two_point_two_times(
+        sizes,
+        &measured,
+        &[("record visits", |work| work.visited)],
+    );
+}
