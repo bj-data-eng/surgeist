@@ -702,7 +702,7 @@ fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseRe
         }
     };
     let mut grammar = RuleParser::top_level(source, recovery.clone());
-    let mut sink = SheetSink(CssSheet::new());
+    let mut sink = SheetSink::new();
     recover_rule_list(
         source,
         document.root(),
@@ -712,7 +712,7 @@ fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseRe
     );
     let mut diagnostics = grammar.diagnostics;
     diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
-    crate::CssParseReport::new(sink.0, diagnostics)
+    crate::CssParseReport::new(sink.sheet, diagnostics)
 }
 
 pub(crate) struct Recovered<T> {
@@ -868,27 +868,77 @@ impl TopLevelPreludePhase {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// The namespace bindings in force: the default one, and the named ones in the
+/// order their prefixes were first bound, each prefix bound once with its last
+/// name. Only `activate` changes `named`.
+#[derive(Clone, Default)]
 pub(crate) struct CssNamespaceBindings {
     pub(crate) default: Option<CssNamespaceName>,
     pub(crate) named: Vec<(CssNamespacePrefix, CssNamespaceName)>,
+    /// The position in `named` of each prefix, which a lookup by prefix reads
+    /// instead of scanning `named`. It carries no meaning of its own, so it is
+    /// outside equality and `Debug`.
+    positions: std::collections::HashMap<String, usize>,
+}
+
+impl PartialEq for CssNamespaceBindings {
+    fn eq(&self, other: &Self) -> bool {
+        self.default == other.default && self.named == other.named
+    }
+}
+
+impl Eq for CssNamespaceBindings {}
+
+impl std::fmt::Debug for CssNamespaceBindings {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CssNamespaceBindings")
+            .field("default", &self.default)
+            .field("named", &self.named)
+            .finish()
+    }
+}
+
+// Test-only work counter: the lookups by prefix that namespace bindings and the
+// stylesheet's namespace index answered, and each binding a scan examined.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static NAMESPACE_PROBES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn namespace_probed(count: usize) {
+    NAMESPACE_PROBES.with(|probes| probes.set(probes.get() + count));
 }
 
 impl CssNamespaceBindings {
     pub(crate) fn activate(&mut self, prefix: Option<CssNamespacePrefix>, name: CssNamespaceName) {
         if let Some(prefix) = prefix {
-            if let Some((_, active_name)) = self
-                .named
-                .iter_mut()
-                .find(|(active_prefix, _)| active_prefix == &prefix)
+            #[cfg(test)]
+            namespace_probed(1);
+            if let Some(active) = self
+                .positions
+                .get(prefix.as_str())
+                .and_then(|&index| self.named.get_mut(index))
             {
-                *active_name = name;
+                active.1 = name;
             } else {
+                self.positions
+                    .insert(prefix.as_str().to_owned(), self.named.len());
                 self.named.push((prefix, name));
             }
         } else {
             self.default = Some(name);
         }
+    }
+
+    /// The binding of `prefix`.
+    pub(crate) fn binding(&self, prefix: &str) -> Option<&(CssNamespacePrefix, CssNamespaceName)> {
+        #[cfg(test)]
+        namespace_probed(1);
+        self.positions
+            .get(prefix)
+            .and_then(|index| self.named.get(*index))
     }
 
     fn has_active_binding(
@@ -897,9 +947,7 @@ impl CssNamespaceBindings {
         name: &CssNamespaceName,
     ) -> bool {
         if let Some(prefix) = prefix {
-            self.named
-                .iter()
-                .find(|(active_prefix, _)| active_prefix == prefix)
+            self.binding(prefix.as_str())
                 .is_some_and(|(_, active_name)| active_name == name)
         } else {
             self.default.as_ref() == Some(name)
@@ -911,10 +959,7 @@ impl CssNamespaceBindings {
     }
 
     fn active_prefix(&self, prefix: &str) -> Option<&CssNamespacePrefix> {
-        self.named
-            .iter()
-            .find(|(active_prefix, _)| active_prefix.as_str() == prefix)
-            .map(|(active_prefix, _)| active_prefix)
+        self.binding(prefix).map(|(active_prefix, _)| active_prefix)
     }
 }
 

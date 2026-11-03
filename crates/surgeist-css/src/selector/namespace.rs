@@ -29,10 +29,6 @@ impl CssNamespaceContext {
     }
     /// Returns the case-sensitive named binding.
     pub fn named_namespace(&self, prefix: &CssNamespacePrefix) -> Option<&CssNamespaceName> {
-        self.0
-            .named
-            .iter()
-            .find(|(p, _)| p == prefix)
-            .map(|(_, name)| name)
+        self.0.binding(prefix.as_str()).map(|(_, name)| name)
     }
 }

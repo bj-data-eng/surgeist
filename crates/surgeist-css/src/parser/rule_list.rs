@@ -1897,7 +1897,21 @@ impl RuleListSink<RuleListItem> for GroupSink {
 
 /// Rules retained by a stylesheet, which also reports a namespace prefix
 /// declared again (CSS Namespaces 3 §3: the last declaration wins).
-pub(crate) struct SheetSink(pub(super) CssSheet);
+pub(crate) struct SheetSink {
+    pub(super) sheet: CssSheet,
+    /// The place in the retained rules of the last namespace rule retained for
+    /// each prefix, `None` for the default namespace.
+    namespaces: std::collections::HashMap<Option<String>, usize>,
+}
+
+impl SheetSink {
+    pub(super) fn new() -> Self {
+        Self {
+            sheet: CssSheet::new(),
+            namespaces: std::collections::HashMap::new(),
+        }
+    }
+}
 
 impl RuleListSink<RuleListItem> for SheetSink {
     fn retain(
@@ -1908,42 +1922,42 @@ impl RuleListSink<RuleListItem> for SheetSink {
         diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
         for rule in item.into_rules() {
-            if let CssRule::Namespace(namespace) = &rule
-                && let Some(previous) =
-                    self.0
-                        .rules()
-                        .iter()
-                        .rev()
-                        .find_map(|retained| match retained {
-                            CssRule::Namespace(previous)
-                                if previous.prefix() == namespace.prefix() =>
-                            {
-                                Some(previous)
-                            }
-                            _ => None,
-                        })
-            {
-                let position = namespace.position().expect("parsed namespace rule");
-                let previous_position = previous.position().expect("parsed namespace rule");
-                let span = crate::source::CssSourceSpan::new(
-                    position,
-                    snapshot.position_or_walk(unit_end),
-                )
-                .expect("retained namespace rule lies within its source unit");
-                diagnostics.push(
-                    crate::diagnostic::CssRecoveryDiagnostic::new(
-                        crate::diagnostic::error::namespace_redeclaration(
-                            namespace.prefix().cloned(),
-                            position,
-                            previous_position,
-                        ),
-                        span,
-                        crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
+            if let CssRule::Namespace(namespace) = &rule {
+                #[cfg(test)]
+                super::namespace_probed(1);
+                let key = namespace.prefix().map(|prefix| prefix.as_str().to_owned());
+                let at = self.sheet.rules().len();
+                let previous = self
+                    .namespaces
+                    .insert(key, at)
+                    .and_then(|index| self.sheet.rules().get(index))
+                    .and_then(|retained| match retained {
+                        CssRule::Namespace(previous) => Some(previous),
+                        _ => None,
+                    });
+                if let Some(previous) = previous {
+                    let position = namespace.position().expect("parsed namespace rule");
+                    let previous_position = previous.position().expect("parsed namespace rule");
+                    let span = crate::source::CssSourceSpan::new(
+                        position,
+                        snapshot.position_or_walk(unit_end),
                     )
-                    .expect("namespace error is at the retained rule's source start"),
-                );
+                    .expect("retained namespace rule lies within its source unit");
+                    diagnostics.push(
+                        crate::diagnostic::CssRecoveryDiagnostic::new(
+                            crate::diagnostic::error::namespace_redeclaration(
+                                namespace.prefix().cloned(),
+                                position,
+                                previous_position,
+                            ),
+                            span,
+                            crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
+                        )
+                        .expect("namespace error is at the retained rule's source start"),
+                    );
+                }
             }
-            self.0.push_rule(rule);
+            self.sheet.push_rule(rule);
         }
     }
 }

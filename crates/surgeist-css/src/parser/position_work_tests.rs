@@ -303,3 +303,129 @@ fn a_rule_out_of_place_in_a_chain_reads_the_snapshot_of_the_sheet() {
         );
     }
 }
+
+/// A parse of the sheet `text_of(count)` for each count does searches in
+/// proportion to the count, as `read` counts them: within `per_item` for each
+/// item and each step of a binary search, and about doubling when the count
+/// does. A search over everything kept so far for each item multiplies the work
+/// by four.
+fn assert_searches_linear(
+    text_of: impl Fn(usize) -> String,
+    parse: impl Fn(&str) -> usize,
+    reset: fn(),
+    read: fn() -> usize,
+    per_item: usize,
+    diagnostics: impl Fn(usize) -> usize,
+) {
+    let mut previous = None;
+    for count in [200_usize, 400, 800] {
+        let text = text_of(count);
+        reset();
+        let found = parse(&text);
+        let work = read();
+        assert!(
+            found >= diagnostics(count),
+            "x {count}: {found} diagnostics"
+        );
+        assert!(
+            work <= per_item * count * (usize::BITS - count.leading_zeros()) as usize,
+            "x {count}: {work} searches"
+        );
+        if let Some(before) = previous {
+            assert!(
+                work <= 3 * before,
+                "x {count}: {work} searches after {before}"
+            );
+        }
+        previous = Some(work);
+    }
+}
+
+fn sheet_diagnostics(text: &str) -> usize {
+    parser().parse_sheet(text).diagnostics().len()
+}
+
+fn reset_ranges_examined() {
+    super::conditional_chains::RANGES_EXAMINED.with(|examined| examined.set(0));
+}
+
+fn ranges_examined() -> usize {
+    super::conditional_chains::RANGES_EXAMINED.with(std::cell::Cell::get)
+}
+
+fn reset_namespace_probes() {
+    super::NAMESPACE_PROBES.with(|probes| probes.set(0));
+}
+
+fn namespace_probes() -> usize {
+    super::NAMESPACE_PROBES.with(std::cell::Cell::get)
+}
+
+#[test]
+fn diagnostics_among_many_rejected_rules_are_filtered_in_linear_work() {
+    for unit in ["a{x:y}\n@else {}\n", "@media x{@else {} a{x:y}}\n"] {
+        assert_searches_linear(
+            |count| unit.repeat(count),
+            sheet_diagnostics,
+            reset_ranges_examined,
+            ranges_examined,
+            4,
+            |count| count,
+        );
+    }
+}
+
+#[test]
+fn many_distinct_namespace_prefixes_are_bound_and_read_in_linear_work() {
+    assert_searches_linear(
+        |count| {
+            let declarations: String = (0..count)
+                .map(|i| format!("@namespace p{i} url(x{i});\n"))
+                .collect();
+            let uses: String = (0..count).map(|i| format!("p{i}|a {{}}\n")).collect();
+            declarations + &uses
+        },
+        sheet_diagnostics,
+        reset_namespace_probes,
+        namespace_probes,
+        8,
+        |_| 0,
+    );
+}
+
+#[test]
+fn a_namespace_prefix_declared_again_is_found_among_many_in_linear_work() {
+    assert_searches_linear(
+        |count| {
+            (0..2 * count)
+                .map(|i| format!("@namespace p{} url(x{i});\n", i % count))
+                .collect()
+        },
+        sheet_diagnostics,
+        reset_namespace_probes,
+        namespace_probes,
+        8,
+        |count| count,
+    );
+}
+
+#[test]
+fn many_distinct_namespace_rules_are_checked_as_a_sheet_in_linear_work() {
+    assert_searches_linear(
+        |count| {
+            (0..count)
+                .map(|i| format!("@namespace p{i} url(x{i});\n"))
+                .collect()
+        },
+        |text| {
+            let rules = parser().parse_sheet(text).syntax().rules().to_vec();
+            // Parsing binds every prefix; only the construction check is measured.
+            reset_namespace_probes();
+            crate::rule::CssSheet::try_from_rules(rules).map_or(0, |_| 1)
+        },
+        || (),
+        namespace_probes,
+        8,
+        |_| 1,
+    );
+}

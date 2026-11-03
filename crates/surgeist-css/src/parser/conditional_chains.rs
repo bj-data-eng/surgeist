@@ -95,18 +95,77 @@ fn admit(
             }
         }
     }
-    diagnostics.retain(|diagnostic| {
-        !rejected.iter().any(|range: &Range<usize>| {
+    if !rejected.is_empty() {
+        let reach = RejectedReach::new(&rejected);
+        diagnostics.retain(|diagnostic| {
             if let Some(owner) = diagnostic.opening_owner() {
-                return range.contains(&owner);
+                return !reach.contains(owner);
             }
-            range.start <= diagnostic.span().start().byte_offset().value()
-                && diagnostic.span().end().byte_offset().value() <= range.end
-        })
-    });
+            !reach.encloses(
+                diagnostic.span().start().byte_offset().value(),
+                diagnostic.span().end().byte_offset().value(),
+            )
+        });
+    }
     diagnostics.extend(placements);
 }
 
+// Test-only work counter: the rejected ranges that membership tests examined.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static RANGES_EXAMINED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The rejected ranges ordered by start, each with the furthest end among the
+/// ranges up to it, so that a question about any range that starts at or before
+/// a byte is answered by one search.
+struct RejectedReach {
+    starts: Vec<usize>,
+    furthest_ends: Vec<usize>,
+}
+
+impl RejectedReach {
+    fn new(rejected: &[Range<usize>]) -> Self {
+        let mut ranges: Vec<(usize, usize)> = rejected
+            .iter()
+            .map(|range| (range.start, range.end))
+            .collect();
+        ranges.sort_unstable();
+        let mut furthest = 0;
+        let mut furthest_ends = Vec::with_capacity(ranges.len());
+        for (_, end) in &ranges {
+            furthest = furthest.max(*end);
+            furthest_ends.push(furthest);
+        }
+        Self {
+            starts: ranges.into_iter().map(|(start, _)| start).collect(),
+            furthest_ends,
+        }
+    }
+
+    /// The furthest end among the ranges that start at or before `byte`.
+    fn furthest_end_from(&self, byte: usize) -> Option<usize> {
+        let count = self.starts.partition_point(|start| {
+            #[cfg(test)]
+            RANGES_EXAMINED.with(|examined| examined.set(examined.get() + 1));
+            *start <= byte
+        });
+        count
+            .checked_sub(1)
+            .and_then(|last| self.furthest_ends.get(last).copied())
+    }
+
+    /// Whether some range contains `byte`.
+    fn contains(&self, byte: usize) -> bool {
+        self.furthest_end_from(byte).is_some_and(|end| byte < end)
+    }
+
+    /// Whether some range holds the span from `start` to `end`.
+    fn encloses(&self, start: usize, end: usize) -> bool {
+        self.furthest_end_from(start)
+            .is_some_and(|furthest| end <= furthest)
+    }
+}
 fn check(
     snapshot: &CssSourceSnapshot,
     is_else: bool,
