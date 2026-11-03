@@ -8,7 +8,7 @@ use crate::color::controlled::protocol::{
 };
 use crate::numeric::bounded_decimal::DecimalOutcome;
 use crate::numeric::{CssAngleUnit, CssNumericType, CssNumericUnit};
-use surgeist_css_parser::lexer::protocol::NumberKind;
+use surgeist_css_parser::lexer::protocol::NumericTokenKind;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LiteralValue {
@@ -324,10 +324,10 @@ impl<'owner> LiteralConversion<'owner> {
         else {
             return Err(ColorProtocolError::Input);
         };
-        if kind == NumberKind::Dimension && token.unit.is_none() {
+        if kind == NumericTokenKind::Dimension && token.unit.is_none() {
             return Err(ColorProtocolError::Input);
         }
-        if kind != NumberKind::Dimension && token.unit.is_some() {
+        if kind != NumericTokenKind::Dimension && token.unit.is_some() {
             return Err(ColorProtocolError::Input);
         }
         Self::start_input(
@@ -335,7 +335,7 @@ impl<'owner> LiteralConversion<'owner> {
             LiteralInput {
                 index: token.index,
                 unit: token.unit,
-                percentage: kind == NumberKind::Percentage,
+                percentage: kind == NumericTokenKind::Percentage,
             },
             header,
             scratch_base,

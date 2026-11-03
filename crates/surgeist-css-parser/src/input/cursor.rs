@@ -6,6 +6,9 @@
 
 use std::fmt;
 
+use super::filter::{absorbs_line_feed, filter_code_point};
+use crate::lexical::is_newline;
+
 /// The original input's unit vocabulary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputKind {
@@ -309,8 +312,7 @@ impl InputCursor {
             }
             Decoder::Ready => {}
         }
-        if let Some(mut scalar) = self.cr.take() {
-            scalar.value = '\n';
+        if let Some(scalar) = self.cr.take() {
             self.output = Some(scalar);
             return Ok(false);
         }
@@ -438,36 +440,27 @@ impl InputCursor {
         Ok(())
     }
 
+    /// Applies section 3.3 to a decoded scalar. A scalar that may start a
+    /// carriage return and line feed pair waits in `cr`, already a line feed,
+    /// until the next scalar says whether it ends the pair.
     fn scalar(&mut self, mut scalar: Scalar) {
-        if let Some(mut cr) = self.cr.take() {
-            cr.value = '\n';
-            if scalar.value == '\n' {
-                cr.end = scalar.end;
-            } else {
-                scalar.value = preprocess(scalar.value);
-                if scalar.value == '\r' {
-                    self.cr = Some(scalar);
-                } else {
-                    self.held_scalar = Some(scalar);
-                }
-            }
-            self.output = Some(cr);
-        } else {
-            scalar.value = preprocess(scalar.value);
-            if scalar.value == '\r' {
+        let starts_pair = absorbs_line_feed(scalar.value);
+        let ends_pair = is_newline(scalar.value);
+        scalar.value = filter_code_point(scalar.value);
+        if let Some(mut waiting) = self.cr.take() {
+            if ends_pair {
+                waiting.end = scalar.end;
+            } else if starts_pair {
                 self.cr = Some(scalar);
             } else {
-                self.output = Some(scalar);
+                self.held_scalar = Some(scalar);
             }
+            self.output = Some(waiting);
+        } else if starts_pair {
+            self.cr = Some(scalar);
+        } else {
+            self.output = Some(scalar);
         }
-    }
-}
-
-const fn preprocess(value: char) -> char {
-    match value {
-        '\0' => '\u{fffd}',
-        '\u{c}' => '\n',
-        _ => value,
     }
 }
 

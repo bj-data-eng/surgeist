@@ -36,5 +36,5 @@ mod tokenizer;
 pub use error::ProtocolError;
 pub use number::{NumberCursor, NumberLayout, NumberOverflow, NumberPart, NumberStep};
 pub use tokenizer::{
-    NameKind, NumberKind, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
+    NameKind, NumericTokenKind, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };

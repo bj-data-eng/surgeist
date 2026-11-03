@@ -1,6 +1,8 @@
 //! The parts of a [`Token`](crate::Token): its kind, the type flag of a hash
 //! token, and the number a numeric token carries.
 
+use crate::lexical::is_digit;
+
 /// The kinds of token that CSS Syntax Module Level 3 section 4 produces, plus
 /// the comment extension of section 9.
 ///
@@ -168,7 +170,7 @@ impl<'i> Number<'i> {
                 .get(from..)
                 .unwrap_or_default()
                 .iter()
-                .take_while(|byte| byte.is_ascii_digit())
+                .take_while(|&&byte| is_digit(char::from(byte)))
                 .count()
         };
         let mut at = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));

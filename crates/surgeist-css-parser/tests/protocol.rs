@@ -9,7 +9,7 @@
 
 use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberKind, NumberLayout, RawToken, RawTokenKind, Record, Span, TokenCursor,
+    NameKind, NumberLayout, NumericTokenKind, RawToken, RawTokenKind, Record, Span, TokenCursor,
     TokenRequest,
 };
 
@@ -141,7 +141,7 @@ fn a_dimension_keeps_its_digits_layout_and_unit_for_the_host_to_convert() {
     let found = tokens(&records);
     assert_eq!(found.len(), 1);
     let RawTokenKind::Number {
-        kind: NumberKind::Dimension,
+        kind: NumericTokenKind::Dimension,
         layout,
         digits,
         unit,

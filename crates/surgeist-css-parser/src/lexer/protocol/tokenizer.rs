@@ -10,7 +10,7 @@
 //! token append is distinct. All variable storage belongs to the caller.
 
 use super::{NumberLayout, ProtocolError};
-use crate::input::Scalar;
+use crate::input::{Scalar, is_filtered};
 use crate::lexer::machine::{self, Act, Lookahead, Position, State};
 
 /// A half-open interval `start..end`.
@@ -53,7 +53,7 @@ pub enum NameKind {
 /// The set is closed: it mirrors the numeric tokens of Syntax 3 section 4.1,
 /// and a new edition would be a deliberate breaking change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NumberKind {
+pub enum NumericTokenKind {
     /// A `<number-token>`.
     Number,
     /// A `<percentage-token>`; its `unit` span is empty.
@@ -84,7 +84,7 @@ pub enum RawTokenKind {
     /// A number, percentage or dimension token.
     Number {
         /// Which of those it is.
-        kind: NumberKind,
+        kind: NumericTokenKind,
         /// The counts of its spelling.
         layout: NumberLayout,
         /// The record slots of its digits: mantissa digits, then exponent
@@ -270,7 +270,7 @@ impl TokenCursor {
         if self.request() != (TokenRequest::ReadScalar { index }) {
             return Err(ProtocolError::WRONG_REPLY);
         }
-        if matches!(scalar.value, '\0' | '\r' | '\u{c}') {
+        if is_filtered(scalar.value) {
             return Err(ProtocolError::UNPREPROCESSED_SCALAR);
         }
         if scalar.end <= scalar.start {
@@ -778,7 +778,7 @@ mod tests {
             })
             .collect();
         let RawTokenKind::Number {
-            kind: NumberKind::Dimension,
+            kind: NumericTokenKind::Dimension,
             layout,
             digits,
             unit,
@@ -829,12 +829,12 @@ mod tests {
         assert!(matches!(
             tokens[2].kind,
             RawTokenKind::Number {
-                kind: NumberKind::Percentage,
+                kind: NumericTokenKind::Percentage,
                 ..
             }
         ));
         let RawTokenKind::Number {
-            kind: NumberKind::Dimension,
+            kind: NumericTokenKind::Dimension,
             layout,
             unit,
             ..

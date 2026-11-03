@@ -16,6 +16,7 @@
 
 use std::fmt;
 
+use crate::lexical::is_digit;
 use crate::stream::{Mark, StreamError};
 use crate::token::{Number, NumberKind, Sign};
 use crate::{Site, Stream, Token};
@@ -401,7 +402,7 @@ fn tail_of(text: &str) -> Option<Result<Tail, ()>> {
     if digits.is_empty() {
         return Some(Ok(Tail::Dash));
     }
-    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+    if !digits.chars().all(is_digit) {
         return None;
     }
     // `B` is the negation of the digits; too many digits for an i64 overflow.

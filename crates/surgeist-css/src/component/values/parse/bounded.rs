@@ -14,7 +14,7 @@ use crate::values::color_adjust::utf16_value::{Control, Failure};
 use std::mem::size_of;
 use surgeist_css_parser::input::Scalar;
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberKind, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
+    NameKind, NumericTokenKind, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
 
 /// Reads the components of `source` through the stepwise token cursor, metering
@@ -193,7 +193,7 @@ fn consume_snapshot(
                 ..
             }
             | RawTokenKind::Number {
-                kind: NumberKind::Dimension,
+                kind: NumericTokenKind::Dimension,
                 ..
             } if escaped_eof => Some("fffd "),
             _ => None,
@@ -339,9 +339,9 @@ fn token_data_bounded(
                 has_sign: sign != 0,
             };
             match kind {
-                NumberKind::Number => TokenData::Number(number),
-                NumberKind::Percentage => TokenData::Percentage(number),
-                NumberKind::Dimension => TokenData::Dimension {
+                NumericTokenKind::Number => TokenData::Number(number),
+                NumericTokenKind::Percentage => TokenData::Percentage(number),
+                NumericTokenKind::Dimension => TokenData::Dimension {
                     number,
                     unit: name(unit)?,
                 },

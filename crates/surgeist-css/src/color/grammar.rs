@@ -12,7 +12,7 @@ use crate::color::controlled::protocol::{
 use crate::color::{CssColorInterpolationMethod, CssColorSyntax, CssSystemColor};
 use surgeist_color::ColorSpace as Space;
 use surgeist_color::{HueInterpolation, PredefinedColorSpace};
-use surgeist_css_parser::lexer::protocol::{NameKind, NumberKind, RawTokenKind, Span};
+use surgeist_css_parser::lexer::protocol::{NameKind, NumericTokenKind, RawTokenKind, Span};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RawComponent {
@@ -1332,7 +1332,7 @@ fn is_weight(token: ClassifiedToken) -> bool {
     matches!(
         token.token.kind,
         RawTokenKind::Number {
-            kind: NumberKind::Percentage,
+            kind: NumericTokenKind::Percentage,
             ..
         }
     ) || matches!(

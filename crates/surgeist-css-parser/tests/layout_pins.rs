@@ -29,7 +29,7 @@ use surgeist_css_parser::input::{
     SourceMap,
 };
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
+    NameKind, NumberCursor, NumberLayout, NumberOverflow, NumberPart, NumberStep, NumericTokenKind,
     ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
 use surgeist_css_parser::serialize::Adjacency;
@@ -71,7 +71,7 @@ fn the_token_cursor_and_its_records_keep_their_measured_layouts() {
     pinned::<ProtocolError>("ProtocolError", 1, 1);
     pinned::<Span>("Span", 16, 8);
     pinned::<NameKind>("NameKind", 1, 1);
-    pinned::<NumberKind>("NumberKind", 1, 1);
+    pinned::<NumericTokenKind>("NumericTokenKind", 1, 1);
 }
 
 #[test]

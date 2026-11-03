@@ -7,30 +7,78 @@ use super::machine::{
 };
 use super::protocol::name::NameCursor;
 use super::protocol::{
-    NameKind, NumberCursor, NumberKind as RawNumberKind, NumberLayout, NumberPart, NumberStep,
-    RawTokenKind, Record, Span,
+    NameKind, NumberCursor, NumberLayout, NumberPart, NumberStep, NumericTokenKind, RawTokenKind,
+    Record, Span,
 };
-use crate::input::Scalar;
-use crate::lexical::is_ident_code_point;
+use crate::input::{Scalar, absorbs_line_feed, filter_code_point, is_filtered};
+use crate::lexical::{
+    hex_digit_value, is_digit, is_ident_code_point, is_ident_start, is_newline, is_non_printable,
+    is_whitespace,
+};
 use crate::token::{HashKind, Number, NumberKind};
 use crate::unicode_range::CodePointRange;
 use crate::{Offset, Token};
 
-/// The ASCII code points that continue an ident sequence, indexed by byte.
-const ASCII_IDENT: [bool; 128] = {
-    let mut table = [false; 128];
-    let mut byte = 0;
-    while byte < 128 {
-        table[byte] = is_ident_code_point(byte as u8 as char);
-        byte += 1;
-    }
-    table
-};
+/// A table over the bytes of the text: for each ASCII byte, the value of `$test`
+/// for the code point `$point` that the byte is in the text, and false for
+/// every other byte. Each table is evaluated from the lexical predicates when
+/// the crate is compiled, so no byte class is written a second time.
+macro_rules! byte_table {
+    ($point:ident => $test:expr) => {{
+        let mut table = [false; 256];
+        let mut byte = 0_usize;
+        while byte < 128 {
+            let $point = byte as u8 as char;
+            table[byte] = $test;
+            byte += 1;
+        }
+        table
+    }};
+}
+
+/// The bytes that are ident code points themselves.
+const IDENT: [bool; 256] = byte_table!(point => is_ident_code_point(point));
+
+/// The bytes that start an ident sequence by themselves.
+const IDENT_START: [bool; 256] = byte_table!(point => is_ident_start(point));
+
+/// The bytes that are digits.
+const DIGIT: [bool; 256] = byte_table!(point => is_digit(point));
+
+/// The bytes that section 3.3 rewrites, so that they are not the code points
+/// they spell.
+const FILTERED: [bool; 256] = byte_table!(point => is_filtered(point));
+
+/// The bytes that are whitespace after section 3.3, which includes the carriage
+/// return and form feed that become line feeds.
+const SPACE: [bool; 256] = byte_table!(point => is_whitespace(filter_code_point(point)));
+
+/// The bytes that end a run of a name: a backslash, which starts an escape or
+/// ends the name, and a byte that section 3.3 rewrites to an ident code point
+/// (a NULL is U+FFFD), which the machine takes.
+const NAME_BREAK: [bool; 256] = byte_table!(
+    point => point == '\\' || (is_filtered(point) && is_ident_code_point(filter_code_point(point)))
+);
+
+/// The bytes that end a run of a string's code points besides its quotation
+/// mark: a backslash, a newline after section 3.3 and a byte that section 3.3
+/// rewrites.
+const STRING_BREAK: [bool; 256] = byte_table!(point => point == '\\' || is_newline(filter_code_point(point)) || is_filtered(point));
+
+/// The bytes that end a run of an unquoted url's code points: the quotation
+/// marks, the parentheses, a backslash, whitespace and non-printable code
+/// points after section 3.3, and a byte that section 3.3 rewrites.
+const URL_BREAK: [bool; 256] = byte_table!(
+    point => matches!(point, '"' | '\'' | '(' | ')' | '\\')
+        || is_whitespace(filter_code_point(point))
+        || is_non_printable(filter_code_point(point))
+        || is_filtered(point)
+);
 
 /// Whether a byte of the text is whitespace after section 3.3: a space, a tab,
 /// a line feed, and the carriage return and form feed that become line feeds.
 const fn is_space_byte(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0c)
+    SPACE[byte as usize]
 }
 
 /// The scalars after the consumed text, decoded as the machine asks for them.
@@ -70,31 +118,15 @@ impl<'s> Window<'s> {
         let bytes = self.text.as_bytes();
         let byte = *bytes.get(at)?;
         Some(if byte < 0x80 {
-            match byte {
-                0 => Scalar {
-                    value: '\u{fffd}',
-                    start: at,
-                    end: at + 1,
-                },
-                b'\r' => Scalar {
-                    value: '\n',
-                    start: at,
-                    end: if bytes.get(at + 1) == Some(&b'\n') {
-                        at + 2
-                    } else {
-                        at + 1
-                    },
-                },
-                0x0c => Scalar {
-                    value: '\n',
-                    start: at,
-                    end: at + 1,
-                },
-                _ => Scalar {
-                    value: char::from(byte),
-                    start: at,
-                    end: at + 1,
-                },
+            let point = char::from(byte);
+            let pair = absorbs_line_feed(point)
+                && bytes
+                    .get(at + 1)
+                    .is_some_and(|&next| is_newline(char::from(next)));
+            Scalar {
+                value: filter_code_point(point),
+                start: at,
+                end: at + 1 + usize::from(pair),
             }
         } else {
             let value = self.text.get(at..)?.chars().next()?;
@@ -165,7 +197,7 @@ enum Text {
 enum Kind {
     Name(NameKind, Span),
     Number {
-        kind: RawNumberKind,
+        kind: NumericTokenKind,
         integer: bool,
         unit: Span,
     },
@@ -619,7 +651,7 @@ impl<'s> Lexer<'s> {
         let mut end = start;
         while let Some(&byte) = bytes.get(end) {
             if byte < 0x80 {
-                if ASCII_IDENT[usize::from(byte)] {
+                if IDENT[usize::from(byte)] {
                     end += 1;
                 } else {
                     break;
@@ -639,7 +671,7 @@ impl<'s> Lexer<'s> {
         match bytes.get(end) {
             // A backslash starts an escape or ends the name, and a NULL is a
             // unit of its own: the machine takes these.
-            Some(b'\\' | 0) => {
+            Some(&byte) if NAME_BREAK[usize::from(byte)] => {
                 self.state = State::Name {
                     cursor,
                     purpose,
@@ -682,7 +714,7 @@ impl<'s> Lexer<'s> {
                         };
                         self.complete(
                             Kind::Number {
-                                kind: RawNumberKind::Dimension,
+                                kind: NumericTokenKind::Dimension,
                                 integer,
                                 unit: units,
                             },
@@ -699,9 +731,7 @@ impl<'s> Lexer<'s> {
         let bytes = self.text.as_bytes();
         let quote = quote as u8;
         let start = self.pos;
-        let end = self.skip_while(|byte| {
-            !(byte == quote || matches!(byte, b'\\' | b'\n' | b'\r' | 0x0c | 0))
-        });
+        let end = self.skip_while(|byte| !(byte == quote || STRING_BREAK[usize::from(byte)]));
         if end > start {
             self.push_source(start, end);
             self.pos = end;
@@ -740,9 +770,7 @@ impl<'s> Lexer<'s> {
     fn run_url(&mut self, units_start: usize) -> Run {
         let bytes = self.text.as_bytes();
         let start = self.pos;
-        let end = self.skip_while(|byte| {
-            !matches!(byte, b')' | b'"' | b'\'' | b'(' | b'\\' | 0..=0x20 | 0x7f)
-        });
+        let end = self.skip_while(|byte| !URL_BREAK[usize::from(byte)]);
         if end > start {
             self.push_source(start, end);
             self.pos = end;
@@ -789,7 +817,9 @@ impl<'s> Lexer<'s> {
                     end += 1;
                     if matches!(part, NumberPart::Mantissa(_) | NumberPart::ExponentDigit(_)) {
                         let extra = bytes.get(end..).map_or(0, |rest| {
-                            rest.iter().take_while(|byte| byte.is_ascii_digit()).count()
+                            rest.iter()
+                                .take_while(|&&byte| DIGIT[usize::from(byte)])
+                                .count()
                         });
                         if extra > 0 {
                             if cursor.add_digits(extra).is_err() {
@@ -843,7 +873,7 @@ impl<'s> Lexer<'s> {
         // else (a NULL, a carriage return, a form feed, a multi-byte code
         // point) is decoded as section 3.3 says.
         let plain = |index: usize| match bytes.get(index) {
-            Some(&byte) if byte < 0x80 && !matches!(byte, 0 | b'\r' | 0x0c) => {
+            Some(&byte) if byte < 0x80 && !FILTERED[usize::from(byte)] => {
                 Some(Some(char::from(byte)))
             }
             None => Some(None),
@@ -869,7 +899,7 @@ impl<'s> Lexer<'s> {
         match suffix_end(first, second, third) {
             SuffixEnd::Percentage => self.complete(
                 Kind::Number {
-                    kind: RawNumberKind::Percentage,
+                    kind: NumericTokenKind::Percentage,
                     integer,
                     unit: empty,
                 },
@@ -877,7 +907,7 @@ impl<'s> Lexer<'s> {
             ),
             SuffixEnd::Number => self.complete(
                 Kind::Number {
-                    kind: RawNumberKind::Number,
+                    kind: NumericTokenKind::Number,
                     integer,
                     unit: empty,
                 },
@@ -905,27 +935,28 @@ impl<'s> Lexer<'s> {
             return Run::Nothing;
         };
         let start = self.pos;
-        match byte {
-            b'{' | b'}' | b'(' | b')' | b'[' | b']' | b':' | b';' | b',' => {
-                self.complete(Kind::Delim(char::from(byte)), start + 1)
-            }
-            byte if is_space_byte(byte) => {
-                let end = self.skip_while(is_space_byte);
-                self.complete(Kind::Whitespace, end)
-            }
-            b'0'..=b'9' => self.run_number(NumberCursor::new(), 0),
-            b'a'..=b'z' | b'A'..=b'Z' | b'_'
-                if !(self.ranges_allowed && matches!(byte, b'u' | b'U')) =>
-            {
-                self.run_name(
-                    NameCursor::new(),
-                    NamePurpose::Name(NameKind::Ident),
-                    0,
-                    0,
-                    true,
-                )
-            }
-            _ => self.start_decided(),
+        if matches!(
+            byte,
+            b'{' | b'}' | b'(' | b')' | b'[' | b']' | b':' | b';' | b','
+        ) {
+            self.complete(Kind::Delim(char::from(byte)), start + 1)
+        } else if is_space_byte(byte) {
+            let end = self.skip_while(is_space_byte);
+            self.complete(Kind::Whitespace, end)
+        } else if DIGIT[usize::from(byte)] {
+            self.run_number(NumberCursor::new(), 0)
+        } else if IDENT_START[usize::from(byte)]
+            && !(self.ranges_allowed && matches!(byte, b'u' | b'U'))
+        {
+            self.run_name(
+                NameCursor::new(),
+                NamePurpose::Name(NameKind::Ident),
+                0,
+                0,
+                true,
+            )
+        } else {
+            self.start_decided()
         }
     }
 
@@ -1002,7 +1033,8 @@ impl<'s> Lexer<'s> {
         let hex = |window: &mut Window<'_>, index: usize| {
             window
                 .scalar(index)
-                .and_then(|scalar| scalar.value.to_digit(16))
+                .and_then(|scalar| hex_digit_value(scalar.value))
+                .map(u32::from)
         };
         self.consume(2);
         let mut value: u32 = 0;
@@ -1103,9 +1135,9 @@ impl<'s> Lexer<'s> {
                 let number = Number::new(representation, flag);
                 (
                     match kind {
-                        RawNumberKind::Number => Token::Number(number),
-                        RawNumberKind::Percentage => Token::Percentage(number),
-                        RawNumberKind::Dimension => Token::Dimension {
+                        NumericTokenKind::Number => Token::Number(number),
+                        NumericTokenKind::Percentage => Token::Percentage(number),
+                        NumericTokenKind::Dimension => Token::Dimension {
                             number,
                             unit: self.held_slice(unit),
                         },
@@ -1150,4 +1182,59 @@ enum Run {
     Progress,
     /// A token is finished.
     Finished,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The byte classes of the runs, which are evaluated from the lexical
+    /// predicates, are the sets that sections 3.3, 4.2, 4.3.2 to 4.3.6 and
+    /// 4.3.13 give for the bytes of the text: written out here from the
+    /// clauses, byte by byte.
+    #[test]
+    fn the_byte_classes_are_the_sets_of_the_clauses() {
+        for byte in 0..=u8::MAX {
+            let index = usize::from(byte);
+            // Section 3.3 rewrites a NULL, a carriage return and a form feed.
+            assert_eq!(FILTERED[index], matches!(byte, 0 | b'\r' | 0x0c), "{byte}");
+            // Whitespace after section 3.3: space, tab, line feed, and the
+            // carriage return and form feed that become line feeds.
+            assert_eq!(
+                SPACE[index],
+                matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0c),
+                "{byte}"
+            );
+            assert_eq!(DIGIT[index], byte.is_ascii_digit(), "{byte}");
+            assert_eq!(
+                IDENT_START[index],
+                byte.is_ascii_alphabetic() || byte == b'_',
+                "{byte}"
+            );
+            assert_eq!(
+                IDENT[index],
+                byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'),
+                "{byte}"
+            );
+            // A run of a name stops at a backslash and at a NULL, which the
+            // machine takes as U+FFFD.
+            assert_eq!(NAME_BREAK[index], matches!(byte, b'\\' | 0), "{byte}");
+            // A run of a string stops at a backslash, a newline (after section
+            // 3.3) and a NULL; its quote is the caller's.
+            assert_eq!(
+                STRING_BREAK[index],
+                matches!(byte, b'\\' | b'\n' | b'\r' | 0x0c | 0),
+                "{byte}"
+            );
+            // A run of an unquoted url stops at the code points that section
+            // 4.3.6 treats apart: the quotation marks, the parentheses, a
+            // backslash, whitespace and the non-printable code points, with
+            // the NULL that section 3.3 rewrites.
+            assert_eq!(
+                URL_BREAK[index],
+                matches!(byte, b')' | b'"' | b'\'' | b'(' | b'\\' | 0..=0x20 | 0x7f),
+                "{byte}"
+            );
+        }
+    }
 }

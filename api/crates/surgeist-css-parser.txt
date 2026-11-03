@@ -327,10 +327,6 @@ pub surgeist_css_parser::lexer::protocol::NameKind::Function
 pub surgeist_css_parser::lexer::protocol::NameKind::Hash
 pub surgeist_css_parser::lexer::protocol::NameKind::Hash::identifier: bool
 pub surgeist_css_parser::lexer::protocol::NameKind::Ident
-pub enum surgeist_css_parser::lexer::protocol::NumberKind
-pub surgeist_css_parser::lexer::protocol::NumberKind::Dimension
-pub surgeist_css_parser::lexer::protocol::NumberKind::Number
-pub surgeist_css_parser::lexer::protocol::NumberKind::Percentage
 pub enum surgeist_css_parser::lexer::protocol::NumberPart
 pub surgeist_css_parser::lexer::protocol::NumberPart::Exponent
 pub surgeist_css_parser::lexer::protocol::NumberPart::ExponentDigit(u8)
@@ -342,6 +338,10 @@ pub enum surgeist_css_parser::lexer::protocol::NumberStep
 pub surgeist_css_parser::lexer::protocol::NumberStep::Consume(surgeist_css_parser::lexer::protocol::NumberPart)
 pub surgeist_css_parser::lexer::protocol::NumberStep::Done(surgeist_css_parser::lexer::protocol::NumberLayout)
 pub surgeist_css_parser::lexer::protocol::NumberStep::Transition
+pub enum surgeist_css_parser::lexer::protocol::NumericTokenKind
+pub surgeist_css_parser::lexer::protocol::NumericTokenKind::Dimension
+pub surgeist_css_parser::lexer::protocol::NumericTokenKind::Number
+pub surgeist_css_parser::lexer::protocol::NumericTokenKind::Percentage
 pub enum surgeist_css_parser::lexer::protocol::RawTokenKind
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::BadString
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::BadUrl
@@ -356,7 +356,7 @@ pub surgeist_css_parser::lexer::protocol::RawTokenKind::Name::kind: surgeist_css
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::Name::units: surgeist_css_parser::lexer::protocol::Span
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number::digits: surgeist_css_parser::lexer::protocol::Span
-pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number::kind: surgeist_css_parser::lexer::protocol::NumberKind
+pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number::kind: surgeist_css_parser::lexer::protocol::NumericTokenKind
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number::layout: surgeist_css_parser::lexer::protocol::NumberLayout
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::Number::unit: surgeist_css_parser::lexer::protocol::Span
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::String

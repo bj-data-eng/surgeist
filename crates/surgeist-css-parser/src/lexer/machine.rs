@@ -20,13 +20,14 @@
 
 use super::protocol::name::{NameCursor, Step as NameStep};
 use super::protocol::{
-    NameKind, NumberCursor, NumberKind, NumberLayout, NumberPart, NumberStep, ProtocolError,
+    NameKind, NumberCursor, NumberLayout, NumberPart, NumberStep, NumericTokenKind, ProtocolError,
     RawToken, RawTokenKind, Record, Span,
 };
 use crate::input::Scalar;
 use crate::lexical::{
-    is_ident_code_point, is_ident_start, is_non_printable, is_whitespace, valid_escape,
-    would_start_ident, would_start_number, would_start_unicode_range,
+    hex_digit_value, is_digit, is_hex_digit, is_ident_code_point, is_ident_start, is_newline,
+    is_non_printable, is_whitespace, valid_escape, would_start_ident, would_start_number,
+    would_start_unicode_range,
 };
 
 /// What the machine is in the middle of.
@@ -220,7 +221,7 @@ pub(crate) const fn plain_number(
     layout: NumberLayout,
     digits: Span,
     unit: Span,
-    kind: NumberKind,
+    kind: NumericTokenKind,
 ) -> RawTokenKind {
     RawTokenKind::Number {
         kind,
@@ -301,7 +302,7 @@ pub(crate) const fn name_end(
         },
         NameEndKind::Dimension => match purpose {
             NamePurpose::Dimension { layout, digits } => NameEnd::Token {
-                kind: plain_number(layout, digits, units, NumberKind::Dimension),
+                kind: plain_number(layout, digits, units, NumericTokenKind::Dimension),
                 consume: 0,
             },
             NamePurpose::Name(kind) => NameEnd::Token {
@@ -496,7 +497,7 @@ pub(crate) fn step<L: Lookahead>(
                 SuffixEnd::Percentage => Step::of(token(
                     look,
                     at,
-                    plain_number(layout, digits, empty, NumberKind::Percentage),
+                    plain_number(layout, digits, empty, NumericTokenKind::Percentage),
                     1,
                 )?),
                 SuffixEnd::Dimension => Step::of(Act::Move {
@@ -506,7 +507,7 @@ pub(crate) fn step<L: Lookahead>(
                 SuffixEnd::Number => Step::of(token(
                     look,
                     at,
-                    plain_number(layout, digits, empty, NumberKind::Number),
+                    plain_number(layout, digits, empty, NumericTokenKind::Number),
                     0,
                 )?),
             }
@@ -535,7 +536,9 @@ pub(crate) fn step<L: Lookahead>(
                     },
                     0,
                 )?),
-                Some('\n') => Step::of(token(look, at, RawTokenKind::BadString, 0)?),
+                Some(value) if is_newline(value) => {
+                    Step::of(token(look, at, RawTokenKind::BadString, 0)?)
+                }
                 Some('\\') => Step::of(Act::Move {
                     state: State::Escape {
                         target: EscapeTarget::String { quote, units_start },
@@ -717,14 +720,18 @@ pub(crate) fn step<L: Lookahead>(
                 state: target.continuation(),
                 consume: 0,
             }),
-            Some('\n') if matches!(target, EscapeTarget::String { .. }) => Step::of(Act::Move {
-                state: target.continuation(),
-                consume: 1,
-            }),
-            Some(value) if value.is_ascii_hexdigit() => Step::of(Act::Move {
+            Some(value) if is_newline(value) && matches!(target, EscapeTarget::String { .. }) => {
+                Step::of(Act::Move {
+                    state: target.continuation(),
+                    consume: 1,
+                })
+            }
+            Some(value) if is_hex_digit(value) => Step::of(Act::Move {
                 state: State::Hex {
                     target,
-                    value: value.to_digit(16).ok_or(ProtocolError::BOUNDARY)?,
+                    value: hex_digit_value(value)
+                        .map(u32::from)
+                        .ok_or(ProtocolError::BOUNDARY)?,
                     digits: 1,
                 },
                 consume: 1,
@@ -744,9 +751,10 @@ pub(crate) fn step<L: Lookahead>(
             value,
             digits,
         } => {
-            if digits < 6 && a.is_some_and(|value| value.is_ascii_hexdigit()) {
+            if digits < 6 && a.is_some_and(is_hex_digit) {
                 let digit = a
-                    .and_then(|value| value.to_digit(16))
+                    .and_then(hex_digit_value)
+                    .map(u32::from)
                     .ok_or(ProtocolError::BOUNDARY)?;
                 Step::of(Act::Move {
                     state: State::Hex {
@@ -822,14 +830,14 @@ pub(crate) fn start_kind<L: Lookahead>(
 ) -> StartKind {
     let a = Some(value);
     match value {
-        ' ' | '\t' | '\n' => StartKind::Whitespace,
+        value if is_whitespace(value) => StartKind::Whitespace,
         '/' if look.point(1) == Some('*') => StartKind::Comment,
         '<' if [look.point(1), look.point(2), look.point(3)]
             == [Some('!'), Some('-'), Some('-')] =>
         {
             StartKind::Cdo
         }
-        '-' | '+' | '.' | '0'..='9' => {
+        value if matches!(value, '-' | '+' | '.') || is_digit(value) => {
             let (b, c) = (look.point(1), look.point(2));
             if value == '-' && [b, c] == [Some('-'), Some('>')] {
                 StartKind::Cdc

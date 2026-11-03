@@ -16,7 +16,7 @@ mod common;
 use surgeist_css_parser::document::Component;
 use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberKind, RawTokenKind, Record, TokenCursor, TokenRequest,
+    NameKind, NumericTokenKind, RawTokenKind, Record, TokenCursor, TokenRequest,
 };
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::serialize;
@@ -545,12 +545,12 @@ fn protocol_shapes(text: &str) -> Vec<String> {
                     }
                 },
                 RawTokenKind::Number {
-                    kind: NumberKind::Dimension,
+                    kind: NumericTokenKind::Dimension,
                     unit,
                     ..
                 } => format!("Dimension:{}", name(unit)),
                 RawTokenKind::Number {
-                    kind: NumberKind::Number,
+                    kind: NumericTokenKind::Number,
                     ..
                 } => "Number".to_owned(),
                 RawTokenKind::Url { units, .. } => format!("Url:{}", name(units)),

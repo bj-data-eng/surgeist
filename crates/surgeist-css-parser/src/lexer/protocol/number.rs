@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use crate::lexical::digit_value;
+use crate::lexical::{digit_value, is_digit};
 
 /// One piece of a number's spelling that a [`NumberStep::Consume`] took.
 ///
@@ -187,7 +187,7 @@ impl NumberCursor {
     /// not a digit and not a full stop (integer only) or an `e` (either): the
     /// same ones [`step`](Self::step) takes, one at a time, without consuming.
     pub(crate) fn finish_without_more(&mut self, next: Option<char>) -> Option<NumberLayout> {
-        let digit_or_e = matches!(next, Some('0'..='9' | 'e' | 'E'));
+        let digit_or_e = next.is_some_and(is_digit) || matches!(next, Some('e' | 'E'));
         let plain = match self.state {
             State::Integer => !digit_or_e && next != Some('.'),
             State::Fraction => !digit_or_e,
@@ -249,7 +249,7 @@ impl NumberCursor {
                 NumberStep::Consume(NumberPart::Mantissa(digit))
             }
             State::Point => {
-                if a == Some('.') && b.is_some_and(|value| value.is_ascii_digit()) {
+                if a == Some('.') && b.is_some_and(is_digit) {
                     self.state = State::Fraction;
                     NumberStep::Consume(NumberPart::Point)
                 } else {
@@ -259,9 +259,8 @@ impl NumberCursor {
             }
             State::Exponent => {
                 if matches!(a, Some('e' | 'E'))
-                    && (b.is_some_and(|value| value.is_ascii_digit())
-                        || matches!(b, Some('+' | '-'))
-                            && c.is_some_and(|value| value.is_ascii_digit()))
+                    && (b.is_some_and(is_digit)
+                        || matches!(b, Some('+' | '-')) && c.is_some_and(is_digit))
                 {
                     self.state = State::ExponentSign;
                     NumberStep::Consume(NumberPart::Exponent)

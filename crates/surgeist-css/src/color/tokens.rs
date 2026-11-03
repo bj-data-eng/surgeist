@@ -201,7 +201,7 @@ impl<'owner> TokenReader<'owner> {
         self.unit = if matches!(
             self.token.map(|token| token.kind),
             Some(RawTokenKind::Number {
-                kind: surgeist_css_parser::lexer::protocol::NumberKind::Dimension,
+                kind: surgeist_css_parser::lexer::protocol::NumericTokenKind::Dimension,
                 ..
             })
         ) {

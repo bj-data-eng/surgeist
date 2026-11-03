@@ -48,6 +48,7 @@ pub use decode::{
     DecodeError, DecodeHints, DecodeLimits, Decoded, Encoding, EncodingSelection, decode,
 };
 pub use filter::filter_code_points;
+pub(crate) use filter::{absorbs_line_feed, filter_code_point, is_filtered};
 pub use preprocess::{
     PreprocessError, PreprocessLimits, PreprocessResource, Preprocessed, SourceMap,
     preprocess_utf16,

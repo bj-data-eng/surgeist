@@ -35,7 +35,9 @@ use crate::numeric::{
     CssAngle, CssCalculation, CssCalculationType, CssHintedNumber, CssNumber,
     CssNumericConstructionError, CssPercentage,
 };
-use surgeist_css_parser::lexer::protocol::{NameKind, NumberKind, RawToken, RawTokenKind, Span};
+use surgeist_css_parser::lexer::protocol::{
+    NameKind, NumericTokenKind, RawToken, RawTokenKind, Span,
+};
 
 type Result<T> = std::result::Result<T, ColorInputFailure>;
 
@@ -146,7 +148,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
     fn number(
         &mut self,
         value: CssNumericTokenRef<'_>,
-        kind: NumberKind,
+        kind: NumericTokenKind,
         unit: &str,
     ) -> std::result::Result<RawTokenKind, ColorProtocolError> {
         use surgeist_css_parser::lexer::protocol::{NumberCursor, NumberPart, NumberStep};
@@ -340,13 +342,13 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 units: self.name(value)?,
                             },
                             CssValueTokenRef::Number(value) => {
-                                self.number(value, NumberKind::Number, "")?
+                                self.number(value, NumericTokenKind::Number, "")?
                             }
                             CssValueTokenRef::Percentage(value) => {
-                                self.number(value, NumberKind::Percentage, "")?
+                                self.number(value, NumericTokenKind::Percentage, "")?
                             }
                             CssValueTokenRef::Dimension { number, unit } => {
-                                self.number(number, NumberKind::Dimension, unit)?
+                                self.number(number, NumericTokenKind::Dimension, unit)?
                             }
                             CssValueTokenRef::Whitespace(_) => RawTokenKind::Whitespace,
                             CssValueTokenRef::Delim(unit) => RawTokenKind::Delim(unit),

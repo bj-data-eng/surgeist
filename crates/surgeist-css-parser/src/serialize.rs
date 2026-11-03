@@ -116,7 +116,7 @@ pub fn identifier<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
     let leading_hyphen = value.starts_with('-');
     for (index, point) in value.chars().enumerate() {
         let digit_here_is_invalid =
-            point.is_ascii_digit() && (index == 0 || (index == 1 && leading_hyphen));
+            lexical::is_digit(point) && (index == 0 || (index == 1 && leading_hyphen));
         if digit_here_is_invalid {
             hex_escape(point, out)?;
         } else if index == 0 && lone_hyphen {
@@ -213,8 +213,8 @@ pub fn url<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
 fn unit<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
     let mut points = value.chars();
     if let (Some(first @ ('e' | 'E')), Some(second)) = (points.next(), points.next()) {
-        let exponent = second.is_ascii_digit()
-            || (second == '-' && points.next().is_some_and(|third| third.is_ascii_digit()));
+        let exponent = lexical::is_digit(second)
+            || (second == '-' && points.next().is_some_and(lexical::is_digit));
         if exponent && let Some(rest) = value.strip_prefix(first) {
             hex_escape(first, out)?;
             return name(rest, out);

@@ -33,7 +33,7 @@ use common::generate::text_of;
 use surgeist_css_parser::document::{Component, ListId};
 use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberKind as RawNumberKind, RawTokenKind, Record, TokenCursor, TokenRequest,
+    NameKind, NumericTokenKind, RawTokenKind, Record, TokenCursor, TokenRequest,
 };
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::limits::{DepthExcess, Limits};
@@ -225,9 +225,9 @@ fn protocol_seen(records: &[Record]) -> Vec<Seen> {
                 kind, layout, unit, ..
             } => {
                 let name = match kind {
-                    RawNumberKind::Number => "Number",
-                    RawNumberKind::Percentage => "Percentage",
-                    RawNumberKind::Dimension => "Dimension",
+                    NumericTokenKind::Number => "Number",
+                    NumericTokenKind::Percentage => "Percentage",
+                    NumericTokenKind::Dimension => "Dimension",
                 };
                 format!(
                     "{name}(negative={},integer={},digits={},unit={:?})",
