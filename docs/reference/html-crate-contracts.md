@@ -103,8 +103,8 @@ existing allocation tickets; mutable construction backing remains private.
 
 `OrderedAttributes::from_parser_storage`, `parser_backing_mut` and
 `into_parser_storage` must not expose `ParseControl` or mutable shared storage in
-HTML. Replace them with HTML-owned `bounded::HtmlAttributeStorage` and
-`bounded::HtmlAttributeValidation`. Storage retains the actual `Arc<Vec<Attribute>>`;
+HTML. Replace them with HTML-owned `bounded::values::HtmlAttributeStorage` and
+`bounded::values::HtmlAttributeValidation`. Storage retains the actual `Arc<Vec<Attribute>>`;
 its public view is immutable. A validation cursor compares expanded names in
 the existing duplicate-major/first-minor order and compares exact namespace URI
 before exact local name. Prefix and value never affect duplicate identity.
@@ -135,8 +135,8 @@ HTML's private `Identity`, `Record`, `Arena` and directly constructs
 `HtmlDocument`/`HtmlFragment`. Moving only this method or making those fields
 public would leave HTML's immutable-result invariant unenforced.
 
-HTML therefore owns `bounded::HtmlConstructionStorage` and
-`bounded::HtmlConstructionOperation`. They wrap the existing record vector,
+HTML therefore owns `bounded::construction::HtmlConstructionStorage` and
+`bounded::construction::HtmlConstructionOperation`. They wrap the existing record vector,
 identity and generic usage, with private fields. Both native builders and the
 parser's session use this same storage implementation; parser-only payloads,
 source evidence, allocation tickets and effects stay in parser. No second final
@@ -247,7 +247,7 @@ generic invariants with their owner while parser effects remain in parser.
 
 #### Complete controlled attribute edits
 
-`bounded::HtmlConstructionAttributeEdit` owns the same construction storage and
+`bounded::construction::HtmlConstructionAttributeEdit` owns the same construction storage and
 one checked element throughout an attribute edit group. It consumes that storage
 through a fallible boundary returning the complete unconsumed owner and operands
 on refusal. Its read-only storage view supports parser metadata/effect reads;
@@ -888,7 +888,7 @@ HTML owns only the local decision inputs and outputs:
 `HtmlParserScriptingMode`, `HtmlFragmentTokenizerState`,
 `HtmlFragmentInsertionMode`. The shared private policy selected by #1177 lives
 in HTML's private `fragment_initialization.rs`. The bounded front door exposes
-`bounded::fragment_initial_modes<E>(effective: HtmlParserScriptingMode,
+`bounded::parsing::fragment_initial_modes<E>(effective: HtmlParserScriptingMode,
 compare: impl FnMut(HtmlFragmentNameTest<'_>) -> Result<bool, E>) ->
 Result<(HtmlFragmentTokenizerState, HtmlFragmentInsertionMode), E>` wrapper.
 `HtmlFragmentNameTest<'a>` has `HtmlNamespace` and `Local(&'a [&'static str])`
@@ -917,7 +917,7 @@ Non-HTML context selects Data/InBody. Captured ancestor templates or tables are
 not inserted into the parser's open-elements stack.
 
 Parser stack reset consumes a second narrow HTML wrapper,
-`bounded::stack_reset_insertion_mode<E>(compare: impl FnMut(&'static str) ->
+`bounded::parsing::stack_reset_insertion_mode<E>(compare: impl FnMut(&'static str) ->
 Result<bool, E>) -> Result<Option<HtmlFragmentInsertionMode>, E>`. It delegates
 the same private fixed table under `FixedInsertionScope::StackReset`; fragment
 initialization uses `FixedInsertionScope::Fragment`. The public wrapper does not
@@ -932,13 +932,13 @@ annotation-xml encoding comparison and prefix policy are defined once by the
 #1175 correction; consumer adapters preserve their existing admission before
 each comparison. Captured identity and host validation remain in semantics.
 The bounded front door exposes `HtmlIntegrationPointComparison::{Exact,
-AsciiCaseInsensitive}` and `bounded::HtmlIntegrationPointRule::{Never, Always,
+AsciiCaseInsensitive}` and `bounded::parsing::HtmlIntegrationPointRule::{Never, Always,
 EncodingAttribute}`, matching the private `integration_points.rs` policy.
-`bounded::html_integration_point_rule` takes optional namespace URI, local name
+`bounded::parsing::html_integration_point_rule` takes optional namespace URI, local name
 and the fallible comparator
 `FnMut(&DocumentString, &'static str, HtmlIntegrationPointComparison) ->
 Result<bool, E>`, returning `Result<HtmlIntegrationPointRule, E>`.
-`bounded::html_integration_point_encoding_attribute` additionally takes the
+`bounded::parsing::html_integration_point_encoding_attribute` additionally takes the
 attribute value and returns `Result<Option<bool>, E>`: `None` is an unrelated
 expanded name; `Some(false)` is the actual encoding attribute with a rejected
 MIME value and stops further attribute reads. Semantics' ordinary borrowed
@@ -948,7 +948,7 @@ module itself remains private.
 
 MathML text integration points use the ordinary
 `is_mathml_text_integration_point(&QualifiedName) -> bool` front door and
-`bounded::mathml_text_integration_point<E>(compare:
+`bounded::parsing::mathml_text_integration_point<E>(compare:
 impl FnMut(HtmlMathmlTextPointTest<'_>) -> Result<bool, E>) -> Result<bool, E>`.
 `HtmlMathmlTextPointTest` emits `Namespace(&'static str)` for the exact MathML
 URI and, only after success, one `Local(&[&'static str])` group containing
@@ -961,7 +961,7 @@ exceptions and the separate annotation-xml/SVG branch remain parser-owned.
 
 ### Local rules and semantic execution
 
-`bounded::HtmlScriptTypeCursor` owns the existing script classification actions
+`bounded::script::HtmlScriptTypeCursor` owns the existing script classification actions
 for current content and preparation. It borrows original operands, including
 the virtual language prefix, and exposes `required_work`, `advance` and the
 completed optional kind. `HtmlScriptTypeWork` describes record visits and actual
@@ -1177,7 +1177,7 @@ The completed report supplies a read-only registry-resolution accessor; its data
 and mutation helpers remain private.
 
 These requirements follow the actual
-[rel kernel](../../crates/surgeist-html/src/rel.rs),
+[rel kernel](../../crates/surgeist-html/src/internal/elements/rel.rs),
 [relationship adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships.rs)
 and [noopener adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships/noopener.rs).
 
@@ -1246,8 +1246,8 @@ remain semantics-owned. `HtmlMediaAttributeReport::observed` stays private.
 
 This order is required by the existing
 [media semantic adapter](../../crates/surgeist-html-semantics/src/semantics/media.rs),
-[ordinary report kernel](../../crates/surgeist-html/src/attributes/media.rs)
-and [media cursors](../../crates/surgeist-html/src/media.rs).
+[ordinary report kernel](../../crates/surgeist-html/src/internal/attributes/media.rs)
+and [media cursors](../../crates/surgeist-html/src/internal/elements/media.rs).
 
 #### Microdata token production
 
@@ -1286,7 +1286,7 @@ rules stay authoritative; in particular ItemProp suppresses duplicate processing
 tokens. This protocol preserves the actual checkpoints in
 [`md_tokens`](../../crates/surgeist-html-semantics/src/semantics/microdata.rs) while moving
 token/report assembly into the
-[HTML microdata owner](../../crates/surgeist-html/src/attributes/microdata.rs).
+[HTML microdata owner](../../crates/surgeist-html/src/internal/attributes/microdata.rs).
 
 #### Opaque reservations and failure accounting
 

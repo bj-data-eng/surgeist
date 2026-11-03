@@ -837,7 +837,7 @@ one. The imports reflect the selected HTML split. The explicit finite limits
 are the existing color-input fixture's allowances.
 
 ```rust
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlSource, HtmlParseLimits,
     HtmlParseMetadataStep};
 use surgeist_color::Color;
