@@ -1119,6 +1119,57 @@ mod tests {
             .into_parts();
         (storage, node, incoming, discarded, prefix_units, tail_units)
     }
+    #[test]
+    fn actions_charge_the_progress_store_and_the_two_observation_flag_writes() {
+        // Derived from the writes themselves: an action stores the progress it reaches and sets
+        // the observing flag, accept clears the flag, and a failed action stores its typed failure
+        // instead, so admission covers the larger of the two paths.
+        let transition_bytes = (size_of::<Progress>() + 2 * size_of::<bool>())
+            .max(size_of::<Option<HtmlConstructionError>>());
+        let transition_atomic =
+            size_of::<Progress>().max(size_of::<Option<HtmlConstructionError>>());
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(vec![1, 2])));
+        let mut owner = HtmlConstructionTextAppend::begin(
+            storage,
+            node,
+            DocumentString::from_utf16(vec![3, 4, 5]),
+        );
+        let inspect = owner.next_action().unwrap().unwrap();
+        assert_eq!(
+            inspect.description(),
+            HtmlConstructionTextAppendDescription::Inspect(HtmlConstructionTextAppendWork {
+                record_visits: 6,
+                provider_calls: 1,
+                record_writes: 3,
+                copied_bytes: transition_bytes,
+                atomic_layout_bytes: transition_atomic.max(size_of::<HtmlConstructionUsage>()),
+                ..Default::default()
+            })
+        );
+        inspect.perform(None).unwrap().accept();
+        drive_to(&mut owner, Phase::CopyTail);
+        let copy = owner.next_action().unwrap().unwrap();
+        let units = 3;
+        assert_eq!(
+            copy.description(),
+            HtmlConstructionTextAppendDescription::CopyTail {
+                offset: 0,
+                units,
+                work: HtmlConstructionTextAppendWork {
+                    record_visits: 3,
+                    provider_calls: 1,
+                    // The units extend the backing; the offset counter is part of the progress.
+                    record_writes: 3 + 1,
+                    copied_bytes: transition_bytes + units * size_of::<u16>() + size_of::<usize>(),
+                    atomic_layout_bytes: transition_atomic
+                        .max(units * size_of::<u16>())
+                        .max(size_of::<usize>()),
+                    ..Default::default()
+                },
+            }
+        );
+    }
+
     fn drive_to(owner: &mut HtmlConstructionTextAppend, phase: Phase) {
         while owner.phase() != phase {
             owner

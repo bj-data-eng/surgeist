@@ -1,6 +1,7 @@
 mod depth;
 mod focus;
 mod order;
+mod refusal;
 mod replace;
 use crate::html::support::{Cause, cause, has_cause, slots};
 use std::sync::Arc;

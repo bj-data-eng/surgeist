@@ -3065,3 +3065,73 @@ mod order_commit_guard_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod pairing_tests {
+    use super::*;
+
+    fn ready_creation() -> HtmlConstructionOperation {
+        let mut initialization = HtmlConstructionStorage::begin();
+        while let Some(action) = initialization.next_action().unwrap() {
+            action.perform().accept();
+        }
+        let storage = initialization.try_ready().unwrap().commit();
+        let mut operation = storage.prepare(HtmlConstructionCommand::CreateFragment);
+        while let Some(action) = operation.next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        operation
+    }
+
+    #[test]
+    fn staged_identities_that_do_not_belong_to_the_command_are_handed_back() {
+        let creation = HtmlConstructionCommand::CreateFragment;
+        let reserve = HtmlConstructionCommand::ReserveRecords { additional: 1 };
+        assert!(matches!(
+            resolve(&creation, Staged::Nothing, None),
+            Err(Staged::Nothing)
+        ));
+        assert!(matches!(
+            resolve(
+                &reserve,
+                Staged::Created {
+                    template_owner: None
+                },
+                None
+            ),
+            Err(Staged::Created {
+                template_owner: None
+            })
+        ));
+        assert!(matches!(
+            resolve(&reserve, Staged::Nothing, None),
+            Ok(Resolved {
+                template_owner: None,
+                association: Association::None
+            })
+        ));
+    }
+
+    #[test]
+    fn a_ready_operation_whose_staged_identities_do_not_fit_its_command_is_refused_unchanged() {
+        let mut operation = ready_creation();
+        assert!(matches!(operation.phase, Phase::Ready));
+        operation.plan.staged = Staged::Nothing;
+        let refusal = operation.try_ready().unwrap_err();
+        assert!(refusal.reason().is_operation_not_ready());
+        assert!(matches!(refusal.owner().plan.staged, Staged::Nothing));
+        // The refusal handed the operation back intact: restoring what the creation staged
+        // lets the same operation commit.
+        let (mut operation, _) = refusal.into_parts();
+        operation.plan.staged = Staged::Created {
+            template_owner: None,
+        };
+        let HtmlConstructionCommit::Changed { storage, created } =
+            operation.try_ready().unwrap().commit()
+        else {
+            panic!("creation");
+        };
+        assert!(created.is_some());
+        assert_eq!(storage.len(), 1);
+    }
+}

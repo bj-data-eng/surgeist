@@ -1664,6 +1664,52 @@ mod tests {
         };
         (storage, created.unwrap())
     }
+    #[test]
+    fn setup_actions_charge_the_stage_store_and_the_two_observation_flag_writes() {
+        // Derived from the writes themselves: a setup action stores the stage it reaches and sets
+        // the observing flag, accept clears the flag, and a failed action stores its typed failure
+        // instead, so admission covers the larger of the two paths.
+        let transition_bytes = (size_of::<EditStage>() + 2 * size_of::<bool>())
+            .max(size_of::<Option<HtmlConstructionError>>());
+        let transition_atomic =
+            size_of::<EditStage>().max(size_of::<Option<HtmlConstructionError>>());
+        let (storage, target) = make_storage(Vec::new());
+        let mut edit = HtmlConstructionAttributeEdit::begin(
+            storage,
+            target,
+            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
+        );
+        let qualify = edit.next_action().unwrap().unwrap();
+        assert_eq!(
+            qualify.description().work(),
+            HtmlConstructionAttributeWork {
+                record_visits: 5,
+                provider_calls: 2,
+                // The capacity is the action's own write.
+                record_writes: 1 + 3,
+                copied_bytes: size_of::<HtmlConstructionAttributeCapacity>() + transition_bytes,
+                atomic_layout_bytes: size_of::<HtmlConstructionAttributeCapacity>()
+                    .max(transition_atomic),
+                ..Default::default()
+            }
+        );
+        qualify.perform().unwrap().accept();
+        let report = edit.next_action().unwrap().unwrap();
+        assert_eq!(
+            report.description().work(),
+            HtmlConstructionAttributeWork {
+                record_visits: 3,
+                provider_calls: 1,
+                // The generation counter is the action's own write; the report is stored with
+                // the stage.
+                record_writes: 1 + 3,
+                copied_bytes: size_of::<u64>() + transition_bytes,
+                atomic_layout_bytes: size_of::<HtmlConstructionAllocationSnapshot>()
+                    .max(transition_atomic),
+                ..Default::default()
+            }
+        );
+    }
     fn make_edit(
         storage: HtmlConstructionStorage,
         target: HtmlBuilderNode,
