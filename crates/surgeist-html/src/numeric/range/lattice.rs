@@ -494,8 +494,11 @@ impl RangeLatticeCursor {
         let high_value =
             f64::from_bits(self.bits(if self.negative { self.low } else { self.high }));
         let minimum = f64::from_bits(self.minimum);
-        let maximum = self.maximum.map(f64::from_bits);
-        if minimum > high_value || maximum.is_some_and(|maximum| maximum < low_value) {
+        if minimum > high_value
+            || self
+                .maximum
+                .is_some_and(|maximum| f64::from_bits(maximum) < low_value)
+        {
             self.skip();
             return;
         }
@@ -506,10 +509,10 @@ impl RangeLatticeCursor {
                 self.low = Self::band_mantissa(self.minimum);
             }
         }
-        if let Some(maximum) = maximum
-            && maximum <= high_value
+        if let Some(maximum) = self.maximum
+            && f64::from_bits(maximum) <= high_value
         {
-            let mantissa = Self::band_mantissa(self.maximum.expect("actual upper bound"));
+            let mantissa = Self::band_mantissa(maximum);
             if self.negative {
                 self.low = mantissa;
             } else {
