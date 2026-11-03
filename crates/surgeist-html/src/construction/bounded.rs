@@ -21,7 +21,7 @@ pub enum HtmlConstructionAllocationRole {
     Identity,
     /// The vector of retained node records.
     Records,
-    /// One record's child-order vector. `HtmlConstructionAllocationSnapshot::child_position` gives
+    /// One record's child-order deque. `HtmlConstructionAllocationSnapshot::child_position` gives
     /// that record's ordinal.
     Children,
     /// The temporary decision vector that an attribute edit builds for one target element before
@@ -123,8 +123,8 @@ impl HtmlConstructionAllocationSnapshot {
     pub fn payload_bytes(&self) -> usize {
         self.payload_bytes
     }
-    /// The bytes of the inline wrapper that holds the payload, such as a `Vec` header. It is 0 for
-    /// a shared single-value allocation.
+    /// The bytes of the inline wrapper that holds the payload, such as a `Vec` header, or a
+    /// `VecDeque` header for a child-order bank. It is 0 for a shared single-value allocation.
     pub fn wrapper_payload_bytes(&self) -> usize {
         self.wrapper_payload_bytes
     }

@@ -255,7 +255,7 @@ pub enum HtmlConstructionActionDescription<'a> {
         inspected_bytes: usize,
     },
     /// Reserves capacity in the bank that `allocation` describes: the records vector for
-    /// `ReserveRecords` and creation commands, or a parent's child-order vector for `Insert`.
+    /// `ReserveRecords` and creation commands, or a parent's child-order deque for `Insert`.
     Reserve {
         /// The provider requests that producing the allocation report costs.
         report_provider_calls: usize,
