@@ -2,7 +2,6 @@
 //! This immutable captured operation does not execute content patching.
 use super::*;
 use crate::HtmlCapturedProcessingInstruction;
-use std::num::NonZeroUsize;
 use std::ops::Range;
 use surgeist_html::bounded::{
     lexical::{
@@ -15,8 +14,9 @@ use surgeist_html::bounded::{
         HtmlTemplateMarkerTarget as Target, template_marker_first,
     },
     values::{
-        HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
-        HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
+        HtmlNameIndex as NameIndex, HtmlNameIndexError as IndexError,
+        HtmlNameIndexHasher as NameHasher, HtmlNameIndexLookup as Lookup,
+        HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
     },
 };
 use surgeist_html::{
@@ -380,8 +380,9 @@ impl<'a> HtmlSemanticSession<'a> {
         // probed from a randomly keyed hash of the name, so that no input can choose names that
         // collide. It is reserved when the first name is complete and released with `names`.
         let hasher = NameHasher::new();
-        let slots = Cursor::name_index_slots(pi.data().len());
-        let mut table: Vec<Option<NonZeroUsize>> = Vec::new();
+        let mut name_index = NameIndex::new(Cursor::name_index_slots(pi.data().len()));
+        let slots = name_index.slots();
+        let mut table: Vec<NameSlot> = Vec::new();
         let mut current = 0..0;
         let mut name_count = 0usize;
         let mut is_name = true;
@@ -448,16 +449,17 @@ impl<'a> HtmlSemanticSession<'a> {
                         if table.is_empty() {
                             self.reserve_scratch(&mut table, slots.get())?;
                             self.charge(slots.get())?;
-                            table.resize(slots.get(), None);
+                            table.resize(slots.get(), NameSlot::default());
                         }
                         let units = pi.data().code_units();
                         let Some(sought) = units.get(current.clone()) else {
                             return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
                         };
                         self.charge(sought.len())?;
-                        let mut index = NameTable::new(slots, &mut table).map_err(|_| {
-                            self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
-                        })?;
+                        let mut index =
+                            NameTable::new(&mut name_index, &mut table).map_err(|_| {
+                                self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                            })?;
                         let lookup = index.find_or_insert(
                             hasher.hash(sought),
                             names.len(),

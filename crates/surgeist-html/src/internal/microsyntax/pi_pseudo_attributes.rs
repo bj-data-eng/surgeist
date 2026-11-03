@@ -54,8 +54,10 @@ pub enum HtmlPiPseudoAttributeAction {
     },
     /// The name of the pair being scanned is complete. Find the committed pair whose name
     /// equals it, using the caller's own index of committed names (see
-    /// [`HtmlNameIndexHasher`](crate::bounded::values::HtmlNameIndexHasher) and [`HtmlPiPseudoAttributeCursor::name_index_slots`]), and reply with `HtmlPiPseudoAttributeReply::Pair`:
-    /// `Some(index)` of the committed pair, or `None` when no committed pair has that name. The
+    /// [`HtmlNameIndex`](crate::bounded::values::HtmlNameIndex) and
+    /// [`HtmlPiPseudoAttributeCursor::name_index_slots`]), and reply with
+    /// `HtmlPiPseudoAttributeReply::Pair`: `Some(index)` of the committed pair, or `None` when
+    /// no committed pair has that name. The
     /// caller also records the name in its index for the pair that `Commit` then adds, which
     /// takes the next index. The cursor verifies a `Some` answer with `NameLength` and
     /// `NameUnit` against that one pair only: a candidate with another name is not a duplicate,

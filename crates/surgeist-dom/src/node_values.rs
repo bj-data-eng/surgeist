@@ -7,8 +7,9 @@ use surgeist_html::bounded::lexical::{
     is_xml_name_start_code_point,
 };
 use surgeist_html::bounded::values::{
-    HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
-    HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
+    HtmlNameIndex as NameIndex, HtmlNameIndexError as IndexError,
+    HtmlNameIndexHasher as NameHasher, HtmlNameIndexLookup as Lookup,
+    HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
 };
 
 use crate::store::source::{
@@ -17,7 +18,6 @@ use crate::store::source::{
 };
 use crate::{DomError, store::SharedVec};
 use std::mem::size_of;
-use std::num::NonZeroUsize;
 use surgeist_html::values::DocumentString;
 
 /// Canonical PI target, CharacterData and the map derived from that exact data.
@@ -296,14 +296,11 @@ thread_local! {
     static PI_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-fn release_table(
-    table: Vec<Option<NonZeroUsize>>,
-    budget: Option<&Formation>,
-) -> Result<(), DomError> {
+fn release_table(table: Vec<NameSlot>, budget: Option<&Formation>) -> Result<(), DomError> {
     let payload = Payload {
         bytes: table
             .capacity()
-            .checked_mul(size_of::<Option<NonZeroUsize>>())
+            .checked_mul(size_of::<NameSlot>())
             .ok_or(DomError::RepresentationExhausted)?,
         units: 0,
     };
@@ -329,8 +326,9 @@ fn parse_attributes(
     // a randomly keyed hash of the name, so that no input can choose names that collide. It is
     // reserved when the first name is complete, under the same custody as the other banks.
     let hasher = NameHasher::new();
-    let slots = Cursor::name_index_slots(data.len());
-    let mut table: Vec<Option<NonZeroUsize>> = Vec::new();
+    let mut name_index = NameIndex::new(Cursor::name_index_slots(data.len()));
+    let slots = name_index.slots();
+    let mut table: Vec<NameSlot> = Vec::new();
     while let Some(action) = cursor.action() {
         formation::step(budget, cancelled)?;
         #[cfg(test)]
@@ -380,18 +378,18 @@ fn parse_attributes(
                     for _ in 0..slots.get() {
                         formation::step(budget, cancelled)?;
                     }
-                    table.resize(slots.get(), None);
+                    table.resize(slots.get(), NameSlot::default());
                     #[cfg(test)]
                     source_observation::grew(
                         observed,
-                        table.capacity() * std::mem::size_of::<Option<NonZeroUsize>>(),
+                        table.capacity() * std::mem::size_of::<NameSlot>(),
                         0,
                     );
                 }
                 for _ in 0..name.len() {
                     formation::step(budget, cancelled)?;
                 }
-                let mut index = NameTable::new(slots, &mut table)
+                let mut index = NameTable::new(&mut name_index, &mut table)
                     .map_err(|_| DomError::RepresentationExhausted)?;
                 let lookup = index.find_or_insert(
                     hasher.hash(&name),
@@ -419,7 +417,7 @@ fn parse_attributes(
                     Ok(Lookup::Inserted) => None,
                     Err(IndexError::Consumer(error)) => return Err(error),
                     // The table is sized from the data length, which bounds its pairs.
-                    Err(IndexError::Full) => return Err(DomError::RepresentationExhausted),
+                    Err(_) => return Err(DomError::RepresentationExhausted),
                 })
             }
             Action::NameLength(index) => Reply::Length(pairs[index].0.len()),

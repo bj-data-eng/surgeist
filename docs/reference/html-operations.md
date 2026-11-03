@@ -3146,16 +3146,19 @@ duplicate names or malformed unrelated fields invalidate it, including suffixes
 after a provisional matching name. When a name is complete the cursor asks the
 consumer (`FindName`) for the committed pair with that name and verifies the one
 candidate unit by unit, so its requests grow with the pairs plus the name units, not
-with their product. Each consumer keeps the index in a table that it allocates and
+with their product. Each consumer keeps the index in slot storage that it allocates and
 admits (`HtmlPiPseudoAttributeCursor::name_index_slots` sizes it for the data length), and
-HTML owns its rules in the generic `bounded::values` name index: insert-only, a
-power-of-two slot count, at most half full, a new entry in the first empty slot of the
-probe sequence, and a hash key that is random for each scan, so no input can pick colliding
-names. The consumer charges the table, the hash of the name, every probe and every
-comparison; a stepwise `HtmlNameIndexProbe` serves consumers that admit each probe as an
-action, and `HtmlNameIndexTable::find_or_insert` serves those that charge inside closures.
-A `None` answer to `FindName` is trusted, and the index is never consulted after `Pop` or
-`Discard`. Because the key is random, a multi-pair scan's charge totals vary from run to run. XML scalar/name rules and numeric/predefined
+HTML owns its rules in the generic `bounded::values` name index, which the types carry:
+a power-of-two slot count, opaque slots that a consumer cannot forge, an entry count held
+to a capacity of at most half the slots, and a single way to write, the vacancy that a
+probe produces at the first empty slot of its sequence. The hash key is random for each
+scan, so no input can pick colliding names. The consumer charges the table, the hash of
+the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert`
+serve consumers that admit each probe as an action, and `find_or_insert` serves those that
+charge inside closures. A `None` answer to `FindName` is trusted, and the index is never
+consulted after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge
+totals vary from run to run.
+XML scalar/name rules and numeric/predefined
 references apply; HTML entity recovery supplies no substitute. Original raw for
 is admitted before role classification. The existing semantic session owns all
 work, scratch, nested output, cancellation, sticky failure and atomic publication.

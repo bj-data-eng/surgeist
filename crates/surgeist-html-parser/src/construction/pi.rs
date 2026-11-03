@@ -1,7 +1,6 @@
 //! DOM PI pseudo-attributes. XML-stylesheet 20101028 §3, XML 1.0 Fifth Edition
 //! productions 2–5 and 66 define this whole-string operation, not HTML recovery.
 use super::*;
-use std::num::NonZeroUsize;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
@@ -92,8 +91,9 @@ impl SessionStorage {
             HtmlPiPseudoAttributeReply as Reply,
         };
         use surgeist_html::bounded::values::{
-            HtmlNameIndexError as IndexError, HtmlNameIndexHasher as NameHasher,
-            HtmlNameIndexLookup as Lookup, HtmlNameIndexTable as NameTable,
+            HtmlNameIndex as NameIndex, HtmlNameIndexError as IndexError,
+            HtmlNameIndexHasher as NameHasher, HtmlNameIndexLookup as Lookup,
+            HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
@@ -112,7 +112,10 @@ impl SessionStorage {
         // probed from a randomly keyed hash of the name, so that no input can choose names that
         // collide. It exists once the first name is complete and is released with the fields.
         let hasher = NameHasher::new();
-        let mut table: Option<OwnedVec<Option<NonZeroUsize>>> = None;
+        let mut name_index = NameIndex::new(HtmlParsePendingAssociationCursor::name_index_slots(
+            data_len,
+        ));
+        let mut table: Option<OwnedVec<NameSlot>> = None;
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -175,14 +178,18 @@ impl SessionStorage {
                         Reply::Ack
                     }
                     Action::FindName => {
-                        let slots = HtmlParsePendingAssociationCursor::name_index_slots(data_len);
+                        let slots = name_index.slots();
                         if table.is_none() {
                             table = Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?);
                             for _ in 0..slots.get() {
                                 table
                                     .as_mut()
                                     .ok_or(SessionError::WrongToken)?
-                                    .try_push_geometric_toward(c, None, slots.get())?;
+                                    .try_push_geometric_toward(
+                                        c,
+                                        NameSlot::default(),
+                                        slots.get(),
+                                    )?;
                             }
                         }
                         let current = name
@@ -202,8 +209,8 @@ impl SessionStorage {
                             .as_mut()
                             .ok_or(SessionError::WrongToken)?
                             .as_mut_slice(c)?;
-                        let mut index =
-                            NameTable::new(slots, bank).map_err(|_| latch_registry_row(c))?;
+                        let mut index = NameTable::new(&mut name_index, bank)
+                            .map_err(|_| latch_registry_row(c))?;
                         let lookup = index.find_or_insert(
                             hasher.hash(current),
                             values.len(),

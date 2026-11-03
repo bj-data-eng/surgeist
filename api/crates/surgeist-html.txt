@@ -3604,12 +3604,33 @@ pub surgeist_html::bounded::values::HtmlAttributeValidationError::NotReady
 impl core::error::Error for surgeist_html::bounded::values::HtmlAttributeValidationError
 impl core::fmt::Display for surgeist_html::bounded::values::HtmlAttributeValidationError
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::bounded::values::HtmlNameIndexError<E>
+#[non_exhaustive] pub enum surgeist_html::bounded::values::HtmlNameIndexError<E>
+pub surgeist_html::bounded::values::HtmlNameIndexError::CapacityReached
 pub surgeist_html::bounded::values::HtmlNameIndexError::Consumer(E)
-pub surgeist_html::bounded::values::HtmlNameIndexError::Full
+pub surgeist_html::bounded::values::HtmlNameIndexError::EntryNumber
+pub surgeist_html::bounded::values::HtmlNameIndexError::NoEmptySlot
+pub surgeist_html::bounded::values::HtmlNameIndexError::SlotTaken
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::bounded::values::HtmlNameIndexError<E>
+pub fn surgeist_html::bounded::values::HtmlNameIndexError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::bounded::values::HtmlNameIndexError<E>
+pub fn surgeist_html::bounded::values::HtmlNameIndexError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html::bounded::values::HtmlNameIndexInsertError> for surgeist_html::bounded::values::HtmlNameIndexError<E>
+pub fn surgeist_html::bounded::values::HtmlNameIndexError<E>::from(error: surgeist_html::bounded::values::HtmlNameIndexInsertError) -> Self
+#[non_exhaustive] pub enum surgeist_html::bounded::values::HtmlNameIndexInsertError
+pub surgeist_html::bounded::values::HtmlNameIndexInsertError::CapacityReached
+pub surgeist_html::bounded::values::HtmlNameIndexInsertError::EntryNumber
+pub surgeist_html::bounded::values::HtmlNameIndexInsertError::SlotTaken
+impl core::error::Error for surgeist_html::bounded::values::HtmlNameIndexInsertError
+impl core::fmt::Display for surgeist_html::bounded::values::HtmlNameIndexInsertError
+pub fn surgeist_html::bounded::values::HtmlNameIndexInsertError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html::bounded::values::HtmlNameIndexInsertError> for surgeist_html::bounded::values::HtmlNameIndexError<E>
+pub fn surgeist_html::bounded::values::HtmlNameIndexError<E>::from(error: surgeist_html::bounded::values::HtmlNameIndexInsertError) -> Self
 pub enum surgeist_html::bounded::values::HtmlNameIndexLookup
 pub surgeist_html::bounded::values::HtmlNameIndexLookup::Found(usize)
 pub surgeist_html::bounded::values::HtmlNameIndexLookup::Inserted
+pub enum surgeist_html::bounded::values::HtmlNameIndexStep
+pub surgeist_html::bounded::values::HtmlNameIndexStep::Occupied(usize)
+pub surgeist_html::bounded::values::HtmlNameIndexStep::Vacant(surgeist_html::bounded::values::HtmlNameIndexVacancy)
 pub enum surgeist_html::bounded::values::HtmlStringPoolResult
 pub surgeist_html::bounded::values::HtmlStringPoolResult::Bypassed
 pub surgeist_html::bounded::values::HtmlStringPoolResult::Hit(surgeist_html::bounded::values::HtmlStringPoolCandidate)
@@ -3689,6 +3710,12 @@ pub struct surgeist_html::bounded::values::HtmlAttributeValidationLayout
 impl surgeist_html::bounded::values::HtmlAttributeValidationLayout
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_visits(self) -> u64
+pub struct surgeist_html::bounded::values::HtmlNameIndex
+impl surgeist_html::bounded::values::HtmlNameIndex
+pub fn surgeist_html::bounded::values::HtmlNameIndex::is_empty(&self) -> bool
+pub fn surgeist_html::bounded::values::HtmlNameIndex::len(&self) -> usize
+pub fn surgeist_html::bounded::values::HtmlNameIndex::new(slots: surgeist_html::bounded::values::HtmlNameIndexSlots) -> Self
+pub fn surgeist_html::bounded::values::HtmlNameIndex::slots(&self) -> surgeist_html::bounded::values::HtmlNameIndexSlots
 pub struct surgeist_html::bounded::values::HtmlNameIndexHasher
 impl surgeist_html::bounded::values::HtmlNameIndexHasher
 pub fn surgeist_html::bounded::values::HtmlNameIndexHasher::hash(&self, name: &[u16]) -> u64
@@ -3699,23 +3726,31 @@ pub struct surgeist_html::bounded::values::HtmlNameIndexLengthError
 impl surgeist_html::bounded::values::HtmlNameIndexLengthError
 pub fn surgeist_html::bounded::values::HtmlNameIndexLengthError::actual(&self) -> usize
 pub fn surgeist_html::bounded::values::HtmlNameIndexLengthError::expected(&self) -> usize
+impl core::error::Error for surgeist_html::bounded::values::HtmlNameIndexLengthError
+impl core::fmt::Display for surgeist_html::bounded::values::HtmlNameIndexLengthError
+pub fn surgeist_html::bounded::values::HtmlNameIndexLengthError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::values::HtmlNameIndexProbe
 impl surgeist_html::bounded::values::HtmlNameIndexProbe
-pub fn surgeist_html::bounded::values::HtmlNameIndexProbe::start(hash: u64, slots: surgeist_html::bounded::values::HtmlNameIndexSlots) -> (usize, Self)
+pub fn surgeist_html::bounded::values::HtmlNameIndexProbe::new(hash: u64, slots: surgeist_html::bounded::values::HtmlNameIndexSlots) -> Self
 impl core::iter::traits::iterator::Iterator for surgeist_html::bounded::values::HtmlNameIndexProbe
 pub type surgeist_html::bounded::values::HtmlNameIndexProbe::Item = usize
 pub fn surgeist_html::bounded::values::HtmlNameIndexProbe::next(&mut self) -> core::option::Option<usize>
-pub struct surgeist_html::bounded::values::HtmlNameIndexSlots(_)
+pub struct surgeist_html::bounded::values::HtmlNameIndexSlot(_)
+impl surgeist_html::bounded::values::HtmlNameIndexSlot
+pub fn surgeist_html::bounded::values::HtmlNameIndexSlot::is_empty(self) -> bool
+pub struct surgeist_html::bounded::values::HtmlNameIndexSlots
 impl surgeist_html::bounded::values::HtmlNameIndexSlots
+pub fn surgeist_html::bounded::values::HtmlNameIndexSlots::capacity(self) -> usize
 pub fn surgeist_html::bounded::values::HtmlNameIndexSlots::for_entries(max_entries: usize) -> Self
 pub fn surgeist_html::bounded::values::HtmlNameIndexSlots::get(self) -> usize
 pub struct surgeist_html::bounded::values::HtmlNameIndexTable<'a>
 impl<'a> surgeist_html::bounded::values::HtmlNameIndexTable<'a>
-pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::entry(&self, slot: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::advance(&self, probe: &mut surgeist_html::bounded::values::HtmlNameIndexProbe) -> core::option::Option<surgeist_html::bounded::values::HtmlNameIndexStep>
 pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::find_or_insert<C, E>(&mut self, hash: u64, entry: usize, context: &mut C, step: impl core::ops::function::FnMut(&mut C) -> core::result::Result<(), E>, same_name: impl core::ops::function::FnMut(&mut C, usize) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::bounded::values::HtmlNameIndexLookup, surgeist_html::bounded::values::HtmlNameIndexError<E>>
-pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::insert(&mut self, slot: usize, entry: usize) -> bool
-pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::new(slots: surgeist_html::bounded::values::HtmlNameIndexSlots, entries: &'a mut [core::option::Option<core::num::nonzero::NonZeroUsize>]) -> core::result::Result<Self, surgeist_html::bounded::values::HtmlNameIndexLengthError>
-pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::slots(&self) -> surgeist_html::bounded::values::HtmlNameIndexSlots
+pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::insert(&mut self, vacancy: surgeist_html::bounded::values::HtmlNameIndexVacancy, entry: usize) -> core::result::Result<(), surgeist_html::bounded::values::HtmlNameIndexInsertError>
+pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::new(index: &'a mut surgeist_html::bounded::values::HtmlNameIndex, storage: &'a mut [surgeist_html::bounded::values::HtmlNameIndexSlot]) -> core::result::Result<Self, surgeist_html::bounded::values::HtmlNameIndexLengthError>
+pub fn surgeist_html::bounded::values::HtmlNameIndexTable<'a>::probe(&self, hash: u64) -> surgeist_html::bounded::values::HtmlNameIndexProbe
+pub struct surgeist_html::bounded::values::HtmlNameIndexVacancy
 pub struct surgeist_html::bounded::values::HtmlStringPool
 impl surgeist_html::bounded::values::HtmlStringPool
 pub fn surgeist_html::bounded::values::HtmlStringPool::abort_root(&mut self, root: surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>

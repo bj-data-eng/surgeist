@@ -12,7 +12,8 @@ use surgeist_html::bounded::{
         HtmlTemplateMarkerTarget, template_marker_first,
     },
     values::{
-        HtmlNameIndexHasher as PiNameHasher, HtmlNameIndexLookup as PiLookup,
+        HtmlNameIndex as PiNameIndex, HtmlNameIndexHasher as PiNameHasher,
+        HtmlNameIndexLookup as PiLookup, HtmlNameIndexSlot as PiNameSlot,
         HtmlNameIndexTable as PiNameTable,
     },
 };
@@ -145,8 +146,8 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
     let mut requests = 0;
     // The consumer's index of committed names: a table at most half full, probed from a keyed hash.
     let hasher = PiNameHasher::new();
-    let slots = PiCursor::name_index_slots(units.len());
-    let mut table = vec![None; slots.get()];
+    let mut name_index = PiNameIndex::new(PiCursor::name_index_slots(units.len()));
+    let mut table = vec![PiNameSlot::default(); name_index.slots().get()];
     while let Some(action) = cursor.action() {
         requests += 1;
         let reply = match action {
@@ -167,7 +168,7 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
                 PiReply::Ack
             }
             PiAction::FindName => PiReply::Pair(
-                match PiNameTable::new(slots, &mut table)
+                match PiNameTable::new(&mut name_index, &mut table)
                     .unwrap()
                     .find_or_insert(
                         hasher.hash(&current.0),

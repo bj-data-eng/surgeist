@@ -5,8 +5,9 @@ pub use crate::internal::values::bounded::{
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
 pub use crate::internal::values::name_index::{
-    HtmlNameIndexError, HtmlNameIndexHasher, HtmlNameIndexLengthError, HtmlNameIndexLookup,
-    HtmlNameIndexProbe, HtmlNameIndexSlots, HtmlNameIndexTable,
+    HtmlNameIndex, HtmlNameIndexError, HtmlNameIndexHasher, HtmlNameIndexInsertError,
+    HtmlNameIndexLengthError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,
+    HtmlNameIndexSlots, HtmlNameIndexStep, HtmlNameIndexTable, HtmlNameIndexVacancy,
 };
 pub use crate::internal::values::sharing::{
     HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,
