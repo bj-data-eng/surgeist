@@ -3,18 +3,26 @@
 /// Original presence/content classification; non-ASCII whitespace is content.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaValueClass {
+    /// The attribute is missing.
     Absent,
+    /// The attribute is present and has no code units.
     Empty,
+    /// The attribute is present, nonempty, and made only of ASCII whitespace (U+0009, U+000A,
+    /// U+000C, U+000D, U+0020).
     AsciiWhitespaceOnly,
+    /// The attribute contains at least one code unit that is not ASCII whitespace. Non-ASCII
+    /// whitespace counts as content.
     Nontrivial,
 }
 
 /// One bounded action. A controlled caller admits it before advancing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaCursorAction {
+    /// Inspect the code unit at this UTF-16 offset in the value.
     InspectUnit(usize),
     /// Fixed finish: at most the three units of the source keyword `all`.
     Finish,
+    /// The scan is done and `result` is available.
     Complete,
 }
 
@@ -25,12 +33,17 @@ pub struct HtmlMediaValue {
     restrictive_picture_value: bool,
 }
 impl HtmlMediaValue {
+    /// The presence and content class of the attribute.
     pub fn class(self) -> HtmlMediaValueClass {
         self.class
     }
+    /// Whether the value has non-whitespace content other than exactly `all`, compared ASCII
+    /// case-insensitively, so it could exclude a `source` in a `picture`. This does not parse CSS.
     pub fn restrictive_picture_value(self) -> bool {
         self.restrictive_picture_value
     }
+    /// Whether the value is specified and empty or ASCII-whitespace-only. An absent attribute
+    /// returns false, so the caller handles absence separately.
     pub fn matches_unconditionally(self) -> bool {
         matches!(
             self.class,
@@ -54,6 +67,8 @@ pub struct HtmlMediaValueCursor<'a> {
     result: Option<HtmlMediaValue>,
 }
 impl<'a> HtmlMediaValueCursor<'a> {
+    /// Starts a scan of the UTF-16 code units of the attribute, or `None` when the attribute is
+    /// absent.
     pub fn new(units: Option<&'a [u16]>) -> Self {
         Self {
             units,
@@ -74,6 +89,8 @@ impl<'a> HtmlMediaValueCursor<'a> {
             Pending::Finish
         }
     }
+    /// The action the next `advance` performs: one inspection with its offset, the fixed finish of
+    /// at most three further units, or `Complete`. The caller admits it first.
     pub fn next_action(&self) -> HtmlMediaCursorAction {
         match self.pending() {
             Pending::Complete => HtmlMediaCursorAction::Complete,
@@ -81,6 +98,7 @@ impl<'a> HtmlMediaValueCursor<'a> {
             Pending::Finish => HtmlMediaCursorAction::Finish,
         }
     }
+    /// Performs the announced action. It does nothing once the scan is complete.
     pub fn advance(&mut self) {
         match self.pending() {
             Pending::Inspect(index, units) => {
@@ -114,6 +132,7 @@ impl<'a> HtmlMediaValueCursor<'a> {
             Pending::Complete => {}
         }
     }
+    /// The finished observations, or `None` while the scan is incomplete.
     pub fn result(&self) -> Option<HtmlMediaValue> {
         self.result
     }
@@ -126,8 +145,13 @@ pub(crate) fn ascii_equal(unit: u16, byte: u8) -> bool {
 /// Placement only; this does not validate CSS media grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMetaMediaPlacement {
+    /// The `media` attribute is not specified on the `meta` element.
     NotSpecified,
+    /// The `media` attribute is specified, and the `meta` element's `name` is `theme-color`, the
+    /// one case in which it affects processing (HTML877d #attr-meta-media).
     AllowedForThemeColor,
+    /// The `media` attribute is specified on a `meta` element whose `name` is not `theme-color`,
+    /// where it has no effect and authors must not use it (HTML877d #attr-meta-media).
     Forbidden,
 }
 
@@ -141,6 +165,8 @@ pub(crate) mod theme {
         equal: bool,
     }
     impl<'a> ThemeColorNameCursor<'a> {
+        /// Starts a comparison of the `name` attribute's UTF-16 code units with `theme-color`,
+        /// ignoring ASCII case; `None` means the attribute is absent and never equal.
         pub fn new(units: Option<&'a [u16]>) -> Self {
             let units = units.unwrap_or(&[]);
             Self {
@@ -149,15 +175,20 @@ pub(crate) mod theme {
                 equal: units.len() == 11,
             }
         }
+        /// Whether the comparison has reached its answer: a length or code unit mismatch, or all 11
+        /// units.
         pub fn is_complete(&self) -> bool {
             !self.equal || self.position == 11
         }
+        /// Compares one more code unit. It does nothing once the comparison is complete.
         pub fn advance(&mut self) {
             if !self.is_complete() {
                 self.equal = ascii_equal(self.units[self.position], b"theme-color"[self.position]);
                 self.position += 1;
             }
         }
+        /// Whether the name equals `theme-color` ASCII case-insensitively; false while the
+        /// comparison is incomplete.
         pub fn result(&self) -> bool {
             self.is_complete() && self.equal
         }

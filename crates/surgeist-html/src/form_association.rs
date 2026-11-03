@@ -7,7 +7,7 @@ use crate::KnownHtmlElement;
 // KnownHtmlElement; there is no second name inventory here. The first six
 // candidates preserve the ordinary parser creation comparison order.
 macro_rules! native_form_kinds {
-    ($($kind:ident => $element:ident),+ $(,)?) => {
+    ($($kind:ident => $element:ident, $doc:literal),+ $(,)?) => {
         /// A native HTML element's intrinsic form-association category.
         ///
         /// This excludes form-associated custom elements: their actual definition
@@ -15,7 +15,7 @@ macro_rules! native_form_kinds {
         /// independent of parser metadata admission and input type state.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum HtmlNativeFormAssociationKind {
-            $($kind),+
+            $(#[doc = $doc] $kind),+
         }
 
         impl HtmlNativeFormAssociationKind {
@@ -45,14 +45,14 @@ macro_rules! native_form_kinds {
 }
 
 native_form_kinds! {
-    Image => Img,
-    Button => Button,
-    Fieldset => Fieldset,
-    Object => Object,
-    Textarea => Textarea,
-    Output => Output,
-    Input => Input,
-    Select => Select,
+    Image => Img, "The `img` element, which is form-associated but not listed.",
+    Button => Button, "The `button` element, which is listed.",
+    Fieldset => Fieldset, "The `fieldset` element, which is listed.",
+    Object => Object, "The `object` element, which is listed.",
+    Textarea => Textarea, "The `textarea` element, which is listed.",
+    Output => Output, "The `output` element, which is listed.",
+    Input => Input, "The `input` element, which is listed.",
+    Select => Select, "The `select` element, which is listed.",
 }
 
 /// Classifies through caller-admitted exact comparisons of borrowed operands.

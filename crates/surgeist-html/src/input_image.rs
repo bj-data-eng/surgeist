@@ -7,19 +7,29 @@ use crate::{DocumentString, HtmlInputImageCoordinate};
 /// NeverEntered is distinct from having entered Image without a src attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputImageHistory<S> {
+    /// The control has never been in the Image Button state, so it has observed no source.
     NeverEntered,
+    /// The control has been in the Image Button state and last observed the given source, with the
+    /// selected coordinate retained from then.
     Last {
+        /// The `src` attribute value last observed, where `None` means the attribute was absent.
+        /// The consumer decides what `S` stores.
         source: Option<S>,
+        /// The selected coordinate retained with that observation.
         coordinate: HtmlInputImageCoordinate,
     },
 }
 impl<S> HtmlInputImageHistory<S> {
+    /// The last observed source. The outer `None` means the control never entered Image;
+    /// `Some(None)` means it entered with no `src` attribute, which is distinct.
     pub fn observed_source(&self) -> Option<Option<&S>> {
         match self {
             Self::NeverEntered => None,
             Self::Last { source, .. } => Some(source.as_ref()),
         }
     }
+    /// The retained selected coordinate, which is the initial coordinate until the control has
+    /// entered the Image Button state.
     pub fn coordinate(&self) -> HtmlInputImageCoordinate {
         match self {
             Self::NeverEntered => HtmlInputImageCoordinate::initial(),
@@ -64,6 +74,8 @@ impl<S> HtmlInputImageHistory<S> {
 /// It is independent of no-BC, inactivity, scripting or missing loader support.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputImagesDisabled {
+    /// Support for images is explicitly disabled, which is the source premise the guard needs to
+    /// decide `ImagesDisabled`.
     ExplicitlyDisabled,
 }
 
@@ -71,9 +83,16 @@ pub enum HtmlInputImagesDisabled {
 /// An environment request is not a fetch instruction or an enabled-image API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputImageUpdateGuard {
+    /// There is no `src` attribute, so the source update stops before any request.
     NoSource,
+    /// The `src` attribute is present and is the empty string, so the update stops before any
+    /// request.
     EmptySource,
+    /// A nonempty `src` is present, so the update needs the image environment's facts to continue;
+    /// no decision is possible yet.
     NeedsImageEnvironment,
+    /// A nonempty `src` is present and images are explicitly disabled, so the update stops before
+    /// any request.
     ImagesDisabled,
 }
 impl HtmlInputImageUpdateGuard {

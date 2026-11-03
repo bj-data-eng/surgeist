@@ -75,10 +75,18 @@ pub const fn document_allows_render_blocking(
 /// is eligible. This value establishes no tree relation or body absence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDocumentBodyRole {
+    /// The name is the HTML-namespace `html` element, the only element Document.body searches
+    /// within.
     Html,
+    /// The name is an HTML-namespace `body` or `frameset` element, the elements eligible as the
+    /// body.
     Body,
+    /// The name is neither: another local name or a name outside the HTML namespace.
     Other,
 }
+/// Classifies an element's expanded name for Document.body (HTML877d #dom-document-body). Only the
+/// HTML namespace can name `html`, `body` or `frameset`; any other namespace is `Other`. `admit` is
+/// called before each name read and its error ends the classification.
 pub fn document_body_role_with<E>(
     name: &(impl crate::HtmlNameInput + ?Sized),
     mut admit: impl FnMut(crate::bounded::HtmlElementNameRead) -> Result<(), E>,
@@ -123,12 +131,15 @@ impl HtmlStyleState {
             creation: StyleCreation::DocumentParser { on_stack: false },
         }
     }
+    /// Whether the Style is on the open-element stack of its document parser.
     pub const fn on_parser_stack(self) -> bool {
         matches!(
             self.creation,
             StyleCreation::DocumentParser { on_stack: true }
         )
     }
+    /// Whether a document parser created the Style, which makes it implicitly potentially
+    /// render-blocking. This persists after the parser pops the element.
     pub const fn created_by_document_parser(self) -> bool {
         matches!(self.creation, StyleCreation::DocumentParser { .. })
     }
@@ -180,30 +191,52 @@ pub enum HtmlStyleExecutionProfile {
     NoExecutableJavaScript,
 }
 
+/// The next owner action of the update a style block algorithm (HTML877d #update-a-style-block).
+/// The consumer performs it and acknowledges it with `HtmlStyleUpdateReply`; the order is fixed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleUpdateAction {
+    /// Remove the CSS style sheet the element currently has, if any. It precedes every guard.
     RemoveAssociatedSheet,
+    /// Read whether the element is connected. A disconnected element completes the update.
     ReadConnected,
+    /// Read whether the `type` attribute permits CSS (see `style_type_allows_css_with`).
     ReadType,
+    /// Ask Content Security Policy whether this inline style is blocked.
     CheckInlineCsp,
+    /// Create the CSS style sheet for the element.
     CreateSheet,
+    /// Read whether the element is script-blocking.
     ReadScriptBlocking,
+    /// Register the element as script-blocking.
     RegisterScriptBlocking,
+    /// Read whether the element is render-blocking.
     ReadRenderBlocking,
+    /// Block rendering on the element.
     BlockRendering,
+    /// The update is done; no further reply is accepted.
     Complete,
 }
+/// The consumer's answer to a `HtmlStyleUpdateAction`. Each variant answers specific actions, and a
+/// mismatch is refused with `HtmlStyleProtocolError`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleUpdateReply {
+    /// The pending removal, creation, registration or blocking action was performed.
     Applied,
+    /// Whether the element is connected, answering `ReadConnected`.
     Connected(bool),
+    /// Whether the `type` attribute permits CSS, answering `ReadType`.
     TypeEligible(bool),
+    /// Whether Content Security Policy allows the inline style, answering `CheckInlineCsp`.
     InlineAllowed(bool),
+    /// The script-blocking or render-blocking predicate, answering `ReadScriptBlocking` or
+    /// `ReadRenderBlocking`. Script blocking is only valid under the `SourcePredicates` profile.
     Blocking(bool),
     /// Project only executable-script bookkeeping out of the reached script
     /// phase of a NoExecutableJavaScript operation. This is no boolean result.
     ScriptBookkeepingExcluded,
 }
+/// The refusal of a reply that does not match the cursor's profile and pending action. The cursor
+/// is left unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleProtocolError;
 impl fmt::Display for HtmlStyleProtocolError {
@@ -233,9 +266,14 @@ impl HtmlStyleUpdateCursor {
     pub const fn profile(self) -> HtmlStyleExecutionProfile {
         self.profile
     }
+    /// The action the consumer must perform next, or `Complete` once the update is done.
     pub const fn action(self) -> HtmlStyleUpdateAction {
         self.action
     }
+    /// Acknowledges the pending action. A mismatched reply, including one after `Complete`, or a
+    /// script-blocking reply that does not fit the execution profile, fails with
+    /// `HtmlStyleProtocolError` and leaves the cursor unchanged. A false connected, type or CSP
+    /// answer completes the update.
     pub fn reply(&mut self, reply: HtmlStyleUpdateReply) -> Result<(), HtmlStyleProtocolError> {
         use HtmlStyleUpdateAction as A;
         use HtmlStyleUpdateReply as R;
@@ -299,11 +337,18 @@ pub fn style_type_allows_css_with<E>(
     }
     Ok(true)
 }
+/// What an attribute change on a Style element requires of its sheet. Only the null-namespace
+/// `media` and `title` attributes affect it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleAttributeEffect {
+    /// The attribute change does not affect the sheet.
     None,
+    /// The attribute is the `media` or `title` attribute, which the associated sheet reads from its
+    /// owner element; CSSOM defines what happens.
     OwnerAttributes,
 }
+/// Classifies an attribute change by the attribute's `namespace` and known name. The null-namespace
+/// `media` and `title` attributes return `OwnerAttributes`; everything else returns `None`.
 pub fn style_attribute_effect(
     namespace: &Namespace,
     attribute: KnownHtmlAttribute,
@@ -319,21 +364,35 @@ pub fn style_attribute_effect(
         HtmlStyleAttributeEffect::None
     }
 }
+/// An event that may require an update a style block run (HTML877d #update-a-style-block). Each
+/// carries whether the element is on a parser's open-element stack, which suppresses the update.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleTrigger {
+    /// The element was inserted.
     Insertion {
+        /// Whether the element became connected.
         connected: bool,
+        /// Whether the element is on a parser's open-element stack.
         on_parser_stack: bool,
     },
+    /// The element was removed.
     Removal {
+        /// Whether the element became disconnected.
         disconnected: bool,
+        /// Whether the element is on a parser's open-element stack.
         on_parser_stack: bool,
     },
+    /// The element's children changed.
     ChildrenChanged {
+        /// Whether the element is on a parser's open-element stack.
         on_parser_stack: bool,
     },
+    /// A parser popped the element from its stack of open elements.
     ParserPopped,
 }
+/// Whether the trigger requires an update a style block run: a pop always does; the others do only
+/// when the element is off a parser's stack, and insertion and removal also require the element to
+/// have become connected or disconnected.
 pub const fn style_update_is_required(trigger: HtmlStyleTrigger) -> bool {
     match trigger {
         HtmlStyleTrigger::Insertion {
@@ -352,16 +411,26 @@ pub const fn style_update_is_required(trigger: HtmlStyleTrigger) -> bool {
 /// real parsing/processing and critical-resource outcome proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleNotificationAction {
+    /// Dispatch the `load` event at the element.
     DispatchLoad,
+    /// Dispatch the `error` event at the element.
     DispatchError,
+    /// Read whether the element is script-blocking, after the event handlers have run.
     ReadScriptBlocking,
+    /// Remove the element from the script-blocking set.
     RemoveScriptBlocking,
+    /// Unblock rendering on the element.
     UnblockRendering,
+    /// The notification is done; no further reply is accepted.
     Complete,
 }
+/// The consumer's answer to a `HtmlStyleNotificationAction`. A mismatch is refused with
+/// `HtmlStyleProtocolError`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleNotificationReply {
+    /// The pending dispatch, removal or unblocking action was performed.
     Applied,
+    /// Whether the element is script-blocking, answering `ReadScriptBlocking`.
     ScriptBlocking(bool),
     /// The actual NoExecutableJavaScript operation excluded script-set
     /// bookkeeping. This neither observes nor removes membership.
@@ -392,9 +461,13 @@ impl HtmlStyleNotificationCursor {
     pub const fn profile(self) -> HtmlStyleExecutionProfile {
         self.profile
     }
+    /// The action the consumer must perform next, or `Complete` once the notification is done.
     pub const fn action(self) -> HtmlStyleNotificationAction {
         self.action
     }
+    /// Acknowledges the pending action. A mismatched reply, including one after `Complete`, or a
+    /// script-blocking reply that does not fit the execution profile, fails with
+    /// `HtmlStyleProtocolError` and leaves the cursor unchanged.
     pub fn reply(
         &mut self,
         reply: HtmlStyleNotificationReply,

@@ -9,7 +9,9 @@ use crate::HtmlInputValueComparison;
 /// Actual source of an output element's default value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOutputDefaultSource {
+    /// The element has a default value override (even an empty one), and it is the default value.
     Override,
+    /// The element has no override, so the default value is the text content of its descendants.
     DescendantText,
 }
 
@@ -27,11 +29,16 @@ pub const fn output_default_source(has_override: bool) -> HtmlOutputDefaultSourc
 /// One output value/defaultValue setter or per-control reset operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOutputOperation {
+    /// The `value` setter: store the read default as the override, then replace all children with
+    /// the value.
     ValueSetter,
     /// Presence of the actual nullable override when the operation begins.
     DefaultValueSetter {
+        /// Whether the element has a default value override when the operation begins, even an
+        /// empty one.
         has_override: bool,
     },
+    /// The per-control reset: replace all children with the default value, then clear the override.
     Reset,
 }
 
@@ -40,11 +47,17 @@ pub enum HtmlOutputOperation {
 pub enum HtmlOutputAction {
     /// Resolve the actual default using output_default_source and retain it.
     ReadDefaultValue,
+    /// Store the default value read by `ReadDefaultValue` as the default value override.
     StoreReadDefaultAsOverride,
+    /// Replace all children of the element with the supplied value.
     ReplaceAllWithSuppliedValue,
+    /// Store the supplied value as the default value override.
     StoreSuppliedValueAsOverride,
+    /// Replace all children of the element with the default value read by `ReadDefaultValue`.
     ReplaceAllWithReadDefault,
+    /// Set the default value override to null.
     ClearDefaultOverride,
+    /// The operation is done; no further acknowledgement is accepted.
     Complete,
 }
 
@@ -88,6 +101,8 @@ pub struct HtmlOutputCursor {
 }
 
 impl HtmlOutputCursor {
+    /// Starts `operation`. Its first action is `ReadDefaultValue` for the `value` setter and reset
+    /// operations.
     pub const fn new(operation: HtmlOutputOperation) -> Self {
         let phase = match operation {
             HtmlOutputOperation::ValueSetter => OutputPhase::ReadForValue,
@@ -102,6 +117,7 @@ impl HtmlOutputCursor {
         Self { phase }
     }
 
+    /// The action the consumer must perform next, or `Complete` once the operation is done.
     pub const fn action(&self) -> HtmlOutputAction {
         match self.phase {
             OutputPhase::ReadForValue | OutputPhase::ReadForReset => {
@@ -145,7 +161,10 @@ impl HtmlOutputCursor {
 /// direction support; this decision does not itself move a cursor or selection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTextControlValueSetterFinish {
+    /// Nothing further is required.
     NoAdditionalEffect,
+    /// Set the text entry cursor to the end of the text control, unselect any selected text and
+    /// reset the selection direction to `none`.
     SetEndCursorUnselectAndNoneDirection,
 }
 
@@ -199,9 +218,12 @@ impl HtmlTextareaFlags {
         }
     }
 
+    /// Whether the textarea's dirty value flag is set, which stops child text from replacing the
+    /// raw value.
     pub const fn dirty_value(&self) -> bool {
         self.dirty_value
     }
+    /// Whether the textarea's user validity flag is set.
     pub const fn user_validity(&self) -> bool {
         self.user_validity
     }
@@ -247,6 +269,7 @@ impl HtmlSelectFlags {
     pub const fn new(user_validity: bool) -> Self {
         Self { user_validity }
     }
+    /// Whether the select's user validity flag is set.
     pub const fn user_validity(&self) -> bool {
         self.user_validity
     }
@@ -279,9 +302,11 @@ impl HtmlOptionFlags {
             dirtiness,
         }
     }
+    /// The option's selectedness: true when it is selected.
     pub const fn selectedness(&self) -> bool {
         self.selectedness
     }
+    /// The option's dirtiness: true once selectedness no longer follows the `selected` attribute.
     pub const fn dirtiness(&self) -> bool {
         self.dirtiness
     }
