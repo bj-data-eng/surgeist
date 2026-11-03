@@ -10,82 +10,157 @@ use depth::{DepthPlan, owning_parent};
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum HtmlConstructionCommand {
+    /// Creates a detached record of `kind` with no parent. Document and Fragment kinds are refused
+    /// with the wrong-node-kind error; use `CreateDocument` and `CreateFragment`.
     Create {
+        /// The record to create. Its names, values and attributes count toward the UTF-16 unit and
+        /// attribute limits.
         kind: HtmlNodeKind,
     },
     /// Creates exact element values and explicit producer-supplied history in
     /// one record commit. Flags require an actual HTML link expanded name.
     CreateElement {
+        /// The exact element name. Creating an HTML `template` element also creates its owned
+        /// contents fragment in the same commit.
         name: QualifiedName,
+        /// The ordered raw attributes stored on the element.
         attributes: OrderedAttributes,
+        /// Link construction flags, supplied by the producer. Only an element named `link` in the
+        /// HTML namespace may carry them; otherwise the command is refused with the
+        /// wrong-node-kind error.
         link_flags: Option<crate::HtmlLinkFlags>,
     },
+    /// Creates a detached Document record.
     CreateDocument {
+        /// The compatibility mode the Document starts in.
         mode: HtmlDocumentMode,
     },
+    /// Creates a detached document-fragment record.
     CreateFragment,
+    /// Reserves capacity for records without creating any, so a later creation need not allocate.
+    /// The record count and usage are unchanged.
     ReserveRecords {
+        /// The number of records the capacity must hold beyond those already created.
         additional: usize,
     },
+    /// Checks, without changing anything, that moving the children of `from` into `to` is
+    /// structurally possible. Both must be able to contain children, and `to` must not lie inside
+    /// `from`'s subtree.
     CheckChildTransfer {
+        /// The record whose children would move.
         from: HtmlBuilderNode,
+        /// The record that would receive the children.
         to: HtmlBuilderNode,
     },
+    /// Creates a detached fragment that will serve as declarative shadow contents. It has no host
+    /// or owner until attached.
     CreateShadowContents {
+        /// The mode, slot assignment and flags the shadow contents will carry once attached.
         properties: HtmlShadowRootProperties,
     },
+    /// Inserts `node` into `parent`'s ordinary children, first detaching it from any previous
+    /// parent. A move that leaves the order unchanged is a no-op.
     Insert {
+        /// The record to insert. Documents, fragments, association fragments and nodes that hold
+        /// an association cannot be moved this way.
         node: HtmlBuilderNode,
+        /// The new parent. It must be able to contain ordinary children, so a `template` element
+        /// and a leaf node are refused.
         parent: HtmlBuilderNode,
+        /// The reference sibling before which `node` is placed, which must be a current child of
+        /// `parent`. `None` appends after the last child.
         before: Option<HtmlBuilderNode>,
     },
+    /// Removes `node` from its ordinary parent. A node that has no parent is left unchanged.
     Detach {
+        /// The record to detach.
         node: HtmlBuilderNode,
     },
+    /// Replaces the payload of an existing record. The node kind is preserved and topology cannot
+    /// change; a payload of another kind is refused with the wrong-node-kind error.
     ReplaceContent {
+        /// The record whose payload is replaced.
         node: HtmlBuilderNode,
+        /// The replacement payload, which must match the record's current kind.
         content: HtmlConstructionContent,
     },
+    /// Replaces the complete attribute list of an element.
     ReplaceAttributes {
+        /// The element whose attributes are replaced. Another node kind is refused with the
+        /// wrong-node-kind error.
         element: HtmlBuilderNode,
+        /// The replacement list, already validated for expanded-name uniqueness.
         attributes: HtmlValidatedAttributes,
     },
+    /// Attaches `contents` as the declarative shadow root of `host`.
     AttachShadow {
+        /// The shadow host, which must be an element without a shadow root.
         host: HtmlBuilderNode,
+        /// The unowned shadow contents fragment to attach.
         contents: HtmlBuilderNode,
     },
+    /// Attaches `contents` as the shadow root of `host` and turns the `template` element's own
+    /// contents into a reference to it, releasing the contents fragment that the template owned.
     AttachTemplateShadow {
+        /// The `template` element whose contents become a shadow reference.
         template: HtmlBuilderNode,
+        /// The shadow host, which must be an element without a shadow root.
         host: HtmlBuilderNode,
+        /// The unowned shadow contents fragment to attach; it must differ from the contents the
+        /// template owned.
         contents: HtmlBuilderNode,
     },
+    /// Makes the `template` element's contents a reference to the already-created shadow contents
+    /// `contents`, releasing the contents fragment that the template owned.
     SetTemplateShadowContents {
+        /// The `template` element whose owned contents are released.
         template: HtmlBuilderNode,
+        /// The unowned shadow contents fragment to reference; it must differ from the contents the
+        /// template owned.
         contents: HtmlBuilderNode,
     },
+    /// Makes `contents` the contents fragment that `template` owns, replacing its current
+    /// contents. The old fragment, if it was owned, loses its owner. Reassigning the contents
+    /// already owned is a no-op.
     ReassignTemplateContents {
+        /// The element whose contents are reassigned. It must already carry template contents.
         template: HtmlBuilderNode,
+        /// The unowned ordinary fragment that becomes the template's owned contents.
         contents: HtmlBuilderNode,
     },
+    /// Sets the compatibility mode of a Document record.
     SetDocumentMode {
+        /// The Document whose mode is set.
         document: HtmlBuilderNode,
+        /// The new mode.
         mode: HtmlDocumentMode,
     },
+    /// Records link construction flags on an element.
     SetLinkFlags {
+        /// The element that receives the flags. It must be a `link` element in the HTML namespace.
         element: HtmlBuilderNode,
+        /// The flags to store.
         flags: crate::HtmlLinkFlags,
     },
+    /// Publishes the tree rooted at `root` as an immutable result. The publication validates every
+    /// record and consumes the storage until `HtmlConstructionLease::try_recover` returns it.
     Publish {
+        /// The Document or fragment record to publish as the result's root.
         root: HtmlBuilderNode,
     },
 }
 /// Content replacement preserves node kind and cannot replace topology.
 #[derive(Debug)]
 pub enum HtmlConstructionContent {
+    /// Replaces an element's qualified name. Link history is cleared unless the new name keeps it.
     ElementName(QualifiedName),
+    /// Replaces a text node's UTF-16 content.
     Text(DocumentString),
+    /// Replaces a comment node's UTF-16 content.
     Comment(DocumentString),
+    /// Replaces a processing instruction's target and data.
     ProcessingInstruction(HtmlProcessingInstruction),
+    /// Replaces a doctype's name and identifiers.
     Doctype(HtmlDoctype),
 }
 impl HtmlConstructionCommand {
@@ -139,58 +214,104 @@ impl HtmlConstructionCommand {
 /// Fixed next work or the actual bank to reserve/share. Counts exclude allocator internals.
 #[derive(Debug)]
 pub enum HtmlConstructionActionDescription<'a> {
+    /// Creates the shared identity allocation of a new construction owner.
     InitializeIdentity {
+        /// The identity allocation's payload size in bytes.
         payload_bytes: usize,
+        /// The bytes the action initializes in the new owner's arena.
         initialized_bytes: usize,
+        /// The allocation-provider requests the action makes.
         provider_calls: usize,
     },
+    /// Prepares the allocation snapshot that the next `Reserve` or `Share` action describes. It
+    /// copies a snapshot value and allocates nothing.
     PrepareAllocationReport {
+        /// The retained records the action reads or updates.
         record_visits: usize,
+        /// The provider requests the action makes.
         provider_calls: usize,
+        /// The bytes copied into the snapshot.
         copied_bytes: usize,
     },
+    /// Reads retained records, without allocation, to qualify operands, names, order, ancestry,
+    /// publication membership or topology.
     Inspect {
+        /// The retained records the action reads or updates.
         record_visits: usize,
+        /// The bytes of expanded-name text the action compares; zero for record-only inspection.
         inspected_bytes: usize,
     },
+    /// Compares one UTF-16 unit of an element's expanded name with its expected spelling.
     Compare {
+        /// The bytes the action compares.
         inspected_bytes: usize,
     },
+    /// Reserves capacity in the bank that `allocation` describes: the records vector for
+    /// `ReserveRecords` and creation commands, or a parent's child-order vector for `Insert`.
     Reserve {
+        /// The provider requests that producing the allocation report costs.
         report_provider_calls: usize,
+        /// The bank to reserve in, as reported just before the action.
         allocation: &'a HtmlConstructionAllocationSnapshot,
+        /// The least length the bank must be able to hold afterwards.
         required_len: usize,
+        /// The least capacity that suffices. `perform` reserves exactly this capacity unless
+        /// `growth` is `Geometric`.
         minimum_capacity: usize,
+        /// Whether `perform` reserves the minimum exactly or the consumer may request a larger,
+        /// amortizing capacity.
         growth: HtmlConstructionGrowth,
     },
+    /// Creates the shared arena allocation that publication returns.
     Share {
+        /// The provider requests that producing the allocation report costs.
         report_provider_calls: usize,
+        /// The allocation that the action creates, reported before it runs.
         allocation: &'a HtmlConstructionAllocationSnapshot,
     },
+    /// Creates the shared node identities that the change stores, such as the host, contents or
+    /// template identity of an association.
     ShareReferences {
+        /// The provider requests, one per identity created.
         provider_calls: usize,
+        /// The bytes of identity references copied into the change.
         copied_bytes: usize,
     },
+    /// Initializes the child-order bank of a record the command is creating.
     InitializeChildren {
+        /// The provider requests the action makes.
         provider_calls: usize,
+        /// The bytes copied into the bank's bookkeeping.
         copied_bytes: usize,
+        /// The record fields the action writes.
         record_writes: usize,
+        /// The ordinal of the record whose child-order bank is initialized.
         position: usize,
+        /// The size in bytes of one child-order entry.
         element_size: usize,
+        /// The alignment in bytes of one child-order entry.
         element_alignment: usize,
     },
     /// Computed Insert usage, before any child-order growth.
     Preflight {
+        /// The usage the command leaves in place, computed before any child-order growth. The
+        /// consumer admits the node, edge, attribute, UTF-16 and depth limits against it.
         usage: HtmlConstructionUsage,
     },
+    /// Applies the prepaid writes and moves of the command; the next step is
+    /// `HtmlConstructionOperation::try_ready`.
     Commit {
         /// Commands without an earlier usage boundary observe depth here.
         depth_observation: Option<usize>,
         /// Records the commit's depth walk reads.
         record_visits: usize,
+        /// The record fields the commit writes.
         record_writes: usize,
+        /// The bytes the commit copies.
         copied_bytes: usize,
+        /// The bytes the commit initializes.
         initialized_bytes: usize,
+        /// The usage the commit leaves in place.
         usage: HtmlConstructionUsage,
     },
 }
@@ -354,6 +475,8 @@ pub struct HtmlConstructionRejection {
     reason: HtmlConstructionError,
 }
 impl HtmlConstructionRejection {
+    /// Returns the owned storage, the command and the refusal cause. Nothing the caller supplied
+    /// is lost.
     pub fn into_parts(
         self,
     ) -> (
@@ -376,12 +499,16 @@ impl fmt::Display for HtmlConstructionRejection {
     }
 }
 impl std::error::Error for HtmlConstructionRejection {}
+/// The storage and command of an abandoned operation, plus retirement evidence for any allocation
+/// the operation had already created.
 pub struct HtmlConstructionAbort {
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
     retired: Option<HtmlConstructionRetired>,
 }
 impl HtmlConstructionAbort {
+    /// Returns the storage, the command and the retirement evidence. The evidence is `Some` only
+    /// when the abandoned operation had already published an arena, which this call reclaims.
     pub fn into_parts(
         self,
     ) -> (
@@ -392,40 +519,60 @@ impl HtmlConstructionAbort {
         (self.storage, self.command, self.retired)
     }
 }
+/// An operation whose every action was accepted. `commit` applies it; `abort` abandons it.
 pub struct HtmlConstructionReadyOperation {
     operation: HtmlConstructionOperation,
 }
+/// The outcome of committing an operation.
 pub enum HtmlConstructionCommit {
+    /// The command changed the storage, which comes back as the sole owner.
     Changed {
+        /// The storage after the command, ready for the next command.
         storage: HtmlConstructionStorage,
+        /// The handle of the record that the command created. `None` for commands that create
+        /// nothing.
         created: Option<HtmlBuilderNode>,
     },
+    /// `Publish` completed: the tree is now an immutable result.
     Published {
+        /// The published immutable result.
         result: HtmlConstructionResult,
+        /// The recovery capability for the published arena. Pass it with the result to
+        /// `HtmlConstructionLease::try_recover` to take the storage back.
         lease: HtmlConstructionLease,
     },
 }
+/// One pending action of an operation. It borrows the operation exclusively; `perform` consumes
+/// it.
 pub struct HtmlConstructionAction<'a> {
     operation: &'a mut HtmlConstructionOperation,
 }
+/// The observation after an action. It borrows the operation exclusively; `accept` resumes the
+/// operation at the phase the action selected.
 pub struct HtmlConstructionObservation<'a> {
     operation: &'a mut HtmlConstructionOperation,
     /// The phase this accepted observation resumes.
     next: Phase,
     allocation: Option<HtmlConstructionAllocationSnapshot>,
 }
+/// An action that failed. The operation latched the first failure, so every later poll returns the
+/// same cause.
 #[derive(Debug)]
 pub struct HtmlConstructionActionFailure {
     reason: HtmlConstructionError,
     allocation: Option<HtmlConstructionAllocationSnapshot>,
 }
 impl HtmlConstructionActionFailure {
+    /// The first failure that the operation latched.
     pub fn reason(&self) -> &HtmlConstructionError {
         &self.reason
     }
+    /// The snapshot of the allocation that the failed action concerned; `None` when it concerned
+    /// none.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
         self.allocation.as_ref()
     }
+    /// Returns the cause and the allocation snapshot, if any.
     pub fn into_parts(
         self,
     ) -> (
@@ -442,9 +589,13 @@ impl fmt::Display for HtmlConstructionActionFailure {
 }
 impl std::error::Error for HtmlConstructionActionFailure {}
 impl<'a> HtmlConstructionObservation<'a> {
+    /// The allocation that the performed action created, for the actions that allocate; `None` for
+    /// pure inspection.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
         self.allocation.as_ref()
     }
+    /// Accepts the observation, which resumes the operation at the next phase. Skipping it leaves
+    /// the operation not-ready.
     pub fn accept(self) {
         self.operation.phase = self.next;
     }
@@ -513,6 +664,8 @@ impl HtmlConstructionOperation {
         self.phase = Phase::Failed;
         Err(self.failure.clone().expect("latched failure"))
     }
+    /// The next action to describe and perform. `Ok(None)` means the operation is ready. It
+    /// returns the latched failure, or the not-ready error while an observation awaits `accept`.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionAction<'_>>, HtmlConstructionError> {
@@ -527,6 +680,9 @@ impl HtmlConstructionOperation {
         }
         Ok(Some(HtmlConstructionAction { operation: self }))
     }
+    /// Takes a ready operation out of `owner`. Returns the latched failure, the consumed error for
+    /// an empty owner, or the not-ready error before the last action was accepted; on error the
+    /// owner is left in place.
     pub fn try_ready(
         owner: &mut Option<Self>,
     ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
@@ -543,6 +699,8 @@ impl HtmlConstructionOperation {
             operation: owner.take().expect("occupied operation"),
         })
     }
+    /// Abandons the operation and returns its storage and command. If a publication had already
+    /// created the shared arena, it is reclaimed and the retirement evidence is returned.
     pub fn abort(mut self) -> HtmlConstructionAbort {
         let (storage, retired) = match self.owner.take().expect("pending storage") {
             StorageOwner::Mutable(storage) => (storage, None),
@@ -581,6 +739,8 @@ impl<'a> HtmlConstructionAction<'a> {
             StorageOwner::Shared(_) => None,
         }
     }
+    /// Describes the work of the pending action. The consumer admits that work and its storage
+    /// before calling `perform`, and polls cancellation then.
     pub fn description(&self) -> HtmlConstructionActionDescription<'_> {
         let operation = &self.operation;
         match operation.phase {
@@ -727,6 +887,8 @@ impl<'a> HtmlConstructionAction<'a> {
         operation.plan.children_capacity = Some(capacity);
         Self { operation }.perform()
     }
+    /// Performs the action. On success, the observation reports any allocation and must be
+    /// accepted before the next action. On failure, the first cause is latched.
     pub fn perform(self) -> Result<HtmlConstructionObservation<'a>, HtmlConstructionActionFailure> {
         let operation = self.operation;
         match operation.advance() {
@@ -1918,6 +2080,8 @@ fn validate_record(arena: &Arena, index: usize) -> Result<(), HtmlConstructionEr
 }
 
 impl HtmlConstructionReadyOperation {
+    /// Abandons the ready operation and returns its storage and command. A ready publication
+    /// reclaims its arena and reports the retirement evidence.
     pub fn abort(self) -> HtmlConstructionAbort {
         self.operation.abort()
     }
@@ -2132,15 +2296,21 @@ pub struct HtmlConstructionRetirement {
     storage: Option<HtmlConstructionStorage>,
     phase: RetirementPhase,
 }
+/// One pending cleanup action. It borrows the retirement exclusively; `perform` consumes it.
 pub struct HtmlConstructionRetirementAction<'a> {
     owner: &'a mut HtmlConstructionRetirement,
     snapshot: Option<HtmlConstructionAllocationSnapshot>,
 }
+/// What a cleanup action releases.
 #[derive(Debug)]
 pub enum HtmlConstructionRetirementDescription<'a> {
+    /// A whole allocation: a child-order bank, the records vector or the identity.
     Allocation(&'a HtmlConstructionAllocationSnapshot),
+    /// The payload of one record, which cleanup resets in place before its slot is released.
     Payload {
+        /// The ordinal of the record whose payload is released.
         position: usize,
+        /// The bytes of the record slot that the action resets.
         initialized_bytes: usize,
     },
 }
@@ -2156,6 +2326,8 @@ impl HtmlConstructionRetirement {
             phase,
         }
     }
+    /// The next cleanup action, or `Ok(None)` once cleanup completed. It returns an error only if
+    /// an allocation snapshot cannot be represented.
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionRetirementAction<'_>>, HtmlConstructionError> {
@@ -2189,6 +2361,7 @@ impl HtmlConstructionRetirement {
     }
 }
 impl HtmlConstructionRetirementAction<'_> {
+    /// Describes the allocation or payload that the pending action releases.
     pub fn description(&self) -> HtmlConstructionRetirementDescription<'_> {
         match self.owner.phase {
             RetirementPhase::Payload(position) => HtmlConstructionRetirementDescription::Payload {
@@ -2200,6 +2373,8 @@ impl HtmlConstructionRetirementAction<'_> {
             ),
         }
     }
+    /// Performs the cleanup. It returns the retirement evidence for an allocation release and
+    /// `None` for a payload reset.
     pub fn perform(self) -> Option<HtmlConstructionRetired> {
         match self.owner.phase {
             RetirementPhase::Children(index) => {

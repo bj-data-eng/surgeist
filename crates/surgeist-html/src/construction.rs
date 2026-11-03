@@ -15,8 +15,15 @@ use std::{
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDocumentMode {
+    /// The document is in no-quirks (standards) mode. Mode names follow the DOM Standard's
+    /// document modes.
     NoQuirks,
+    /// The document is in limited-quirks (almost standards) mode, distinct from both no-quirks and
+    /// quirks mode. The HTML parser's initial insertion mode selects it for certain DOCTYPE public
+    /// identifiers (HTML Standard 13.2.6.4.1).
     LimitedQuirks,
+    /// The document is in quirks mode, which the HTML parser's initial insertion mode selects for
+    /// a missing or legacy DOCTYPE (HTML Standard 13.2.6.4.1).
     Quirks,
 }
 
@@ -108,10 +115,16 @@ impl HtmlConstructionUsage {
 /// The resource that an append would exceed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionResource {
+    /// The node limit; [`HtmlConstructionLimits::nodes`] was reached.
     Nodes,
+    /// The edge limit (ordinary children, template contents and shadow associations) was reached.
     Edges,
+    /// The stored-attribute limit was reached.
     Attributes,
+    /// The limit on stored UTF-16 code units (names, URIs, prefixes, attribute values and textual
+    /// slots) was reached.
     Utf16Units,
+    /// The depth limit was reached; association edges count toward depth.
     Depth,
 }
 
@@ -662,9 +675,15 @@ impl TryFrom<HtmlProcessingInstruction> for HtmlAuthoredProcessingInstruction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlProcessingInstructionError {
+    /// The target is empty or contains a character outside the HTML processing-instruction target
+    /// syntax (ASCII alphanumerics, `-` and `_`, starting with an ASCII letter or `_`).
     InvalidTarget,
+    /// The target is, ignoring ASCII case, `xml` or `xml-stylesheet`, which HTML
+    /// processing-instruction syntax excludes.
     ReservedTarget,
+    /// The data contains U+003E (`>`), which processing-instruction data must not contain.
     DataContainsGreaterThan,
+    /// The data ends with U+003F (`?`), which processing-instruction data must not end with.
     DataEndsWithQuestionMark,
 }
 impl fmt::Display for HtmlProcessingInstructionError {
@@ -714,25 +733,37 @@ impl HtmlElement {
 /// Immutable content records; hierarchy is exposed by [`HtmlNode`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlNodeKind {
+    /// The Document node, carrying the compatibility mode selected when it was built.
     Document(HtmlDocumentMode),
+    /// A document-fragment root.
     Fragment,
+    /// An element with its exact qualified name and ordered raw attributes.
     Element(HtmlElement),
+    /// A text node; the payload preserves the exact UTF-16 code units.
     Text(DocumentString),
+    /// A comment node; the payload preserves the exact UTF-16 code units.
     Comment(DocumentString),
+    /// A processing instruction recorded with its exact target and data.
     ProcessingInstruction(HtmlProcessingInstruction),
+    /// A document type declaration.
     Doctype(HtmlDoctype),
 }
 
 /// Declarative shadow-root visibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlShadowRootMode {
+    /// The shadow root is open, so script on the host can reach it.
     Open,
+    /// The shadow root is closed, so script on the host cannot reach it.
     Closed,
 }
 /// Declarative shadow-root slot assignment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSlotAssignment {
+    /// Slots are assigned by name: a slottable goes to the slot whose `name` matches its `slot`
+    /// attribute.
     Named,
+    /// Slot assignment is manual: slottables are assigned only by explicit requests on the slot.
     Manual,
 }
 /// Explicit properties of a native declarative shadow association.
@@ -829,7 +860,11 @@ impl TemplateContents {
 /// The non-child relationship that owns an associated fragment.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentOwner {
+    /// The owner is the `template` element, which owns its separate ordinary contents fragment.
+    /// The payload is the template element's node identity.
     Template(HtmlNodeId),
+    /// The owner is a shadow host element, which owns the shadow root contents fragment associated
+    /// with it. The payload is the host element's node identity.
     ShadowHost(HtmlNodeId),
 }
 

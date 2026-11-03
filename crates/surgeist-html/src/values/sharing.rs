@@ -25,9 +25,13 @@ pub struct HtmlValuePoolUsage {
     utf16_units: usize,
 }
 impl HtmlValuePoolUsage {
+    /// Known retained bytes: payload capacity plus the inline vector headers, excluding `Arc` and
+    /// allocator internals.
     pub fn bytes(self) -> usize {
         self.bytes
     }
+    /// Known retained UTF-16 units of string capacity, counted by capacity rather than by
+    /// initialized length.
     pub fn utf16_units(self) -> usize {
         self.utf16_units
     }
@@ -55,18 +59,23 @@ pub struct HtmlValuePoolWork {
     reserve_bytes: usize,
 }
 impl HtmlValuePoolWork {
+    /// The retained entries, pages or records the action visits.
     pub fn record_visits(self) -> usize {
         self.record_visits
     }
+    /// The bytes of operand or entry text the action hashes or compares without copying.
     pub fn inspected_bytes(self) -> usize {
         self.inspected_bytes
     }
+    /// The bytes the action copies, including bookkeeping values it moves.
     pub fn copied_bytes(self) -> usize {
         self.copied_bytes
     }
+    /// The provider requests the action makes.
     pub fn provider_calls(self) -> usize {
         self.provider_calls
     }
+    /// The bytes of storage the action reserves.
     pub fn reserve_bytes(self) -> usize {
         self.reserve_bytes
     }
@@ -85,12 +94,17 @@ pub struct HtmlValuePoolLayout {
     closing_work: HtmlValuePoolWork,
 }
 impl HtmlValuePoolLayout {
+    /// The absolute heap extent of the pool at the action's peak, including undo and weak target
+    /// space.
     pub fn pool(self) -> HtmlValuePoolUsage {
         self.pool
     }
+    /// The extent of the strongly held candidate occurrence at the action's peak. It is separate
+    /// from the pool's steady extent.
     pub fn candidate(self) -> HtmlValuePoolUsage {
         self.candidate
     }
+    /// The work the consumer admits before performing the action.
     pub fn work(self) -> HtmlValuePoolWork {
         self.work
     }
@@ -109,9 +123,15 @@ impl HtmlValuePoolLayout {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlValuePoolError {
+    /// A root, mark or action came from a different pool owner.
     ForeignOwner,
+    /// The action is not the operation's pending action: it is stale, replayed, or from another
+    /// operation.
     WrongAction,
+    /// The operation or root is not in the required state: an operation has an unfinished step, or
+    /// a root has an outstanding mark or is frozen.
     NotReady,
+    /// Layout arithmetic overflowed on this platform.
     RepresentationExhausted,
 }
 impl fmt::Display for HtmlValuePoolError {
@@ -177,7 +197,10 @@ enum Phase {
 /// revalidate qualified storage before accessing or changing it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlValuePoolActionKind {
+    /// A read action. The consumer runs it outside its pool lock with the operation's `read`.
     Read,
+    /// A pool action. The consumer runs it under its pool lock with the pool's `perform`; it
+    /// revalidates qualified storage before accessing it.
     Pool,
 }
 
@@ -195,6 +218,8 @@ pub struct HtmlValuePoolAction {
     layout: HtmlValuePoolLayout,
 }
 impl HtmlValuePoolAction {
+    /// Whether the consumer performs this action with the operation's `read` or the pool's
+    /// `perform`.
     pub fn kind(&self) -> HtmlValuePoolActionKind {
         if matches!(self.phase, Phase::Hash | Phase::Compare) {
             HtmlValuePoolActionKind::Read
@@ -202,6 +227,7 @@ impl HtmlValuePoolAction {
             HtmlValuePoolActionKind::Pool
         }
     }
+    /// The storage and work the consumer admits before performing the action.
     pub fn layout(&self) -> HtmlValuePoolLayout {
         self.layout
     }
@@ -211,9 +237,15 @@ impl HtmlValuePoolAction {
 /// before the upgrade. Release destroys that strong value before its receipt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlValuePoolProgress {
+    /// The action completed and the operation has a further action to describe.
     Continue,
+    /// The action upgraded a weak occurrence into a strongly held candidate. The consumer pairs
+    /// the candidate with the reservation it made before the upgrade.
     CandidateAcquired,
+    /// The action destroyed the candidate, for example after a comparison mismatch. The consumer
+    /// then releases the candidate's reservation.
     CandidateReleased,
+    /// The operation reached a terminal state. Complete it with `try_finish`.
     Finished,
 }
 
@@ -238,18 +270,23 @@ pub struct HtmlValuePoolChange {
     released: usize,
 }
 impl HtmlValuePoolChange {
+    /// The pool's usage before the transition.
     pub fn before(self) -> HtmlValuePoolUsage {
         self.before
     }
+    /// The pool's usage after the transition.
     pub fn after(self) -> HtmlValuePoolUsage {
         self.after
     }
+    /// The weak occurrence the transition inserted, if any.
     pub fn inserted(self) -> Option<HtmlValuePoolOccurrence> {
         self.inserted
     }
+    /// The weak occurrence the transition moved into undo storage, if any.
     pub fn moved_to_undo(self) -> Option<HtmlValuePoolOccurrence> {
         self.moved_to_undo
     }
+    /// The number of weak occurrences the transition released.
     pub fn released_occurrences(self) -> usize {
         self.released
     }
@@ -464,6 +501,7 @@ macro_rules! concrete_pool {
             }
         }
         impl $pool {
+            /// Creates an empty owner without allocating.
             pub fn new() -> Self {
                 Self::default()
             }
@@ -504,11 +542,16 @@ macro_rules! concrete_pool {
             pub fn heap_usage(&self) -> HtmlValuePoolUsage {
                 self.inner.usage()
             }
+            /// Starts a lookup of `input` that never inserts. A hit yields a strongly held
+            /// candidate that equals `input`.
             pub fn probe<'a>(&mut self, input: &'a $value) -> $operation<'a> {
                 $operation {
                     inner: self.inner.operation(input, false),
                 }
             }
+            /// Starts a lookup of `input` that inserts it as a weak occurrence on a miss, when the
+            /// pool admits it. Equality uses the exact ordered names, prefix presence and raw
+            /// UTF-16.
             pub fn offer<'a>(&mut self, input: &'a $value) -> $operation<'a> {
                 $operation {
                     inner: self.inner.operation(input, true),
@@ -543,9 +586,14 @@ macro_rules! concrete_pool {
             ) -> Result<HtmlValuePoolProgress, HtmlValuePoolError> {
                 self.inner.perform(&mut operation.inner, action)
             }
+            /// Begins the single rollback root. Returns `None` when a root is already open or an
+            /// identifier cannot be issued. Opening a root discards any unfinished operation.
             pub fn begin_root(&mut self) -> Option<HtmlValuePoolRoot> {
                 self.inner.begin_root()
             }
+            /// Begins a nested mark for `root`. Returns `Ok(None)` when `root` is stale, frozen or
+            /// suspended, or when no mark can be issued; exhausting marks or identifiers suspends
+            /// further mutations of this root. Returns `ForeignOwner` for another pool's root.
             pub fn mark(
                 &mut self,
                 root: &HtmlValuePoolRoot,
@@ -561,24 +609,35 @@ macro_rules! concrete_pool {
             ) -> Result<(), HtmlValuePoolError> {
                 self.inner.suspend(root)
             }
+            /// Accepts `mark`: its changes merge into the nearest older mark, or the root, and
+            /// stay. A stale mark is ignored. Returns `NotReady` once the root is frozen and
+            /// `ForeignOwner` for another pool's mark.
             pub fn accept_mark(
                 &mut self,
                 mark: HtmlValuePoolMark,
             ) -> Result<(), HtmlValuePoolError> {
                 self.inner.accept(mark)
             }
+            /// Undoes the mutations made since `mark`, including those of younger marks, and
+            /// returns the resulting change. A stale mark returns an unchanged value. Returns
+            /// `NotReady` once the root is frozen and `ForeignOwner` for another pool's mark.
             pub fn restore_mark(
                 &mut self,
                 mark: HtmlValuePoolMark,
             ) -> Result<HtmlValuePoolChange, HtmlValuePoolError> {
                 self.inner.restore(mark)
             }
+            /// Aborts the root: every mark and the root's own mutations are undone, and the root
+            /// closes. A stale root returns an unchanged value.
             pub fn abort_root(
                 &mut self,
                 root: HtmlValuePoolRoot,
             ) -> Result<HtmlValuePoolChange, HtmlValuePoolError> {
                 self.inner.abort(root)
             }
+            /// Freezes `root` for sealing when no mark is outstanding. Otherwise the refusal
+            /// returns the root unfrozen, with `NotReady` for outstanding marks or a frozen root
+            /// and `ForeignOwner` for another pool's root.
             pub fn prepare_seal(
                 &mut self,
                 root: HtmlValuePoolRoot,
@@ -593,12 +652,16 @@ macro_rules! concrete_pool {
             ) -> Result<(), HtmlValuePoolError> {
                 self.inner.validate_seal(seal)
             }
+            /// Seals a validated frozen root: the mutations stay, the undo records are released
+            /// and the root closes. Returns `NotReady` when `seal` is stale and `ForeignOwner` for
+            /// another pool's seal.
             pub fn seal(
                 &mut self,
                 seal: HtmlValuePoolSeal,
             ) -> Result<HtmlValuePoolChange, HtmlValuePoolError> {
                 self.inner.seal(seal)
             }
+            /// Aborts a frozen root: every mutation is undone and the root closes.
             pub fn abort_seal(
                 &mut self,
                 seal: HtmlValuePoolSeal,
@@ -612,6 +675,9 @@ macro_rules! concrete_pool {
             inner: Operation<'a, $value>,
         }
         impl $operation<'_> {
+            /// Performs a read action, such as hashing or comparing, outside the consumer's pool
+            /// lock. Returns `WrongAction` for an action that is not this operation's pending
+            /// action and `ForeignOwner` for another pool's action.
             pub fn read(
                 &mut self,
                 action: HtmlValuePoolAction,
@@ -658,18 +724,28 @@ macro_rules! concrete_pool {
             value: $value,
         }
         impl $candidate {
+            /// The matched value, as stored.
             pub fn value(&self) -> &$value {
                 &self.value
             }
+            /// Takes the matched value. The consumer's receipt for it must stay live until the
+            /// value is destroyed or moved into guarded output.
             pub fn into_value(self) -> $value {
                 self.value
             }
         }
+        /// How a completed operation ended.
         #[derive(Debug)]
         pub enum $result {
+            /// An existing equal value was found. The candidate holds it strongly.
             Hit($candidate),
+            /// A probe found no equal value and inserted nothing.
             Miss,
+            /// No equal value was found and the input was inserted. The change reports the
+            /// insertion and any released occurrences.
             Offered(HtmlValuePoolChange),
+            /// Sharing was skipped: the value is ineligible, an optional reservation was refused
+            /// or a private qualifier was exhausted. The input is unchanged and remains usable.
             Bypassed,
         }
     };
