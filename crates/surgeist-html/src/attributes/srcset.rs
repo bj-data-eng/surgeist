@@ -481,7 +481,7 @@ pub enum HtmlSrcsetParseError {
 impl fmt::Display for HtmlSrcsetParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::SkippedCommas => "srcset has more than one comma between image candidates",
+            Self::SkippedCommas => "srcset has a comma where an image candidate was expected",
             Self::MultipleTrailingCommas => {
                 "srcset image candidate URL is followed by more than one trailing comma"
             }
