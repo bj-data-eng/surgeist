@@ -97,7 +97,7 @@ behavior and whether the move changed it.
 | Difference (2026 text) | Surgeist behavior | Outcome |
 | --- | --- | --- |
 | §3.3 input preprocessing adds only a note on surrogates from object-model strings. | CR, FF, CRLF and NUL filtering is unchanged. | Unchanged |
-| §4.2 restricts *non-ASCII ident code point* to the HTML custom-element ranges; for example U+0080–U+00B6, U+00A0, U+00D7, U+2000–U+200B, U+2028, U+E000–U+F8FF and U+FFFE no longer start or continue an ident sequence. | Identifiers still accept every code point at or above U+0080: `.a\u{a0}b`, `.\u{2603}` and a U+FFFE type selector remain valid. | Deferred, tracked separately: `surgeist-css-parser`'s `lexical` predicates and lexer define the ident code points that every grammar reads, and they apply the 2021 set, so adopting the §4.2 ranges is a tokenizer change that moves every identifier boundary. |
+| §4.2 restricts *non-ASCII ident code point* to the HTML custom-element ranges; for example U+0080–U+00B6, U+00A0, U+00D7, U+2000–U+200B, U+2028, U+E000–U+F8FF and U+FFFE no longer start or continue an ident sequence. | Identifiers admit exactly the §4.2 ranges, through `surgeist-css-parser`'s `lexical` predicates, which every grammar reads. A code point outside them ends an ident and is a delim: `.a\u{a0}b` is invalid, `.\u{2603}` is invalid and a U+FFFE type selector is invalid, while `.a\u{b7}b` and astral code points stay valid. Serialization escapes those code points, as in `\a0 `, so output reads back as the same identifier. | Unchanged |
 | §4 tokens carry a sign character, and §4.3.13 interprets the number and exponent parts directly; the 2021 *representation* and "convert a string to a number" are removed. | Numeric tokens keep their exact spelling and sign; values are equal. | Unchanged |
 | §6.2 renames `<an+b>` to `<a-n-plus-b>` and defines signed and signless integers by the sign character. | The same tokens are admitted and §9.1 serialization is unchanged. | Unchanged |
 | §§4.3.11, 4.3.14 and 5.5.11 replace the 2021 §7 `<urange>` token production: a `unicode-range` value is re-tokenized from its original text, where one contiguous token starts with a literal `U` or `u`. | A comment inside a range, or an escaped `u`, now makes the range invalid. Range endpoint validity remains the Fonts descriptor rule. | Behavior change |
@@ -4216,8 +4216,9 @@ Each decoded string row follows [Grid 2 §7.3](https://www.w3.org/TR/2025/CRD-cs
 the longest run of ident code points makes one named cell, the longest run of
 periods makes one empty cell, and decoded space, tab, and line feed separate
 runs. Other decoded ASCII punctuation or controls, including carriage return
-and form feed produced by an escape, invalidate the declaration. Non-ASCII
-code points such as NBSP remain part of an area name. The checked row and
+and form feed produced by an escape, invalidate the declaration, and so does a
+non-ASCII code point that is not a [Syntax 3 §4.2 ident code point](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#non-ascii-ident-code-point),
+such as NBSP. The checked row and
 matrix constructors require nonempty rows, equal widths, and a filled rectangle
 for each case-sensitive name. Area names have their own checked type so leading
 digits and CSS-wide keyword spellings remain valid within a string. The

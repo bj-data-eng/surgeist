@@ -22,10 +22,11 @@
 //! round-trip. Where the two differ the round trip governs. An identifier code
 //! point is written as itself, and every other code point is escaped, by the
 //! predicate of the tokenizer ([`lexical::is_ident_code_point`]), so the
-//! output re-tokenizes to the identifier it came from at every edition of that
-//! predicate. Today that predicate admits every non-ASCII code point (the 2021
-//! rule, see [`lexical`]); when it adopts the ranges of the pinned edition,
-//! the non-ASCII code points outside them are written as escapes.
+//! output re-tokenizes to the identifier it came from. That predicate admits the
+//! non-ASCII code points that section 4.2 lists (see [`lexical`]), so every
+//! other non-ASCII code point is written as a hexadecimal escape: U+00A0 is
+//! `\a0 `, where the CSSOM algorithm would write it as itself and the
+//! tokenizer would read a delim.
 //!
 //! # What is serialized
 //!
@@ -84,7 +85,9 @@ fn name<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
 /// is a digit at the start or directly after a leading hyphen-minus, where a
 /// digit would not continue an identifier. A lone hyphen-minus is `\-`. An
 /// ASCII code point that is not an ident code point is written behind a
-/// backslash; a non-ASCII one, behind a hexadecimal escape.
+/// backslash; a non-ASCII one, behind a hexadecimal escape. A non-ASCII code
+/// point is an ident code point only when section 4.2 lists it, so U+00E9 is
+/// written as itself and U+00A0 as `\a0 `.
 ///
 /// # Errors
 ///
@@ -98,6 +101,9 @@ fn name<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
 ///     identifier(value, &mut out).unwrap();
 ///     out
 /// }
+/// assert_eq!(escaped("\u{e9}"), "\u{e9}");
+/// assert_eq!(escaped("a\u{a0}b"), "a\\a0 b");
+/// assert_eq!(escaped("\u{d7}"), "\\d7 ");
 /// assert_eq!(escaped("a-b_c"), "a-b_c");
 /// assert_eq!(escaped("1a"), "\\31 a");
 /// assert_eq!(escaped("-1"), "-\\31 ");

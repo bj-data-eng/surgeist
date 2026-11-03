@@ -22,14 +22,13 @@
 //!
 //! # The non-ASCII ident code point
 //!
-//! [`is_non_ascii_ident_code_point`] currently implements the rule of the
-//! 24 December 2021 Candidate Recommendation Draft, in which every code point
-//! of U+0080 and above can appear in an identifier. The pinned 1 October 2026
-//! edition restricts the set (its section 4.2 lists the admitted ranges). The
-//! crate adopts that restriction deliberately, in one change to that one
-//! function, once no other tokenizer in Surgeist still applies the older rule.
-//! Until then the 2021 rule is what [`is_ident_start`], [`is_ident_code_point`]
-//! and [`would_start_ident`] build on.
+//! [`is_non_ascii_ident_code_point`] is the list of ranges in section 4.2 of the
+//! pinned 1 October 2026 edition, which matches the non-ASCII code points that
+//! HTML allows in valid custom element names. [`is_ident_start`],
+//! [`is_ident_code_point`] and [`would_start_ident`] build on it, so a code
+//! point outside the ranges (U+00A0, U+00D7, U+2603 or U+FFFE, for example) ends
+//! an ident sequence, and the tokenizer reads it as a `<delim-token>`. The
+//! serializer escapes the same code points.
 
 /// Whether `code_point` is a digit: U+0030 DIGIT ZERO (0) to U+0039 DIGIT NINE
 /// (9) inclusive (section 4.2).
@@ -102,25 +101,49 @@ pub const fn is_letter(code_point: char) -> bool {
     is_uppercase_letter(code_point) || is_lowercase_letter(code_point)
 }
 
-/// Whether `code_point` is a non-ASCII ident code point, under the 2021
-/// definition: every code point of U+0080 and above.
+/// Whether `code_point` is a non-ASCII ident code point (section 4.2): one of
+/// U+00B7, U+00C0 to U+00D6, U+00D8 to U+00F6, U+00F8 to U+037D, U+037F to
+/// U+1FFF, U+200C, U+200D, U+203F, U+2040, U+2070 to U+218F, U+2C00 to U+2FEF,
+/// U+3001 to U+D7FF, U+F900 to U+FDCF, U+FDF0 to U+FFFD, or U+10000 and above.
+/// All of the ranges are inclusive.
 ///
-/// The 24 December 2021 Candidate Recommendation Draft calls this class the
-/// "non-ASCII code point" and admits all of it in identifiers. The pinned
-/// edition's section 4.2 narrows the class to a list of ranges under the name
-/// "non-ASCII ident code point". This function keeps the 2021 behavior until
-/// the crate adopts the pinned rule in one deliberate change; see the
+/// No ASCII code point is a member, and neither are the C1 controls, U+00A0
+/// and every other code point outside those ranges, so none of them starts or
+/// continues an ident sequence. See the
 /// [module documentation](self#the-non-ascii-ident-code-point).
 ///
 /// ```
 /// use surgeist_css_parser::lexical::is_non_ascii_ident_code_point;
 ///
 /// assert!(is_non_ascii_ident_code_point('é'));
+/// assert!(is_non_ascii_ident_code_point('\u{b7}'));
+/// assert!(is_non_ascii_ident_code_point('\u{1f600}'));
 /// assert!(!is_non_ascii_ident_code_point('e'));
+/// assert!(!is_non_ascii_ident_code_point('\u{a0}'));
+/// assert!(!is_non_ascii_ident_code_point('\u{d7}'));
+/// assert!(!is_non_ascii_ident_code_point('\u{2603}'));
+/// assert!(!is_non_ascii_ident_code_point('\u{fffe}'));
 /// ```
 #[must_use]
 pub const fn is_non_ascii_ident_code_point(code_point: char) -> bool {
-    !code_point.is_ascii()
+    matches!(
+        code_point,
+        '\u{b7}'
+            | '\u{c0}'..='\u{d6}'
+            | '\u{d8}'..='\u{f6}'
+            | '\u{f8}'..='\u{37d}'
+            | '\u{37f}'..='\u{1fff}'
+            | '\u{200c}'
+            | '\u{200d}'
+            | '\u{203f}'
+            | '\u{2040}'
+            | '\u{2070}'..='\u{218f}'
+            | '\u{2c00}'..='\u{2fef}'
+            | '\u{3001}'..='\u{d7ff}'
+            | '\u{f900}'..='\u{fdcf}'
+            | '\u{fdf0}'..='\u{fffd}'
+            | '\u{10000}'..='\u{10ffff}'
+    )
 }
 
 /// Whether `code_point` is an ident-start code point: a [letter](is_letter),

@@ -211,14 +211,21 @@ fn an_ident_start_code_point_starts_an_ident_like_token() {
 }
 
 #[test]
-fn the_non_ascii_ident_code_point_is_the_2021_rule_until_the_pinned_edition_is_adopted() {
-    // 4.2 of the pinned edition lists ranges; the lexer implements the 2021
-    // rule (every code point from U+0080), which the coverage page records as a
-    // deliberate difference. Code points the pinned list excludes are idents
-    // for now; adopting the list changes exactly this test.
+fn a_code_point_that_section_4_2_leaves_out_ends_an_ident_and_is_a_delim() {
+    // 4.2, "non-ASCII ident code point": the listed ranges only. U+00A0 and
+    // U+2603 are outside them, so 4.3.4 ends the ident before them and 4.3.1
+    // makes each a delim; the code points that are listed continue the ident.
     check(&[
-        ("a\u{a0}b", &["Ident(\"a\u{a0}b\")"]),
-        ("a\u{2603}b", &["Ident(\"a\u{2603}b\")"]),
+        (
+            "a\u{a0}b",
+            &["Ident(\"a\")", "Delim('\\u{a0}')", "Ident(\"b\")"],
+        ),
+        (
+            "a\u{2603}b",
+            &["Ident(\"a\")", "Delim('\u{2603}')", "Ident(\"b\")"],
+        ),
+        ("a\u{b7}b", &["Ident(\"a\u{b7}b\")"]),
+        ("a\u{1f600}b", &["Ident(\"a\u{1f600}b\")"]),
     ]);
 }
 

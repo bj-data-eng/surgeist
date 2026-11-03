@@ -1,7 +1,5 @@
 //! Literal source oracles for Syntax 3 (2026-10-01) §§3.3, 4 and 5.3. The name
-//! classes follow the 2021-12-24 §4.2 non-ASCII code point; the 2026 non-ASCII
-//! ident code point restriction is a deferred tokenizer difference
-//! (docs/reference.md#css-syntax-3-edition-differences).
+//! classes follow the §4.2 non-ASCII ident code point of that edition.
 //! Matching closers are group ends; bad tokens remain ordered error entries.
 use super::*;
 use surgeist_css_parser::document::Fault;
@@ -321,13 +319,17 @@ fn source_name_classes_and_nul_preprocessing_preserve_original_spelling() {
         "_",
         "-a",
         "a-09",
-        "\u{80}",
-        "\u{9f}",
-        "\u{a0}",
+        "\u{b7}",
         "\u{660}",
         "\u{10ffff}",
     ] {
         single_native(text, Token::Ident(text));
+    }
+    // §4.2 lists the non-ASCII ident code points; U+0080, U+009F and U+00A0
+    // are outside every range, so each is a delim (§4.3.1).
+    for point in ['\u{80}', '\u{9f}', '\u{a0}'] {
+        let text = point.to_string();
+        single_native(&text, Token::Delim(point));
     }
     for (text, expected) in [
         ("/", Token::Delim('/')),

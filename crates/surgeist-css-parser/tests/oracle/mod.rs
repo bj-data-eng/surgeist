@@ -128,6 +128,18 @@ const SPEC: &[&str] = &[
     "a\u{1f600}b",
     "a\u{a0}b",
     "a\u{2603}b",
+    // 4.2: each kind of name next to a code point the ranges leave out, and one
+    // they list.
+    "a\u{b7}b",
+    "a\u{d7}b",
+    "a\u{fffe}b",
+    "\u{a0}b",
+    "@\u{a0}b",
+    "#a\u{2603}b",
+    "1\u{d7}b",
+    "f\u{a0}(",
+    "--a\u{fffe}b",
+    "a\u{2028}b",
     "!",
     "%",
     "&",

@@ -116,7 +116,8 @@ Three implemented choices must remain visible beside those edition rows:
 The [1 October 2026 Candidate Recommendation Draft](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md)
 is the selected CSS Syntax 3 edition from 2026-10-20 ([#1328](https://github.com/bj-data-eng/surgeist/issues/1328)).
 It supersedes the [24 December 2021 draft](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
-which remains the Snapshot baseline and the basis of the deferred items below.
+which remains the Snapshot baseline and the comparison text of the
+edition-differences inventory in the implemented reference.
 The [surgeist-css-parser](../crates/surgeist-css-parser/README.md) crate
 implements this edition's tokenization and parsing, and its
 [coverage map](../crates/surgeist-css-parser/docs/conformance-coverage.md)
@@ -148,15 +149,25 @@ import is retired: the 2026 draft's parsing sections match its text apart from
 formatting, and the localized terminal-declaration and named-supports
 reconciliations now apply to the 2026 text.
 
-One item still rests on the 2021 draft and is deferred: the non-ASCII ident
-code point restriction, a non-trivial change to the crate's lexical correction
-over the pinned `cssparser` tokenizer, tracked separately. The other three items
-that were deferred to [#1353](https://github.com/bj-data-eng/surgeist/issues/1353)
-are settled by its step 9: the public `parse_declaration_list_text` front, which
-implemented the removed "parse a list of declarations", is gone; the style
-attribute is parsed as block contents, so a root `}` ends it
-(`CssParser::parse_block_contents`); and the Snapshot-official `O-SYNTAX3` identity
-in the public conformance registry names the 2026-10-01 publication.
+The [§4.2 *non-ASCII ident code point* ranges](../crates/surgeist-css/docs/reference.md#css-syntax-3-edition-differences)
+decide every identifier boundary ([#1425](https://github.com/bj-data-eng/surgeist/issues/1425)).
+`surgeist-css-parser`'s `lexical::is_non_ascii_ident_code_point` is the one
+definition, and the lexer, the token tree, the stepwise tokenizer and the
+serializer all read it. A code point outside the ranges, such as U+00A0, U+00D7,
+U+2603 or U+FFFE, ends an ident and is a `<delim-token>`.
+
+Identifier serialization follows the Syntax 3 §9 round trip, not the CSSOM
+text. CSSOM 1's [serialize an identifier](cssom-1--editor-capture-20261009--d42e145ec395.md)
+(§2.1, the CSSOM edition selected below) writes every code point at or above U+0080 as itself, so
+it would write U+00A0 raw, where §4.2 makes it a delim that reads back as a
+different token. `serialize::identifier` escapes every code point that is not an
+ident code point under §4.2: U+00D7 is `\d7 `, U+00A0 is `\a0 `, U+2603 is
+`\2603 ` and U+FFFE is `\fffe `. This is a recorded difference from CSSOM 1
+§2.1, taken because §9 requires serialized tokens to parse back to themselves.
+
+A style attribute is parsed as block contents, so a root `}` ends it
+(`CssParser::parse_block_contents`), and the `O-SYNTAX3` identity in the public
+conformance registry names the 2026-10-01 publication.
 
 ## Importer-selected witnesses
 

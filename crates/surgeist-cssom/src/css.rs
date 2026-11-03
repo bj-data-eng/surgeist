@@ -5,9 +5,12 @@ use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits}
 
 /// Escapes `value` as a CSS identifier, as CSSOM's `CSS.escape()` does.
 ///
-/// Empty text escapes to empty text and NUL becomes U+FFFD. The identifier
-/// grammar of a property is not checked. `limits` bounds the work and the
-/// UTF-8 output length.
+/// Every code point that is not an ident code point of CSS Syntax 3 §4.2 is
+/// escaped, so for non-ASCII code points this is stricter than CSSOM §2.1,
+/// which writes every code point from U+0080 as itself; for example U+00A0
+/// becomes `\a0 `. Empty text escapes to empty text and NUL becomes U+FFFD.
+/// The identifier grammar of a property is not checked. `limits` bounds the
+/// work and the UTF-8 output length.
 ///
 /// # Errors
 ///

@@ -172,11 +172,18 @@ fn digit_names_case_and_css_whitespace_are_preserved_after_string_decoding() {
     for source in [parsed("\"a A\""), checked("\"a A\"")] {
         assert_eq!(authored_rows(&source), [["a", "A"]]);
     }
-    // The terminated hex escape decodes to NBSP, an ident code point, not
-    // CSS whitespace. The whole string denotes one named cell.
-    for source in [parsed("\"a\\a0 b\""), checked("\"a\\a0 b\"")] {
-        assert_eq!(authored_rows(&source), [["a\u{a0}b"]]);
+    // The terminated hex escape decodes to U+00B7, a non-ASCII ident code
+    // point (Syntax 3 §4.2), not CSS whitespace. The whole string denotes one
+    // named cell.
+    for source in [parsed("\"a\\b7 b\""), checked("\"a\\b7 b\"")] {
+        assert_eq!(authored_rows(&source), [["a\u{b7}b"]]);
     }
+    // NBSP is neither CSS whitespace nor an ident code point (§4.2), and a
+    // named cell token is a sequence of ident code points (Grid 1 §7.3), so
+    // the declaration is invalid.
+    let report = CssParser::default().parse_block_contents("grid-template-areas:\"a\\a0 b\"");
+    assert!(!report.is_clean());
+    assert!(report.syntax().is_empty());
 }
 
 #[test]

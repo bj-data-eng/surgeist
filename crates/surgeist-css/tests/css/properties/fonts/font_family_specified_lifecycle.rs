@@ -387,6 +387,14 @@ fn decoded_descriptor_families_round_trip_as_literals_in_face_and_feature_consum
         ("A  B", "\"A  B\""),
         ("1Face", "\"1Face\""),
         ("日本", "日本"),
+        // Syntax 3 §4.2: only the listed non-ASCII code points are ident code
+        // points, so a name with any other is a string, not an identifier.
+        ("a\u{b7}b", "a\u{b7}b"),
+        ("\u{1f600}", "\u{1f600}"),
+        ("a\u{a0}b", "\"a\u{a0}b\""),
+        ("a\u{2603}", "\"a\u{2603}\""),
+        ("\u{fffe}a", "\"\u{fffe}a\""),
+        ("a \u{d7}", "\"a \u{d7}\""),
         ("a+b", "\"a+b\""),
         ("a\"b\\c", r#""a\"b\\c""#),
     ] {

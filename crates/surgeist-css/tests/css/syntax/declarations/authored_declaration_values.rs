@@ -86,7 +86,7 @@ fn authored_declaration_custom_global_keywords_have_distinct_branch_views() {
 fn authored_declaration_custom_names_use_css_identifier_tokenization() {
     let cases = [
         ("--café", "--café"),
-        ("--☃", "--☃"),
+        ("--日本", "--日本"),
         ("--1", "--1"),
         (r"--\65 clair", "--eclair"),
         (r"--bad\ name", "--bad name"),
@@ -108,6 +108,10 @@ fn authored_declaration_custom_names_use_css_identifier_tokenization() {
         "--name extra",
         "--name\n",
         "--\\\n",
+        // Syntax 3 §4.2 lists neither code point, so each ends the name.
+        "--☃",
+        "--a\u{a0}b",
+        "--\u{d7}",
     ] {
         assert_eq!(
             CssCustomPropertyName::try_new(invalid),

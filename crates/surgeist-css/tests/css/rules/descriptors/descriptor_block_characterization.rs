@@ -135,10 +135,23 @@ fn the_root_of_a_value_is_admitted_before_its_components_are_collected() {
 #[test]
 fn a_unit_that_begins_with_no_break_space_is_not_judged_as_an_at_rule_in_every_descriptor_body() {
     // Syntax 3 section 4.2: whitespace is a newline, a tab or a space, so
-    // U+00A0 is not whitespace and is not skipped before the unit. The unit
-    // begins with U+00A0, not with the at-keyword that follows it, and a
-    // descriptor body does not drop it as an at-rule. A unit that begins with
-    // an identifier and holds the same text after it is dropped as a descriptor.
+    // U+00A0 is not whitespace and is not skipped before the unit. It is not a
+    // non-ASCII ident code point either, so the unit begins with a delim, not
+    // with the at-keyword that follows it, and §5.5.5 consumes it as a
+    // qualified rule through its block: a descriptor body does not drop it as
+    // an at-rule. A unit that begins with an identifier and holds the same text
+    // after it is dropped as a descriptor.
+    // The (code, action) of the diagnostics that start at the U+00A0.
+    let at_no_break_space = |source: &str| {
+        let at = source.find('\u{a0}').expect("the unit begins with U+00A0");
+        CssParser::default()
+            .parse_sheet(source)
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.span().start().byte_offset().value() == at)
+            .map(|diagnostic| (diagnostic.error().code(), diagnostic.action()))
+            .collect::<Vec<_>>()
+    };
     let action = |source: &str| {
         CssParser::default()
             .parse_sheet(source)
@@ -154,9 +167,15 @@ fn a_unit_that_begins_with_no_break_space_is_not_judged_as_an_at_rule_in_every_d
         "@font-feature-values A",
     ] {
         let source = format!("{head} {{ \u{a0} @x {{}} }}");
-        let dropped = action(&source);
-        assert!(dropped.is_some(), "{source:?}");
-        assert_ne!(dropped, Some(CssRecoveryAction::DropAtRule), "{source:?}");
+        // §5.5.5: the unit is a qualified rule, in every body.
+        assert_eq!(
+            at_no_break_space(&source),
+            [(
+                CssErrorCode::InvalidQualifiedRule,
+                CssRecoveryAction::DropQualifiedRule
+            )],
+            "{source:?}"
+        );
         let source = format!("{head} {{ a @x {{}} }}");
         assert_eq!(
             action(&source),
@@ -164,6 +183,52 @@ fn a_unit_that_begins_with_no_break_space_is_not_judged_as_an_at_rule_in_every_d
             "{source:?}"
         );
     }
+}
+
+#[test]
+fn a_unit_that_begins_with_no_break_space_is_a_qualified_rule_in_a_margin_box_body() {
+    // Syntax 3 section 4.2: U+00A0 is neither whitespace nor an ident code
+    // point, so the unit begins with a delim, not with the at-keyword that
+    // follows it, and §5.5.5 consumes it as a qualified rule through its block
+    // (the block of a page-margin box, CSS Page 3 §5.1, holds declarations
+    // only). A unit that begins with an identifier and holds the same text
+    // after it is a failed declaration.
+    let diagnostics_at = |source: &str, at: usize| {
+        CssParser::default()
+            .parse_sheet(source)
+            .diagnostics()
+            .iter()
+            .filter(|diagnostic| diagnostic.span().start().byte_offset().value() == at)
+            .map(|diagnostic| (diagnostic.error().code(), diagnostic.action()))
+            .collect::<Vec<_>>()
+    };
+    let source = "@page { @top-left { \u{a0} @x {} } }";
+    let at = source.find('\u{a0}').expect("the unit begins with U+00A0");
+    let found = diagnostics_at(source, at);
+    // A margin box reports every rule in its block with the page-context body
+    // error; the action is the qualified rule of §5.5.5, the same as for a
+    // plain qualified-rule unit.
+    let plain = "@page { @top-left { .a {} } }";
+    let plain_at = plain.find(".a").unwrap();
+    assert_eq!(found, diagnostics_at(plain, plain_at), "{source:?}");
+    assert_eq!(
+        found,
+        [(
+            CssErrorCode::InvalidAtRuleBody,
+            CssRecoveryAction::DropQualifiedRule
+        )],
+        "{source:?}"
+    );
+    let source = "@page { @top-left { a @x {} } }";
+    let at = source.find("a @x").unwrap();
+    assert_eq!(
+        diagnostics_at(source, at)
+            .iter()
+            .map(|(_, action)| *action)
+            .collect::<Vec<_>>(),
+        [CssRecoveryAction::DropDeclaration],
+        "{source:?}"
+    );
 }
 
 #[test]
