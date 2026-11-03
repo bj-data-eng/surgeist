@@ -11310,6 +11310,9 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<template><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template>",
         "<div><template shadowrootmode=open><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template></div>",
         "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template></div>",
+        // Several styles moved together, with a listed style before and after.
+        "<style>a{}</style><b><p><style>b{}</style><style>c{}</style><style>d{}</style></b><style>e{}",
+        "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style><style>c{}</style></b><style>d{}</style></template></div><style>e{}",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{body}")),

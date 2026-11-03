@@ -50,6 +50,12 @@ pub(super) struct SessionStorage {
     /// order is empty without a row, and the first style inserted into it
     /// starts the row without a walk.
     pub(super) main_tree_styleless: bool,
+    /// The subtree whose insertion last found its tree's style order unable to
+    /// take one of its styles; see [`pending_association::StyleSubtree`].
+    pub(super) style_subtree: Option<pending_association::StyleSubtree>,
+    /// The order of the subtree whose removal is being applied, while the
+    /// removal hooks of its styles run; see [`pending_association::DetachedOrder`].
+    pub(super) detached_order: Option<pending_association::DetachedOrder>,
     /// The subtree whose insertion or removal last walked each color selection;
     /// see [`meta::MetaBatch`].
     pub(super) meta_batches: meta::MetaDomainTable<Option<meta::MetaBatch>>,
@@ -150,6 +156,8 @@ impl SessionStorage {
             failed_text_append: None,
             style_order_floor: 0,
             main_tree_styleless: true,
+            style_subtree: None,
+            detached_order: None,
             meta_batches: meta::MetaDomainTable::filled(None),
             payloads: PayloadStorage {
                 values,
