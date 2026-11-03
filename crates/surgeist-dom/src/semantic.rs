@@ -4,6 +4,7 @@ mod base;
 mod control;
 mod inheritance;
 mod modal;
+mod nodes;
 mod plan;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
@@ -44,12 +45,16 @@ use crate::{
 /// entries (two per Button, one per Input), with their validation independently bounded by
 /// `work`. Actual HTML/null-definition classifications also use subjects, with
 /// their context qualification and duplicate checks charged to adapter work.
-/// Planning keeps one index entry per planned node, at most `subjects` of them,
-/// admitted and charged before it allocates. Planned-node membership, subject
-/// and parent lookups, and the search for the next node to expand, each cost a
-/// constant number of charged steps. The producer's edge operations take their
-/// own steps from the same `work` bound and cancellation. A vector grows by
-/// doubling, never beyond `subjects` entries.
+/// Planning and the final subject lookups use `NodeId` indexes of at most four
+/// slots per admitted subject, each admitted and charged before it allocates.
+/// Planned-node membership, subject and parent lookups, and control-owner and
+/// command-target lookups each cost a constant number of charged steps; so does
+/// choosing the next node to expand, except that revisiting a node whose
+/// children became complete after it was expanded costs a number of steps
+/// logarithmic in the nodes waiting to be revisited. A vector or index grows by
+/// doubling, never beyond its admitted size, and a growth charges the entries it
+/// moves before it allocates. The producer's edge operations take their own
+/// steps from the same `work` bound and cancellation.
 /// Document design-mode rows use at most `subjects` records. The same finite
 /// `work` bound independently limits GlobalInheritance producer validation per
 /// formation, including Slot context reconstruction; it is not a cumulative
@@ -352,7 +357,9 @@ impl Control<'_> {
             return Ok(());
         }
         // Growing by doubling, never beyond the extent, keeps the moves of
-        // pushing one entry at a time linear. The extent was admitted above.
+        // pushing one entry at a time linear. The extent was admitted above,
+        // and the entries a growth may move are charged before it allocates.
+        self.charge(values.len())?;
         let target = values.capacity().saturating_mul(2).max(count).min(extent);
         let target = if fits(target).is_some() {
             target
@@ -573,7 +580,7 @@ impl DomSnapshot {
         // Explicit document records precede their actual member nodes.
         for position in planned.positions() {
             control.charge(1)?;
-            let entry = planned.node(position);
+            let entry = planned.node(position)?;
             if matches!(self.node(entry)?.kind(), DomNodeKind::Document(_)) {
                 control.reserve(&mut staged, 1)?;
                 let subject = add_document(
@@ -583,7 +590,7 @@ impl DomSnapshot {
                     &mut registries,
                     &mut control,
                 )?;
-                planned.stage(position, subject);
+                planned.stage(position, subject)?;
                 staged.push(position);
             }
         }
@@ -592,7 +599,7 @@ impl DomSnapshot {
         for inert_pass in [true, false] {
             for position in planned.positions() {
                 control.charge(1)?;
-                let node = self.node(planned.node(position))?;
+                let node = self.node(planned.node(position)?)?;
                 let Some(document) = node.as_document() else {
                     continue;
                 };
@@ -626,7 +633,7 @@ impl DomSnapshot {
         // Hosts precede their shadow roots even when arena order differs.
         for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(planned.node(position))?;
+            let node = self.node(planned.node(position)?)?;
             if matches!(
                 node.kind(),
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
@@ -740,17 +747,17 @@ impl DomSnapshot {
                     ),
                 )?,
             };
-            planned.stage(position, subject);
+            planned.stage(position, subject)?;
             staged.push(position);
         }
         for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(planned.node(position))?;
+            let node = self.node(planned.node(position)?)?;
             if let DomNodeKind::ShadowRoot(state) = node.kind() {
                 let document = planned.subject(&mut control, node.node.document().node())?;
                 let host = planned.subject(
                     &mut control,
-                    self.shadow_root(planned.node(position))?.host(),
+                    self.shadow_root(planned.node(position)?)?.host(),
                 )?;
                 let registry = registry_input(
                     &mut builder,
@@ -771,13 +778,13 @@ impl DomSnapshot {
                     ),
                     registry,
                 )?;
-                planned.stage(position, subject);
+                planned.stage(position, subject)?;
                 staged.push(position);
             }
         }
         for position in planned.positions() {
             control.charge(1)?;
-            let entry = planned.node(position);
+            let entry = planned.node(position)?;
             if let Some(template) = self.node(entry)?.as_template() {
                 let host = planned.subject(&mut control, entry)?;
                 let contents_id = template.contents()?;
@@ -794,14 +801,14 @@ impl DomSnapshot {
         let mut children = Vec::new();
         for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(planned.node(position))?;
+            let node = self.node(planned.node(position)?)?;
             let subject = planned.staged(&mut control, position)?;
             match node.kind() {
                 DomNodeKind::Document(_)
                 | DomNodeKind::DocumentFragment
                 | DomNodeKind::ShadowRoot(_)
                 | DomNodeKind::Element(_) => {
-                    if planned.complete_children(position) {
+                    if planned.complete_children(position)? {
                         children.clear();
                         control.reserve(&mut children, node.children().len())?;
                         for child in node.children() {
@@ -831,9 +838,10 @@ impl DomSnapshot {
             } else if let Some(parent) = node.parent() {
                 // Complete parents establish their reciprocal child edges;
                 // partial supplemental ancestors establish only the true edge.
-                let complete_parent = planned
-                    .position(&mut control, parent)?
-                    .is_some_and(|parent| planned.complete_children(parent));
+                let complete_parent = match planned.position(&mut control, parent)? {
+                    Some(parent) => planned.complete_children(parent)?,
+                    None => false,
+                };
                 if !complete_parent {
                     let parent = planned.subject(&mut control, parent)?;
                     builder
@@ -852,7 +860,7 @@ impl DomSnapshot {
         for position in staged {
             control.charge(1)?;
             entries.push(Entry {
-                node: planned.node(position),
+                node: planned.node(position)?,
                 subject: capture.subject_id(planned.staged_ref(position)?)?,
             });
         }
@@ -893,11 +901,12 @@ impl DomSnapshot {
             ),
             &mut control,
         )?;
+        let subjects = nodes::Subjects::new(&entries, &mut control)?;
         let input = control::with_native_state(
             input,
             self,
             &capture,
-            &entries,
+            &subjects,
             &mut control,
             capture_limits.utf16_units(),
         )?;
@@ -907,7 +916,7 @@ impl DomSnapshot {
             input,
             self,
             &capture,
-            &entries,
+            &subjects,
             &mut control,
             base_policy.map(|p| (p, 0)),
         )?;

@@ -198,7 +198,7 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
             &captured,
             &entries,
             Vec::new(),
-            HtmlInertFactLimits::new(2, 3),
+            HtmlInertFactLimits::new(2, 2),
             &mut Control {
                 limits: DomHtmlCaptureLimits::new(2, 1000),
                 work: 0,

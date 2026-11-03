@@ -5,24 +5,11 @@ use surgeist_html_semantics::{
     HtmlCapturedFrozenBase,
 };
 
-fn subject(
-    entries: &[Entry],
-    id: NodeId,
-    control: &mut Control<'_>,
-) -> Result<HtmlCaptureSubjectId, DomHtmlCaptureError> {
-    for e in entries {
-        control.charge(1)?;
-        if e.node == id {
-            return Ok(e.subject.clone());
-        }
-    }
-    Err(DomHtmlCaptureError::UnmappedSubject)
-}
 pub(super) fn with_facts(
     input: HtmlSemanticContextInput,
     source: &DomSnapshot,
     capture: &HtmlCapture,
-    entries: &[Entry],
+    subjects: &super::nodes::Subjects<'_>,
     control: &mut Control<'_>,
     budget: Option<(BaseCapturePolicy, usize)>,
 ) -> Result<(HtmlSemanticContextInput, usize), DomHtmlCaptureError> {
@@ -35,6 +22,7 @@ pub(super) fn with_facts(
         .ok_or(DomHtmlCaptureError::BaseFacts(
             HtmlBaseFactsError::WorkLimit,
         ))?;
+    let entries = subjects.entries();
     let mut documents = Vec::new();
     let mut frozen = Vec::new();
     let mut revision = None;
@@ -72,11 +60,8 @@ pub(super) fn with_facts(
                 // canonical freezing Document remains separate historical state.
                 frozen.push(HtmlCapturedFrozenBase::new(
                     entry.subject.clone(),
-                    capture.document_id(&subject(
-                        entries,
-                        node.node.document().node(),
-                        control,
-                    )?)?,
+                    capture
+                        .document_id(&subjects.subject(control, node.node.document().node())?)?,
                     href,
                     Some(value.value.clone()),
                     value.revision.clone(),

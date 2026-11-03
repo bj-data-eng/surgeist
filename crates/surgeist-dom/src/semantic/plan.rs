@@ -1,15 +1,21 @@
 //! The nodes one capture plans, their subjects and the order they are expanded in.
 //!
-//! Every lookup goes through a `NodeId` index, so planning, subject lookup and
-//! attachment each cost a constant number of charged steps per node. The index
-//! and each backing vector are admitted against the adapter's subject limit and
-//! charged before they allocate.
+//! Planned-node membership, subject and parent lookups go through a `NodeId`
+//! index and each cost a constant number of charged steps. Choosing the next
+//! entry to expand costs a constant number of steps, except that revisiting an
+//! entry whose children became complete after it was expanded costs a number
+//! of steps logarithmic in the entries waiting to be revisited. Every backing
+//! vector and the index are admitted against the adapter's subject limit and
+//! charged before they allocate; a growth charges the entries it moves.
 
-use std::collections::HashMap;
+use std::{cmp::Reverse, collections::BinaryHeap};
 
 use surgeist_html_semantics::HtmlCaptureBuilderSubject;
 
-use super::{Control, DomHtmlCaptureError, DomHtmlCaptureResource};
+use super::{
+    Control, DomHtmlCaptureError, DomHtmlCaptureResource,
+    nodes::{Keyed, NodeTable},
+};
 use crate::NodeId;
 
 struct PlannedEntry {
@@ -21,38 +27,54 @@ struct PlannedEntry {
     /// The builder subject, once staged.
     subject: Option<HtmlCaptureBuilderSubject>,
 }
+impl Keyed for PlannedEntry {
+    fn node_id(&self) -> NodeId {
+        self.node
+    }
+}
 
 /// Planned entries in first-planned order, expanded lowest position first.
 pub(super) struct Planned {
     entries: Vec<PlannedEntry>,
     /// The position of each planned node.
-    index: HashMap<NodeId, usize>,
+    index: NodeTable,
     /// Every entry at or beyond this position has not been expanded.
     cursor: usize,
-    /// Positions below `cursor` to expand again, as a binary min-heap. An
-    /// entry is here exactly when it was expanded before its children became
-    /// complete; later positions only ever follow every one of them.
-    revisit: Vec<usize>,
+    /// Positions below `cursor` to expand again, lowest first. An entry is
+    /// here exactly when it was expanded before its children became complete;
+    /// later positions only ever follow every one of them.
+    revisit: BinaryHeap<Reverse<usize>>,
+}
+
+/// The steps a heap operation over `len` entries takes at most.
+fn heap_steps(len: usize) -> usize {
+    (usize::BITS - len.leading_zeros()) as usize + 1
 }
 
 impl Planned {
     pub(super) fn new() -> Self {
         Self {
             entries: Vec::new(),
-            index: HashMap::new(),
+            index: NodeTable::default(),
             cursor: 0,
-            revisit: Vec::new(),
+            revisit: BinaryHeap::new(),
         }
     }
 
-    /// The node planned at `position`, which must be below `len`.
-    pub(super) fn node(&self, position: usize) -> NodeId {
-        self.entries[position].node
+    /// The node planned at `position`.
+    pub(super) fn node(&self, position: usize) -> Result<NodeId, DomHtmlCaptureError> {
+        self.entries
+            .get(position)
+            .map(|entry| entry.node)
+            .ok_or(DomHtmlCaptureError::UnmappedSubject)
     }
 
-    /// Whether the entry at `position`, which must be below `len`, completes its children.
-    pub(super) fn complete_children(&self, position: usize) -> bool {
-        self.entries[position].complete_children
+    /// Whether the entry at `position` completes its children.
+    pub(super) fn complete_children(&self, position: usize) -> Result<bool, DomHtmlCaptureError> {
+        self.entries
+            .get(position)
+            .map(|entry| entry.complete_children)
+            .ok_or(DomHtmlCaptureError::UnmappedSubject)
     }
 
     pub(super) fn positions(&self) -> std::ops::Range<usize> {
@@ -65,8 +87,7 @@ impl Planned {
         control: &mut Control<'_>,
         node: NodeId,
     ) -> Result<Option<usize>, DomHtmlCaptureError> {
-        control.charge(1)?;
-        Ok(self.index.get(&node).copied())
+        self.index.get(control, &self.entries, node)
     }
 
     /// Plans `node`, or completes the children of an entry already planned.
@@ -77,7 +98,10 @@ impl Planned {
         complete_children: bool,
     ) -> Result<(), DomHtmlCaptureError> {
         if let Some(position) = self.position(control, node)? {
-            let entry = &mut self.entries[position];
+            let entry = self
+                .entries
+                .get_mut(position)
+                .ok_or(DomHtmlCaptureError::UnmappedSubject)?;
             if complete_children && !entry.complete_children {
                 entry.complete_children = true;
                 if entry.expanded {
@@ -88,20 +112,14 @@ impl Planned {
             return Ok(());
         }
         control.reserve(&mut self.entries, 1)?;
-        let count = self
-            .entries
-            .len()
-            .checked_add(1)
-            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
-        reserve_index(control, &mut self.index, count)?;
-        self.index.insert(node, self.entries.len());
+        let position = self.entries.len();
         self.entries.push(PlannedEntry {
             node,
             complete_children,
             expanded: false,
             subject: None,
         });
-        Ok(())
+        self.index.insert(control, &self.entries, position)
     }
 
     /// The next entry to expand, lowest position first, with its children
@@ -111,23 +129,36 @@ impl Planned {
         control: &mut Control<'_>,
     ) -> Result<Option<(NodeId, bool)>, DomHtmlCaptureError> {
         control.charge(1)?;
-        let position = if self.revisit.is_empty() {
-            if self.cursor == self.entries.len() {
-                return Ok(None);
+        let position = match self.revisit.pop() {
+            Some(Reverse(position)) => {
+                control.charge(heap_steps(self.revisit.len()))?;
+                position
             }
-            self.cursor += 1;
-            self.cursor - 1
-        } else {
-            self.pop_revisit(control)?
+            None if self.cursor < self.entries.len() => {
+                self.cursor += 1;
+                self.cursor - 1
+            }
+            None => return Ok(None),
         };
-        let entry = &mut self.entries[position];
+        let entry = self
+            .entries
+            .get_mut(position)
+            .ok_or(DomHtmlCaptureError::UnmappedSubject)?;
         entry.expanded = true;
         Ok(Some((entry.node, entry.complete_children)))
     }
 
     /// Records the builder subject of the entry at `position`.
-    pub(super) fn stage(&mut self, position: usize, subject: HtmlCaptureBuilderSubject) {
-        self.entries[position].subject = Some(subject);
+    pub(super) fn stage(
+        &mut self,
+        position: usize,
+        subject: HtmlCaptureBuilderSubject,
+    ) -> Result<(), DomHtmlCaptureError> {
+        self.entries
+            .get_mut(position)
+            .ok_or(DomHtmlCaptureError::UnmappedSubject)?
+            .subject = Some(subject);
+        Ok(())
     }
 
     /// The builder subject staged for the entry at `position`.
@@ -137,10 +168,7 @@ impl Planned {
         position: usize,
     ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
         control.charge(1)?;
-        self.entries
-            .get(position)
-            .and_then(|entry| entry.subject.clone())
-            .ok_or(DomHtmlCaptureError::UnmappedSubject)
+        self.staged_ref(position).cloned()
     }
 
     /// The builder subject staged for the entry at `position`, uncharged: the
@@ -172,72 +200,33 @@ impl Planned {
         control: &mut Control<'_>,
         position: usize,
     ) -> Result<(), DomHtmlCaptureError> {
-        control.reserve(&mut self.revisit, 1)?;
-        let mut at = self.revisit.len();
-        self.revisit.push(position);
-        while at > 0 {
-            control.charge(1)?;
-            let above = (at - 1) / 2;
-            if self.revisit[above] <= self.revisit[at] {
-                break;
-            }
-            self.revisit.swap(above, at);
-            at = above;
+        control.charge(1)?;
+        let count = self
+            .revisit
+            .len()
+            .checked_add(1)
+            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        if count > control.limits.subjects {
+            return Err(DomHtmlCaptureError::ResourceLimit {
+                resource: DomHtmlCaptureResource::Subjects,
+                limit: control.limits.subjects,
+            });
         }
+        count
+            .checked_mul(std::mem::size_of::<Reverse<usize>>())
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        if count > self.revisit.capacity() {
+            // The heap moves its entries when it grows.
+            control.charge(self.revisit.len())?;
+            self.revisit
+                .try_reserve(1)
+                .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
+        }
+        control.charge(heap_steps(count))?;
+        self.revisit.push(Reverse(position));
         Ok(())
     }
-
-    fn pop_revisit(&mut self, control: &mut Control<'_>) -> Result<usize, DomHtmlCaptureError> {
-        let last = self.revisit.len() - 1;
-        self.revisit.swap(0, last);
-        let position = self.revisit.pop().expect("a revisit position was present");
-        let mut at = 0;
-        loop {
-            let left = 2 * at + 1;
-            if left >= self.revisit.len() {
-                break;
-            }
-            control.charge(1)?;
-            let lower =
-                if left + 1 < self.revisit.len() && self.revisit[left + 1] < self.revisit[left] {
-                    left + 1
-                } else {
-                    left
-                };
-            if self.revisit[at] <= self.revisit[lower] {
-                break;
-            }
-            self.revisit.swap(at, lower);
-            at = lower;
-        }
-        Ok(position)
-    }
-}
-
-/// Admits and allocates room for one more indexed node: `count` entries must
-/// already be within the subject limit, which the entry vector's own
-/// reservation has checked.
-fn reserve_index(
-    control: &mut Control<'_>,
-    index: &mut HashMap<NodeId, usize>,
-    count: usize,
-) -> Result<(), DomHtmlCaptureError> {
-    control.charge(1)?;
-    if count > control.limits.subjects {
-        return Err(DomHtmlCaptureError::ResourceLimit {
-            resource: DomHtmlCaptureResource::Subjects,
-            limit: control.limits.subjects,
-        });
-    }
-    count
-        .checked_mul(std::mem::size_of::<(NodeId, usize)>())
-        .filter(|bytes| *bytes <= isize::MAX as usize)
-        .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
-    // The map doubles its backing when it is full, so insertions cost a
-    // constant amortized number of moves.
-    index
-        .try_reserve(1)
-        .map_err(|_| DomHtmlCaptureError::AllocationFailed)
 }
 
 #[cfg(test)]
