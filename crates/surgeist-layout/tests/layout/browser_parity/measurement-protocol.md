@@ -84,9 +84,17 @@ absent refuses with `Root context: UnresolvedSizingDeclaration`;
 for example, an unsupported own-width unit or unresolved own-width variable
 cannot disappear into Native Auto. Existing min/max computed projections and
 represented literals/calcs remain intact. Unconsumed shorthand reset fields are
-not sizing operands and do not trigger a blanket CSS-wide refusal. Try-parser
-grammar APIs retain their absence contract; validation belongs to the descriptor
+not sizing operands and do not trigger a blanket CSS-wide refusal. Token-parser
+grammars retain their absence contract; validation belongs to the descriptor
 consumer. This does not implement a cascade or qualify every source declaration.
+Preferred, minimum and maximum sizing share one actual node-writing-mode
+projection. Each group refuses simultaneous physical and corresponding logical
+size on one physical axis with `ConflictingSizingDeclarations`; declaration
+order or priority is not guessed. Single logical sizes/bounds and mixed
+declarations on distinct axes retain their role. Minimum/maximum getters keep
+their existing genuine computed projection before the shared mapping. Gap shorthand
+repeats a value only when one component was authored. An unsupported second
+component remains absent for validation and cannot be replaced by the first.
 Broader source profiles or a changed base asset need independent qualification.
 
 Extents come from the standards-mode unscaled CSSOM viewport after scrollbar

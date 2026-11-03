@@ -980,16 +980,23 @@ function px(value) {
   return { unit: 'px', value };
 }
 
+// The getter supplies one preferred/minimum/maximum group's actual values.
+// All three roles share this one node-writing-mode axis/alias projection.
 function parseElementSize(styleValue, computedStyle) {
   const width = styleValue("width");
   const height = styleValue("height");
   const inlineSize = styleValue("inlineSize");
   const blockSize = styleValue("blockSize");
 
-  if (isVerticalWritingMode(computedStyle.writingMode)) {
-    return parseSize({ width: width || blockSize, height: height || inlineSize });
+  const vertical = isVerticalWritingMode(computedStyle.writingMode);
+  const logicalWidth = vertical ? blockSize : inlineSize;
+  const logicalHeight = vertical ? inlineSize : blockSize;
+  // Specified logical/physical declarations remain distinct but cascade into
+  // one computed axis. This source profile does not interpret their priority.
+  if ((width && logicalWidth) || (height && logicalHeight)) {
+    throw new Error('Root context: ConflictingSizingDeclarations');
   }
-  return parseSize({ width: width || inlineSize, height: height || blockSize });
+  return parseSize({ width: width || logicalWidth, height: height || logicalHeight });
 }
 
 function isVerticalWritingMode(writingMode) {
@@ -1005,8 +1012,11 @@ function parseGaps(styleValue) {
       const parsedGap = parseDimension(gap);
       return { row: parsedGap, column: parsedGap };
     }
-    const gaps = splitCssComponentValues(gap).map(part => parseDimension(part));
-    return { row: gaps[0], column: gaps[1] ?? gaps[0] };
+    const components = splitCssComponentValues(gap);
+    const gaps = components.map(part => parseDimension(part));
+    // Only one authored component repeats. A present second component whose
+    // projection failed must reach representedGaps as absent, not inherit row.
+    return { row: gaps[0], column: components.length === 1 ? gaps[0] : gaps[1] };
   }
   if (rowGap || columnGap) {
     return { row: parseDimension(rowGap), column: parseDimension(columnGap) };
@@ -1259,6 +1269,10 @@ function describeElement(e, expectedElement = null) {
     const input = lengthStyleValue(property);
     return requireSizingProjection(input, parseResolvedDimension(input, computedStyle[property]));
   };
+  const boundSize = prefix => parseElementSize(
+    property => resolvedSizeValue(prefix + property[0].toUpperCase() + property.slice(1)),
+    computedStyle,
+  );
   const basisInput = lengthStyleValue('flexBasis');
   const flexBasis = requireSizingProjection(basisInput, parseSizingDimension(basisInput));
   const layoutReadyInlineRoot = e.getAttribute?.('data-surgeist-layout-ready-inline') === 'true';
@@ -1349,14 +1363,8 @@ function describeElement(e, expectedElement = null) {
       gap: representedGaps(lengthStyleValue),
 
       size: parseElementSize(preferredSizeValue, computedStyle),
-      minSize: parseSize({
-        width: resolvedSizeValue("minWidth"),
-        height: resolvedSizeValue("minHeight"),
-      }),
-      maxSize: parseSize({
-        width: resolvedSizeValue("maxWidth"),
-        height: resolvedSizeValue("maxHeight"),
-      }),
+      minSize: boundSize('min'),
+      maxSize: boundSize('max'),
       aspectRatio: parseRatio(styleValue("aspectRatio")),
 
       margin: parseEffectiveMargin(e, computedStyle),
