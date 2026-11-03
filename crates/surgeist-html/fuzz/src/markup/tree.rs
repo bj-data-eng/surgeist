@@ -1,6 +1,6 @@
 //! The expected tree and the source spelling of a markup recipe.
 use super::model::*;
-use surgeist_html::{
+use surgeist_html::construction::{
     HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
 };
 

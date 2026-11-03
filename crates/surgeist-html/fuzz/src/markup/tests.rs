@@ -4,7 +4,7 @@
 use super::model::*;
 use super::tree::*;
 use super::{Body, Case, Mode, seeds};
-use surgeist_html::HtmlDocumentMode;
+use surgeist_html::construction::HtmlDocumentMode;
 
 fn units(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()

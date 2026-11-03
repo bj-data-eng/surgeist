@@ -9,7 +9,7 @@
 //! attribute adjustments of 13.2.6.1 and the
 //! compatibility-mode rules of 13.2.6.4.1. The expected tree is computed from the
 //! recipe alone; it is never read back from a parse.
-use surgeist_html::HtmlDocumentMode;
+use surgeist_html::construction::HtmlDocumentMode;
 
 pub(crate) const HTML_NS: &str = "http://www.w3.org/1999/xhtml";
 pub(crate) const SVG_NS: &str = "http://www.w3.org/2000/svg";
