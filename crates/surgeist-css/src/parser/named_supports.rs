@@ -9,7 +9,7 @@ use crate::component::{
 use crate::declaration::CssCustomPropertyName;
 use crate::diagnostic::error::NativeError;
 use crate::diagnostic::error::invalid_component_value;
-use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
+use crate::diagnostic::error::{invalid_syntax, with_at_rule_prelude_context};
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::block_units::{location_at, offset_of};
 use crate::parser::recovery::RecoveryState;
@@ -162,7 +162,13 @@ pub(super) fn parse_body<'i>(
     let body = partition(document, list, Some(closing.clone()), true, &mut issues)
         .map_err(|error| invalid_component_value(at_end(), error))?;
     for issue in issues {
-        if let Some(diagnostic) = issue_diagnostic(source, issue) {
+        if let Some(diagnostic) = issue_diagnostic(
+            &crate::diagnostic::error::token_navigation::Scoped {
+                document,
+                text: recovery.source_snapshot().as_str(),
+            },
+            issue,
+        ) {
             diagnostics.push(diagnostic);
         }
     }
@@ -209,15 +215,21 @@ fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> 
     }
 }
 
-fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDiagnostic> {
+fn issue_diagnostic(
+    tokens: &impl crate::diagnostic::error::token_navigation::TokenContext,
+    issue: PartitionIssue,
+) -> Option<CssRecoveryDiagnostic> {
     let origin = issue.origin();
     let position = crate::query::media::construction::parsed_position(origin)?;
     let location = position;
     let error = match &issue {
-        PartitionIssue::Grammar(_, _) => from_parse_error(source, invalid_syntax(location)),
-        PartitionIssue::Lexical(detail, _) => {
-            from_parse_error(source, invalid_component_value(location, detail.clone()))
+        PartitionIssue::Grammar(_, _) => {
+            crate::diagnostic::error::from_native_error(tokens, invalid_syntax(location))
         }
+        PartitionIssue::Lexical(detail, _) => crate::diagnostic::error::from_native_error(
+            tokens,
+            invalid_component_value(location, detail.clone()),
+        ),
     };
     let span = match origin {
         CssValueOrigin::Parsed(parsed) => parsed.span(),
@@ -630,7 +642,7 @@ pub(crate) fn parse_supports_test_contents_with_limits(
         };
         let mut diagnostics: Vec<_> = issues
             .into_iter()
-            .filter_map(|issue| issue_diagnostic(source, issue))
+            .filter_map(|issue| issue_diagnostic(&document, issue))
             .collect();
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin

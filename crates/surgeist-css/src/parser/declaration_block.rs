@@ -362,7 +362,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
                 {}
             }
             if let Some(diagnostic) =
-                block_item_diagnostic_from_start(&snapshot, error, start_offset, span_end, action)
+                block_item_diagnostic_from_start(&recovery, error, start_offset, span_end, action)
             {
                 diagnostics.push(diagnostic);
             }

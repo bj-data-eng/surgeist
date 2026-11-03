@@ -2,7 +2,7 @@
 use crate::declaration::{CssDeclaration, CssImportance};
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
-use crate::diagnostic::error::{from_parse_error, from_rule_parse_error, with_media_query_context};
+use crate::diagnostic::error::{from_parse_error, with_media_query_context};
 use crate::parser::block_units::{
     DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, native_error, offset_of,
 };
@@ -1400,7 +1400,7 @@ pub(super) fn parse_rule_inner(
                 &error,
                 crate::diagnostic::CssRecoveryAction::RejectInput,
             );
-            let error = from_rule_parse_error(source, "", error);
+            let error = super::qualified_rule_error(&state, "", false, error);
             return crate::CssParseReport::new(None, vec![reject_resolved(source, error, action)]);
         }
     };
@@ -1432,7 +1432,9 @@ pub(super) fn parse_rule_inner(
                 from_parse_error(source, error)
             } else {
                 let failed_unit = &source[offset_of(failed.start())..offset_of(failed.end())];
-                from_rule_parse_error(source, failed_unit, error)
+                let terminated =
+                    super::structure::ends_with_semicolon(failed.start(), offset_of(failed.end()));
+                super::qualified_rule_error(&state, failed_unit, terminated, error)
             };
             crate::CssParseReport::new(None, vec![reject_resolved(source, error, action)])
         }

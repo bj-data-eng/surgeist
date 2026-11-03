@@ -16,7 +16,7 @@ use surgeist_css_parser::{Offset, Token};
 
 use crate::STRUCTURAL_NESTING_LIMIT;
 use crate::diagnostic::error::nesting_limit;
-use crate::parser::syntax_types::Document;
+use crate::parser::syntax_types::{Document, Site};
 
 /// Counts `nodes` read by a query, for the tests that bound the work.
 fn scanned(nodes: usize) {
@@ -569,4 +569,24 @@ pub(super) fn first_non_trivia(source: &str, member_start: usize, member_end: us
         }
     }
     bounded_end
+}
+
+/// Whether the unit that begins at the boundary `first` and whose text ends at
+/// the byte `text_end` ends with a `;` token of its list, whitespace aside: a
+/// `;` inside a string, comment, URL or block is part of that token.
+pub(super) fn ends_with_semicolon(first: Site<'_>, text_end: usize) -> bool {
+    let document = first.document();
+    let nodes = document.list(first.list());
+    let last = nodes
+        .get(first.index()..)
+        .unwrap_or_default()
+        .iter()
+        .take_while(|&&node| {
+            document
+                .range(node)
+                .is_some_and(|range| range.start.value() < text_end)
+        })
+        .filter(|&&node| !matches!(document.token(node), Token::Whitespace))
+        .last();
+    last.is_some_and(|&node| matches!(document.token(node), Token::Semicolon))
 }

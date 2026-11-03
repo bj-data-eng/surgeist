@@ -281,12 +281,12 @@ use crate::declaration::{
     CssAuthoredDeclarationValue, CssCustomDeclaration, CssCustomPropertyName, CssDeclaration,
     CssDeclarationBody, CssGlobalKeyword, CssImportance, CssSubstitutionDependentValue,
 };
-use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::{
-    from_parse_error, from_rule_parse_error, invalid_at_rule_placement,
+    from_parse_error, from_parse_error_in, from_rule_parse_error, invalid_at_rule_placement,
     invalid_custom_declaration_annotation, invalid_known_declaration_annotation, invalid_syntax,
     property_name_error, with_at_rule_prelude_context, with_property_context,
 };
+use crate::diagnostic::{CssError, CssFeatureId};
 use crate::property::CssPropertyNameRef;
 use crate::property::properties::{
     CssKnownDeclarationValue, CssLegacyPropertyAlias, CssResolvedPropertyName, property_schema,
@@ -721,28 +721,57 @@ pub(crate) struct Recovered<T> {
 }
 
 pub(crate) fn block_item_diagnostic(
-    snapshot: &CssSourceSnapshot,
+    recovery: &RecoveryState,
     error: NativeError,
     failed_unit: &str,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let unit_start = unit_end.saturating_sub(failed_unit.len());
-    block_item_diagnostic_from_start(snapshot, error, unit_start, unit_end, action)
+    block_item_diagnostic_from_start(recovery, error, unit_start, unit_end, action)
+}
+
+/// The error `error` names, qualified by the tokens `recovery` reads.
+fn qualified(recovery: &RecoveryState, error: NativeError) -> CssError {
+    match recovery.structure() {
+        Ok(document) => from_parse_error_in(&*document, error),
+        Err(_) => from_parse_error(recovery.source_snapshot().as_str(), error),
+    }
+}
+
+/// The error `error` names for the dropped rule `failed_unit`, qualified by the
+/// tokens `recovery` reads.
+pub(crate) fn qualified_rule_error(
+    recovery: &RecoveryState,
+    failed_unit: &str,
+    semicolon_terminated: bool,
+    error: NativeError,
+) -> CssError {
+    match recovery.structure() {
+        Ok(document) => from_rule_parse_error(&*document, failed_unit, semicolon_terminated, error),
+        Err(_) => from_rule_parse_error(
+            &crate::diagnostic::error::token_navigation::LexedText::new(
+                recovery.source_snapshot().as_str(),
+            ),
+            failed_unit,
+            semicolon_terminated,
+            error,
+        ),
+    }
 }
 
 pub(crate) fn block_item_diagnostic_from_start(
-    snapshot: &CssSourceSnapshot,
+    recovery: &RecoveryState,
     error: NativeError,
     unit_start: usize,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
-    let error = from_parse_error(snapshot.as_str(), error);
+    let error = qualified(recovery, error);
     let span = crate::source::CssSourceSpan::new(
-        snapshot.position_or_walk(unit_start),
-        snapshot.position_or_walk(unit_end),
+        recovery.source_position(unit_start),
+        recovery.source_position(unit_end),
     )?;
     if span.start() == span.end() {
         return None;
@@ -750,20 +779,22 @@ pub(crate) fn block_item_diagnostic_from_start(
     crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
 }
 
-/// A dropped unit's diagnostic, spanning exactly that unit.
+/// A dropped unit's diagnostic, spanning exactly that unit. `semicolon_terminated`
+/// says the unit's text ends with a `;` token of its list.
 pub(crate) fn structural_rule_diagnostic(
-    snapshot: &CssSourceSnapshot,
+    recovery: &RecoveryState,
     error: NativeError,
     failed_unit: &str,
+    semicolon_terminated: bool,
     unit_start: usize,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
-    let error = from_rule_parse_error(snapshot.as_str(), failed_unit, error);
+    let error = qualified_rule_error(recovery, failed_unit, semicolon_terminated, error);
     let span = crate::source::CssSourceSpan::new(
-        snapshot.position_or_walk(unit_start),
-        snapshot.position_or_walk(unit_end),
+        recovery.source_position(unit_start),
+        recovery.source_position(unit_end),
     )?;
     if span.start() == span.end() {
         return None;
@@ -774,7 +805,7 @@ pub(crate) fn structural_rule_diagnostic(
 pub(crate) fn structural_recovery_action(
     failed_unit: &str,
 ) -> crate::diagnostic::CssRecoveryAction {
-    if failed_unit.trim_start().starts_with('@') {
+    if crate::diagnostic::error::begins_with_at_keyword(failed_unit) {
         crate::diagnostic::CssRecoveryAction::DropAtRule
     } else {
         crate::diagnostic::CssRecoveryAction::DropQualifiedRule
@@ -949,8 +980,19 @@ fn parse_nested_group_rules<'i>(
     }
 }
 
+/// Whether a `{}`-block follows the prelude `input`: the node of the list after
+/// the prelude is the block, rather than a `;` or the end of the list.
+fn block_follows(input: &syntax_types::Stream<'_>) -> bool {
+    use crate::syntax_consumption::DocumentExt as _;
+    let end = input.end_site();
+    let document = end.document();
+    document
+        .list(end.list())
+        .get(end.index())
+        .is_some_and(|node| document.is_curly_block(*node))
+}
+
 fn parse_page_prelude<'i>(
-    source: &str,
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
 ) -> std::result::Result<CssPageSelectorList, NativeError> {
@@ -963,8 +1005,7 @@ fn parse_page_prelude<'i>(
         )
     })?;
     let at = block_units::offset_of(input.site());
-    let following = source.get(at..).unwrap_or_default().trim_start();
-    if following.is_empty() || following.starts_with(';') {
+    if !block_follows(input) {
         return Err(block_form_required(
             snapshot,
             at,
@@ -1229,7 +1270,6 @@ fn with_scope_prelude_context(error: NativeError) -> NativeError {
 }
 
 fn parse_counter_style_prelude<'i>(
-    source: &str,
     input: &mut syntax_types::Stream<'i>,
     source_snapshot: &CssSourceSnapshot,
 ) -> Result<CounterStylePrelude, NativeError> {
@@ -1242,8 +1282,7 @@ fn parse_counter_style_prelude<'i>(
         )
     })?;
     let at = block_units::offset_of(input.site());
-    let following = source.get(at..).unwrap_or_default().trim_start();
-    if following.is_empty() || following.starts_with(';') {
+    if !block_follows(input) {
         return Err(block_form_required(
             source_snapshot,
             at,

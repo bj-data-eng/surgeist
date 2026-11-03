@@ -19,4 +19,5 @@ mod specialized_recovery_boundaries;
 mod statement_eof_boundaries;
 mod structural_recovery_adversarial;
 mod stylesheet_recovery;
+mod token_boundaries_in_diagnostics;
 mod top_level_semicolon_nesting_limit;
