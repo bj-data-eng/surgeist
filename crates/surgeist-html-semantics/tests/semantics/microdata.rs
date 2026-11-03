@@ -2311,3 +2311,127 @@ fn incomplete_receiving_coverage_without_proved_edge_stays_missing() {
         &HtmlMicrodataCondition::Missing(missing)
     );
 }
+
+/// The allocation path of a growing token list does not depend on any limit, so a query's peak
+/// usage `U` of a limited resource is fixed by its input and the query succeeds under a limit
+/// exactly when the limit is at least `U`. `U` is the least successful limit, found by bisection,
+/// and must equal the usage reported without a binding limit: the nested-record and allocated-byte
+/// counters are only ever raised, so their final value is their peak. Under every swept limit, and
+/// under every limit within 64 of `U`, usage never exceeds the limit, a refusal is a limit
+/// refusal, and the query succeeds if and only if the limit is at least `U`.
+#[test]
+fn geometric_token_growth_succeeds_exactly_at_its_peak_usage_under_each_limit() {
+    let types: Vec<String> = (0..40).map(|i| format!("T{i}")).collect();
+    let (c, id) = single("div", &[("itemscope", ""), ("itemtype", &types.join(" "))]);
+    let cx = context(&c);
+    let run_with = |nested: usize, bytes: usize| {
+        let mut session = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(1_000_000),
+            HtmlSemanticLimits::new(100_000_000, 1_000, 1_000, 0, bytes, nested),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let result = session.query(&[HtmlSemanticRequest::new(
+            id.clone(),
+            HtmlSemanticQuery::MicrodataItem,
+        )]);
+        (result, session.usage())
+    };
+    let ample = 1_000_000_000;
+    let (unlimited, usage) = run_with(ample, ample);
+    unlimited.unwrap();
+    let least = |succeeds: &dyn Fn(usize) -> bool| {
+        let (mut refused, mut accepted) = (0, ample);
+        while refused + 1 < accepted {
+            let middle = refused + (accepted - refused) / 2;
+            if succeeds(middle) {
+                accepted = middle;
+            } else {
+                refused = middle;
+            }
+        }
+        accepted
+    };
+    let nested_threshold = least(&|nested| run_with(nested, ample).0.is_ok());
+    let bytes_threshold = least(&|bytes| run_with(ample, bytes).0.is_ok());
+    assert_eq!(nested_threshold, usage.nested_output_records());
+    assert_eq!(bytes_threshold, usage.allocated_bytes());
+    let check = |nested: usize, bytes: usize, holds: bool| {
+        let (result, usage) = run_with(nested, bytes);
+        assert!(
+            usage.nested_output_records() <= nested && usage.allocated_bytes() <= bytes,
+            "limits {nested} records, {bytes} bytes: usage {} records, {} bytes exceeds them",
+            usage.nested_output_records(),
+            usage.allocated_bytes()
+        );
+        match result {
+            Ok(_) => assert!(
+                holds,
+                "limits {nested} records, {bytes} bytes succeeded below U"
+            ),
+            Err(error) => {
+                assert!(
+                    matches!(error.kind(), HtmlSemanticFailureKind::LimitExceeded { .. }),
+                    "limits {nested} records, {bytes} bytes: {error:?}"
+                );
+                assert!(
+                    !holds,
+                    "limits {nested} records, {bytes} bytes refused at or above U"
+                );
+            }
+        }
+    };
+    for nested in (0..=400).chain(nested_threshold.saturating_sub(64)..=nested_threshold + 64) {
+        check(nested, ample, nested >= nested_threshold);
+    }
+    for bytes in (0..=40_000)
+        .step_by(37)
+        .chain(bytes_threshold.saturating_sub(64)..=bytes_threshold + 64)
+    {
+        check(ample, bytes, bytes >= bytes_threshold);
+    }
+}
+
+/// A one-token microdata list needs the minimum amortized capacity, 4 records: the first
+/// reservation of an empty vector grows to the greater of one record and the minimum capacity
+/// of 4 (the documented minimum of the shared growth policy), never a limit-sized request. The
+/// `itemprop` of a `meta` element is the only nested list the query keeps, so it is refused under
+/// nested-record limits 0 to 3 as a nested-record limit refusal and admitted at 4.
+#[test]
+fn a_one_token_list_is_refused_below_the_minimum_capacity_and_admitted_at_it() {
+    const MINIMUM_CAPACITY: usize = 4;
+    let (c, id) = single("meta", &[("itemprop", "p"), ("content", "v")]);
+    let cx = context(&c);
+    for nested in 0..=MINIMUM_CAPACITY {
+        let mut session = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(1_000_000),
+            HtmlSemanticLimits::new(100_000_000, 1_000, 1_000, 0, 100_000_000, nested),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let result = session.query(&[HtmlSemanticRequest::new(
+            id.clone(),
+            HtmlSemanticQuery::MicrodataProperty,
+        )]);
+        if nested < MINIMUM_CAPACITY {
+            let error = result.unwrap_err();
+            assert!(
+                matches!(
+                    error.kind(),
+                    HtmlSemanticFailureKind::LimitExceeded {
+                        resource: HtmlSemanticResource::NestedOutputRecords,
+                        limit,
+                        required,
+                    } if *limit == nested && *required == MINIMUM_CAPACITY
+                ),
+                "limit {nested}: {error:?}"
+            );
+        } else {
+            result.unwrap();
+        }
+    }
+}
