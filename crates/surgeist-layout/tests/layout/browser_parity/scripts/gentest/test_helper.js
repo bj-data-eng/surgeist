@@ -162,6 +162,64 @@ let rootContextCapture;
 // One synchronous observation occurrence; restored after every variant.
 let rootLocalObservation;
 
+// Closed source facts for the two additional root-local capabilities. These
+// predicates do not read used rectangles, body height, fonts or line metrics.
+function rootContextLiteralPx(value) {
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)px$/.test(value)) return undefined;
+  const number = Number(value.slice(0, -2));
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function rootContextBodyIndent(body) {
+  if (!body.style.length) return 0;
+  if (body.style.length !== 1 || body.style.item(0) !== 'text-indent') return undefined;
+  return rootContextLiteralPx(body.style.textIndent);
+}
+
+function rootContextStaticSpacer(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE || node.tagName !== 'DIV' ||
+      node.childNodes.length || Array.from(node.attributes).some(attribute => attribute.name !== 'style')) return false;
+  const properties = Array.from(node.style);
+  return properties.length === 4 &&
+    properties.every(property => ['display', 'position', 'width', 'height'].includes(property)) &&
+    node.style.display === 'block' && node.style.position === 'static' &&
+    rootContextLiteralPx(node.style.width) === 0 && rootContextLiteralPx(node.style.height) > 0;
+}
+
+function rootContextBodySequence(body, root) {
+  let reachedRoot = false;
+  for (const node of body.childNodes) {
+    if (node === root) { reachedRoot = true; continue; }
+    if (node.nodeType === Node.COMMENT_NODE ||
+        (node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent))) continue;
+    if (reachedRoot || !rootContextStaticSpacer(node)) return false;
+  }
+  return reachedRoot;
+}
+
+function qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width) {
+  const fail = () => { throw new Error('Root context: UnrepresentedInheritedIndent'); };
+  const indent = rootContextBodyIndent(proof.body);
+  if (indent === undefined || indent > width || htmlStyle.direction !== 'ltr' ||
+      parentStyle.direction !== 'ltr' || !['flex', 'inline-flex'].includes(proof.hypotheticalDisplay) ||
+      Array.from(proof.body.children).some(node => node.id !== 'test-root')) fail();
+  // text-indent inherits. Only empty fixed native Flex items are admitted here:
+  // no descendant inline line can consume a fact omitted by its normalized input.
+  if (Array.from(root.childNodes).some(node => node.nodeType !== Node.ELEMENT_NODE &&
+      node.nodeType !== Node.COMMENT_NODE &&
+      !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) fail();
+  if (!root.children.length || getComputedStyle(root).display !== 'flex') fail();
+  for (const child of root.children) {
+    if (child.tagName !== 'DIV' || child.childNodes.length ||
+        Array.from(child.attributes).some(attribute => attribute.name !== 'style') ||
+        Array.from(child.style).some(property => !['width', 'height', 'flex-shrink'].includes(property)) ||
+        !(rootContextLiteralPx(child.style.width) > 0) ||
+        !(rootContextLiteralPx(child.style.height) > 0) || child.style.flexShrink !== '0') fail();
+  }
+  if (rootContextLiteralPx(parentStyle.textIndent) !== indent) fail();
+  return proof.hypotheticalDisplay === 'inline-flex' ? indent : 0;
+}
+
 function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
   const reject = reason => { rootContextCapture = { reason }; };
   try {
@@ -169,9 +227,10 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     if (parsed.doctype?.name.toLowerCase() !== 'html' ||
         parsed.querySelectorAll('#test-root').length !== 1 ||
         parsed.querySelectorAll('body').length !== 1) return reject('SourceDocument');
-    if (parsed.documentElement.style.length || parsed.body.style.length) return reject('AuthoredBodyOrHtmlStyle');
+    if (parsed.documentElement.style.length || rootContextBodyIndent(parsed.body) === undefined) return reject('AuthoredBodyOrHtmlStyle');
     if ([parsed.documentElement, parsed.body].some(node =>
-        Array.from(node.attributes).some(attribute => !['lang', 'dir', 'class'].includes(attribute.name)))) return reject('SourceAncestorAttribute');
+        Array.from(node.attributes).some(attribute =>
+          !['lang', 'dir', 'class'].includes(attribute.name) && !(node === parsed.body && attribute.name === 'style')))) return reject('SourceAncestorAttribute');
     if (parsed.querySelector('style, iframe, frame, object, embed, base')) return reject('SourceFrameOrStyle');
     if (Array.from(parsed.querySelectorAll('*')).some(node =>
         Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
@@ -188,20 +247,23 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
         new URL(links[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
     const sourceRoot = parsed.getElementById('test-root');
     if (sourceRoot.parentElement !== parsed.body) return reject('SourceParent');
-    if (Array.from(parsed.body.childNodes).some(node => node !== sourceRoot &&
-        node.nodeType !== Node.COMMENT_NODE &&
-        !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) return reject('SourceBodySiblings');
+    if (!rootContextBodySequence(parsed.body, sourceRoot)) return reject('SourceBodySiblings');
+    if (document.body.innerHTML !== parsed.body.innerHTML) return reject('SourceBodyChanged');
     const expectedSheet = new CSSStyleSheet();
     expectedSheet.replaceSync(baseStyle);
     const rules = Array.from(expectedSheet.cssRules, rule => rule.cssText);
     const previous = rootContextCapture;
     let ownedStyle;
+    let bodyChildren;
     if (previous && !previous.reason && previous.source === source &&
         previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
         previous.styleUrl === styleUrl) {
       // Repeated setup retains the same authenticated owner; a marker alone
       // never authorizes a replacement sheet or repairs a changed document.
       ownedStyle = previous.ownedStyle;
+      bodyChildren = previous.bodyChildren;
+      if (!bodyChildren || bodyChildren.length !== document.body.childNodes.length ||
+          bodyChildren.some((node, index) => document.body.childNodes[index] !== node)) return reject('SourceBodyChanged');
       if (!ownedStyle.isConnected || ownedStyle.parentElement !== document.head ||
           ownedStyle.textContent !== baseStyle ||
           document.querySelectorAll('style, link').length !== 1 ||
@@ -209,6 +271,7 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
           document.styleSheets[0].ownerNode !== ownedStyle ||
           document.adoptedStyleSheets.length !== 0) return reject('StylesheetChanged');
     } else {
+      bodyChildren = Array.from(document.body.childNodes);
       const liveLinks = Array.from(document.querySelectorAll('link'));
       if (liveLinks.length !== 1 || liveLinks[0].parentElement !== document.head ||
           liveLinks[0].outerHTML !== links[0].outerHTML || liveLinks[0].disabled ||
@@ -230,7 +293,7 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
       sourceRoot.style.display || (sourceRoot.tagName === 'DIV' ? 'flex' : null);
     rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
       sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
-      body: parsed.body, rules, helperUrl, styleUrl };
+      body: parsed.body, bodyChildren, rules, helperUrl, styleUrl };
   } catch (_) {
     reject('SourceQualificationUnavailable');
   }
@@ -253,9 +316,9 @@ function captureRootContext(root) {
       .map(attribute => [attribute.name, attribute.value]).sort();
     if (JSON.stringify(attrs(live)) !== JSON.stringify(attrs(original))) fail('AncestorSourceChanged');
   }
-  if (Array.from(body.childNodes).some(node => node !== root &&
-      node.nodeType !== Node.COMMENT_NODE &&
-      !(node.nodeType === Node.TEXT_NODE && /^[\t\n\r ]*$/.test(node.textContent)))) fail('BodySiblings');
+  if (!rootContextBodySequence(body, root) || body.innerHTML !== proof.body.innerHTML ||
+      proof.bodyChildren.length !== body.childNodes.length ||
+      proof.bodyChildren.some((node, index) => body.childNodes[index] !== node)) fail('BodySiblings');
   const scripts = Array.from(document.scripts);
   if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
   const sheets = Array.from(document.styleSheets);
@@ -290,9 +353,9 @@ function captureRootContext(root) {
         style.scrollbarGutter !== 'auto' || !unshifted(style) ||
         edgeProperties.some(property => !zero(style[property]))) fail('ContainingFrame');
   }
-  // The exact admitted base stylesheet and empty html/body declaration lists
-  // establish Auto body dimensions. Used CSSOM body height is deliberately unread.
-  if (body.style.length || html.style.length) fail('AncestorInlineStyleChanged');
+  // The only admitted body declaration is a separately qualified literal indent.
+  // Neither it nor a fixed spacer establishes a body block-size percentage basis.
+  if (rootContextBodyIndent(body) === undefined || html.style.length) fail('AncestorInlineStyleChanged');
   if (![parentStyle.direction, htmlStyle.direction].every(value => ['ltr', 'rtl'].includes(value))) fail('ContainingDirection');
   if (window.scrollX !== 0 || window.scrollY !== 0) fail('ScrolledFrame');
   const visual = window.visualViewport;
@@ -301,7 +364,19 @@ function captureRootContext(root) {
   if (![width, height].every(value => Number.isFinite(value) && value >= 0) ||
       width !== visual.width || height !== visual.height ||
       body.clientWidth !== width) fail('ViewportExtentAuthority');
+  const hasSpacers = Array.from(body.children).some(node => node !== root);
+  for (const spacer of body.children) {
+    if (spacer === root) continue;
+    const spacerStyle = getComputedStyle(spacer);
+    if (spacerStyle.display !== 'block' || spacerStyle.position !== 'static' ||
+        spacerStyle.writingMode !== 'horizontal-tb' || spacerStyle.cssFloat !== 'none' ||
+        spacerStyle.clear !== 'none' || !unshifted(spacerStyle) ||
+        spacerStyle.clipPath !== 'none' || !['normal', 'none'].includes(spacerStyle.content) ||
+        edgeProperties.some(property => !zero(spacerStyle[property]))) fail('BodySiblings');
+  }
   const style = getComputedStyle(root);
+  if (hasSpacers && style.position !== 'absolute') fail('SourceBodySiblings');
+  if (body.style.length && style.position !== 'absolute') fail('AuthoredBodyOrHtmlStyle');
   if (root.tagName !== 'DIV' || !['normal', 'none'].includes(style.content)) fail('RootBoxRole');
   if (marginProperties.some(property => root.style[property] && !/^(?:0|[-+]?0(?:\.0+)?px)$/.test(root.style[property]))) fail('AuthoredRootEdges');
   if (!unshifted(style) || style.cssFloat !== 'none' || style.clear !== 'none' ||
@@ -349,21 +424,25 @@ function captureRootContext(root) {
     const blockified = { 'inline-flex': 'flex', 'inline-grid': 'grid' };
     if (!['block', 'flow-root', 'flex', 'inline-flex', 'grid', 'inline-grid', 'grid-lanes'].includes(hypotheticalDisplay) ||
         style.display !== (blockified[hypotheticalDisplay] || hypotheticalDisplay)) fail('HypotheticalDisplaySource');
-    // The source proof permits only comments/collapsible ASCII whitespace before
-    // the sole root. Its empty first line has no advance donor, indentation,
-    // alignment displacement or float. Root direction is not the line direction.
+    // A qualified spacer changes only the omitted common block translation.
+    // No font/strut or used root/body rectangle supplies a static-position operand.
     if (parentStyle.whiteSpace !== 'normal' || parentStyle.textAlign !== 'start' ||
-        !zero(parentStyle.textIndent) ||
         ![parentStyle.unicodeBidi, style.unicodeBidi].every(value => ['normal', 'isolate'].includes(value))) fail('HypotheticalInlineStartUnavailable');
     // Actual absolute positioning supplies the root's independent formatting
     // context even for visible-overflow Block. Local observation does not
     // promise its hypothetical block origin; complete subtree independence
     // below remains mandatory before that translation can be omitted.
     qualifyRootLocalSubtree(root, unshifted);
+    let hypotheticalInlineOffset = 0;
+    if (body.style.length) {
+      hypotheticalInlineOffset = qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width);
+    } else if (!zero(parentStyle.textIndent)) {
+      fail('HypotheticalInlineStartUnavailable');
+    }
     return { kind: 'absolute-root-local', containingWidth: width,
       containingHeight: height, containingDirection: htmlStyle.direction,
       hypotheticalDirection: parentStyle.direction, hypotheticalDisplay,
-      hypotheticalAnchor: 'inline-start', hypotheticalInlineOffset: 0, fallback };
+      hypotheticalAnchor: 'inline-start', hypotheticalInlineOffset, fallback };
   }
   if (style.position === 'static' || style.position === 'relative') {
     if (!nonCollapsingBoundary) fail('UnqualifiedInitialBlockOrigin');

@@ -32,12 +32,28 @@ The request keeps full actual CB width/height as percentage bases, Normal
 operations and independently indefinite block availability. Native shrink-to-fit
 acceptance uses genuine min/max contributions. Root-local output starts at zero.
 
-The current producer establishes only `s = 0`: the sole direct-body root has an
-empty, unindented, start-aligned hypothetical first line, with only collapsible
-ASCII whitespace/comments around it and no preceding content or floats. It
-checks actual whitespace/bidi/alignment without inventing a font, strut or line
-rectangle. Nonzero indentation, preserved leading content and preceding spacers
-need separately qualified source profiles.
+The ordinary zero-offset profile has an empty, unindented, start-aligned
+hypothetical first line, with only collapsible ASCII whitespace/comments and no
+inline advance donor or preceding float. A separate literal-indent profile permits
+one body declaration, `text-indent`, as a finite nonnegative literal pixel length
+not greater than the containing width. HTML and body must both be horizontal LTR,
+with normal whitespace, start alignment and the admitted ordinary/isolate bidi
+state. The body has no element sibling of the root. The hypothetical display must
+be `flex` or `inline-flex`, and every direct Flex item must be an empty DIV with
+positive fixed-pixel width/height and `flex-shrink:0`, using the controlled base
+edges and positioning. Hypothetical block Flex has `s = 0`; inline Flex receives
+the literal first-line indent. Other inherited-indent consumers, nested/text
+content, nonzero cross-direction indentation and other body declarations refuse.
+The profile does not invent a font, strut or line rectangle.
+
+A separately qualified static spacer prefix may contain empty DIVs with exactly
+`display:block; position:static; width:0px; height:<positive literal px>`.
+They must have zero actual edges, no float/clear or external displacement, and
+precede the absolute root; element siblings after it refuse. They affect only the
+omitted common block translation. The complete root-local dependency proof still
+applies: no spacer/root rectangle, used body height or line metric supplies a
+request operand. Preserved whitespace, leading floats and arbitrary siblings
+remain unsupported. Indent and spacer profiles are not combined.
 
 BlockFlow has Normal operations, definite parent inline extent, independently
 indefinite Auto block extent and percentage parent `(Some(inline), None)`.
@@ -76,8 +92,13 @@ checks the retained owner, text, CSSOM rules and complete sheet inventory.
 Repeated setup retains that owner; a marker cannot authorize replacement or
 repair changed source. Additional/adopted/opaque/changed sheets refuse.
 
-The closed profile has no extra scripts/frames, html/body inline declarations or
-extra body content. Source and live subtree/frame facts must remain stable.
+The closed profile has no extra scripts/frames or HTML inline declarations.
+Body declarations and extra body content are limited to the literal-indent and
+static-spacer profiles above, and only for absolute-root-local capture. Source
+and live body serialization must match. Retained live child-node references
+also authenticate body membership, source order and identity on every variant;
+repeated setup cannot repair replaced or reordered children. Source and live
+subtree/frame facts must remain stable.
 Absolute-local capture additionally checks every box for local facts that do
 not depend on a common translation. Fixed/sticky/transformed frames, external
 sizing and anchors, remaining-block-space dependence, noninitial scrolling and unqualified
