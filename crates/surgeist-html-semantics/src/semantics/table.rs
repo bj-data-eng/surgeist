@@ -213,6 +213,8 @@ struct Scratch<'a> {
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
     memo: Vec<HeaderMemo>,
+    /// Lines of a scan that are scanned one at a time.
+    specials: Vec<usize>,
     /// The header cells whose `scope` names a row group, and those whose
     /// `scope` names a column group, in model order. Kept only for tables
     /// that have such groups.
@@ -233,23 +235,15 @@ struct Scratch<'a> {
 }
 impl Scratch<'_> {
     /// Every capacity admitted for this query's scratch.
-    fn capacities(&self) -> [usize; 25] {
-        let [d0, d1, d2, d3, d4, d5, d6, d7] = self.placement.capacities();
+    fn capacities(&self) -> impl Iterator<Item = usize> {
         [
             self.footers.capacity(),
-            d0,
-            d1,
-            d2,
-            d3,
-            d4,
-            d5,
-            d6,
-            d7,
             self.headers.capacity(),
             self.opaque.capacity(),
             self.block.capacity(),
             self.document.capacity(),
             self.memo.capacity(),
+            self.specials.capacity(),
             self.row_group_headers.capacity(),
             self.column_group_headers.capacity(),
             self.flags.capacity(),
@@ -257,11 +251,11 @@ impl Scratch<'_> {
             self.placed.capacity(),
             self.order.capacity(),
             self.column_counts.capacity(),
-            self.columns.breaks.capacity(),
-            self.columns.lines.capacity() + self.columns.entries.capacity(),
-            self.rows.breaks.capacity(),
-            self.rows.lines.capacity() + self.rows.entries.capacity(),
         ]
+        .into_iter()
+        .chain(self.placement.capacities())
+        .chain(self.columns.capacities())
+        .chain(self.rows.capacities())
     }
 }
 /// The content attribute a span rule reads.

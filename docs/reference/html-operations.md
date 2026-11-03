@@ -2201,23 +2201,34 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     row is reached.
   - *Assigning headers* needs the row and column indexes only when the table
     has a header cell; a table of data cells costs its placement and one read
-    of each cell's `headers` attribute. Consecutive rows (or columns) that
-    the same cells cover alike are one line, so a cell adds one record per
-    line it crosses, not one per row or column it spans; a table of unit-span
-    cells has `L = 2C`. The indexes cost `O(C + W + H + L)` and are admitted
-    from the spans as scratch records before they are allocated. For each cell
-    without a `headers` attribute a scan costs a binary search, one visit per
-    header cell met and one step for each run of data cells, however long, in
-    each line the cell crosses. A table of `n` by `n` cells whose headers are a
-    first row and first column, with or without a `tbody`, therefore costs
-    `O(C log C)`: the work grows by about four for each quadrupling of the
-    cells. A line made only of header cells costs a visit per header for each
-    cell that scans it, up to `O(C * (W + H))`, and a table of many tall header
-    cells that cross many different lines costs `L`, up to `C * H`. A cell in a
-    row group (or column group) reads, once, the `scope` of every header cell
-    when the table has such groups, and tests only the header cells whose
-    `scope` names its group. A line in which cells overlap is scanned one slot
-    at a time, `O(log)` per slot.
+    of each cell's `headers` attribute. Cells that cross more than one row (or
+    column) are listed once for each run of rows they cross alike, runs
+    beginning wherever such a cell starts or ends, so a tall cell is not
+    recorded once per row; cells inside one row are listed with their row.
+    Let `L` be the number of times a tall cell crosses a run: tall cells that
+    span the same rows cross one run each, and `L` is quadratic only when
+    their row ranges are all different. The indexes cost `O(C log C + W + H +
+    L)` and are admitted from the spans as scratch records before they are
+    allocated. A cell without a `headers` attribute scans leftward each row it
+    crosses and upward each column. The rows of one run hold the same tall
+    cells, so a single scan serves every row of the run that has no cell of its
+    own before the scanning cell and no overlap; any other row is scanned on
+    its own, and a scan costs a binary search, one visit per header cell met
+    and one step for each run of data cells, however long. A table of `n` by
+    `n` cells whose headers are a first row and first column, with or without
+    a `tbody`, and tall header cells with data cells between them beside later
+    rows that hold their own cells to the right, therefore cost `O(C log C)`:
+    the work grows by about four for each quadrupling of the cells. A line made
+    only of header cells costs a visit per header for each cell that scans it,
+    up to `O(C * (W + H))`, and a row with its own header cell before a tall
+    cell is scanned for that cell: that row's header may be one of the tall
+    cell's. A cell in a row group (or column group) tests only the header cells
+    whose `scope` names its group, after reading, once, the `scope` of every
+    header cell when the table has such groups: a table with a row or column
+    group is refused for a `scope` value that is too long to read on any header
+    cell, even one that no cell would otherwise have reached. A row or column
+    where cells share a slot is scanned one slot at a time, `O(log)` per slot,
+    and each such row is scanned on its own.
   - The `headers` attribute is outside this bound: each token searches the
     document, and each resolved token searches the cells.
   - Everything the model needs beyond the retained records is scratch: the

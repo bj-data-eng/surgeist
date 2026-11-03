@@ -36,6 +36,13 @@ pub(super) struct Footprint {
     pub(super) right: usize,
 }
 
+/// Two cells that share a slot, by their place in the model.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Overlap {
+    pub(super) cell: usize,
+    pub(super) other: usize,
+}
+
 /// What formation keeps while it places cells row by row.
 #[derive(Default)]
 pub(super) struct Placement {
@@ -52,11 +59,14 @@ pub(super) struct Placement {
     reaches: Vec<Reach>,
     /// Earlier cells a new cell overlaps, before they are reported in order.
     hits: Vec<usize>,
+    /// Every pair of cells that share a slot: the lines the header scans
+    /// cannot take one occupant at a time are the lines these cross.
+    pub(super) overlaps: Vec<Overlap>,
 }
 
 impl Placement {
     /// Every capacity admitted for this placement's scratch.
-    pub(super) fn capacities(&self) -> [usize; 8] {
+    pub(super) fn capacities(&self) -> [usize; 9] {
         let [low, floor, ceil] = self.occupancy.capacities();
         [
             self.downward.capacity(),
@@ -64,6 +74,7 @@ impl Placement {
             self.links.capacity(),
             self.reaches.capacity(),
             self.hits.capacity(),
+            self.overlaps.capacity(),
             low,
             floor,
             ceil,
@@ -165,6 +176,12 @@ impl<'a> HtmlSemanticSession<'a> {
             .unwrap_or(0);
         self.charge(overlapping.saturating_mul(1 + bits))?;
         place.hits.sort_unstable();
+        let new = model.cells.len();
+        for position in 0..place.hits.len() {
+            self.charge(1)?;
+            let other = place.hits[position];
+            self.table_scratch(&mut place.overlaps, Overlap { cell: new, other })?;
+        }
         for &index in &place.hits {
             self.charge(1)?;
             let Some(other) = model.cells.get(index) else {

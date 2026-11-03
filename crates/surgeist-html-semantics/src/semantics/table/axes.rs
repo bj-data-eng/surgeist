@@ -2,13 +2,17 @@
 //! rows and columns that no cell is anchored in (HTML 877d §4.9.12.1, the last
 //! step of forming a table).
 //!
-//! An axis is built from the finished cells: the lines where the covering
-//! cells change, how many cells cross each line, the cells ordered line by
-//! line, and then the finished entries, each with its running reach and the
-//! nearest header before it. Every record is admitted from the cells' spans
-//! before anything is allocated, and every step is paid for before it is taken.
+//! An axis is built from the finished cells in two parts. Cells that cross
+//! more than one line are listed once for each run of lines they cross alike,
+//! and cells that cross one line only are listed with their line; each list is
+//! sorted by start, with its running reach and the nearest header before each
+//! entry. A tree over the short lines finds those with a cell before a given
+//! slot, the data cells are kept as sorted extents, and the lines where cells
+//! share a slot are merged from the overlaps formation recorded. Every record
+//! is admitted from the cells' spans before anything is allocated, and every
+//! step is paid for before it is taken.
 
-use super::slots::{SlotEntry, SlotLine};
+use super::slots::{Extent, Run, ShortLine, SlotEntry};
 use super::*;
 
 /// How a cell crosses one axis: it spans `count` lines from line `first`, and
@@ -44,13 +48,6 @@ impl Crossing {
     fn after(&self) -> usize {
         self.first.saturating_add(self.count)
     }
-}
-
-/// The two tables an axis is placed into: where each line's cells begin, then
-/// the cells in line order.
-struct Tally<'t> {
-    line_counts: &'t mut [usize],
-    placed: &'t mut [usize],
 }
 
 impl<'a> HtmlSemanticSession<'a> {
@@ -101,21 +98,53 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(())
     }
 
-    /// Builds the row and column lines of the finished model: the cells that
-    /// cover a run of identical rows as intervals of columns sorted by start,
-    /// and for each run of identical columns the intervals of rows.
+    /// Builds the row and column indexes of the finished model.
     pub(super) fn table_axes(
         &mut self,
         model: &HtmlTableModel,
         scratch: &mut Scratch<'_>,
     ) -> TableResult<()> {
+        // The cells ordered by column, ties in model order.
+        let width = model.width();
+        let counted = self.table_add(width, 1)?;
+        self.charge(counted)?;
+        scratch.column_counts.clear();
+        self.reserve_scratch(&mut scratch.column_counts, counted)?;
+        scratch.column_counts.resize(counted, 0);
+        self.charge(model.cells.len())?;
+        scratch.order.clear();
+        self.reserve_scratch(&mut scratch.order, model.cells.len())?;
+        scratch.order.resize(model.cells.len(), 0);
+        for cell in &model.cells {
+            self.charge(1)?;
+            if let Some(count) = scratch.column_counts.get_mut(cell.x + 1) {
+                *count += 1;
+            }
+        }
+        let mut running = 0;
+        for count in scratch.column_counts.iter_mut() {
+            self.charge(1)?;
+            running += *count;
+            *count = running;
+        }
+        // `column_counts[x]` is now the number of cells left of column `x`.
+        for (index, cell) in model.cells.iter().enumerate() {
+            self.charge(1)?;
+            if let Some(slot) = scratch.column_counts.get_mut(cell.x)
+                && let Some(place) = scratch.order.get_mut(*slot)
+            {
+                *place = index;
+                *slot += 1;
+            }
+        }
         self.table_axis(model, true, scratch)?;
         self.table_axis(model, false, scratch)
     }
 
-    /// One axis. The lines list their cells in ascending order of start:
-    /// columns take the cells in model order, which is ascending in row; rows
-    /// take them ordered by column.
+    /// One axis. Its lists are in ascending order of start: along the columns
+    /// the cells of a column come in model order, which is ascending in row;
+    /// along the rows the cells of a row come in model order, which is
+    /// ascending in column.
     fn table_axis(
         &mut self,
         model: &HtmlTableModel,
@@ -127,25 +156,47 @@ impl<'a> HtmlSemanticSession<'a> {
             line_counts,
             placed,
             order,
-            column_counts,
+            placement,
             columns,
             rows,
             ..
         } = scratch;
+        let overlaps = &placement.overlaps;
         let axis = if vertical { columns } else { rows };
-        let extent = if vertical {
+        axis.lines = if vertical {
             model.width()
         } else {
             model.height()
         };
-        // A new line begins wherever a cell starts or ends.
-        self.table_flags(flags, extent)?;
+        let cells = model.cells.len();
+        // The cells in ascending order of start along their line, and in
+        // ascending order of the line they begin at.
+        let by_start = |position: usize| {
+            if vertical {
+                position
+            } else {
+                order.get(position).copied().unwrap_or(0)
+            }
+        };
+        let by_line = |position: usize| {
+            if vertical {
+                order.get(position).copied().unwrap_or(0)
+            } else {
+                position
+            }
+        };
+        // A new run begins wherever a cell that crosses several lines starts
+        // or ends.
+        self.table_flags(flags, axis.lines)?;
         if let Some(first) = flags.first_mut() {
             *first = true;
         }
         for cell in &model.cells {
             self.charge(1)?;
             let crossing = Crossing::of(cell, vertical);
+            if crossing.count < 2 {
+                continue;
+            }
             for position in [crossing.first, crossing.after()] {
                 if let Some(mark) = flags.get_mut(position) {
                     *mark = true;
@@ -153,20 +204,20 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
         let mut runs = 0;
-        for position in 0..extent {
+        for position in 0..axis.lines {
             self.charge(1)?;
             if flags.get(position).copied().unwrap_or(false) {
                 runs += 1;
             }
         }
         self.reserve_scratch(&mut axis.breaks, runs)?;
-        for position in 0..extent {
+        for position in 0..axis.lines {
             self.charge(1)?;
             if flags.get(position).copied().unwrap_or(false) {
                 axis.breaks.push(position);
             }
         }
-        // How many cells cross each line.
+        // How many long cells cross each run.
         self.charge(runs)?;
         line_counts.clear();
         self.reserve_scratch(line_counts, runs)?;
@@ -175,21 +226,28 @@ impl<'a> HtmlSemanticSession<'a> {
         for cell in &model.cells {
             self.charge(1)?;
             let crossing = Crossing::of(cell, vertical);
-            let span = axis.lines_of(crossing.first, crossing.after(), &mut |work| {
-                self.charge(work).map_err(TableStop::from)
-            })?;
+            if crossing.count < 2 {
+                continue;
+            }
+            let span = axis.runs_of(
+                Extent {
+                    start: crossing.first,
+                    length: crossing.count,
+                },
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
             total = self.table_add(total, span.last - span.first)?;
-            for line in span.first..span.last {
+            for run in span.first..span.last {
                 self.charge(1)?;
-                if let Some(count) = line_counts.get_mut(line) {
+                if let Some(count) = line_counts.get_mut(run) {
                     *count += 1;
                 }
             }
         }
         placed.clear();
         self.reserve_scratch(placed, total)?;
-        self.reserve_scratch(&mut axis.entries, total)?;
-        self.reserve_scratch(&mut axis.lines, runs)?;
+        self.reserve_scratch(&mut axis.long, total)?;
+        self.reserve_scratch(&mut axis.runs, runs)?;
         self.charge(total)?;
         placed.resize(total, 0);
         let mut running = 0;
@@ -198,77 +256,45 @@ impl<'a> HtmlSemanticSession<'a> {
             running += *count;
             *count = running;
         }
-        // Place every cell at the back of each line it crosses, last cell
-        // first, so that each line ends up in ascending order.
-        if vertical {
-            for index in (0..model.cells.len()).rev() {
-                self.table_place(
-                    model,
-                    index,
-                    vertical,
-                    axis,
-                    &mut Tally {
-                        line_counts,
-                        placed,
-                    },
-                )?;
+        // Place every long cell at the back of each run it crosses, last cell
+        // first, so that each run ends up in ascending order of start.
+        for position in (0..cells).rev() {
+            self.charge(1)?;
+            let index = by_start(position);
+            let Some(cell) = model.cells.get(index) else {
+                return Err(self
+                    .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                    .into());
+            };
+            let crossing = Crossing::of(cell, vertical);
+            if crossing.count < 2 {
+                continue;
             }
-        } else {
-            let width = model.width();
-            let counted = self.table_add(width, 1)?;
-            self.charge(counted)?;
-            column_counts.clear();
-            self.reserve_scratch(column_counts, counted)?;
-            column_counts.resize(counted, 0);
-            self.charge(model.cells.len())?;
-            order.clear();
-            self.reserve_scratch(order, model.cells.len())?;
-            order.resize(model.cells.len(), 0);
-            for cell in &model.cells {
+            let span = axis.runs_of(
+                Extent {
+                    start: crossing.first,
+                    length: crossing.count,
+                },
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            for run in span.first..span.last {
                 self.charge(1)?;
-                if let Some(count) = column_counts.get_mut(cell.x + 1) {
-                    *count += 1;
-                }
-            }
-            let mut running = 0;
-            for count in column_counts.iter_mut() {
-                self.charge(1)?;
-                running += *count;
-                *count = running;
-            }
-            // `column_counts[x]` is now the number of cells left of column `x`.
-            for (index, cell) in model.cells.iter().enumerate() {
-                self.charge(1)?;
-                if let Some(slot) = column_counts.get_mut(cell.x)
-                    && let Some(place) = order.get_mut(*slot)
+                if let Some(count) = line_counts.get_mut(run)
+                    && let Some(back) = count.checked_sub(1)
+                    && let Some(slot) = placed.get_mut(back)
                 {
-                    *place = index;
-                    *slot += 1;
+                    *count = back;
+                    *slot = index;
                 }
-            }
-            for position in (0..order.len()).rev() {
-                self.charge(1)?;
-                let index = order.get(position).copied().unwrap_or(0);
-                self.table_place(
-                    model,
-                    index,
-                    vertical,
-                    axis,
-                    &mut Tally {
-                        line_counts,
-                        placed,
-                    },
-                )?;
             }
         }
-        // Finish the lines: the running reach, whether the line's entries are
-        // disjoint, the nearest header at or before each entry, and whether
-        // any entry is a data cell.
-        for line in 0..runs {
+        // Finish the runs: each entry gets the running reach and the nearest
+        // header at or before it.
+        for run in 0..runs {
             self.charge(1)?;
-            let first = line_counts.get(line).copied().unwrap_or(0);
-            let end = line_counts.get(line + 1).copied().unwrap_or(total);
-            let (mut reach, mut header, mut regular, mut data) = (0, None, true, false);
+            let first = line_counts.get(run).copied().unwrap_or(0);
+            let end = line_counts.get(run + 1).copied().unwrap_or(total);
+            let mut tail = Tail::default();
             for position in first..end {
                 self.charge(1)?;
                 let Some(cell) = placed.get(position).and_then(|&c| model.cells.get(c)) else {
@@ -276,62 +302,205 @@ impl<'a> HtmlSemanticSession<'a> {
                         .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                         .into());
                 };
-                let crossing = Crossing::of(cell, vertical);
-                if position > first && crossing.start < reach {
-                    regular = false;
-                }
-                reach = reach.max(crossing.end);
-                if cell.kind == HtmlTableCellKind::Header {
-                    header = Some(position);
-                } else {
-                    data = true;
-                }
-                axis.entries.push(SlotEntry {
-                    start: crossing.start,
-                    end: crossing.end,
-                    cell: placed[position],
-                    reach,
-                    header,
-                });
+                let entry = tail.entry(cell, placed[position], position, vertical);
+                axis.long.push(entry);
             }
-            axis.lines.push(SlotLine {
+            axis.runs.push(Run { first, end });
+        }
+        // The cells that cross one line only, each line's in ascending order
+        // of start.
+        let (mut entries, mut lines, mut previous) = (0usize, 0usize, None);
+        for position in 0..cells {
+            self.charge(1)?;
+            let Some(cell) = model.cells.get(by_line(position)) else {
+                continue;
+            };
+            let crossing = Crossing::of(cell, vertical);
+            if crossing.count != 1 {
+                continue;
+            }
+            entries += 1;
+            if previous != Some(crossing.first) {
+                lines += 1;
+                previous = Some(crossing.first);
+            }
+        }
+        self.reserve_scratch(&mut axis.short, entries)?;
+        self.reserve_scratch(&mut axis.short_lines, lines)?;
+        let mut open: Option<(usize, usize)> = None;
+        let mut tail = Tail::default();
+        for position in 0..cells {
+            self.charge(1)?;
+            let index = by_line(position);
+            let Some(cell) = model.cells.get(index) else {
+                continue;
+            };
+            let crossing = Crossing::of(cell, vertical);
+            if crossing.count != 1 {
+                continue;
+            }
+            if open.is_none_or(|(line, _)| line != crossing.first) {
+                if let Some((line, first)) = open {
+                    axis.short_lines.push(ShortLine {
+                        line,
+                        first,
+                        end: axis.short.len(),
+                    });
+                }
+                open = Some((crossing.first, axis.short.len()));
+                tail = Tail::default();
+            }
+            let at = axis.short.len();
+            let entry = tail.entry(cell, index, at, vertical);
+            axis.short.push(entry);
+        }
+        if let Some((line, first)) = open {
+            axis.short_lines.push(ShortLine {
+                line,
                 first,
-                end,
-                regular,
-                data,
+                end: axis.short.len(),
             });
         }
-        Ok(())
-    }
-
-    /// Places cell `index` at the back of each line it crosses.
-    fn table_place(
-        &mut self,
-        model: &HtmlTableModel,
-        index: usize,
-        vertical: bool,
-        axis: &SlotAxis,
-        tally: &mut Tally<'_>,
-    ) -> TableResult<()> {
-        let Some(cell) = model.cells.get(index) else {
-            return Err(self
-                .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
-                .into());
-        };
-        let crossing = Crossing::of(cell, vertical);
-        let span = axis.lines_of(crossing.first, crossing.after(), &mut |work| {
-            self.charge(work).map_err(TableStop::from)
-        })?;
-        for line in span.first..span.last {
+        // The tree of least starts over the short lines.
+        let size = axis.short_lines.len().max(1).next_power_of_two();
+        let nodes = self.table_add(size, size)?;
+        self.charge(nodes)?;
+        self.reserve_scratch(&mut axis.least, nodes)?;
+        axis.least.resize(nodes, usize::MAX);
+        for (position, line) in axis.short_lines.iter().enumerate() {
             self.charge(1)?;
-            if let Some(count) = tally.line_counts.get_mut(line)
-                && let Some(back) = count.checked_sub(1)
-                && let Some(slot) = tally.placed.get_mut(back)
-            {
-                *count = back;
-                *slot = index;
+            let least = axis.short.get(line.first).map_or(usize::MAX, |e| e.start);
+            if let Some(leaf) = axis.least.get_mut(size + position) {
+                *leaf = least;
             }
         }
+        for node in (1..size).rev() {
+            self.charge(1)?;
+            let least = axis
+                .least
+                .get(2 * node)
+                .zip(axis.least.get(2 * node + 1))
+                .map_or(usize::MAX, |(a, b)| *a.min(b));
+            if let Some(slot) = axis.least.get_mut(node) {
+                *slot = least;
+            }
+        }
+        // The data cells' extents in ascending order of the line they begin
+        // at, with the greatest end so far.
+        let mut data = 0usize;
+        for cell in &model.cells {
+            self.charge(1)?;
+            if cell.kind == HtmlTableCellKind::Data {
+                data += 1;
+            }
+        }
+        self.reserve_scratch(&mut axis.data.starts, data)?;
+        self.reserve_scratch(&mut axis.data.reach, data)?;
+        let mut reach = 0;
+        for position in 0..cells {
+            self.charge(1)?;
+            let Some(cell) = model.cells.get(by_line(position)) else {
+                continue;
+            };
+            if cell.kind != HtmlTableCellKind::Data {
+                continue;
+            }
+            let crossing = Crossing::of(cell, vertical);
+            reach = reach.max(crossing.after());
+            axis.data.starts.push(crossing.first);
+            axis.data.reach.push(reach);
+        }
+        // The lines where two cells share a slot: where the pair's rectangles
+        // meet, merged.
+        for pair in overlaps {
+            self.charge(1)?;
+            let (Some(cell), Some(other)) =
+                (model.cells.get(pair.cell), model.cells.get(pair.other))
+            else {
+                continue;
+            };
+            let (a, b) = (Crossing::of(cell, vertical), Crossing::of(other, vertical));
+            let start = a.first.max(b.first);
+            let end = a.after().min(b.after());
+            if start < end {
+                let extent = Extent {
+                    start,
+                    length: end - start,
+                };
+                self.table_scratch(&mut axis.irregular, extent)?;
+            }
+        }
+        let count = axis.irregular.len();
+        let bits = count
+            .checked_ilog2()
+            .and_then(|bits| usize::try_from(bits).ok())
+            .unwrap_or(0);
+        self.charge(count.saturating_mul(1 + bits))?;
+        axis.irregular.sort_unstable_by_key(|e| e.start);
+        let mut kept = 0;
+        for position in 0..count {
+            self.charge(1)?;
+            let next = axis.irregular[position];
+            if kept > 0 && next.start <= axis.irregular[kept - 1].end() {
+                let last = &mut axis.irregular[kept - 1];
+                last.length = last.end().max(next.end()) - last.start;
+            } else {
+                axis.irregular[kept] = next;
+                kept += 1;
+            }
+        }
+        axis.irregular.truncate(kept);
         Ok(())
+    }
+}
+
+/// What a line's entries carry from the entries before them.
+#[derive(Default)]
+struct Tail {
+    reach: usize,
+    header: Option<LastHeader>,
+}
+
+/// The nearest header so far.
+#[derive(Clone, Copy)]
+struct LastHeader {
+    at: usize,
+    key: Extent,
+    differs: Option<usize>,
+}
+
+impl Tail {
+    /// The entry of `cell` at table index `at`.
+    fn entry(
+        &mut self,
+        cell: &HtmlTableCell,
+        index: usize,
+        at: usize,
+        vertical: bool,
+    ) -> SlotEntry {
+        let crossing = Crossing::of(cell, vertical);
+        let key = Extent {
+            start: crossing.first,
+            length: crossing.count,
+        };
+        self.reach = self.reach.max(crossing.end);
+        let mut differs = None;
+        if cell.kind == HtmlTableCellKind::Header {
+            differs = match self.header {
+                Some(last) if last.key != key => Some(last.at),
+                Some(last) => last.differs,
+                None => None,
+            };
+            self.header = Some(LastHeader { at, key, differs });
+        }
+        SlotEntry {
+            start: crossing.start,
+            end: crossing.end,
+            cell: index,
+            reach: self.reach,
+            header: self.header.map(|last| last.at),
+            key,
+            differs,
+        }
     }
 }

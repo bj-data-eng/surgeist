@@ -7,7 +7,7 @@
 //! long it is. A line where cells overlap is scanned one slot at a time, the
 //! slots with no occupant or several being skipped as the algorithm says.
 
-use super::slots::{self, Cover, Extent, LineView, SlotAxis};
+use super::slots::{self, Cover, Extent, List, SlotAxis, SlotEntry};
 use super::*;
 
 /// What the header scans remember about one cell. A cell's attributes do not
@@ -38,16 +38,12 @@ struct Scan<'s> {
     opaque: &'s mut Vec<usize>,
     block: &'s mut Vec<usize>,
     memo: &'s mut Vec<HeaderMemo>,
+    /// The lines of a scan that must be scanned one at a time.
+    specials: &'s mut Vec<usize>,
     axes: Axes<'s>,
     in_block: bool,
-}
-
-/// Where a scan begins: the row or column to scan, and the slot in it that
-/// the principal cell is anchored at (the scan starts one before it).
-#[derive(Clone, Copy)]
-struct ScanStart {
-    line: usize,
-    from: usize,
+    /// Some cell of the block crosses lines that no opaque header does.
+    live: bool,
 }
 
 /// The first row and column beyond the principal cell.
@@ -55,6 +51,13 @@ struct ScanStart {
 struct Far {
     right: usize,
     bottom: usize,
+}
+
+/// The cells of one line: the long cells of its run and its short cells.
+#[derive(Clone, Copy)]
+struct Occupants<'a> {
+    long: List<'a>,
+    short: List<'a>,
 }
 
 /// The header cells whose `scope` names a group, by kind.
@@ -113,18 +116,13 @@ impl<'a> HtmlSemanticSession<'a> {
                     return Ok(known);
                 }
                 let header = &model.cells[index];
-                let bottom = self.table_add(header.y, header.height)?;
-                let span = rows.lines_of(header.y, bottom, &mut |work| {
+                let lines = Extent {
+                    start: header.y,
+                    length: header.height,
+                };
+                let shared = rows.data.crosses(lines, &mut |work| {
                     self.charge(work).map_err(TableStop::from)
                 })?;
-                let mut shared = false;
-                for row in span.first..span.last {
-                    self.charge(1)?;
-                    if rows.lines.get(row).is_some_and(|line| line.data) {
-                        shared = true;
-                        break;
-                    }
-                }
                 if let Some(entry) = memo.get_mut(index) {
                     entry.column = Some(!shared);
                 }
@@ -152,18 +150,13 @@ impl<'a> HtmlSemanticSession<'a> {
                     return Ok(known);
                 }
                 let header = &model.cells[index];
-                let right = self.table_add(header.x, header.width)?;
-                let span = axes.columns.lines_of(header.x, right, &mut |work| {
+                let lines = Extent {
+                    start: header.x,
+                    length: header.width,
+                };
+                let shared = axes.columns.data.crosses(lines, &mut |work| {
                     self.charge(work).map_err(TableStop::from)
                 })?;
-                let mut shared = false;
-                for column in span.first..span.last {
-                    self.charge(1)?;
-                    if axes.columns.lines.get(column).is_some_and(|line| line.data) {
-                        shared = true;
-                        break;
-                    }
-                }
                 if let Some(entry) = memo.get_mut(index) {
                     entry.row = Some(!shared);
                 }
@@ -179,6 +172,7 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(());
         }
         scan.in_block = false;
+        scan.live = false;
         for index in scan.block.iter() {
             self.charge(1)?;
             self.table_scratch(scan.opaque, *index)?;
@@ -212,6 +206,9 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
         if !blocked {
+            scan.live = true;
+        }
+        if !blocked {
             blocked = if vertical {
                 !self.table_column_header(model, index, scan.axes.rows, scan.memo)?
             } else {
@@ -223,80 +220,266 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(())
     }
-    /// Scans from the principal cell toward the start of one row (leftward) or
-    /// one column (upward), taking the occupant of each slot in turn. Visiting
-    /// a cell once instead of once per slot it covers changes nothing, because
-    /// a repeated visit re-adds a header already found (duplicates are dropped
-    /// when associations are made), a block member already present, and a data
-    /// cell with no block left to end.
-    fn table_scan(
+    /// Scans from the principal cell toward the start of each row it crosses
+    /// (leftward) or of each column it crosses (upward), taking the occupant of
+    /// each slot in turn.
+    ///
+    /// The lines of one run hold the same long cells, so the scans of those
+    /// lines differ only by their short cells and by overlaps. A line with a
+    /// short cell before the principal cell, or where two cells share a slot,
+    /// is scanned on its own; all the others, however many, are scanned once.
+    fn table_scan_axis(
         &mut self,
         model: &HtmlTableModel,
         scan: &mut Scan<'_>,
         principal: usize,
-        start: ScanStart,
         vertical: bool,
+    ) -> TableResult<()> {
+        let cell = &model.cells[principal];
+        let (axis, lines, from) = if vertical {
+            (
+                scan.axes.columns,
+                Extent {
+                    start: cell.x,
+                    length: cell.width,
+                },
+                cell.y,
+            )
+        } else {
+            (
+                scan.axes.rows,
+                Extent {
+                    start: cell.y,
+                    length: cell.height,
+                },
+                cell.x,
+            )
+        };
+        let runs = axis.runs_of(lines, &mut |work| {
+            self.charge(work).map_err(TableStop::from)
+        })?;
+        for run in runs.first..runs.last {
+            self.charge(1)?;
+            let Some(long) = axis.run(run) else {
+                return Err(self
+                    .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                    .into());
+            };
+            let covered = axis.run_lines(run);
+            let start = covered.start.max(lines.start);
+            let end = covered.end().min(lines.end());
+            let here = Extent {
+                start,
+                length: end.saturating_sub(start),
+            };
+            if here.length == 1 {
+                let short = axis.short_of(start, &mut |work| {
+                    self.charge(work).map_err(TableStop::from)
+                })?;
+                let irregular = axis.irregular_at(start, &mut |work| {
+                    self.charge(work).map_err(TableStop::from)
+                })?;
+                let cells = Occupants { long, short };
+                self.table_scan_line(model, scan, principal, cells, from, vertical, irregular)?;
+                continue;
+            }
+            // The lines that cannot share the scan of the run's long cells.
+            scan.specials.clear();
+            let positions =
+                axis.short_positions(here, &mut |work| self.charge(work).map_err(TableStop::from))?;
+            let mut matches = 0usize;
+            axis.visit_left(
+                positions,
+                from,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+                &mut |_| {
+                    matches += 1;
+                    Ok(())
+                },
+            )?;
+            self.reserve_scratch(scan.specials, matches)?;
+            let specials = &mut *scan.specials;
+            axis.visit_left(
+                positions,
+                from,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+                &mut |position| {
+                    if let Some(line) = axis.short_lines.get(position) {
+                        specials.push(line.line);
+                    }
+                    Ok(())
+                },
+            )?;
+            for extent in &axis.irregular {
+                self.charge(1)?;
+                for line in extent.start.max(here.start)..extent.end().min(here.end()) {
+                    self.table_scratch(scan.specials, line)?;
+                }
+            }
+            let count = scan.specials.len();
+            let bits = count
+                .checked_ilog2()
+                .and_then(|bits| usize::try_from(bits).ok())
+                .unwrap_or(0);
+            self.charge(count.saturating_mul(1 + bits))?;
+            scan.specials.sort_unstable();
+            scan.specials.dedup();
+            if scan.specials.len() < here.length {
+                let cells = Occupants {
+                    long,
+                    short: List::EMPTY,
+                };
+                self.table_scan_line(model, scan, principal, cells, from, vertical, false)?;
+            }
+            for position in 0..scan.specials.len() {
+                self.charge(1)?;
+                let line = scan.specials[position];
+                let short =
+                    axis.short_of(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
+                let irregular = axis
+                    .irregular_at(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
+                let cells = Occupants { long, short };
+                self.table_scan_line(model, scan, principal, cells, from, vertical, irregular)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One scan of one line, whose cells are the two lists. Visiting a cell
+    /// once instead of once per slot it covers changes nothing, because a
+    /// repeated visit re-adds a header already found (duplicates are dropped
+    /// when associations are made), a block member already present, and a data
+    /// cell with no block left to end. When cells share slots the line is
+    /// taken a slot at a time, a slot with no occupant or several being
+    /// skipped; otherwise the line is its two lists merged, the data cells
+    /// between two headers being jumped.
+    #[allow(clippy::too_many_arguments)]
+    fn table_scan_line(
+        &mut self,
+        model: &HtmlTableModel,
+        scan: &mut Scan<'_>,
+        principal: usize,
+        cells: Occupants<'_>,
+        from: usize,
+        vertical: bool,
+        irregular: bool,
     ) -> TableResult<()> {
         self.charge(1)?;
         scan.opaque.clear();
         scan.block.clear();
         scan.in_block = model.cells[principal].kind == HtmlTableCellKind::Header;
+        scan.live = scan.in_block;
         if scan.in_block {
             self.table_scratch(scan.block, principal)?;
         }
-        let axis = if vertical {
-            scan.axes.columns
-        } else {
-            scan.axes.rows
-        };
-        let Some(LineView { line, entries }) = axis.line(start.line) else {
-            return Err(self
-                .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
-                .into());
-        };
-        if line.regular {
-            let mut before =
-                slots::leading(entries, |entry| entry.start < start.from, &mut |work| {
+        if irregular {
+            let mut slot = from;
+            loop {
+                self.charge(1)?;
+                if slot == 0 {
+                    return Ok(());
+                }
+                slot -= 1;
+                let long = slots::cover(cells.long.entries, slot, &mut |work| {
                     self.charge(work).map_err(TableStop::from)
                 })?;
-            while before > 0 {
-                self.charge(1)?;
-                let last = before - 1;
-                let Some(position) = entries
-                    .get(last)
-                    .and_then(|entry| entry.header)
-                    .and_then(|header| header.checked_sub(line.first))
-                else {
-                    // Every remaining entry is a data cell.
-                    return self.table_end_block(scan);
+                let short = slots::cover(cells.short.entries, slot, &mut |work| {
+                    self.charge(work).map_err(TableStop::from)
+                })?;
+                let index = match (long, short) {
+                    (Cover::One(index), Cover::Empty) | (Cover::Empty, Cover::One(index)) => index,
+                    _ => continue,
                 };
-                if position < last {
+                if model.cells[index].kind == HtmlTableCellKind::Header {
+                    self.table_reach_header(model, scan, index, vertical)?;
+                } else {
                     self.table_end_block(scan)?;
                 }
-                let cell = entries.get(position).map_or(principal, |entry| entry.cell);
-                self.table_reach_header(model, scan, cell, vertical)?;
-                before = position;
             }
-            return Ok(());
         }
-        let mut slot = start.from;
+        let mut bound = from;
         loop {
             self.charge(1)?;
-            if slot == 0 {
-                return Ok(());
-            }
-            slot -= 1;
-            let cover = slots::cover(entries, slot, &mut |work| {
-                self.charge(work).map_err(TableStop::from)
-            })?;
-            let Cover::One(index) = cover else {
-                continue;
+            let before_long = slots::leading(
+                cells.long.entries,
+                |entry| entry.start < bound,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            let before_short = slots::leading(
+                cells.short.entries,
+                |entry| entry.start < bound,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            let last_long = before_long.checked_sub(1);
+            let last_short = before_short.checked_sub(1);
+            // The nearest entry before the bound, and the nearest header.
+            let nearest = match (
+                last_long.and_then(|p| cells.long.entries.get(p)),
+                last_short.and_then(|p| cells.short.entries.get(p)),
+            ) {
+                (None, None) => return Ok(()),
+                (Some(entry), None) | (None, Some(entry)) => entry,
+                (Some(a), Some(b)) => {
+                    if a.start > b.start {
+                        a
+                    } else {
+                        b
+                    }
+                }
             };
-            if model.cells[index].kind == HtmlTableCellKind::Header {
-                self.table_reach_header(model, scan, index, vertical)?;
-            } else {
-                self.table_end_block(scan)?;
+            let header_start = |list: List<'_>, last: Option<usize>| {
+                last.and_then(|position| list.header_at(position))
+                    .and_then(|header| list.entries.get(header))
+                    .map(|entry: &SlotEntry| entry.start)
+            };
+            let nearest_header = header_start(cells.long, last_long)
+                .into_iter()
+                .chain(header_start(cells.short, last_short))
+                .max();
+            if nearest_header == Some(nearest.start) {
+                self.table_reach_header(model, scan, nearest.cell, vertical)?;
+                bound = nearest.start;
+                if scan.live {
+                    continue;
+                }
+                // Every cell of the block is hidden behind an opaque header
+                // that crosses the same lines, so the headers that cross those
+                // lines, and the data cells among them, change nothing: the
+                // scan resumes at the nearest header that crosses others.
+                let before_long = slots::leading(
+                    cells.long.entries,
+                    |entry| entry.start < bound,
+                    &mut |work| self.charge(work).map_err(TableStop::from),
+                )?;
+                let before_short = slots::leading(
+                    cells.short.entries,
+                    |entry| entry.start < bound,
+                    &mut |work| self.charge(work).map_err(TableStop::from),
+                )?;
+                let other = cells
+                    .long
+                    .header_other_than(before_long.checked_sub(1), nearest.key)
+                    .into_iter()
+                    .chain(
+                        cells
+                            .short
+                            .header_other_than(before_short.checked_sub(1), nearest.key),
+                    )
+                    .map(|entry| entry.start)
+                    .max();
+                let Some(start) = other else {
+                    return Ok(());
+                };
+                bound = start + 1;
+                continue;
             }
+            // The nearest entry is a data cell: it ends the block, and every
+            // entry down to the nearest header is data.
+            self.table_end_block(scan)?;
+            let Some(start) = nearest_header else {
+                return Ok(());
+            };
+            bound = start + 1;
         }
     }
     fn table_id_match(&mut self, left: &[u16], right: &[u16]) -> TableResult<bool> {
@@ -395,6 +578,7 @@ impl<'a> HtmlSemanticSession<'a> {
             opaque,
             block,
             memo,
+            specials,
             row_group_headers,
             column_group_headers,
             columns,
@@ -435,8 +619,10 @@ impl<'a> HtmlSemanticSession<'a> {
             opaque,
             block,
             memo,
+            specials,
             axes: Axes { rows, columns },
             in_block: false,
+            live: false,
         };
         for principal in 0..model.cells.len() {
             self.charge(1)?;
@@ -476,22 +662,8 @@ impl<'a> HtmlSemanticSession<'a> {
             } else if any_header {
                 let right = self.table_add(cell_x, cell.width)?;
                 let bottom = self.table_add(cell_y, cell.height)?;
-                // Rows (or columns) of one line are covered by the same cells
-                // in the same way, so one scan of the line serves all of them.
-                let span = scan.axes.rows.lines_of(cell_y, bottom, &mut |work| {
-                    self.charge(work).map_err(TableStop::from)
-                })?;
-                for line in span.first..span.last {
-                    let start = ScanStart { line, from: cell_x };
-                    self.table_scan(model, &mut scan, principal, start, false)?;
-                }
-                let span = scan.axes.columns.lines_of(cell_x, right, &mut |work| {
-                    self.charge(work).map_err(TableStop::from)
-                })?;
-                for line in span.first..span.last {
-                    let start = ScanStart { line, from: cell_y };
-                    self.table_scan(model, &mut scan, principal, start, true)?;
-                }
+                self.table_scan_axis(model, &mut scan, principal, false)?;
+                self.table_scan_axis(model, &mut scan, principal, true)?;
                 self.table_group_scopes(
                     model,
                     &mut scan,

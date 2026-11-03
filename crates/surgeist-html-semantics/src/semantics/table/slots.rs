@@ -35,28 +35,81 @@ pub(super) struct SlotEntry {
     /// Index in the axis' entry table of the nearest header cell at or before
     /// this entry in its line.
     pub(super) header: Option<usize>,
+    /// The lines the cell crosses. A scan hides a header behind an earlier
+    /// header that crosses the same lines.
+    pub(super) key: Extent,
+    /// For a header, the table index of the nearest earlier header of its line
+    /// that crosses other lines.
+    pub(super) differs: Option<usize>,
 }
 
-/// A finished line: its entries and what they are.
+/// Where a group of lines, or of cells, lies.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct SlotLine {
-    /// Index of the line's first entry in the axis' entry table.
-    pub(super) first: usize,
-    /// One past the index of its last entry.
-    pub(super) end: usize,
-    /// No two entries of the line share a slot, so the entries are the line's
-    /// distinct occupants in order.
-    pub(super) regular: bool,
-    /// Some entry is a data cell.
-    pub(super) data: bool,
+pub(super) struct Extent {
+    pub(super) start: usize,
+    pub(super) length: usize,
 }
 
-/// A finished line and the entries it holds.
+impl Extent {
+    pub(super) fn end(&self) -> usize {
+        self.start.saturating_add(self.length)
+    }
+}
+
+/// A sorted list of entries inside an entry table, with the table index of
+/// its first entry (the entries' header pointers are table indexes).
 #[derive(Clone, Copy, Debug)]
-pub(super) struct LineView<'a> {
-    pub(super) line: SlotLine,
-    /// The line's entries, which start at `line.first` in the entry table.
+pub(super) struct List<'a> {
     pub(super) entries: &'a [SlotEntry],
+    pub(super) first: usize,
+}
+
+impl<'a> List<'a> {
+    pub(super) const EMPTY: List<'static> = List {
+        entries: &[],
+        first: 0,
+    };
+
+    /// The nearest header at or before `position` that crosses lines other
+    /// than `key`.
+    pub(super) fn header_other_than(
+        &self,
+        position: Option<usize>,
+        key: Extent,
+    ) -> Option<&'a SlotEntry> {
+        let header = self.entries.get(self.header_at(position?)?)?;
+        if header.key != key {
+            return Some(header);
+        }
+        let earlier = header.differs?.checked_sub(self.first)?;
+        self.entries.get(earlier)
+    }
+
+    /// The position in the list of the nearest header at or before `position`.
+    pub(super) fn header_at(&self, position: usize) -> Option<usize> {
+        self.entries
+            .get(position)?
+            .header?
+            .checked_sub(self.first)
+            .filter(|header| *header <= position)
+    }
+}
+
+/// A run of consecutive lines that the same long cells cross, and where its
+/// entries lie in the long-entry table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct Run {
+    pub(super) first: usize,
+    pub(super) end: usize,
+}
+
+/// One line's cells that cross no other line, and where they lie in the
+/// short-entry table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ShortLine {
+    pub(super) line: usize,
+    pub(super) first: usize,
+    pub(super) end: usize,
 }
 
 /// Lines `first..last` of an axis.
@@ -66,46 +119,229 @@ pub(super) struct LineSpan {
     pub(super) last: usize,
 }
 
-/// Every row (or every column) of a finished table. Consecutive rows that the
-/// same cells cover alike are one line, so a cell that spans thousands of
-/// rows adds one entry to each line it crosses, not one per row; `breaks`
-/// holds the first row of every line.
+/// The extents of the data cells of an axis, sorted by start, with the
+/// greatest end so far: whether any data cell crosses a range of lines is a
+/// binary search.
+#[derive(Debug, Default)]
+pub(super) struct DataSpans {
+    pub(super) starts: Vec<usize>,
+    pub(super) reach: Vec<usize>,
+}
+
+impl DataSpans {
+    /// Whether some data cell crosses a line of `lines`.
+    pub(super) fn crosses<E>(&self, lines: Extent, charge: &mut impl Charge<E>) -> Result<bool, E> {
+        let before = leading_by(
+            self.starts.len(),
+            |index| self.starts.get(index).is_some_and(|s| *s < lines.end()),
+            charge,
+        )?;
+        charge(1)?;
+        Ok(before
+            .checked_sub(1)
+            .and_then(|last| self.reach.get(last))
+            .is_some_and(|reach| *reach > lines.start))
+    }
+}
+
+/// Every row (or every column) of a finished table, for the scans of HTML's
+/// assigning of header cells.
+///
+/// Cells that cross more than one line (long cells) are listed once per run
+/// of lines they cross alike, where runs begin wherever a long cell starts or
+/// ends, so a tall cell is not recorded once per row. Cells that cross one
+/// line only (short cells) are listed with their line, and a line with none
+/// has no record. A line's cells are its run's long cells and its short ones.
 #[derive(Debug, Default)]
 pub(super) struct SlotAxis {
+    /// How many lines there are.
+    pub(super) lines: usize,
+    /// The first line of every run.
     pub(super) breaks: Vec<usize>,
-    pub(super) lines: Vec<SlotLine>,
-    pub(super) entries: Vec<SlotEntry>,
+    pub(super) runs: Vec<Run>,
+    pub(super) long: Vec<SlotEntry>,
+    pub(super) short_lines: Vec<ShortLine>,
+    pub(super) short: Vec<SlotEntry>,
+    /// A tree over the short lines holding the least start of each one's
+    /// entries, padded with the greatest value.
+    pub(super) least: Vec<usize>,
+    pub(super) data: DataSpans,
+    /// Lines where two cells share a slot, merged and sorted.
+    pub(super) irregular: Vec<Extent>,
 }
 
 impl SlotAxis {
-    pub(super) fn line(&self, index: usize) -> Option<LineView<'_>> {
-        let line = *self.lines.get(index)?;
-        let entries = self.entries.get(line.first..line.end)?;
-        Some(LineView { line, entries })
+    /// Every capacity admitted for this axis' records.
+    pub(super) fn capacities(&self) -> impl Iterator<Item = usize> {
+        [
+            self.breaks.capacity(),
+            self.runs.capacity(),
+            self.long.capacity(),
+            self.short_lines.capacity(),
+            self.short.capacity(),
+            self.least.capacity(),
+            self.data.starts.capacity(),
+            self.data.reach.capacity(),
+            self.irregular.capacity(),
+        ]
+        .into_iter()
     }
 
-    /// The lines that hold the positions `start..end` (`end` past `start`).
-    pub(super) fn lines_of<E>(
+    pub(super) fn run(&self, index: usize) -> Option<List<'_>> {
+        let run = *self.runs.get(index)?;
+        Some(List {
+            entries: self.long.get(run.first..run.end)?,
+            first: run.first,
+        })
+    }
+
+    /// The lines a run covers, within `lines`.
+    pub(super) fn run_lines(&self, index: usize) -> Extent {
+        let start = self.breaks.get(index).copied().unwrap_or(self.lines);
+        let end = self.breaks.get(index + 1).copied().unwrap_or(self.lines);
+        Extent {
+            start,
+            length: end.saturating_sub(start),
+        }
+    }
+
+    /// The runs that hold the lines `lines` (not empty).
+    pub(super) fn runs_of<E>(
         &self,
-        start: usize,
-        end: usize,
+        lines: Extent,
         charge: &mut impl Charge<E>,
     ) -> Result<LineSpan, E> {
-        let first = self.line_holding(start, charge)?;
-        let last = self.line_holding(end.saturating_sub(1), charge)?;
+        let first = self.run_holding(lines.start, charge)?;
+        let last = self.run_holding(lines.end().saturating_sub(1), charge)?;
         Ok(LineSpan {
             first,
             last: last + 1,
         })
     }
 
-    fn line_holding<E>(&self, position: usize, charge: &mut impl Charge<E>) -> Result<usize, E> {
+    fn run_holding<E>(&self, line: usize, charge: &mut impl Charge<E>) -> Result<usize, E> {
         let begun = leading_by(
             self.breaks.len(),
-            |index| self.breaks.get(index).is_some_and(|b| *b <= position),
+            |index| self.breaks.get(index).is_some_and(|b| *b <= line),
             charge,
         )?;
         Ok(begun.saturating_sub(1))
+    }
+
+    /// Where the short lines of `lines` lie in the short-line table.
+    pub(super) fn short_positions<E>(
+        &self,
+        lines: Extent,
+        charge: &mut impl Charge<E>,
+    ) -> Result<LineSpan, E> {
+        let first = leading_by(
+            self.short_lines.len(),
+            |index| {
+                self.short_lines
+                    .get(index)
+                    .is_some_and(|l| l.line < lines.start)
+            },
+            charge,
+        )?;
+        let last = leading_by(
+            self.short_lines.len(),
+            |index| {
+                self.short_lines
+                    .get(index)
+                    .is_some_and(|l| l.line < lines.end())
+            },
+            charge,
+        )?;
+        Ok(LineSpan { first, last })
+    }
+
+    pub(super) fn short_list(&self, position: usize) -> Option<List<'_>> {
+        let line = *self.short_lines.get(position)?;
+        Some(List {
+            entries: self.short.get(line.first..line.end)?,
+            first: line.first,
+        })
+    }
+
+    /// The short list of `line`, if it has one.
+    pub(super) fn short_of<E>(
+        &self,
+        line: usize,
+        charge: &mut impl Charge<E>,
+    ) -> Result<List<'_>, E> {
+        let before = leading_by(
+            self.short_lines.len(),
+            |index| self.short_lines.get(index).is_some_and(|l| l.line < line),
+            charge,
+        )?;
+        charge(1)?;
+        Ok(self
+            .short_lines
+            .get(before)
+            .filter(|l| l.line == line)
+            .and_then(|_| self.short_list(before))
+            .unwrap_or(List::EMPTY))
+    }
+
+    /// Visits, in ascending order, each short line at a position of
+    /// `positions` whose least start is below `bound`.
+    pub(super) fn visit_left<E>(
+        &self,
+        positions: LineSpan,
+        bound: usize,
+        charge: &mut impl Charge<E>,
+        visit: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let size = self.least.len() / 2;
+        self.descend(1, 0, size, positions, bound, charge, visit)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn descend<E>(
+        &self,
+        node: usize,
+        low: usize,
+        high: usize,
+        positions: LineSpan,
+        bound: usize,
+        charge: &mut impl Charge<E>,
+        visit: &mut impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<(), E> {
+        charge(1)?;
+        if high <= positions.first
+            || positions.last <= low
+            || low >= high
+            || self.least.get(node).is_none_or(|least| *least >= bound)
+        {
+            return Ok(());
+        }
+        if high - low == 1 {
+            return visit(low);
+        }
+        let middle = low + (high - low) / 2;
+        self.descend(2 * node, low, middle, positions, bound, charge, visit)?;
+        self.descend(2 * node + 1, middle, high, positions, bound, charge, visit)
+    }
+
+    /// Whether two cells share a slot of `line`.
+    pub(super) fn irregular_at<E>(
+        &self,
+        line: usize,
+        charge: &mut impl Charge<E>,
+    ) -> Result<bool, E> {
+        if self.irregular.is_empty() {
+            return Ok(false);
+        }
+        let begun = leading_by(
+            self.irregular.len(),
+            |index| self.irregular.get(index).is_some_and(|e| e.start <= line),
+            charge,
+        )?;
+        charge(1)?;
+        Ok(begun
+            .checked_sub(1)
+            .and_then(|last| self.irregular.get(last))
+            .is_some_and(|e| line < e.end()))
     }
 }
 
@@ -148,13 +384,6 @@ pub(super) fn leading<E>(
         |index| entries.get(index).is_some_and(&holds),
         charge,
     )
-}
-
-/// Where a group of rows or columns lies.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Extent {
-    pub(super) start: usize,
-    pub(super) length: usize,
 }
 
 /// The one group of `groups` holding `slot`, if any. `extent` gives where a
