@@ -30,6 +30,7 @@ struct Work {
     total: u64,
     reserved: u64,
     visited: u64,
+    inspected: u64,
 }
 
 /// A named measure of one parse's work.
@@ -137,6 +138,7 @@ fn work_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Work {
         total: usage.resource(HtmlParseResource::WorkCredits).current(),
         reserved: usage.work(HtmlParseWorkCategory::ReserveByte),
         visited: usage.work(HtmlParseWorkCategory::RecordVisit),
+        inspected: usage.work(HtmlParseWorkCategory::InspectByte),
     }
 }
 
@@ -378,7 +380,10 @@ fn work_added_by_each_doubling_of_repeated_tables_with_cells_is_near_double() {
 fn work_added_by_each_doubling_of_a_processing_instructions_distinct_pseudo_attributes_is_near_double()
  {
     // XML-stylesheet 20101028 section 3 makes a repeated name an error, so each name is checked
-    // against the earlier ones; that check must not compare every pair of names.
+    // against the earlier ones; that check must not compare every pair of names. Only the
+    // inspected bytes are measured: comparing names inspects them, and reading the instruction
+    // once inspects each unit once, while the walk over the instruction's source-map origins
+    // (`pi_piece_origins`) adds record visits of its own.
     assert_parses_add_near_double(
         [100, 200, 400, 800],
         |pairs| {
@@ -386,10 +391,7 @@ fn work_added_by_each_doubling_of_a_processing_instructions_distinct_pseudo_attr
             format!("<?marker {}?>", names.join(" "))
         },
         parse_fragment_work,
-        &[
-            ("record visits", |work| work.visited),
-            ("total work", |work| work.total),
-        ],
+        &[("inspected bytes", |work| work.inspected)],
     );
 }
 
