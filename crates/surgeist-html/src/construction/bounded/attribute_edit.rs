@@ -510,6 +510,10 @@ impl HtmlConstructionAttributeEdit {
     /// Consumes a finished edit. Requires all planning done and every kept candidate appended.
     /// Returns the latched failure or the not-ready error; either way the edit is handed back
     /// unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_finish(
         self,
     ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionRefusal<Self>> {
@@ -726,6 +730,10 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
     /// Consumes a finished candidate and returns whether it is kept (no matching name). Returns
     /// the latched failure, or the not-ready error before planning finished; either way the
     /// candidate is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_finish(mut self) -> Result<bool, HtmlConstructionRefusal<Self>> {
         if let Some(e) = &self.failure {
             let e = e.clone();
@@ -949,8 +957,8 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                         .checked_mul(size_of::<NameDecision>())
                         .filter(|v| *v <= isize::MAX as usize)
                         .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-                    let result = crate::amortized::reserve_to(&mut c.decisions, target);
-                    let snapshot = &mut *c.plan;
+                    let result = crate::amortized::reserve_to(c.decisions, target);
+                    let snapshot: &mut HtmlConstructionAllocationSnapshot = c.plan;
                     snapshot.capacity = c.decisions.capacity();
                     snapshot.payload_bytes = snapshot.capacity * size_of::<NameDecision>();
                     if result.is_ok() {
@@ -1115,6 +1123,10 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
     }
     /// Consumes a ready slot. Returns the latched failure, or the not-ready error before the last
     /// action was accepted; either way the slot is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_ready(
         self,
     ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionRefusal<Self>> {

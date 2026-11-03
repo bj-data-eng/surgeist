@@ -1007,12 +1007,12 @@ impl<T: Value> Pool<T> {
                 }
             }
             drop(page);
-            if frame.before_pages & (1 << index) == 0 {
-                if let Some(page) = self.pages[index].take() {
-                    self.usage.bytes -= page.capacity() * size_of::<Slot<T>>();
-                    self.page_bits &= !(1 << index);
-                    drop(page);
-                }
+            if frame.before_pages & (1 << index) == 0
+                && let Some(page) = self.pages[index].take()
+            {
+                self.usage.bytes -= page.capacity() * size_of::<Slot<T>>();
+                self.page_bits &= !(1 << index);
+                drop(page);
             }
         }
         self.usage.bytes -= frame.pages.capacity() * size_of::<Option<UndoPage<T>>>();

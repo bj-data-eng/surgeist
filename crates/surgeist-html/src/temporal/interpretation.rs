@@ -163,6 +163,10 @@ impl HtmlTimeElementInterpretationStep {
     }
 }
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the finished report moves once, and boxing it would allocate outside the admitted accounting"
+)]
 enum Stage {
     Recognize,
     Begin,

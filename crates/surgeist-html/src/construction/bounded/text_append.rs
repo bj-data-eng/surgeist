@@ -409,6 +409,10 @@ impl HtmlConstructionTextAppend {
     }
     /// Consumes a ready append. Returns the latched failure, or the not-ready error before the
     /// last action was accepted; either way the append is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_ready(
         self,
     ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionRefusal<Self>> {
@@ -765,7 +769,7 @@ fn advance(
     incoming: &DocumentString,
     target: Target,
     step: &mut Step,
-    mut copy: Option<&mut DocumentString>,
+    copy: Option<&mut DocumentString>,
     minimum_capacity: Option<usize>,
 ) -> Result<(), HtmlConstructionError> {
     let preserved = copy.is_some();
@@ -780,7 +784,7 @@ fn advance(
             if minimum < target.required || minimum > preferred {
                 return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
             }
-            let candidate = match copy.as_deref_mut() {
+            let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
                     .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
@@ -816,7 +820,7 @@ fn advance(
         }
         Step::Preflight => *step = Step::QualifyTail,
         Step::QualifyTail => {
-            let candidate = match copy.as_deref_mut() {
+            let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
                     .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
@@ -832,7 +836,7 @@ fn advance(
         }
         Step::CopyTail { tail: start } => {
             let end = start + (incoming.len() - start).min(CHUNK_UNITS);
-            let candidate = match copy.as_deref_mut() {
+            let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
                     .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,

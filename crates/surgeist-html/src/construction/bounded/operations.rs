@@ -798,6 +798,10 @@ impl HtmlConstructionOperation {
     /// Consumes a ready operation. Returns the latched failure, or the not-ready error before the
     /// last action was accepted; either way the operation is handed back unchanged, so the caller
     /// can abort it and recover the storage and command.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_ready(
         mut self,
     ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionRefusal<Self>> {

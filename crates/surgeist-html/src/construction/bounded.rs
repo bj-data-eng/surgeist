@@ -855,6 +855,10 @@ impl HtmlConstructionLease {
     /// owner of its arena. Returns the foreign-allocation error if the lease belongs to another
     /// result and the shared-allocation error while any clone of the result lives. On error both
     /// arguments are handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_recover(
         result: HtmlConstructionResult,
         lease: Self,
