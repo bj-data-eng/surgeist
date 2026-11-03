@@ -37,10 +37,10 @@ subset; it does not establish complete support for all CSS syntax.
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
-Clean-report validation is always available. Production dependencies are pinned to
-`cssparser = 0.37.0` and `unicode-segmentation = 1.13.3`, beside the path
-dependencies on `surgeist-color` and `surgeist-css-parser` (which decodes style
-sheet bytes); test-only JSON support uses `serde = 1.0.229` and
+Clean-report validation is always available. The production dependency
+`unicode-segmentation` is pinned to 1.13.3, beside the path dependencies on
+`surgeist-color` and `surgeist-css-parser` (which tokenizes and parses CSS and
+decodes style sheet bytes); test-only JSON support uses `serde = 1.0.229` and
 `serde_json = 1.0.151`.
 
 `CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
