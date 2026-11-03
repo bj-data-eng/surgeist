@@ -4828,7 +4828,7 @@ fn browser_document_script_writes_json_escaped_html() {
 }
 
 #[test]
-fn browser_fixture_document_inlines_base_style_only_when_authored_fixture_references_it() {
+fn browser_fixture_document_preserves_authored_link_for_source_qualified_setup() {
     let raw_without_style =
         "<!doctype html><html><head></head><body><div id=\"test-root\"></div></body></html>";
     let raw_with_style = r#"<!doctype html><html><head><link rel="stylesheet" href="../../scripts/gentest/test_base_style.css"></head><body><div></div></body></html>"#;
@@ -4838,9 +4838,14 @@ fn browser_fixture_document_inlines_base_style_only_when_authored_fixture_refere
         .expect("fixture document");
 
     assert!(with_style.contains("<base href=\"file:///tmp/fixtures/flex/\">"));
-    assert!(with_style.contains("#test-root"));
+    assert!(
+        with_style.contains(
+            r#"<link rel="stylesheet" href="../../scripts/gentest/test_base_style.css">"#
+        )
+    );
+    assert!(!with_style.contains("<style"));
     assert!(without_style.contains("<base href=\"file:///tmp/fixtures/html/\">"));
-    assert!(!without_style.contains("#test-root"));
+    assert!(!without_style.contains("<style"));
 }
 
 #[test]

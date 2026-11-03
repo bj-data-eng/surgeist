@@ -180,6 +180,9 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     if (scripts.length !== 1 || scripts[0].textContent.trim() ||
         new URL(scripts[0].getAttribute('src') || '', document.baseURI).href !== helperUrl ||
         links.length !== 1 || links[0].rel !== 'stylesheet' ||
+        Array.from(links[0].attributes).some(attribute => !['rel', 'type', 'href'].includes(attribute.name)) ||
+        (links[0].hasAttribute('type') && links[0].getAttribute('type') !== 'text/css') ||
+        links[0].parentElement !== parsed.head ||
         new URL(links[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
     const sourceRoot = parsed.getElementById('test-root');
     if (sourceRoot.parentElement !== parsed.body) return reject('SourceParent');
@@ -189,7 +192,38 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     const expectedSheet = new CSSStyleSheet();
     expectedSheet.replaceSync(baseStyle);
     const rules = Array.from(expectedSheet.cssRules, rule => rule.cssText);
-    rootContextCapture = { sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
+    const previous = rootContextCapture;
+    let ownedStyle;
+    if (previous && !previous.reason && previous.source === source &&
+        previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
+        previous.styleUrl === styleUrl) {
+      // Repeated setup retains the same authenticated owner; a marker alone
+      // never authorizes a replacement sheet or repairs a changed document.
+      ownedStyle = previous.ownedStyle;
+      if (!ownedStyle.isConnected || ownedStyle.parentElement !== document.head ||
+          ownedStyle.textContent !== baseStyle ||
+          document.querySelectorAll('style, link').length !== 1 ||
+          document.styleSheets.length !== 1 ||
+          document.styleSheets[0].ownerNode !== ownedStyle ||
+          document.adoptedStyleSheets.length !== 0) return reject('StylesheetChanged');
+    } else {
+      const liveLinks = Array.from(document.querySelectorAll('link'));
+      if (liveLinks.length !== 1 || liveLinks[0].parentElement !== document.head ||
+          liveLinks[0].outerHTML !== links[0].outerHTML || liveLinks[0].disabled ||
+          document.querySelectorAll('style').length !== 0 ||
+          document.styleSheets.length !== 1 ||
+          document.styleSheets[0].ownerNode !== liveLinks[0] ||
+          document.styleSheets[0].disabled || document.adoptedStyleSheets.length !== 0) return reject('StylesheetSource');
+      // The file:// LINK's cssRules may be opaque. Replace only the exact
+      // source-authenticated owned resource, in its original cascade position.
+      // Its bytes (including the data-URI font) remain the captured input.
+      ownedStyle = document.createElement('style');
+      ownedStyle.setAttribute('data-surgeist-root-source', 'true');
+      ownedStyle.textContent = baseStyle;
+      liveLinks[0].replaceWith(ownedStyle);
+    }
+    rootContextCapture = { source, baseStyle, ownedStyle,
+      sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
       body: parsed.body, rules, helperUrl, styleUrl };
   } catch (_) {
     reject('SourceQualificationUnavailable');
@@ -220,12 +254,13 @@ function captureRootContext(root) {
   if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
   const sheets = Array.from(document.styleSheets);
   if (document.adoptedStyleSheets.length !== 0) fail('AdoptedStylesheet');
-  if (sheets.length !== 2) fail('StylesheetInventory');
+  if (sheets.length !== 1 || document.querySelectorAll('style, link').length !== 1) fail('StylesheetInventory');
   for (const sheet of sheets) {
     const owner = sheet.ownerNode;
-    if ((owner?.tagName === 'LINK' && (owner.href !== proof.styleUrl || owner.disabled)) ||
-        (owner?.tagName === 'STYLE' && owner.getAttribute('data-surgeist-root-source') !== 'true') ||
-        !['LINK', 'STYLE'].includes(owner?.tagName) || sheet.disabled) fail('StylesheetSource');
+    if (owner !== proof.ownedStyle || owner?.tagName !== 'STYLE' ||
+        owner.parentElement !== document.head ||
+        owner.getAttribute('data-surgeist-root-source') !== 'true' ||
+        owner.textContent !== proof.baseStyle || sheet.disabled) fail('StylesheetSource');
     let rules;
     try { rules = Array.from(sheet.cssRules, rule => rule.cssText); }
     catch (_) { fail('OpaqueStylesheet'); }

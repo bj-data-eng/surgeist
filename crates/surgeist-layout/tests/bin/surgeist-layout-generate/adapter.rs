@@ -49,16 +49,11 @@ pub(super) const GRID_TEMPLATE_AREA_CAPTURE_SCRIPT: &str = r#"(() => {
 
 #[cfg(test)]
 pub(super) fn browser_fixture_document(raw: &str, base_url: &str) -> Result<String, String> {
-    fixture_document(raw, base_url, TEST_BASE_STYLE_SOURCE)
+    fixture_document(raw, base_url)
 }
 
-fn fixture_document(raw: &str, base_url: &str, base_style: &str) -> Result<String, String> {
-    let mut head_injection = format!("<base href=\"{}\">", escape_attr(base_url));
-    if raw.contains("test_base_style.css") {
-        head_injection.push_str("<style data-surgeist-root-source=\"true\">");
-        head_injection.push_str(base_style);
-        head_injection.push_str("</style>");
-    }
+fn fixture_document(raw: &str, base_url: &str) -> Result<String, String> {
+    let head_injection = format!("<base href=\"{}\">", escape_attr(base_url));
 
     let lower = raw.to_ascii_lowercase();
     if let Some(index) = lower.find("<head>") {
@@ -193,7 +188,7 @@ impl BrowserCorpusAdapter for LayoutAdapter {
             AdapterError::Preparation(format!("base stylesheet is not UTF-8: {error}"))
         })?;
         let document =
-            fixture_document(source, input.base_url(), style).map_err(AdapterError::Preparation)?;
+            fixture_document(source, input.base_url()).map_err(AdapterError::Preparation)?;
         let resources = match linked_resources(input.fixture().source(), source) {
             Ok(paths) => ResourceDependencies::Paths(paths),
             Err(reason) => ResourceDependencies::Invalid { reason },
@@ -377,7 +372,7 @@ fn helper_setup_expression(
     ]))
     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
