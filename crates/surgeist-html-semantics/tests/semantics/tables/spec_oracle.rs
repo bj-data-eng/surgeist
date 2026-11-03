@@ -7,8 +7,19 @@
 //! interval index, no lines, no deferred growth. Seeded random tables, from
 //! plain to dense with overlapping spans, are described once, built into a
 //! capture and formed by both; every part of the model that the specification
-//! defines must agree. Association and error lists are compared as sorted
-//! sets, because the specification does not order them.
+//! defines must agree.
+//!
+//! What the specification leaves unordered is compared as a set, and nothing
+//! else is: the table model errors (it names one condition, not a list), the
+//! cells of the model, which cells have header cells (the algorithm runs for
+//! each cell on its own), and, within one cell's header list, the cells that
+//! the row group and column group steps add after the scans, which the steps
+//! name as "all header cells that ..." without an order. The header list
+//! itself is ordered: the `headers` attribute's ids, or the rows' scans from
+//! top to bottom and then the columns' from left to right, each scan taking
+//! the headers it meets nearest first; empty cells, duplicates and the
+//! principal cell are removed from it keeping the first of each. The row
+//! groups, column groups and the row and column sources are ordered too.
 //!
 //! Spans are written 0 to 9 and as garbage, scopes in every spelling, and the
 //! `headers` attribute names cells, a caption that shares an id, and unknown
@@ -261,7 +272,14 @@ struct Expected {
     row_groups: Vec<(usize, usize, usize)>,
     column_groups: Vec<(usize, usize, usize)>,
     errors: Vec<String>,
-    headers: Vec<(usize, usize)>,
+}
+
+/// One cell's header list: the cells found by the `headers` attribute or the
+/// scans, in order, then the cells the groups add, which have no order.
+#[derive(Debug, PartialEq)]
+struct Associated {
+    ordered: Vec<usize>,
+    grouped: Vec<usize>,
 }
 
 /// The rules for parsing non-negative integers, for the spellings written.
@@ -594,9 +612,11 @@ impl Oracle {
         }
     }
 
-    /// The algorithm for assigning header cells to `principal`.
-    fn assign_headers(&self, principal: usize) -> Vec<usize> {
+    /// The algorithm for assigning header cells to `principal`: the header
+    /// list in order, and the cells its group steps add after that.
+    fn assign_headers(&self, principal: usize) -> (Vec<usize>, Vec<usize>) {
         let mut list = Vec::new();
+        let mut grouped = Vec::new();
         let p = &self.cells[principal];
         if let Some(value) = &self.facts[p.ordinal].2 {
             for token in value
@@ -628,7 +648,7 @@ impl Oracle {
                             && c.x <= right
                             && c.y <= bottom
                         {
-                            list.push(index);
+                            grouped.push(index);
                         }
                     }
                 }
@@ -642,26 +662,33 @@ impl Oracle {
                             && c.x <= right
                             && c.y <= bottom
                         {
-                            list.push(index);
+                            grouped.push(index);
                         }
                     }
                 }
             }
         }
         list.retain(|&c| !self.is_empty_cell(c));
+        grouped.retain(|&c| !self.is_empty_cell(c));
         let mut seen = Vec::new();
         list.retain(|c| {
             let new = !seen.contains(c);
             seen.push(*c);
             new
         });
+        grouped.retain(|c| {
+            let new = !seen.contains(c);
+            seen.push(*c);
+            new
+        });
         list.retain(|&c| c != principal);
-        list
+        grouped.retain(|&c| c != principal);
+        (list, grouped)
     }
 }
 
 /// Forms the table and assigns headers by the specification's algorithms.
-fn oracle(table: &[Child]) -> Expected {
+fn oracle(table: &[Child]) -> (Expected, BTreeMap<usize, Associated>) {
     let mut o = Oracle::default();
     for child in table {
         let rows: Vec<&Row> = match child {
@@ -685,13 +712,6 @@ fn oracle(table: &[Child]) -> Expected {
         }
     }
     o.form(table);
-    for index in 0..o.cells.len() {
-        for header in o.assign_headers(index) {
-            let pair = (o.cells[index].ordinal, o.cells[header].ordinal);
-            o.out.headers.push(pair);
-        }
-    }
-    o.out.headers.sort_unstable();
     o.out.width = o.xwidth;
     o.out.height = o.yheight;
     o.out.errors = o.errors.keys().cloned().collect();
@@ -701,7 +721,20 @@ fn oracle(table: &[Child]) -> Expected {
         .map(|c| (c.ordinal, c.header, c.x, c.y, c.width, c.height))
         .collect();
     o.out.cells.sort_unstable();
-    o.out
+    let mut headers = BTreeMap::new();
+    for index in 0..o.cells.len() {
+        let (ordered, mut grouped) = o.assign_headers(index);
+        let ordinal = |cell: usize| o.cells[cell].ordinal;
+        grouped.sort_by_key(|cell| ordinal(*cell));
+        headers.insert(
+            ordinal(index),
+            Associated {
+                ordered: ordered.iter().map(|c| ordinal(*c)).collect(),
+                grouped: grouped.iter().map(|c| ordinal(*c)).collect(),
+            },
+        );
+    }
+    (o.out, headers)
 }
 
 // ---- Building the capture and reading the model back --------------------
@@ -855,12 +888,6 @@ fn read(capture: &HtmlCapture, subjects: &Subjects, model: &HtmlTableModel) -> E
         })
         .collect();
     cells.sort_unstable();
-    let mut headers: Vec<_> = model
-        .headers()
-        .iter()
-        .map(|h| (cell(h.cell()), cell(h.header())))
-        .collect();
-    headers.sort_unstable();
     Expected {
         width: model.width(),
         height: model.height(),
@@ -887,8 +914,39 @@ fn read(capture: &HtmlCapture, subjects: &Subjects, model: &HtmlTableModel) -> E
             .map(|g| (position(&subjects.colgroups, g.subject()), g.x(), g.width()))
             .collect(),
         errors,
-        headers,
     }
+}
+
+/// The model's header lists by cell, each in the order the model gives it.
+fn read_headers(
+    subjects: &Subjects,
+    capture: &HtmlCapture,
+    model: &HtmlTableModel,
+) -> BTreeMap<usize, Vec<usize>> {
+    let position = |subject: &HtmlCaptureSubjectId| {
+        subjects
+            .cells
+            .iter()
+            .position(|s| &capture.subject_id(s).unwrap() == subject)
+            .unwrap()
+    };
+    let mut lists: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for header in model.headers() {
+        lists
+            .entry(position(header.cell()))
+            .or_default()
+            .push(position(header.header()));
+    }
+    lists
+}
+
+/// Whether a cell's list is the specification's: the ordered part first, in
+/// order, then the group-added cells in any order.
+fn agrees(actual: &[usize], expected: &Associated) -> bool {
+    let split = expected.ordered.len();
+    let mut grouped = actual.get(split..).unwrap_or_default().to_vec();
+    grouped.sort_unstable();
+    actual.get(..split) == Some(expected.ordered.as_slice()) && grouped == expected.grouped
 }
 
 #[test]
@@ -906,10 +964,24 @@ fn seeded_random_tables_form_and_assign_headers_as_the_specification_says() {
                 report.results()[0].fact()
             );
         };
+        let (expected, associated) = oracle(&description);
         assert_eq!(
             read(&capture, &subjects, model),
-            oracle(&description),
+            expected,
             "case {case}: {description:#?}"
+        );
+        let actual = read_headers(&subjects, &capture, model);
+        let none = Vec::new();
+        for (cell, expected) in &associated {
+            let found = actual.get(cell).unwrap_or(&none);
+            assert!(
+                agrees(found, expected),
+                "case {case}: cell {cell} has headers {found:?}, expected {expected:?}: {description:#?}"
+            );
+        }
+        assert!(
+            actual.keys().all(|cell| associated.contains_key(cell)),
+            "case {case}: headers for a cell that is not in the table"
         );
     }
 }
