@@ -2108,11 +2108,10 @@ impl ParseControl {
         source: &surgeist_html::values::DocumentString,
     ) -> Result<(surgeist_html::values::DocumentString, usize, usize), HtmlParseStop> {
         let mut buffer = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
-        for &unit in source.code_units() {
-            if let Err(stop) = buffer.try_push(self, unit) {
-                buffer.release(self)?;
-                return Err(stop);
-            }
+        // The final length is known, so one reservation admits the whole copy.
+        if let Err(stop) = buffer.try_extend_from_slice(self, source.code_units()) {
+            buffer.release(self)?;
+            return Err(stop);
         }
         let (text, allocation) = self.freeze_document_string(buffer)?;
         let Some(bytes) = allocation
@@ -2770,8 +2769,26 @@ impl<T: Copy> OwnedVec<T> {
         control: &mut ParseControl,
         values: &[T],
     ) -> Result<(), HtmlParseStop> {
+        self.extend_with(control, values, Growth::Exact)
+    }
+    /// `try_extend_from_slice` for a list that keeps growing: a full vector
+    /// reserves the geometric target of `try_push_geometric`, so repeated
+    /// appends copy each element a constant number of times.
+    pub(crate) fn try_extend_from_slice_geometric(
+        &mut self,
+        control: &mut ParseControl,
+        values: &[T],
+    ) -> Result<(), HtmlParseStop> {
+        self.extend_with(control, values, Growth::Geometric(usize::MAX))
+    }
+    fn extend_with(
+        &mut self,
+        control: &mut ParseControl,
+        values: &[T],
+        growth: Growth,
+    ) -> Result<(), HtmlParseStop> {
         control.checkpoint()?;
-        self.prepare(control, values.len(), 0, 0, Growth::Exact)?;
+        self.prepare(control, values.len(), 0, 0, growth)?;
         // A zero-sized element has no byte stride; refuse it when this is compiled.
         let stride = const {
             assert!(size_of::<T>() != 0);

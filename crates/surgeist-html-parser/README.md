@@ -190,6 +190,15 @@ execution banks, including their spare capacity, are released before successful
 publication. Every failure preserves the actual original request bank and its
 ownership; resource cleanup does not reconstruct it.
 
+Byte limits count real capacity, including the spare room of lists that grow one
+record at a time. Such a list, a token's text included, grows a full vector to the
+greater of the capacity it needs and double its capacity, so `n` records charge `O(n)`
+reservation work. That target depends only on the vector, never on a limit, and is
+admitted before it is allocated: a parse succeeds under a byte limit exactly when the
+limit holds the peak the same parse reports under generous limits, and a limit that holds
+the capacity needed but not the target refuses the reservation. Only an allocator refusal
+of the target falls back to the capacity that is needed.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

@@ -1050,7 +1050,9 @@ impl HeadState<'_> {
                     .whitespace_pending
                     .take()
                     .ok_or(HeadError::MissingInput)?;
-                if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
+                if let Err((stop, text)) =
+                    self.before.whitespace.try_push_recover_geometric(c, text)
+                {
                     self.whitespace_pending = Some(text);
                     return Err(stop.into());
                 }
@@ -2151,14 +2153,14 @@ mod event_retention_tests {
         let origin = size_of::<crate::parser::tokenizer::token::HtmlParseTextOrigin>() as u64;
         let range = size_of::<crate::HtmlSourceRange>() as u64;
         // Three source-defined CRLFs produce three one-range Event tickets,
-        // three LF units (six bytes) and a four-slot geometric DraftText origin
-        // capacity. The two Event slots double to four,
+        // three LF units in a four-unit (eight-byte) geometric DraftText value
+        // and a four-slot origin capacity. The two Event slots double to four,
         // whatever the limits are. Peak overlaps only the old/new vector being
         // replaced. A limit that holds the three required Event slots but not
         // the doubled four refuses.
-        let final_bytes = base + 6 + 4 * origin + 3 * range + 4 * event;
-        let peak = (base + 6 + 6 * origin + 3 * range + 2 * event)
-            .max(base + 6 + 4 * origin + 3 * range + 6 * event)
+        let final_bytes = base + 8 + 4 * origin + 3 * range + 4 * event;
+        let peak = (base + 8 + 6 * origin + 3 * range + 2 * event)
+            .max(base + 8 + 4 * origin + 3 * range + 6 * event)
             .max(
                 footprint
                     .resource(HtmlParseResource::PeakTransientBytes)

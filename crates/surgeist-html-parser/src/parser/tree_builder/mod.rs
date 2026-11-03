@@ -550,7 +550,7 @@ impl LocationKernel {
         self.open
             .as_mut()
             .ok_or(KernelError::Consumed)?
-            .try_push(control, copied)?;
+            .try_push_geometric(control, copied)?;
         if template {
             self.templates
                 .as_mut()

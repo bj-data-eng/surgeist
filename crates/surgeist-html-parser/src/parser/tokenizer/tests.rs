@@ -3424,19 +3424,20 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
 fn draft_text_origin_growth_admits_the_doubled_target_and_keeps_post_value_refusals() {
     let source = HtmlSource::utf8("abc");
     let bytes = size_of::<token::HtmlParseTextOrigin>() as u64;
-    // The actual third UTF-16 unit retains six bytes. The full two-slot origins double to four,
-    // whatever the limits are. Replacement retains both old and new layouts: 6 + (2 + 4) *
-    // bytes at the successful peak. A limit that holds the three required slots but not the
+    // The third UTF-16 unit finds a full two-unit value and two-slot origins. Both double: the
+    // value to four units (eight bytes), then the origins to four slots. The origins' growth
+    // retains the doubled value and both old and new origin layouts: 8 + (2 + 4) * bytes at the
+    // successful peak. A limit that holds the origins' three required slots but not the
     // doubled four refuses, as does one byte less than the doubled layout.
     for (short, managed) in [
-        (false, 6 + 4 * bytes),
-        (true, 6 + 4 * bytes - 1),
-        (true, 6 + 3 * bytes),
+        (false, 8 + 4 * bytes),
+        (true, 8 + 4 * bytes - 1),
+        (true, 8 + 3 * bytes),
     ] {
         let caps = limits()
             .into_builder()
             .managed_capacity_bytes(managed)
-            .peak_transient_bytes(6 + 6 * bytes)
+            .peak_transient_bytes(8 + 6 * bytes)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -3466,7 +3467,7 @@ fn draft_text_origin_growth_admits_the_doubled_target_and_keeps_post_value_refus
                 }
             ));
             assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 2));
-            assert_eq!(c.usage().actual_capacity_bytes, 6 + 2 * bytes);
+            assert_eq!(c.usage().actual_capacity_bytes, 8 + 2 * bytes);
             let before = c.usage().clone();
             assert_eq!(
                 draft.push(99, &third, HtmlParseOriginKind::Literal, &mut c),
@@ -3477,12 +3478,12 @@ fn draft_text_origin_growth_admits_the_doubled_target_and_keeps_post_value_refus
         } else {
             assert_eq!(result, Ok(()));
             assert_eq!((draft.origins.len(), draft.origins.capacity()), (3, 4));
-            assert_eq!(c.usage().actual_capacity_bytes, 6 + 4 * bytes);
+            assert_eq!(c.usage().actual_capacity_bytes, 8 + 4 * bytes);
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
-                6 + 6 * bytes
+                8 + 6 * bytes
             );
         }
         for (i, origin) in draft.origins.as_slice().iter().enumerate() {
@@ -3548,7 +3549,7 @@ fn draft_text_origin_logical_denial_retains_reserved_capacity_and_partial_value(
     assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 4));
     assert_eq!(
         c.usage().actual_capacity_bytes,
-        6 + 4 * size_of::<token::HtmlParseTextOrigin>() as u64
+        8 + 4 * size_of::<token::HtmlParseTextOrigin>() as u64
     );
     assert_eq!(
         c.usage()
