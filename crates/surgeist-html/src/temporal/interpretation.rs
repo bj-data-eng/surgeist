@@ -162,7 +162,7 @@ impl HtmlTimeElementInterpretationStep {
         self.poll_after
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 enum Stage {
     Recognize,
     Begin,
@@ -175,7 +175,8 @@ enum Stage {
     Duration(DurationStage),
     Poll,
     Report,
-    Done,
+    /// The published report, which only `try_finish` takes.
+    Done(Report),
 }
 #[derive(Clone, Copy, Debug)]
 enum GlobalStage {
@@ -272,7 +273,6 @@ pub struct HtmlTimeElementInterpretation<'raw> {
     millisecond: u16,
     within_cycle: u32,
     adjustment: i8,
-    report: Option<Report>,
     failure: Option<HtmlTimeElementInterpretationError>,
 }
 impl<'raw> HtmlTimeElementInterpretation<'raw> {
@@ -302,7 +302,6 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             millisecond: 0,
             within_cycle: 0,
             adjustment: 0,
-            report: None,
             failure: None,
         })
     }
@@ -325,7 +324,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
         if let Some(error) = self.failure {
             return Err(error);
         }
-        if matches!(self.stage, Stage::Done) {
+        if matches!(self.stage, Stage::Done(_)) {
             return Ok(None);
         }
         let Some(layout) = self.layout() else {
@@ -351,60 +350,81 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
         if let Some(error) = current.failure {
             return Err(error);
         }
-        if !matches!(current.stage, Stage::Done) {
+        if !matches!(current.stage, Stage::Done(_)) {
             return Err(HtmlTimeElementInterpretationErrorKind::NotReady.error());
         }
-        Ok(owner
-            .take()
-            .expect("checked owner")
-            .report
-            .expect("completed admitted report assembly"))
+        match owner.take() {
+            Some(Self {
+                stage: Stage::Done(report),
+                ..
+            }) => Ok(report),
+            other => {
+                *owner = other;
+                Err(HtmlTimeElementInterpretationErrorKind::NotReady.error())
+            }
+        }
     }
-    fn integer(&self, index: usize) -> &HtmlNonNegativeInteger {
+    // The registers below are filled by the stage that precedes each reader, in the order that
+    // `layout` charges; a register or plan that a stage finds missing reports the
+    // invalid-recognized-plan cause instead of asserting.
+    fn integer(
+        &self,
+        index: usize,
+    ) -> Result<&HtmlNonNegativeInteger, HtmlTimeElementInterpretationError> {
         self.integers[index]
             .as_ref()
-            .expect("materialized integer register")
+            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan.error())
     }
-    fn decimal(&self, index: usize) -> &HtmlNonNegativeDecimal {
+    fn decimal(
+        &self,
+        index: usize,
+    ) -> Result<&HtmlNonNegativeDecimal, HtmlTimeElementInterpretationError> {
         self.decimals[index]
             .as_ref()
-            .expect("materialized decimal register")
+            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan.error())
     }
-    fn plan(&self) -> BorrowedTemporalPlan<'raw> {
-        self.plan.expect("recognized plan")
+    fn plan(&self) -> Result<BorrowedTemporalPlan<'raw>, HtmlTimeElementInterpretationError> {
+        self.plan
+            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan.error())
     }
-    fn year_plan(&self) -> BorrowedYear<'raw> {
-        match self.plan() {
+    fn year_plan(&self) -> Result<BorrowedYear<'raw>, HtmlTimeElementInterpretationError> {
+        Ok(match self.plan()? {
             BorrowedTemporalPlan::Month(p) => p.year(),
             BorrowedTemporalPlan::Date(p) => p.year(),
             BorrowedTemporalPlan::LocalDateTime(p) => p.date().year(),
             BorrowedTemporalPlan::GlobalDateTime(p) => p.local().date().year(),
             BorrowedTemporalPlan::Week(p) => p.year(),
             BorrowedTemporalPlan::Year(p) => p,
-            _ => unreachable!("year materialization branch"),
-        }
+            _ => return Err(self.inconsistent()),
+        })
     }
-    fn date_plan(&self) -> BorrowedDate<'raw> {
-        match self.plan() {
+    fn date_plan(&self) -> Result<BorrowedDate<'raw>, HtmlTimeElementInterpretationError> {
+        Ok(match self.plan()? {
             BorrowedTemporalPlan::Date(p) => p,
             BorrowedTemporalPlan::LocalDateTime(p) => p.date(),
             BorrowedTemporalPlan::GlobalDateTime(p) => p.local().date(),
-            _ => unreachable!("date materialization branch"),
-        }
+            _ => return Err(self.inconsistent()),
+        })
     }
-    fn time_plan(&self) -> BorrowedTime<'raw> {
-        match self.plan() {
+    fn time_plan(&self) -> Result<BorrowedTime<'raw>, HtmlTimeElementInterpretationError> {
+        Ok(match self.plan()? {
             BorrowedTemporalPlan::Time(p) => p,
             BorrowedTemporalPlan::LocalDateTime(p) => p.time(),
             BorrowedTemporalPlan::GlobalDateTime(p) => p.local().time(),
-            _ => unreachable!("time materialization branch"),
+            _ => return Err(self.inconsistent()),
+        })
+    }
+    fn global_plan(
+        &self,
+    ) -> Result<BorrowedGlobalDateTime<'raw>, HtmlTimeElementInterpretationError> {
+        match self.plan()? {
+            BorrowedTemporalPlan::GlobalDateTime(p) => Ok(p),
+            _ => Err(self.inconsistent()),
         }
     }
-    fn global_plan(&self) -> BorrowedGlobalDateTime<'raw> {
-        let BorrowedTemporalPlan::GlobalDateTime(p) = self.plan() else {
-            unreachable!("global materialization branch")
-        };
-        p
+    /// The recognized plan is not the kind that the stage reads.
+    fn inconsistent(&self) -> HtmlTimeElementInterpretationError {
+        HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan.error()
     }
     fn layout(&self) -> Option<HtmlTimeElementInterpretationLayout> {
         use HtmlTimeElementInterpretationActionKind as K;
@@ -417,11 +437,11 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             Stage::YearRead => (
                 K::Materialization,
                 HtmlNonNegativeInteger::from_borrowed_digits_work_bound(
-                    self.year_plan().digits().len(),
+                    self.year_plan().ok()?.digits().len(),
                 )?,
             ),
             Stage::Second => {
-                let p = self.time_plan();
+                let p = self.time_plan().ok()?;
                 (
                     K::Materialization,
                     HtmlNonNegativeDecimal::from_borrowed_digits_work_bound(
@@ -434,21 +454,23 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 GlobalStage::Year => (
                     K::Materialization,
                     HtmlNonNegativeInteger::from_borrowed_digits_work_bound(
-                        self.date_plan().year().digits().len(),
+                        self.date_plan().ok()?.year().digits().len(),
                     )?,
                 ),
-                GlobalStage::CopyYear => (K::Materialization, self.integer(0).copy_work_bound()?),
+                GlobalStage::CopyYear => {
+                    (K::Materialization, self.integer(0).ok()?.copy_work_bound()?)
+                }
                 GlobalStage::PrecedingYear => (
                     K::Materialization,
-                    self.integer(0).decremented_work_bound()?,
+                    self.integer(0).ok()?.decremented_work_bound()?,
                 ),
                 GlobalStage::Cycles => (
                     K::Materialization,
-                    self.integer(2).quotient_remainder_work_bound()?,
+                    self.integer(2).ok()?.quotient_remainder_work_bound()?,
                 ),
                 GlobalStage::CycleDays => (
                     K::Materialization,
-                    self.integer(3).multiplied_by_work_bound()?,
+                    self.integer(3).ok()?.multiplied_by_work_bound()?,
                 ),
                 GlobalStage::WithinCycle => (K::Assembly, 256),
                 GlobalStage::WithinCycleNumber => (
@@ -457,17 +479,16 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 ),
                 GlobalStage::Ordinal => (
                     K::Materialization,
-                    self.integer(4).added_to_work_bound(self.integer(1))?,
+                    self.integer(4)
+                        .ok()?
+                        .added_to_work_bound(self.integer(1).ok()?)?,
                 ),
                 GlobalStage::AdjustDay => (
                     K::Materialization,
-                    self.day
-                        .as_ref()
-                        .expect("day register")
-                        .materialized_unit_step_work_bound()?,
+                    self.day.as_ref()?.materialized_unit_step_work_bound()?,
                 ),
                 GlobalStage::Seconds => {
-                    let p = self.time_plan();
+                    let p = self.time_plan().ok()?;
                     (
                         K::Materialization,
                         HtmlNonNegativeDecimal::from_borrowed_digits_work_bound(
@@ -477,7 +498,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     )
                 }
                 GlobalStage::CopySeconds => {
-                    (K::Materialization, self.decimal(0).copy_work_bound()?)
+                    (K::Materialization, self.decimal(0).ok()?.copy_work_bound()?)
                 }
                 _ => (K::Assembly, 1),
             },
@@ -487,15 +508,9 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     K::Materialization,
                     HtmlNonNegativeInteger::from_u32_work_bound()?,
                 ),
-                DurationStage::Next => (
-                    K::Recognition,
-                    self.duration
-                        .as_ref()
-                        .expect("duration cursor")
-                        .next_work_bound()?,
-                ),
+                DurationStage::Next => (K::Recognition, self.duration.as_ref()?.next_work_bound()?),
                 DurationStage::Quantity => {
-                    let p = self.component.expect("duration component");
+                    let p = self.component?;
                     (
                         K::Materialization,
                         if self.phase == TemporalPhase::Author {
@@ -513,23 +528,27 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 DurationStage::Scale => (
                     K::Materialization,
                     if self.phase == TemporalPhase::Author {
-                        self.integer(1).multiplied_by_work_bound()?
+                        self.integer(1).ok()?.multiplied_by_work_bound()?
                     } else {
-                        self.decimal(1).multiplied_by_work_bound()?
+                        self.decimal(1).ok()?.multiplied_by_work_bound()?
                     },
                 ),
                 DurationStage::Accumulate => (
                     K::Materialization,
                     if self.phase == TemporalPhase::Author {
-                        self.integer(0).added_to_work_bound(self.integer(2))?
+                        self.integer(0)
+                            .ok()?
+                            .added_to_work_bound(self.integer(2).ok()?)?
                     } else {
-                        self.decimal(0).added_to_work_bound(self.decimal(2))?
+                        self.decimal(0)
+                            .ok()?
+                            .added_to_work_bound(self.decimal(2).ok()?)?
                     },
                 ),
             },
             Stage::Poll => (K::Poll, 0),
             Stage::Report => (K::ReportAssembly, 1),
-            Stage::Done => return None,
+            Stage::Done(_) => return None,
             _ => (K::Assembly, 1),
         };
         Some(HtmlTimeElementInterpretationLayout { work, kind })
@@ -588,7 +607,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     }
                 }
             },
-            Stage::Begin => match self.plan() {
+            Stage::Begin => match self.plan()? {
                 BorrowedTemporalPlan::YearlessDate(value) => {
                     if self.phase == TemporalPhase::Author {
                         self.author(HtmlTimeElementValue::YearlessDate(value));
@@ -623,7 +642,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             Stage::YearRead => {
                 self.integers[0] = Some(materialized(
                     HtmlNonNegativeInteger::try_from_borrowed_digits(
-                        self.year_plan().digits(),
+                        self.year_plan()?.digits(),
                         digits,
                         bytes,
                     ),
@@ -632,10 +651,12 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 self.stage = Stage::YearAssemble;
             }
             Stage::YearAssemble => {
-                let year = self
-                    .year_plan()
-                    .assemble(self.integers[0].take().expect("year magnitude"));
-                match self.plan() {
+                let year = self.year_plan()?.assemble(
+                    self.integers[0]
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                );
+                match self.plan()? {
                     BorrowedTemporalPlan::Month(p) => {
                         if self.phase == TemporalPhase::Author {
                             self.author(HtmlTimeElementValue::Month(p.assemble(year)));
@@ -664,8 +685,12 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 }
             }
             Stage::DateAssemble => {
-                let date = self.date_plan().assemble(self.year.take().expect("year"));
-                match self.plan() {
+                let date = self.date_plan()?.assemble(
+                    self.year
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                );
+                match self.plan()? {
                     BorrowedTemporalPlan::Date(_) => {
                         if self.phase == TemporalPhase::Author {
                             self.author(HtmlTimeElementValue::Date(date));
@@ -686,11 +711,11 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     BorrowedTemporalPlan::GlobalDateTime(p) => self.author(
                         HtmlTimeElementValue::GlobalDateTime(p.assemble_author(date)),
                     ),
-                    _ => unreachable!("date branch"),
+                    _ => return Err(self.inconsistent()),
                 }
             }
             Stage::Second => {
-                let p = self.time_plan();
+                let p = self.time_plan()?;
                 self.decimals[0] = Some(materialized(
                     HtmlNonNegativeDecimal::try_from_borrowed_digits(
                         p.second_digits(),
@@ -703,18 +728,23 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 self.stage = Stage::SecondAssemble;
             }
             Stage::SecondAssemble => {
-                let seconds = self.decimals[0].take().expect("recovery seconds");
-                match self.plan() {
+                let seconds = self.decimals[0]
+                    .take()
+                    .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
+                match self.plan()? {
                     BorrowedTemporalPlan::Time(p) => {
                         self.recovery(HtmlMachineReadableTime::Time(p.assemble_recovery(seconds)))
                     }
                     BorrowedTemporalPlan::LocalDateTime(p) => {
-                        let date = self.date.take().expect("local date");
+                        let date = self
+                            .date
+                            .take()
+                            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                         self.recovery(HtmlMachineReadableTime::LocalDateTime(
                             p.assemble_recovery(date, seconds),
                         ));
                     }
-                    _ => unreachable!("time branch"),
+                    _ => return Err(self.inconsistent()),
                 }
             }
             Stage::Global(step) => self.advance_global(step, digits, bytes, observed)?,
@@ -725,14 +755,14 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     std::mem::replace(&mut self.author, Err(HtmlTemporalError::InvalidSyntax));
                 let recovery =
                     std::mem::replace(&mut self.recovery, Err(HtmlTemporalError::InvalidSyntax));
-                self.report = Some(
-                    self.interpreter
-                        .time_element_report_from_attempts(self.raw, author, recovery)
-                        .expect("same interpreter and raw admitted at construction"),
-                );
-                self.stage = Stage::Done;
+                // The same interpreter admitted this raw value at construction.
+                let report = self
+                    .interpreter
+                    .time_element_report_from_attempts(self.raw, author, recovery)
+                    .map_err(|_| HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
+                self.stage = Stage::Done(report);
             }
-            Stage::Done => unreachable!("completed owner issues no action"),
+            Stage::Done(_) => return Err(self.inconsistent()),
         }
         Ok(())
     }
@@ -743,7 +773,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
         bytes: usize,
         observed: &mut usize,
     ) -> Result<(), HtmlTimeElementInterpretationError> {
-        let p = self.global_plan();
+        let p = self.global_plan()?;
         match step {
             GlobalStage::Year => {
                 self.integers[0] = Some(materialized(
@@ -757,30 +787,30 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             }
             GlobalStage::CopyYear => {
                 self.integers[1] = Some(materialized(
-                    self.integer(0).try_copy(digits, bytes),
+                    self.integer(0)?.try_copy(digits, bytes),
                     observed,
                 )?)
             }
             GlobalStage::Date => {
-                self.date = Some(
-                    p.local().date().assemble(
-                        p.local()
-                            .date()
-                            .year()
-                            .assemble(self.integers[1].take().expect("copied local year")),
-                    ),
-                )
+                self.date =
+                    Some(
+                        p.local().date().assemble(p.local().date().year().assemble(
+                            self.integers[1].take().ok_or(
+                                HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan,
+                            )?,
+                        )),
+                    )
             }
             GlobalStage::PrecedingYear => {
                 self.integers[2] = Some(
-                    materialized(self.integer(0).try_decremented(digits, bytes), observed)?
-                        .expect("positive recognized year"),
+                    materialized(self.integer(0)?.try_decremented(digits, bytes), observed)?
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
                 )
             }
             GlobalStage::Cycles => {
                 self.integers[3] = Some(
                     materialized(
-                        self.integer(2).try_quotient_remainder(
+                        self.integer(2)?.try_quotient_remainder(
                             NonZeroU32::new(400).expect("nonzero divisor"),
                             digits,
                             bytes,
@@ -792,7 +822,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             }
             GlobalStage::CycleDays => {
                 self.integers[4] = Some(materialized(
-                    self.integer(3).try_multiplied_by(146097, digits, bytes),
+                    self.integer(3)?.try_multiplied_by(146097, digits, bytes),
                     observed,
                 )?)
             }
@@ -805,13 +835,16 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             }
             GlobalStage::Ordinal => {
                 self.integers[2] = Some(materialized(
-                    self.integer(4).try_added_to(self.integer(1), digits, bytes),
+                    self.integer(4)?
+                        .try_added_to(self.integer(1)?, digits, bytes),
                     observed,
                 )?)
             }
             GlobalStage::Day => {
                 self.day = Some(HtmlInteger::from_magnitude(
-                    self.integers[2].take().expect("ordinal"),
+                    self.integers[2]
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
                     false,
                 ))
             }
@@ -831,7 +864,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 self.day = Some(materialized(
                     self.day
                         .as_ref()
-                        .expect("day")
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?
                         .try_materialized_unit_step(direction, digits, bytes),
                     observed,
                 )?);
@@ -849,21 +882,33 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             }
             GlobalStage::CopySeconds => {
                 self.decimals[1] = Some(materialized(
-                    self.decimal(0).try_copy(digits, bytes),
+                    self.decimal(0)?.try_copy(digits, bytes),
                     observed,
                 )?)
             }
             GlobalStage::Local => {
-                self.local = Some(p.local().assemble_recovery(
-                    self.date.take().expect("local date"),
-                    self.decimals[0].take().expect("local seconds"),
-                ))
+                self.local = Some(
+                    p.local().assemble_recovery(
+                        self.date
+                            .take()
+                            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                        self.decimals[0]
+                            .take()
+                            .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                    ),
+                )
             }
             GlobalStage::Finish => {
                 let value = p.assemble_recovery(
-                    self.local.take().expect("local value"),
-                    self.day.take().expect("UTC day"),
-                    self.decimals[1].take().expect("UTC seconds"),
+                    self.local
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                    self.day
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
+                    self.decimals[1]
+                        .take()
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?,
                 );
                 self.recovery(HtmlMachineReadableTime::GlobalDateTime(value));
                 return Ok(());
@@ -892,8 +937,8 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 }
             }
             DurationStage::Initialize => {
-                let BorrowedTemporalPlan::Duration(plan) = self.plan() else {
-                    unreachable!("duration plan")
+                let BorrowedTemporalPlan::Duration(plan) = self.plan()? else {
+                    return Err(self.inconsistent());
                 };
                 self.duration = Some(plan.cursor());
             }
@@ -901,23 +946,25 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 self.component = self
                     .duration
                     .as_mut()
-                    .expect("duration cursor")
+                    .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?
                     .next_component()
                     .map_err(|_| HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                 let Some(component) = self.component else {
-                    let BorrowedTemporalPlan::Duration(p) = self.plan() else {
-                        unreachable!("duration plan")
+                    let BorrowedTemporalPlan::Duration(p) = self.plan()? else {
+                        return Err(self.inconsistent());
                     };
                     if self.phase == TemporalPhase::Author {
                         let value = p.assemble_author(
-                            self.integers[0].take().expect("accumulated seconds"),
+                            self.integers[0].take().ok_or(
+                                HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan,
+                            )?,
                             self.millisecond,
                         );
                         self.author(HtmlTimeElementValue::Duration(value));
                     } else {
-                        let value = p.assemble_recovery(
-                            self.decimals[0].take().expect("accumulated seconds"),
-                        );
+                        let value = p.assemble_recovery(self.decimals[0].take().ok_or(
+                            HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan,
+                        )?);
                         self.recovery(HtmlMachineReadableTime::Duration(value));
                     }
                     return Ok(());
@@ -927,7 +974,9 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 }
             }
             DurationStage::Quantity => {
-                let p = self.component.expect("duration component");
+                let p = self
+                    .component
+                    .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                 if self.phase == TemporalPhase::Author {
                     self.integers[1] = Some(materialized(
                         HtmlNonNegativeInteger::try_from_borrowed_digits(
@@ -952,17 +1001,16 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             DurationStage::Scale => {
                 let scale = self
                     .component
-                    .expect("duration component")
-                    .scale()
-                    .expect("numeric duration component");
+                    .and_then(|component| component.scale())
+                    .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                 if self.phase == TemporalPhase::Author {
                     self.integers[2] = Some(materialized(
-                        self.integer(1).try_multiplied_by(scale, digits, bytes),
+                        self.integer(1)?.try_multiplied_by(scale, digits, bytes),
                         observed,
                     )?);
                 } else {
                     self.decimals[2] = Some(materialized(
-                        self.decimal(1).try_multiplied_by(scale, digits, bytes),
+                        self.decimal(1)?.try_multiplied_by(scale, digits, bytes),
                         observed,
                     )?);
                 }
@@ -970,19 +1018,23 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             DurationStage::Accumulate => {
                 if self.phase == TemporalPhase::Author {
                     self.integers[0] = Some(materialized(
-                        self.integer(0).try_added_to(self.integer(2), digits, bytes),
+                        self.integer(0)?
+                            .try_added_to(self.integer(2)?, digits, bytes),
                         observed,
                     )?);
                 } else {
                     self.decimals[0] = Some(materialized(
-                        self.decimal(0).try_added_to(self.decimal(2), digits, bytes),
+                        self.decimal(0)?
+                            .try_added_to(self.decimal(2)?, digits, bytes),
                         observed,
                     )?);
                 }
             }
             DurationStage::Advance => {
                 if self.phase == TemporalPhase::Author {
-                    let p = self.component.expect("component");
+                    let p = self
+                        .component
+                        .ok_or(HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                     if p.scale() == Some(1) {
                         self.millisecond = p.millisecond();
                     }
