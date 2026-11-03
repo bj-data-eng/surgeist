@@ -310,6 +310,57 @@ fn append_with_spare_child_order_capacity_requests_no_growth() {
 }
 
 #[test]
+fn a_child_order_allocation_reports_the_deque_that_holds_the_entries() {
+    // A child-order bank is a deque of one-word entries. Its inline header
+    // holds the head, the length, the buffer pointer and its capacity: four
+    // words, counted here by hand rather than read off `size_of`. An append
+    // reserves exactly the one slot it needs the first time, and the admitted
+    // capacity of 8 the second time.
+    let word = size_of::<usize>();
+    let (owner, root) = fragment(storage());
+    let (owner, a) = create(owner, element("a"));
+    let (owner, b) = create(owner, element("b"));
+    let (owner, requested) = append_amortized(owner, &a, &root);
+    assert_eq!(requested, [1]);
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: b,
+                parent: root,
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let (mut before, mut grown) = (None, None);
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        if let HtmlConstructionActionDescription::Reserve { allocation, .. } = action.description()
+        {
+            before = Some(allocation.clone());
+            let observation = action.perform_with_capacity(8).unwrap();
+            grown = observation.allocation().cloned();
+            observation.accept();
+        } else {
+            action.perform().unwrap().accept();
+        }
+    }
+    for (snapshot, len, capacity) in [(before.unwrap(), 1, 1), (grown.unwrap(), 1, 8)] {
+        assert_eq!(snapshot.role(), HtmlConstructionAllocationRole::Children);
+        assert_eq!(snapshot.child_position(), Some(0));
+        assert_eq!(snapshot.initialized_len(), len);
+        assert_eq!(snapshot.capacity(), capacity);
+        assert_eq!(snapshot.element_size(), word);
+        assert_eq!(snapshot.payload_bytes(), capacity * word);
+        // The wrapper is the deque header. Its layout is not a std guarantee, so compare with
+        // the deque's own size and require it to differ from a `Vec` header.
+        assert_eq!(
+            snapshot.wrapper_payload_bytes(),
+            std::mem::size_of::<std::collections::VecDeque<usize>>()
+        );
+        assert!(snapshot.wrapper_payload_bytes() > std::mem::size_of::<Vec<usize>>());
+    }
+}
+
+#[test]
 fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() {
     let (owner, root) = fragment(storage());
     let (owner, a) = create(owner, element("a"));
