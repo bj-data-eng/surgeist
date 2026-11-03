@@ -127,6 +127,70 @@ impl SessionStorage {
             }
         }
     }
+    /// What the policy or transition row retains beyond the registry's own
+    /// accounting of its slot; zero for any other row.
+    fn csp_row_usage(row: &RetainedPayload) -> Result<Storage, SessionError> {
+        Ok(match row {
+            RetainedPayload::CspPolicy(v) => {
+                let mut usage = Storage {
+                    bytes: size_of::<Policy>(),
+                    units: 0,
+                    entries: 1,
+                };
+                if let Some(value) = &v.value {
+                    let native = Storage::from(
+                        value
+                            .retained_layout()
+                            .map_err(SessionError::CspProtocol)?
+                            .storage(),
+                    );
+                    usage = usage
+                        .add(
+                            native
+                                .sub(Storage {
+                                    bytes: size_of::<HtmlCspAssociation>(),
+                                    units: 0,
+                                    entries: 1,
+                                })
+                                .ok_or(SessionError::WrongToken)?,
+                        )
+                        .ok_or(SessionError::WrongToken)?;
+                }
+                usage
+            }
+            RetainedPayload::CspTransition(v) => {
+                let mut usage = Storage {
+                    bytes: size_of::<Transition>(),
+                    units: 0,
+                    entries: 1,
+                };
+                if let Some((receipt, retired, request, prepared)) = &v.value {
+                    for (layout, inline) in [
+                        (receipt.retained_layout(), size_of::<HtmlMetaCspReceipt>()),
+                        (retired.retained_layout(), size_of::<HtmlCspAssociation>()),
+                        (request.retained_layout(), size_of::<HtmlMetaCspRequest>()),
+                        (prepared.retained_layout(), size_of::<HtmlMetaCspPrepared>()),
+                    ] {
+                        let native =
+                            Storage::from(layout.map_err(SessionError::CspProtocol)?.storage());
+                        usage = usage
+                            .add(
+                                native
+                                    .sub(Storage {
+                                        bytes: inline,
+                                        units: 0,
+                                        entries: 1,
+                                    })
+                                    .ok_or(SessionError::WrongToken)?,
+                            )
+                            .ok_or(SessionError::WrongToken)?;
+                    }
+                }
+                usage
+            }
+            _ => Storage::ZERO,
+        })
+    }
     fn reconcile_csp(&self, c: &mut ParseControl, state: &mut State) -> Result<(), SessionError> {
         let base = state
             .owner_usage
@@ -139,66 +203,7 @@ impl SessionStorage {
         let mut rows = state.rows_usage;
         for row in self.payloads.values.iter().skip(state.rows_scanned) {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let usage = match row {
-                RetainedPayload::CspPolicy(v) => {
-                    let mut usage = Storage {
-                        bytes: size_of::<Policy>(),
-                        units: 0,
-                        entries: 1,
-                    };
-                    if let Some(value) = &v.value {
-                        let native = Storage::from(
-                            value
-                                .retained_layout()
-                                .map_err(SessionError::CspProtocol)?
-                                .storage(),
-                        );
-                        usage = usage
-                            .add(
-                                native
-                                    .sub(Storage {
-                                        bytes: size_of::<HtmlCspAssociation>(),
-                                        units: 0,
-                                        entries: 1,
-                                    })
-                                    .ok_or(SessionError::WrongToken)?,
-                            )
-                            .ok_or(SessionError::WrongToken)?;
-                    }
-                    usage
-                }
-                RetainedPayload::CspTransition(v) => {
-                    let mut usage = Storage {
-                        bytes: size_of::<Transition>(),
-                        units: 0,
-                        entries: 1,
-                    };
-                    if let Some((receipt, retired, request, prepared)) = &v.value {
-                        for (layout, inline) in [
-                            (receipt.retained_layout(), size_of::<HtmlMetaCspReceipt>()),
-                            (retired.retained_layout(), size_of::<HtmlCspAssociation>()),
-                            (request.retained_layout(), size_of::<HtmlMetaCspRequest>()),
-                            (prepared.retained_layout(), size_of::<HtmlMetaCspPrepared>()),
-                        ] {
-                            let native =
-                                Storage::from(layout.map_err(SessionError::CspProtocol)?.storage());
-                            usage = usage
-                                .add(
-                                    native
-                                        .sub(Storage {
-                                            bytes: inline,
-                                            units: 0,
-                                            entries: 1,
-                                        })
-                                        .ok_or(SessionError::WrongToken)?,
-                                )
-                                .ok_or(SessionError::WrongToken)?;
-                        }
-                    }
-                    usage
-                }
-                _ => Storage::ZERO,
-            };
+            let usage = Self::csp_row_usage(row)?;
             rows = rows.add(usage).ok_or(SessionError::WrongToken)?;
         }
         let mut live = base.add(rows).ok_or(SessionError::WrongToken)?;
@@ -224,6 +229,20 @@ impl SessionStorage {
             .ok_or_else(|| crate::meta_csp::accounting_violation(c))?;
         retired.release(c)?;
         state.account.rebaseline(live);
+        #[cfg(test)]
+        {
+            // The incremental sum equals a sum over every row.
+            let mut all = Storage::ZERO;
+            for row in &self.payloads.values {
+                all = all
+                    .add(Self::csp_row_usage(row)?)
+                    .ok_or(SessionError::WrongToken)?;
+            }
+            assert_eq!(
+                rows, all,
+                "the incremental policy row usage equals a full sum"
+            );
+        }
         state.rows_scanned = self.payloads.values.len();
         state.rows_usage = rows;
         Ok(())

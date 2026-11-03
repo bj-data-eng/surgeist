@@ -709,6 +709,12 @@ impl PayloadStorage {
             // row that was current when it was written.
             let mut cell = *cell;
             *cell.rows.get_mut(Join::StyleOrder) = joined.rows.copy(Join::StyleOrder);
+            if let Some(slot) = joined.get(Join::StyleOrder) {
+                assert!(
+                    matches!(self.values.get(slot), Some(RetainedPayload::StyleOrder(_))),
+                    "the style order join of record {node} names row {slot}, which is not a style order"
+                );
+            }
             assert!(
                 cell.rows == joined.rows,
                 "joins of record {node} differ from the registry: {:?} against {:?}",

@@ -410,6 +410,12 @@ impl SessionStorage {
     ) -> Result<Option<OrderRef>, SessionError> {
         let cacheable = detached.is_none();
         if cacheable && root == MAIN_TREE && self.main_tree_styleless {
+            #[cfg(test)]
+            assert_eq!(
+                self.uncharged_style_order(root),
+                Vec::<usize>::new(),
+                "a main tree known to be styleless holds no style element"
+            );
             return Ok(None);
         }
         if cacheable && let Some(slot) = self.current_style_order(c, root)? {

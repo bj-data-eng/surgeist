@@ -11304,6 +11304,12 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<table><template><style>a{}</style><style>b{}</style></template><style>c{}</style></table>",
         "<template><style>a{}</style></template><style>b{}</style><template><style>c{}</style><style>d{}</style></template><style>e{}",
         "<div><template shadowrootmode=open><style>a{}</style></template></div><div><template shadowrootmode=open><style>b{}</style><style>c{}</style></template></div>",
+        // Foster-parented and mid-tree insertion, and a style-bearing subtree
+        // moved by the adoption agency, while a non-main order is live.
+        "<template><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template>",
+        "<template><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template>",
+        "<div><template shadowrootmode=open><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template></div>",
+        "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template></div>",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{body}")),
