@@ -243,6 +243,51 @@ fn selected_origin_membership_uses_actual_receipt_and_authored_partition() {
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[test]
+fn complete_durable_inventory_is_admitted_without_browser_or_output() {
+    let root = Directory::new();
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let declaration: Declaration = surgeist_generator::parse_manifest(
+        std::str::from_utf8(DECLARATION).unwrap(),
+        "corpus.toml",
+    )
+    .unwrap();
+    let mut snapshot = inventory(
+        &root.0,
+        owner,
+        &declaration.records,
+        QualificationMode::Regular,
+        InputAccess::Prepare,
+    )
+    .unwrap();
+    Origin::read(owner, &declaration.records)
+        .unwrap()
+        .inputs(&root.0, &mut snapshot, InputAccess::Prepare)
+        .unwrap();
+    let browser: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
+        std::str::from_utf8(owner_bytes().unwrap()).unwrap(),
+        "browser-owner.toml",
+    )
+    .unwrap();
+    // Fixture HTML and global helper/origin inputs have different owners in
+    // Generator's inventory contract. The complete Layout declaration must be
+    // admissible before requesting any browser or generated artifact.
+    let corpus = corpus_for_inventory(
+        &root.0,
+        owner,
+        browser.browser.settings().unwrap(),
+        &snapshot,
+        false,
+        declaration.expected().unwrap(),
+    )
+    .expect("the complete source-qualified inventory is admitted");
+    assert_eq!(corpus.fixtures().len(), declaration.records.len());
+    check_input_census(&root.0, &snapshot.expected_inputs).unwrap();
+    assert!(!root.0.join("xml").exists());
+    assert!(!root.0.join(".surgeist-generator").exists());
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
 fn browser_free_check_of_incomplete_real_inventory_refuses_without_writing() {
     let root = Directory::new();
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
