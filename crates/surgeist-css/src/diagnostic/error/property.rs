@@ -3,8 +3,8 @@ use super::ErrorKind;
 use super::source_resolution::{ends_input, precedes_input};
 use crate::diagnostic::error::{
     CssQualifiedRuleError, CssUnexpectedEndError, CssUnexpectedTokenError, EXPECT_CSS_SYNTAX,
-    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, PropertyValueRejection, QUALIFIED_RULE,
-    encountered_mut, is_component_resource_error, optional_encountered_mut,
+    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, NativeError, PropertyValueRejection,
+    QUALIFIED_RULE, encountered_mut, is_component_resource_error, optional_encountered_mut,
 };
 use crate::diagnostic::{CssGrammarExpectation, CssTokenKind, CssTokenSummary};
 use crate::parser::property_input::SiteExt;
@@ -26,12 +26,8 @@ pub(crate) trait SyntaxErrorExt<'i>: Sized {
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<(ErrorKind, crate::component::CssSerializedOrigin), ()>;
     fn into_parts(self) -> (ErrorKind, crate::component::CssSerializedOrigin);
-    fn into_native_at<'s>(
-        self,
-        source: &str,
-        offset: usize,
-    ) -> cssparser::ParseError<'s, crate::diagnostic::CssError>;
-    fn into_native_source<'s>(self) -> cssparser::ParseError<'s, crate::diagnostic::CssError>;
+    fn into_native_at(self, source: &str, offset: usize) -> NativeError;
+    fn into_native_source(self) -> NativeError;
     /// Only source-owned callers may ask for a single source diagnostic.
     fn into_source_error(self) -> crate::diagnostic::CssError;
 }
@@ -146,34 +142,16 @@ impl<'i> SyntaxErrorExt<'i> for SyntaxError<'i, Error> {
         (kind, origin)
     }
 
-    fn into_native_at<'s>(
-        self,
-        source: &str,
-        offset: usize,
-    ) -> cssparser::ParseError<'s, crate::diagnostic::CssError> {
+    fn into_native_at(self, source: &str, offset: usize) -> NativeError {
         let (kind, _) = self.into_parts();
         let position = CssSourcePosition::from_byte_offset_in(source, offset);
-        let location = cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value().saturating_add(1),
-        };
-        cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(crate::diagnostic::CssError { position, kind }),
-            location,
-        }
+        NativeError::new(crate::diagnostic::CssError { position, kind }, position)
     }
 
-    fn into_native_source<'s>(self) -> cssparser::ParseError<'s, crate::diagnostic::CssError> {
+    fn into_native_source(self) -> NativeError {
         let error = self.into_source_error();
         let position = error.position();
-        let location = cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value().saturating_add(1),
-        };
-        cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(error),
-            location,
-        }
+        NativeError::new(error, position)
     }
 
     fn into_source_error(self) -> crate::diagnostic::CssError {

@@ -1,4 +1,4 @@
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
 use surgeist_css_parser::anb;
 use surgeist_css_parser::stream::StopToken;
 use surgeist_css_parser::token::HashKind;
@@ -14,7 +14,7 @@ use super::syntax_types::{Mark, Site, Stream, SyntaxError};
 use crate::diagnostic::error::{
     from_parse_error, invalid_selector_at, selector_component_error, selector_encountered_at,
 };
-use crate::diagnostic::{CssError, CssFeatureId, CssTokenSummary};
+use crate::diagnostic::{CssFeatureId, CssTokenSummary};
 use crate::numeric::expression::NumericInputContext;
 use crate::rule::CssNamespacePrefix;
 use crate::selector::selector_syntax::{
@@ -238,7 +238,7 @@ impl<'a> SelectorRecovery<'a> {
 
     fn diagnose_forgiving_member(
         &mut self,
-        error: ParseError<'_, CssError>,
+        error: NativeError,
         member_start: usize,
         member_end: usize,
         following_comma: Option<(usize, usize)>,
@@ -268,7 +268,7 @@ impl<'a> SelectorRecovery<'a> {
         &mut self,
         input: &mut Stream<'i>,
         parse: impl FnOnce(&mut Stream<'i>, &mut Self) -> Value<'i, T>,
-    ) -> Result<T, ParseError<'i, CssError>> {
+    ) -> Result<T, NativeError> {
         let snapshot = self.state.source_snapshot().clone();
         let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
         parse(input, self).map_err(|error| native(&numeric, &error))
@@ -278,7 +278,7 @@ impl<'a> SelectorRecovery<'a> {
 pub(crate) fn parse_rule_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
+) -> std::result::Result<Vec<CssSelector>, NativeError> {
     recovery.read_stream(input, rule_selector_list)
 }
 
@@ -342,7 +342,7 @@ pub(crate) fn scope_boundary_selector_list<'i>(
 pub(crate) fn parse_scoped_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
+) -> std::result::Result<CssStyleSelectorList, NativeError> {
     recovery.read_stream(input, scoped_style_selector_list)
 }
 
@@ -369,7 +369,7 @@ fn scoped_style_selector_list<'i>(
 pub(super) fn parse_nested_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
+) -> std::result::Result<Vec<CssStyleSelector>, NativeError> {
     recovery.read_stream(input, nested_style_selector_list)
 }
 
@@ -460,7 +460,7 @@ pub(super) fn read_rule_selector<'i>(
 pub(super) fn parse_rule_selector<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
+) -> std::result::Result<CssSelector, NativeError> {
     recovery.read_stream(input, |input, recovery| read_rule_selector(input, recovery))
 }
 
@@ -469,7 +469,7 @@ pub(super) fn parse_rule_selector<'i>(
 pub(super) fn finish<'i>(
     input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<(), ParseError<'i, CssError>> {
+) -> std::result::Result<(), NativeError> {
     expect_exhausted(input, recovery).map_err(|error| native(&recovery.numeric(), &error))
 }
 
@@ -1709,9 +1709,8 @@ fn parse_pseudo_selector_list_items_with_options<'i>(
 /// the text or a resource.
 fn is_invalid_selector(error: &ValueError<'_>) -> bool {
     matches!(
-        error.custom_value().map(|error| &error.kind),
-        Some(cssparser::ParseErrorKind::Custom(error))
-            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidSelector(_))
+        error.custom_value().map(|error| error.error.kind()),
+        Some(crate::diagnostic::error::ErrorKind::InvalidSelector(_))
     )
 }
 
@@ -1820,7 +1819,7 @@ fn parse_has_relative_selector_list<'i>(
 pub(super) fn parse_general_relative_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
+) -> std::result::Result<CssRelativeSelectorList, NativeError> {
     recovery.read_stream(input, |input, recovery| {
         recovery.check_depth(input)?;
         parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)

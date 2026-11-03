@@ -32,7 +32,8 @@ pub(crate) use kind_predicates;
 
 use std::fmt;
 
-use cssparser::{BasicParseErrorKind, ParseError, ParseErrorKind, ToCss, Token};
+use surgeist_css_parser::Offset;
+use surgeist_css_parser::lexer::{Lexer, Options};
 
 use crate::declaration::CssCustomPropertyName;
 use crate::property::CssKnownProperty;
@@ -347,14 +348,6 @@ impl CssTokenSummary {
         Self {
             kind,
             authored: authored.to_owned(),
-        }
-    }
-
-    fn from_token(token: &Token<'_>) -> Self {
-        Self {
-            kind: token_kind(token),
-            authored: crate::tokenization::combined_operator_prefix(token)
-                .map_or_else(|| token.to_css_string(), |first| first.to_string()),
         }
     }
 
@@ -1287,16 +1280,11 @@ impl CssError {
             CssSourcePosition::from_byte_offset_in(source, self.position.byte_offset().value());
     }
 
-    fn at(location: cssparser::SourceLocation, kind: ErrorKind) -> Self {
+    fn at(location: CssSourcePosition, kind: ErrorKind) -> Self {
         Self {
             kind,
-            position: CssSourcePosition::from_source_location(location),
+            position: location,
         }
-    }
-
-    fn at_exact_nonzero_byte_offset(position: CssSourcePosition, kind: ErrorKind) -> Self {
-        debug_assert_ne!(position.byte_offset().value(), 0);
-        Self { kind, position }
     }
 
     /// The private structured detail behind the public fact accessors.
@@ -1813,30 +1801,50 @@ impl std::error::Error for CssError {
     }
 }
 
-pub(crate) fn from_parse_error(source: &str, error: ParseError<'_, CssError>) -> CssError {
-    match error.kind {
-        ParseErrorKind::Custom(error) => error,
-        ParseErrorKind::Basic(kind) => basic_error(error.location, kind),
+/// What a grammar reports for a failure, until the public boundary publishes it
+/// as a [`CssError`] (see [`from_parse_error`]).
+#[derive(Clone, Debug)]
+pub(crate) struct NativeError {
+    /// The diagnostic the grammar names. Its position is the grammar's own;
+    /// a derived diagnostic takes `location` instead.
+    pub(crate) error: Box<CssError>,
+    /// Where the grammar stood when it failed.
+    pub(crate) location: CssSourcePosition,
+}
+
+impl NativeError {
+    /// The failure `error` at `location`.
+    pub(crate) fn new(error: CssError, location: CssSourcePosition) -> Self {
+        Self {
+            error: Box::new(error),
+            location,
+        }
     }
-    .resolve_source(source)
 }
 
-pub(crate) fn is_nesting_limit_error(error: &ParseError<'_, CssError>) -> bool {
-    matches!(
-        error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::NestingLimit(_),
-            ..
-        })
-    )
+/// The lexer reading `text` from `offset`, which reports offsets of `text`
+/// (Syntax 3 section 4.3). `None` when `offset` is no character boundary.
+pub(crate) fn lexer_at(text: &str, offset: usize) -> Option<Lexer<'_>> {
+    Some(Lexer::new(
+        text.get(offset..)?,
+        &Options::default().origin(Offset::new(offset)),
+    ))
 }
 
-pub(crate) fn nesting_limit<'i>(
+pub(crate) fn from_parse_error(source: &str, error: NativeError) -> CssError {
+    (*error.error).resolve_source(source)
+}
+
+pub(crate) fn is_nesting_limit_error(error: &NativeError) -> bool {
+    matches!(error.error.kind, ErrorKind::NestingLimit(_))
+}
+
+pub(crate) fn nesting_limit(
     source: &str,
     byte_offset: usize,
     limit: u32,
     enclosing_production: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     depth_error(
         source,
         byte_offset,
@@ -1849,12 +1857,12 @@ pub(crate) fn nesting_limit<'i>(
 
 /// The refusal of input deeper than `direct_depth` when the bounded parser
 /// thread cannot start (#1277), at the first opening beyond that depth.
-pub(crate) fn parser_unavailable<'i>(
+pub(crate) fn parser_unavailable(
     source: &str,
     byte_offset: usize,
     direct_depth: u32,
     enclosing_production: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     depth_error(
         source,
         byte_offset,
@@ -1865,16 +1873,9 @@ pub(crate) fn parser_unavailable<'i>(
     )
 }
 
-fn depth_error<'i>(source: &str, byte_offset: usize, kind: ErrorKind) -> ParseError<'i, CssError> {
+fn depth_error(source: &str, byte_offset: usize, kind: ErrorKind) -> NativeError {
     let position = CssSourcePosition::from_byte_offset_in(source, byte_offset);
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value().saturating_add(1),
-    };
-    ParseError {
-        kind: ParseErrorKind::Custom(CssError { kind, position }),
-        location,
-    }
+    NativeError::new(CssError { kind, position }, position)
 }
 
 pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> CssError {
@@ -1930,41 +1931,38 @@ pub(crate) fn escape_parse_error(
 }
 
 /// A name-free grammar failure from an actual retained source token or opener.
-pub(crate) fn unexpected_component_value<'i>(
+pub(crate) fn unexpected_component_value(
     component: &crate::component::CssComponentValue,
     expectation: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let crate::component::CssValueOrigin::Parsed(origin) = component.origin() else {
         unreachable!("source value grammar owns parsed component origins")
     };
     unexpected_component_value_at(component, expectation, origin.span().start())
 }
 
-pub(crate) fn unexpected_component_value_at<'i>(
+pub(crate) fn unexpected_component_value_at(
     component: &crate::component::CssComponentValue,
     expectation: &'static str,
     position: CssSourcePosition,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let encountered = CssTokenSummary::from_component(component);
-    ParseError {
-        location: cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        },
-        kind: ParseErrorKind::Custom(CssError {
+    NativeError::new(
+        CssError {
             position,
             kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                 expectation: CssGrammarExpectation::new(expectation),
                 encountered,
             }),
-        }),
-    }
+        },
+        position,
+    )
 }
 
-pub(crate) fn unexpected_end_at<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn unexpected_end_at(
+    location: CssSourcePosition,
     expectation: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -1977,12 +1975,13 @@ pub(crate) fn unexpected_end_at<'i>(
 /// `\{` is part of an ident (Syntax 3 (2026 CRD) §4.3.7), and a string,
 /// comment or URL can hold the byte too.
 fn contains_curly_block(unit: &str) -> bool {
-    let mut offset = 0;
-    while let Some((_, end, token)) = crate::tokenization::next_source_token(unit, offset) {
-        if matches!(token, Token::CurlyBracketBlock) {
+    let Some(mut lexer) = lexer_at(unit, 0) else {
+        return false;
+    };
+    while let Some(lexeme) = lexer.next_lexeme() {
+        if matches!(lexeme.token(), surgeist_css_parser::Token::OpenCurly) {
             return true;
         }
-        offset = end;
     }
     false
 }
@@ -1990,7 +1989,7 @@ fn contains_curly_block(unit: &str) -> bool {
 pub(crate) fn from_rule_parse_error(
     source: &str,
     failed_unit: &str,
-    error: ParseError<'_, CssError>,
+    error: NativeError,
 ) -> CssError {
     let mut error = from_parse_error(source, error);
     let unit = failed_unit.trim_start();
@@ -1999,11 +1998,11 @@ pub(crate) fn from_rule_parse_error(
     // The decoded at-keyword is the unit's name, so escaped at-keywords keep the
     // same ownership, and an escape such as `\{` belongs to the name (Syntax 3
     // (2026 CRD) §4.3.7) where a text split would end it.
-    let first = crate::tokenization::next_source_token(unit, 0);
-    let at_keyword = match &first {
-        Some((_, _, Token::AtKeyword(name))) => Some(name.as_ref()),
+    let at_keyword = lexer_at(unit, 0).and_then(|mut lexer| match lexer.next_lexeme()?.token() {
+        surgeist_css_parser::Token::AtKeyword(name) => Some(name.to_owned()),
         _ => None,
-    };
+    });
+    let at_keyword = at_keyword.as_deref();
     if let Some(name) = at_keyword
         && (name.eq_ignore_ascii_case("when") || name.eq_ignore_ascii_case("else"))
     {
@@ -2049,65 +2048,41 @@ pub(crate) fn from_rule_parse_error(
     error
 }
 
-fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_>) -> CssError {
-    match kind {
-        BasicParseErrorKind::EndOfInput => CssError::at(
-            location,
-            ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
-                expectation: EXPECT_CSS_SYNTAX,
-            }),
-        ),
-        BasicParseErrorKind::UnexpectedToken(token) => CssError::at(
-            location,
-            ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
-                expectation: EXPECT_CSS_SYNTAX,
-                encountered: CssTokenSummary::from_token(&token),
-            }),
-        ),
-        BasicParseErrorKind::AtRuleInvalid(name) => {
-            let name = name.to_string();
-            if let Some(feature) = unsupported_at_rule_feature(&name) {
-                CssError::at(
-                    location,
-                    ErrorKind::UnsupportedAtRule(CssUnsupportedAtRuleError {
-                        name: CssAtRuleName::new(name),
-                        feature,
-                    }),
-                )
-            } else {
-                CssError::at(
-                    location,
-                    ErrorKind::UnknownAtRule(CssUnknownAtRuleError {
-                        name: CssAtRuleName::new(name),
-                    }),
-                )
-            }
-        }
-        BasicParseErrorKind::QualifiedRuleInvalid => CssError::at(
-            location,
-            ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
-                production: QUALIFIED_RULE,
-                expectation: EXPECT_CSS_SYNTAX,
-                encountered: None,
-            }),
-        ),
-        BasicParseErrorKind::AtRuleBodyInvalid => CssError::at(
-            location,
-            ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
-                name: CssAtRuleName::new("at-rule"),
-                production: CssProductionId::new("css.at-rule"),
-                expectation: EXPECT_CSS_SYNTAX,
-                encountered: None,
-            }),
-        ),
-    }
+/// The rule protocol's rejection of an at-rule whose name no grammar admits
+/// in its context (Syntax 3 section 5.5.2), at `location`.
+pub(crate) fn unknown_at_rule(location: CssSourcePosition, name: &str) -> NativeError {
+    let kind = if let Some(feature) = unsupported_at_rule_feature(name) {
+        ErrorKind::UnsupportedAtRule(CssUnsupportedAtRuleError {
+            name: CssAtRuleName::new(name),
+            feature,
+        })
+    } else {
+        ErrorKind::UnknownAtRule(CssUnknownAtRuleError {
+            name: CssAtRuleName::new(name),
+        })
+    };
+    error_at(location, kind)
+}
+
+/// The rule protocol's rejection of an at-rule block (Syntax 3 section 5.5.2)
+/// at `location`.
+pub(crate) fn invalid_at_rule_body(location: CssSourcePosition) -> NativeError {
+    error_at(
+        location,
+        ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
+            name: CssAtRuleName::new("at-rule"),
+            production: CssProductionId::new("css.at-rule"),
+            expectation: EXPECT_CSS_SYNTAX,
+            encountered: None,
+        }),
+    )
 }
 
 /// An invalid selector at `location`, naming the token it met when there is one.
-pub(crate) fn selector_encountered_at<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn selector_encountered_at(
+    location: CssSourcePosition,
     encountered: Option<CssTokenSummary>,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -2121,10 +2096,10 @@ pub(crate) fn selector_encountered_at<'i>(
 /// Keep lexical envelope rejection in the selector domain without inferring a
 /// different token from a bounded closing delimiter. Resource failures retain
 /// their component error and original provenance instead of becoming grammar.
-pub(crate) fn selector_component_error<'i>(
-    fallback: cssparser::SourceLocation,
+pub(crate) fn selector_component_error(
+    fallback: CssSourcePosition,
     detail: crate::component::CssComponentValueError,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let crate::component::CssValueOrigin::Parsed(origin) = detail.origin() else {
         return invalid_component_value(fallback, detail);
     };
@@ -2144,12 +2119,8 @@ pub(crate) fn selector_component_error<'i>(
         _ => return invalid_component_value(fallback, detail),
     };
     let position = origin.span().start();
-    ParseError {
-        location: cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value().saturating_add(1),
-        },
-        kind: ParseErrorKind::Custom(CssError {
+    NativeError::new(
+        CssError {
             position,
             kind: ErrorKind::InvalidSelector(CssSelectorError {
                 production: Some(SELECTOR_LIST),
@@ -2159,32 +2130,31 @@ pub(crate) fn selector_component_error<'i>(
                     authored: authored.to_owned(),
                 }),
             }),
-        }),
-    }
+        },
+        position,
+    )
 }
 
-pub(crate) fn invalid_component_value<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_component_value(
+    location: CssSourcePosition,
     detail: crate::component::CssComponentValueError,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let position = match detail.origin() {
         crate::component::CssValueOrigin::Parsed(origin) => origin.span().start(),
         crate::component::CssValueOrigin::ImplicitClosure { opening, .. } => opening.span().start(),
         crate::component::CssValueOrigin::Programmatic
-        | crate::component::CssValueOrigin::UnretainedInput { .. } => {
-            CssSourcePosition::from_source_location(location)
-        }
+        | crate::component::CssValueOrigin::UnretainedInput { .. } => location,
     };
-    ParseError {
-        location,
-        kind: ParseErrorKind::Custom(CssError {
+    NativeError::new(
+        CssError {
             kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
             position,
-        }),
-    }
+        },
+        location,
+    )
 }
 
-pub(crate) fn invalid_syntax<'i>(location: cssparser::SourceLocation) -> ParseError<'i, CssError> {
+pub(crate) fn invalid_syntax(location: CssSourcePosition) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
@@ -2195,50 +2165,53 @@ pub(crate) fn invalid_syntax<'i>(location: cssparser::SourceLocation) -> ParseEr
     )
 }
 
-pub(crate) fn invalid_when_prelude<'i>(
+/// An invalid `@when` or `@else` prelude at `position`, naming the token the
+/// lexer reads there when there is one.
+pub(crate) fn invalid_when_prelude(
+    source: &str,
     position: CssSourcePosition,
     name: &str,
-    token: Option<&Token<'_>>,
-) -> ParseError<'i, CssError> {
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    };
-    ParseError {
-        location,
-        kind: ParseErrorKind::Custom(CssError {
+) -> NativeError {
+    let encountered = lexer_at(source, position.byte_offset().value()).and_then(|mut lexer| {
+        lexer
+            .next_lexeme()
+            .map(|lexeme| CssTokenSummary::from_syntax_token(lexeme.token()))
+    });
+    NativeError::new(
+        CssError {
             position,
             kind: ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
                 production: production_for_at_rule(name),
                 expectation: CssGrammarExpectation::new("a condition in the adopted when grammar"),
-                encountered: token.map(CssTokenSummary::from_token),
+                encountered,
             }),
-        }),
-    }
+        },
+        position,
+    )
 }
 pub(crate) fn invalid_free_else(source: &str, position: CssSourcePosition) -> CssError {
-    let name = crate::tokenization::next_source_token(source, position.byte_offset().value())
-        .and_then(|(_, _, token)| match token {
-            Token::AtKeyword(name) => Some(name),
+    let name = lexer_at(source, position.byte_offset().value())
+        .and_then(|mut lexer| match lexer.next_lexeme()?.token() {
+            surgeist_css_parser::Token::AtKeyword(name) => Some(name.to_owned()),
             _ => None,
         })
-        .expect("parsed Else starts at its original at-keyword");
+        .unwrap_or_else(|| "else".to_owned());
     CssError {
         position,
         kind: ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
-            name: CssAtRuleName::new(name.as_ref()),
+            name: CssAtRuleName::new(name),
             expected_context: CssGrammarExpectation::new(
                 "after a conditional group separated only by whitespace or comments",
             ),
         }),
     }
 }
-pub(crate) fn invalid_at_rule_placement<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_at_rule_placement(
+    location: CssSourcePosition,
     name: &str,
     expected_context: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
@@ -2248,21 +2221,15 @@ pub(crate) fn invalid_at_rule_placement<'i>(
     )
 }
 
-pub(crate) fn with_at_rule_prelude_context<'i>(
-    mut error: ParseError<'i, CssError>,
+pub(crate) fn with_at_rule_prelude_context(
+    mut error: NativeError,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, CssError> {
-    let encountered = take_encountered(&mut error.kind);
-    if !matches!(
-        error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::InvalidMediaQuery(_),
-            ..
-        })
-    ) {
-        error.kind = ParseErrorKind::Custom(CssError::at(
+) -> NativeError {
+    let encountered = take_encountered(&mut error.error.kind);
+    if !matches!(error.error.kind, ErrorKind::InvalidMediaQuery(_)) {
+        error.error = Box::new(CssError::at(
             error.location,
             ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
@@ -2275,30 +2242,28 @@ pub(crate) fn with_at_rule_prelude_context<'i>(
     error
 }
 
-pub(crate) fn invalid_at_rule_body_at<'i>(
+pub(crate) fn invalid_at_rule_body_at(
     position: CssSourcePosition,
-    location: cssparser::SourceLocation,
+    location: CssSourcePosition,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, CssError> {
-    ParseError {
-        kind: ParseErrorKind::Custom(CssError::at_exact_nonzero_byte_offset(
+) -> NativeError {
+    NativeError::new(
+        CssError {
             position,
-            ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
+            kind: ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
                 production: CssProductionId::new(production),
                 expectation: CssGrammarExpectation::new(expectation),
                 encountered: None,
             }),
-        )),
+        },
         location,
-    }
+    )
 }
 
-pub(crate) fn invalid_selector_at<'i>(
-    location: cssparser::SourceLocation,
-) -> ParseError<'i, CssError> {
+pub(crate) fn invalid_selector_at(location: CssSourcePosition) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -2311,10 +2276,7 @@ pub(crate) fn invalid_selector_at<'i>(
 
 /// A recognized property refused by the active grammar, such as `size` in a
 /// margin rule, names that property's support-catalog record.
-pub(crate) fn property_name_error<'i>(
-    location: cssparser::SourceLocation,
-    name: &str,
-) -> ParseError<'i, CssError> {
+pub(crate) fn property_name_error(location: CssSourcePosition, name: &str) -> NativeError {
     match property_for_supported_name(name) {
         Some(property) => error_at(
             location,
@@ -2332,11 +2294,11 @@ pub(crate) fn property_name_error<'i>(
     }
 }
 
-pub(crate) fn descriptor_name_error<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn descriptor_name_error(
+    location: CssSourcePosition,
     at_rule: &str,
     name: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::UnknownDescriptor(CssUnknownDescriptorError {
@@ -2354,21 +2316,15 @@ pub(crate) fn color_syntax_kind(component: Option<&str>) -> ErrorKind {
     })
 }
 
-pub(crate) fn with_media_query_context<'i>(
-    mut error: ParseError<'i, CssError>,
+pub(crate) fn with_media_query_context(
+    mut error: NativeError,
     feature: Option<&str>,
-) -> ParseError<'i, CssError> {
-    if matches!(
-        error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::InvalidMediaQuery(_),
-            ..
-        })
-    ) {
+) -> NativeError {
+    if matches!(error.error.kind, ErrorKind::InvalidMediaQuery(_)) {
         return error;
     }
-    let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(CssError::at(
+    let encountered = take_encountered(&mut error.error.kind);
+    error.error = Box::new(CssError::at(
         error.location,
         ErrorKind::InvalidMediaQuery(CssMediaQueryError {
             committed_context: false,
@@ -2380,45 +2336,28 @@ pub(crate) fn with_media_query_context<'i>(
     error
 }
 
-pub(crate) fn custom_media_context_error<'i>(
-    location: cssparser::SourceLocation,
-    name: &str,
-) -> ParseError<'i, CssError> {
+pub(crate) fn custom_media_context_error(location: CssSourcePosition, name: &str) -> NativeError {
     let mut error = with_media_query_context(invalid_syntax(location), Some(name));
-    if let ParseErrorKind::Custom(CssError {
-        kind: ErrorKind::InvalidMediaQuery(detail),
-        ..
-    }) = &mut error.kind
-    {
+    if let ErrorKind::InvalidMediaQuery(detail) = &mut error.error.kind {
         detail.committed_context = true;
     }
     error
 }
 
-pub(crate) fn with_property_context<'i>(
-    mut error: ParseError<'i, CssError>,
-    property: &str,
-) -> ParseError<'i, CssError> {
+pub(crate) fn with_property_context(mut error: NativeError, property: &str) -> NativeError {
     let Some(property) = property_for_supported_name(property) else {
         return error;
     };
-    if matches!(
-        &error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::InvalidColorSyntax(_),
-            ..
-        })
-    ) || matches!(
-        &error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::InvalidComponentValue(detail),
-            ..
-        }) if is_component_resource_error(detail)
-    ) {
+    if matches!(&error.error.kind, ErrorKind::InvalidColorSyntax(_))
+        || matches!(
+            &error.error.kind,
+            ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)
+        )
+    {
         return error;
     }
-    let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(CssError::at(
+    let encountered = take_encountered(&mut error.error.kind);
+    error.error = Box::new(CssError::at(
         error.location,
         ErrorKind::InvalidPropertyValue(PropertyValueRejection {
             property,
@@ -2438,31 +2377,24 @@ pub(crate) fn is_component_resource_error(
 }
 
 /// A speculative grammar alternative must not erase resource failures.
-pub(crate) fn is_resource_parse_error(error: &ParseError<'_, CssError>) -> bool {
+pub(crate) fn is_resource_parse_error(error: &NativeError) -> bool {
     is_nesting_limit_error(error)
         || matches!(
-            &error.kind,
-            ParseErrorKind::Custom(CssError { kind: ErrorKind::InvalidComponentValue(detail), .. })
-                if is_component_resource_error(detail)
+            &error.error.kind,
+            ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)
         )
 }
 
 /// Names the owning at-rule and descriptor on a standalone descriptor-value
 /// grammar failure, as the enclosing rule body does. Resource and component
 /// failures keep their own kinds.
-pub(crate) fn with_descriptor_value_context<'i>(
-    error: ParseError<'i, CssError>,
+pub(crate) fn with_descriptor_value_context(
+    error: NativeError,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     if is_resource_parse_error(&error)
-        || matches!(
-            &error.kind,
-            ParseErrorKind::Custom(CssError {
-                kind: ErrorKind::InvalidComponentValue(_),
-                ..
-            })
-        )
+        || matches!(&error.error.kind, ErrorKind::InvalidComponentValue(_))
     {
         error
     } else {
@@ -2470,31 +2402,25 @@ pub(crate) fn with_descriptor_value_context<'i>(
     }
 }
 
-pub(crate) fn with_descriptor_context<'i>(
-    mut error: ParseError<'i, CssError>,
+pub(crate) fn with_descriptor_context(
+    mut error: NativeError,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     if matches!(
-        error.kind,
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::UnknownDescriptor(_)
-                | ErrorKind::UnsupportedDescriptor(_)
-                | ErrorKind::InvalidDeclarationAnnotation(_),
-            ..
-        })
+        error.error.kind,
+        ErrorKind::UnknownDescriptor(_)
+            | ErrorKind::UnsupportedDescriptor(_)
+            | ErrorKind::InvalidDeclarationAnnotation(_)
     ) {
         return error;
     }
-    let origin = match &error.kind {
-        ParseErrorKind::Custom(CssError {
-            kind: ErrorKind::InvalidDescriptorValue(detail),
-            ..
-        }) => detail.origin,
+    let origin = match &error.error.kind {
+        ErrorKind::InvalidDescriptorValue(detail) => detail.origin,
         _ => DiagnosticOrigin::Inferred,
     };
-    let encountered = take_encountered(&mut error.kind);
-    let contextual = CssError::at(
+    let encountered = take_encountered(&mut error.error.kind);
+    error.error = Box::new(CssError::at(
         error.location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
             origin,
@@ -2503,18 +2429,17 @@ pub(crate) fn with_descriptor_context<'i>(
             expectation: EXPECT_DESCRIPTOR_VALUE,
             encountered,
         }),
-    );
-    error.kind = ParseErrorKind::Custom(contextual);
+    ));
     error
 }
 
 /// A descriptor value that a token of the parser crate's token tree ends.
-pub(crate) fn invalid_descriptor_syntax_token_at<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_descriptor_syntax_token_at(
+    location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
     token: surgeist_css_parser::Token<'_>,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2525,13 +2450,13 @@ pub(crate) fn invalid_descriptor_syntax_token_at<'i>(
 }
 
 /// [`invalid_descriptor_syntax_token_at`] for a token written as `authored`.
-pub(crate) fn invalid_descriptor_authored_syntax_token_at<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_descriptor_authored_syntax_token_at(
+    location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
     token: surgeist_css_parser::Token<'_>,
     authored: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2541,11 +2466,11 @@ pub(crate) fn invalid_descriptor_authored_syntax_token_at<'i>(
     )
 }
 
-pub(crate) fn incomplete_descriptor_at<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn incomplete_descriptor_at(
+    location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2555,14 +2480,14 @@ pub(crate) fn incomplete_descriptor_at<'i>(
     )
 }
 
-fn explicit_descriptor_error<'i>(
-    location: cssparser::SourceLocation,
+fn explicit_descriptor_error(
+    location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
     encountered: Option<CssTokenSummary>,
     origin: DiagnosticOrigin,
-) -> ParseError<'i, CssError> {
-    let error = CssError::at(
+) -> NativeError {
+    error_at(
         location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
             origin,
@@ -2571,17 +2496,13 @@ fn explicit_descriptor_error<'i>(
             expectation: EXPECT_DESCRIPTOR_VALUE,
             encountered,
         }),
-    );
-    ParseError {
-        location,
-        kind: ParseErrorKind::Custom(error),
-    }
+    )
 }
 
-pub(crate) fn invalid_svg_glyph_declaration_annotation<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_svg_glyph_declaration_annotation(
+    location: CssSourcePosition,
     keyframe: bool,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -2595,11 +2516,11 @@ pub(crate) fn invalid_svg_glyph_declaration_annotation<'i>(
     )
 }
 
-pub(crate) fn invalid_known_declaration_annotation<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_known_declaration_annotation(
+    location: CssSourcePosition,
     property: CssKnownProperty,
     keyframe: bool,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let context = if keyframe {
         CssDeclarationContext::Keyframe(property)
     } else {
@@ -2614,11 +2535,11 @@ pub(crate) fn invalid_known_declaration_annotation<'i>(
     )
 }
 
-pub(crate) fn invalid_custom_declaration_annotation<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_custom_declaration_annotation(
+    location: CssSourcePosition,
     property: &CssCustomPropertyName,
     keyframe: bool,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let context = if keyframe {
         CssDeclarationContext::KeyframeCustom(property.clone())
     } else {
@@ -2633,11 +2554,11 @@ pub(crate) fn invalid_custom_declaration_annotation<'i>(
     )
 }
 
-pub(crate) fn invalid_descriptor_annotation<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn invalid_descriptor_annotation(
+    location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -2650,17 +2571,11 @@ pub(crate) fn invalid_descriptor_annotation<'i>(
     )
 }
 
-pub(crate) fn error_at<'i>(
-    location: cssparser::SourceLocation,
-    kind: ErrorKind,
-) -> ParseError<'i, CssError> {
-    ParseError {
-        kind: ParseErrorKind::Custom(CssError::at(location, kind)),
-        location,
-    }
+pub(crate) fn error_at(location: CssSourcePosition, kind: ErrorKind) -> NativeError {
+    NativeError::new(CssError::at(location, kind), location)
 }
 
-pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseError<'i, CssError> {
+pub(crate) fn unexpected_at(location: CssSourcePosition) -> NativeError {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -2671,10 +2586,10 @@ pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseErr
 
 /// The error of a token stream that met `token` where its grammar needed
 /// another, as a cursor that reads tokens one at a time reports it.
-pub(crate) fn unexpected_syntax_token<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn unexpected_syntax_token(
+    location: CssSourcePosition,
     token: surgeist_css_parser::Token<'_>,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
@@ -2685,11 +2600,11 @@ pub(crate) fn unexpected_syntax_token<'i>(
 }
 
 /// [`unexpected_syntax_token`] for a token written as `authored`.
-pub(crate) fn unexpected_authored_syntax_token<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn unexpected_authored_syntax_token(
+    location: CssSourcePosition,
     token: surgeist_css_parser::Token<'_>,
     authored: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     error_at(
         location,
         ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
@@ -2700,9 +2615,7 @@ pub(crate) fn unexpected_authored_syntax_token<'i>(
 }
 
 /// The error of a token stream that ended where its grammar needed a token.
-pub(crate) fn unexpected_syntax_end<'i>(
-    location: cssparser::SourceLocation,
-) -> ParseError<'i, CssError> {
+pub(crate) fn unexpected_syntax_end(location: CssSourcePosition) -> NativeError {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -2711,14 +2624,8 @@ pub(crate) fn unexpected_syntax_end<'i>(
     )
 }
 
-fn take_encountered(kind: &mut ParseErrorKind<'_, CssError>) -> Option<CssTokenSummary> {
-    match kind {
-        ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)) => {
-            Some(CssTokenSummary::from_token(token))
-        }
-        ParseErrorKind::Custom(error) => encountered_mut(&mut error.kind).cloned(),
-        _ => None,
-    }
+fn take_encountered(kind: &mut ErrorKind) -> Option<CssTokenSummary> {
+    encountered_mut(kind).cloned()
 }
 
 fn encountered_mut(kind: &mut ErrorKind) -> Option<&mut CssTokenSummary> {
@@ -2789,42 +2696,6 @@ pub(crate) fn syntax_token_kind(token: surgeist_css_parser::Token<'_>) -> CssTok
         Syntax::CloseParen => CssTokenKind::CloseParenthesis,
         Syntax::CloseSquare => CssTokenKind::CloseSquareBracket,
         Syntax::CloseCurly => CssTokenKind::CloseCurlyBracket,
-    }
-}
-
-fn token_kind(token: &Token<'_>) -> CssTokenKind {
-    match token {
-        Token::Ident(_) => CssTokenKind::Ident,
-        Token::AtKeyword(_) => CssTokenKind::AtKeyword,
-        Token::Hash(_) => CssTokenKind::Hash,
-        Token::IDHash(_) => CssTokenKind::IdHash,
-        Token::QuotedString(_) => CssTokenKind::String,
-        Token::UnquotedUrl(_) => CssTokenKind::Url,
-        Token::Delim(_)
-        | Token::IncludeMatch
-        | Token::DashMatch
-        | Token::PrefixMatch
-        | Token::SuffixMatch
-        | Token::SubstringMatch => CssTokenKind::Delim,
-        Token::Number { .. } => CssTokenKind::Number,
-        Token::Percentage { .. } => CssTokenKind::Percentage,
-        Token::Dimension { .. } => CssTokenKind::Dimension,
-        Token::WhiteSpace(_) => CssTokenKind::Whitespace,
-        Token::Comment(_) => CssTokenKind::Comment,
-        Token::Colon => CssTokenKind::Colon,
-        Token::Semicolon => CssTokenKind::Semicolon,
-        Token::Comma => CssTokenKind::Comma,
-        Token::CDO => CssTokenKind::Cdo,
-        Token::CDC => CssTokenKind::Cdc,
-        Token::Function(_) => CssTokenKind::Function,
-        Token::ParenthesisBlock => CssTokenKind::ParenthesisBlock,
-        Token::SquareBracketBlock => CssTokenKind::SquareBracketBlock,
-        Token::CurlyBracketBlock => CssTokenKind::CurlyBracketBlock,
-        Token::BadUrl(_) => CssTokenKind::BadUrl,
-        Token::BadString(_) => CssTokenKind::BadString,
-        Token::CloseParenthesis => CssTokenKind::CloseParenthesis,
-        Token::CloseSquareBracket => CssTokenKind::CloseSquareBracket,
-        Token::CloseCurlyBracket => CssTokenKind::CloseCurlyBracket,
     }
 }
 
@@ -2913,8 +2784,8 @@ fn at_rule_requires_block(name: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn position() -> cssparser::SourceLocation {
-        cssparser::SourceLocation { line: 0, column: 1 }
+    fn position() -> CssSourcePosition {
+        CssSourcePosition::from_byte_offset_in("", 0)
     }
 
     /// The summary text of the first token of `text`.

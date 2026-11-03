@@ -159,10 +159,7 @@ fn rejection(
     };
     let error = crate::diagnostic::error::from_parse_error(
         source,
-        crate::diagnostic::error::invalid_component_value(
-            cssparser::SourceLocation { line: 0, column: 1 },
-            detail,
-        ),
+        crate::diagnostic::error::invalid_component_value(CssSourcePosition::START, detail),
     );
     let span = CssSourceSpan::new(
         CssSourcePosition::from_byte_offset_in(source, range.start),

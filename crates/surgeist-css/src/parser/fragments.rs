@@ -28,7 +28,6 @@ use crate::rule::font_palette_values::{
 use crate::rule::{CssRule, CssStyleBlock};
 use crate::selector::{CssNamespaceContext, CssRelativeSelectorList, CssSelector};
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
-use cssparser::ParseError;
 use surgeist_css_parser::Offset;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
@@ -89,7 +88,7 @@ pub(crate) fn bounded_report<T: Send>(
 
 pub(super) fn reject(
     source: &str,
-    error: ParseError<'_, CssError>,
+    error: NativeError,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> crate::diagnostic::CssRecoveryDiagnostic {
     let action = recovery_action_for_error(&error, action);
@@ -123,7 +122,7 @@ fn read_document_block<T>(
         &RecoveryState,
     ) -> Result<
         (T, Vec<crate::diagnostic::CssRecoveryDiagnostic>),
-        ParseError<'i, CssError>,
+        NativeError,
     >,
 ) -> Result<
     (
@@ -134,7 +133,7 @@ fn read_document_block<T>(
     Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 > {
     let snapshot = state.source_snapshot().clone();
-    let rejected = |error: ParseError<'_, CssError>| {
+    let rejected = |error: NativeError| {
         vec![reject(
             source,
             error,
@@ -192,7 +191,7 @@ fn document_brace_block_inner<T>(
         &RecoveryState,
     ) -> Result<
         (T, Vec<crate::diagnostic::CssRecoveryDiagnostic>),
-        ParseError<'i, CssError>,
+        NativeError,
     >,
 ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
     match read_document_block(source, production, &state, drive) {
@@ -217,7 +216,7 @@ fn document_brace_block<T: Send>(
         &RecoveryState,
     ) -> Result<
         (T, Vec<crate::diagnostic::CssRecoveryDiagnostic>),
-        ParseError<'i, CssError>,
+        NativeError,
     > + Send,
 ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
     bounded(source, || {
@@ -586,7 +585,7 @@ pub(crate) fn parse_page_block_with_context(
 /// nesting limits are judged by the recovery state, not by the tree.
 fn text_document(
     snapshot: &CssSourceSnapshot,
-) -> Result<crate::parser::syntax_types::Document<'_>, ParseError<'static, CssError>> {
+) -> Result<crate::parser::syntax_types::Document<'_>, NativeError> {
     crate::syntax_consumption::source_scope_document(snapshot, 0..snapshot.as_str().len()).map_err(
         |error| crate::diagnostic::error::invalid_component_value(location_at(snapshot, 0), error),
     )
@@ -601,7 +600,7 @@ struct SingleDeclaration<'a> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for SingleDeclaration<'_> {
     type Item = CssDeclaration;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(
         &mut self,
@@ -726,10 +725,7 @@ fn selector_fragment<T>(
     source: &str,
     context: &CssNamespaceContext,
     single: bool,
-    parse: impl for<'i> FnOnce(
-        &mut Stream<'i>,
-        &mut SelectorRecovery<'_>,
-    ) -> Result<T, ParseError<'i, CssError>>,
+    parse: impl for<'i> FnOnce(&mut Stream<'i>, &mut SelectorRecovery<'_>) -> Result<T, NativeError>,
 ) -> crate::CssParseReport<Option<T>> {
     let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
     if let Some(name) = &context.0.default {
@@ -758,10 +754,7 @@ pub(super) fn selector_fragment_with_state<T>(
     document: &crate::parser::syntax_types::Document<'_>,
     state: RecoveryState,
     single: bool,
-    parse: impl for<'i> FnOnce(
-        &mut Stream<'i>,
-        &mut SelectorRecovery<'_>,
-    ) -> Result<T, ParseError<'i, CssError>>,
+    parse: impl for<'i> FnOnce(&mut Stream<'i>, &mut SelectorRecovery<'_>) -> Result<T, NativeError>,
 ) -> crate::CssParseReport<Option<T>> {
     let mut input = document.root();
     let mut diagnostics = Vec::new();
@@ -1071,11 +1064,7 @@ pub(crate) fn parse_margin_block_with_context(
 fn descriptor_value_fragment<T: Send>(
     source: &str,
     descriptor: Option<(&str, &str)>,
-    parse: impl FnOnce(
-        &CssSourceSnapshot,
-        std::ops::Range<usize>,
-    ) -> Result<T, ParseError<'static, CssError>>
-    + Send,
+    parse: impl FnOnce(&CssSourceSnapshot, std::ops::Range<usize>) -> Result<T, NativeError> + Send,
 ) -> crate::CssParseReport<Option<T>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
@@ -1320,11 +1309,7 @@ fn property_value_text(
             .map_err(|error| {
                 let error = error.into_source_error();
                 let position = error.position();
-                cssparser::SourceLocation {
-                    line: position.line().value(),
-                    column: position.column().value() + 1,
-                }
-                .new_custom_error(error)
+                NativeError::new(error, position)
             })?;
             // Retain owned source syntax only after grammar admission succeeds.
             let components =

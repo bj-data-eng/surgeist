@@ -7,7 +7,7 @@ use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssValueOrigin,
 };
 use crate::declaration::CssCustomPropertyName;
-use crate::diagnostic::CssError;
+use crate::diagnostic::error::NativeError;
 use crate::diagnostic::error::invalid_component_value;
 use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
@@ -27,7 +27,6 @@ use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, DocumentExt, SyntaxCursor, SyntaxRange, TokenKind,
 };
-use cssparser::ParseError;
 use surgeist_css_parser::document::{BlockKind, Component, Fault, GroupEnd, ListId, NodeId};
 
 enum PartitionIssue {
@@ -57,7 +56,7 @@ pub(crate) struct NamedSupportsPrelude {
 pub(super) fn parse_prelude<'i>(
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
+) -> Result<NamedSupportsPrelude, NativeError> {
     let collected =
         super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot());
     let at = collected.start;
@@ -96,7 +95,7 @@ pub(super) fn parse_rule<'i>(
     contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsConditionRule, ParseError<'i, CssError>> {
+) -> Result<CssSupportsConditionRule, NativeError> {
     let (body, opening, closing) = parse_body(source, contents, diagnostics, recovery)?;
     let snapshot = recovery.source_snapshot();
     let Some(at_node) = start.node() else {
@@ -130,7 +129,7 @@ pub(super) fn parse_body<'i>(
     contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, CssError>> {
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), NativeError> {
     let body_start = offset_of(contents.start_site());
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
@@ -213,10 +212,7 @@ fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> 
 fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDiagnostic> {
     let origin = issue.origin();
     let position = crate::query::media::construction::parsed_position(origin)?;
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    };
+    let location = position;
     let error = match &issue {
         PartitionIssue::Grammar(_, _) => from_parse_error(source, invalid_syntax(location)),
         PartitionIssue::Lexical(detail, _) => {

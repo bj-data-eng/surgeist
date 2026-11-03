@@ -514,13 +514,13 @@ mod tests {
             &CssNumericConstructionErrorKind::InvalidArgumentType
         );
         assert_eq!(error.origin(), Some(child.basis_origin()));
-        let fallback = cssparser::SourceLocation { line: 0, column: 1 };
+        let fallback = crate::source::CssSourcePosition::START;
         let location =
             crate::numeric::expression::NumericInputContext::components(&values, &serialized)
                 .error_location(&error, fallback, 0);
         assert_eq!(
-            location.column as usize,
-            serialized.as_css().find("auto").unwrap() + 1
+            location.column().value() as usize,
+            serialized.as_css().find("auto").unwrap()
         );
     }
 
@@ -560,13 +560,13 @@ mod tests {
         assert_eq!(error.origin(), Some(content.origin()));
         let location = NumericInputContext::components(&graph, &serialized).error_location(
             &error,
-            cssparser::SourceLocation { line: 0, column: 1 },
+            crate::source::CssSourcePosition::START,
             0,
         );
-        assert_eq!(location.line, 0);
+        assert_eq!(location.line().value(), 0);
         assert_eq!(
-            location.column as usize,
-            serialized.as_css().find("content").unwrap() + 1
+            location.column().value() as usize,
+            serialized.as_css().find("content").unwrap()
         );
     }
 
@@ -624,13 +624,13 @@ mod tests {
             error.kind(),
             &CssNumericConstructionErrorKind::IncompatibleTypes
         );
-        let fallback = cssparser::SourceLocation { line: 0, column: 1 };
+        let fallback = crate::source::CssSourcePosition::START;
         let location = NumericInputContext::components(&graph, &serialized)
             .error_location(&error, fallback, 0);
-        assert_eq!(location.line, 0);
+        assert_eq!(location.line().value(), 0);
         assert_eq!(
-            location.column as usize,
-            serialized.as_css().find("1fr").unwrap() + 1
+            location.column().value() as usize,
+            serialized.as_css().find("1fr").unwrap()
         );
     }
 

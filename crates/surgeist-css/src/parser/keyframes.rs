@@ -8,7 +8,6 @@ use super::rule_list::{
     RuleBlock, RuleListGrammar, RuleListKind, RuleListSink, UnitState, recover_rule_list,
 };
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
-use cssparser::ParseError;
 use surgeist_css_parser::Offset;
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{
@@ -21,8 +20,8 @@ use super::values::{
     checked_percentage_value, parse_custom_ident_from_str_at_source, parse_numeric_function,
 };
 use super::{DeclarationMode, is_declaration_recovery_unit, structural_rule_diagnostic};
+use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::{invalid_at_rule_placement, invalid_syntax, unexpected_at};
-use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{CssCalculation, CssPercentage};
 use crate::rule::keyframes::{
@@ -38,7 +37,7 @@ pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
 pub(crate) fn parse_keyframes_name<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<CssKeyframesName, ParseError<'i, CssError>> {
+) -> std::result::Result<CssKeyframesName, NativeError> {
     read_scope(input, snapshot, keyframes_name)
 }
 
@@ -229,7 +228,7 @@ impl<'s> KeyframeBlockParser<'s> {
         start: Site<'i>,
         opening: usize,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+    ) -> Result<CssKeyframeBlock, NativeError> {
         let mut depth = self.recovery.enter_rule_block(
             self.source,
             Offset::new(opening),
@@ -281,14 +280,12 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
         _: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+    ) -> Result<CssKeyframeBlock, NativeError> {
         self.unit.start_index = Some(start.index());
-        let error = ParseError {
-            kind: cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
-                cssparser::CowRcStr::from(name),
-            )),
-            location: location_at(self.recovery.source_snapshot(), offset_of(prelude.site())),
-        };
+        let error = crate::diagnostic::error::unknown_at_rule(
+            location_at(self.recovery.source_snapshot(), offset_of(prelude.site())),
+            name,
+        );
         if let Some(opening) = block_opening_of(&block) {
             self.unit.prelude_failed = true;
             self.unit.block_error =
@@ -303,7 +300,7 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
         start: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+    ) -> Result<CssKeyframeBlock, NativeError> {
         self.unit.start_index = Some(start.index());
         let Some(opening) = block_opening_of(&block) else {
             return Err(crate::diagnostic::error::unexpected_syntax_end(
@@ -341,7 +338,7 @@ fn block_opening_of(block: &RuleBlock<'_>) -> Option<usize> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
     type Item = CssKeyframeBlock;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -382,7 +379,7 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
 pub(super) fn parse_keyframe_selector_list<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
+) -> std::result::Result<CssKeyframeSelectorList, NativeError> {
     read_scope(input, snapshot, read_keyframe_selector_list)
 }
 
@@ -452,7 +449,7 @@ struct KeyframeDeclarationParser<'s> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeDeclarationParser<'_> {
     type Item = CssKeyframeDeclaration;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let snapshot = self.recovery.source_snapshot();
@@ -484,11 +481,11 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeDeclarationParser<'_> {
 
 impl KeyframeDeclarationParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssKeyframeDeclaration, NativeError<'i>> {
+    ) -> Result<CssKeyframeDeclaration, NativeError> {
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
             text.value_start,

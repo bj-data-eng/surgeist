@@ -17,6 +17,16 @@ use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberKind, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
 
+/// Reads the components of `source` through the stepwise token cursor, metering
+/// each request with `control`.
+///
+/// `source` must hold text that Syntax 3 section 3.3 has preprocessed: the
+/// cursor takes the scalars of preprocessed input and refuses U+0000, U+000D
+/// and U+000C, so a snapshot of text as authored ([`CssSourceSnapshot::new`])
+/// is no valid input. The snapshots that hold preprocessed text are the ones
+/// the UTF-16 preparation and
+/// [`CssSourceSnapshot::try_from_decoded_utf8`] form, and those are the
+/// only snapshots the callers pass.
 pub(crate) fn parse_controlled_snapshot(
     source: &CssSourceSnapshot,
     limits: CssComponentValueLimits,

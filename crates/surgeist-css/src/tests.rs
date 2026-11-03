@@ -44,10 +44,7 @@ fn source_position(line: u32, column: u32) -> CssSourcePosition {
         "\n".repeat(line as usize),
         " ".repeat(column as usize)
     );
-    let mut input = cssparser::ParserInput::new(&source);
-    let mut parser = cssparser::Parser::new(&mut input);
-    while parser.next().is_ok() {}
-    CssSourcePosition::from_cssparser(parser.position(), parser.current_source_location())
+    CssSourcePosition::from_byte_offset_in(&source, source.len())
 }
 
 fn style_rule(rule: &CssRule) -> &CssStyleRule {

@@ -1,12 +1,13 @@
 use crate::diagnostic::error::{
-    DiagnosticOrigin, ErrorKind, encountered_mut, optional_encountered_mut, production_for_at_rule,
-    token_kind,
+    DiagnosticOrigin, ErrorKind, encountered_mut, lexer_at, optional_encountered_mut,
+    production_for_at_rule, syntax_token_kind,
 };
 use crate::diagnostic::{CssError, CssTokenKind, CssTokenSummary};
 use crate::rule::CssAtRuleName;
 use crate::source::CssSourcePosition;
-use cssparser::ParserInput;
-use cssparser::{Parser, Token};
+use surgeist_css_parser::Offset;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::lexer::{Lexer, Options};
 
 impl CssError {
     pub(super) fn resolve_source(mut self, source: &str) -> Self {
@@ -15,18 +16,6 @@ impl CssError {
         if matches!(self.kind, ErrorKind::InvalidComponentValue(_)) {
             return self;
         }
-        // Location-only errors carry byte zero until they can be resolved against
-        // the authored source. Body-parser errors retain their exact nonzero cursor.
-        self.position = if self.position.byte_offset().value() != 0 {
-            CssSourcePosition::from_byte_offset_in(source, self.position.byte_offset().value())
-        } else {
-            let source_location = cssparser::SourceLocation {
-                line: self.position.line().value(),
-                column: self.position.column().value().saturating_add(1),
-            };
-            CssSourcePosition::from_source_location_in(source, source_location)
-        };
-
         // The crate's location rule (reference "Source coordinates and
         // diagnostics"): a token that cannot continue the production is
         // responsible, including a closing `)` or `]`; when input ends first,
@@ -103,24 +92,22 @@ fn next_authored_token_at(
     source: &str,
     position: CssSourcePosition,
 ) -> Option<(usize, CssTokenSummary)> {
-    let start = position.byte_offset().value();
-    let mut offset = start;
-    loop {
-        let (token_start, token_end, token) =
-            crate::tokenization::next_source_token(source, offset)?;
-        offset = token_end;
-        if matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
+    let mut lexer = lexer_at(source, position.byte_offset().value())?;
+    while let Some(lexeme) = lexer.next_lexeme() {
+        if matches!(lexeme.token(), Token::Whitespace | Token::Comment) {
             continue;
         }
-        let authored = source.get(token_start..token_end)?.to_owned();
+        let range = lexeme.range();
+        let (start, end) = (range.start.value(), range.end.value());
         return Some((
-            token_start,
+            start,
             CssTokenSummary {
-                kind: token_kind(&token),
-                authored,
+                kind: syntax_token_kind(lexeme.token()),
+                authored: source.get(start..end)?.to_owned(),
             },
         ));
     }
+    None
 }
 
 /// A token that ends a declaration value or rule rather than belonging to it.
@@ -208,33 +195,26 @@ fn last_token_in(
         source.get(window_start..window_start + window.len()),
         Some(window)
     );
-    let working_source = crate::tokenization::prepare(window);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
+    let mut lexer = Lexer::new(
+        window,
+        &Options::default().origin(Offset::new(window_start)),
+    );
     let mut previous = None;
-    while !parser.is_exhausted() {
-        let token_start = parser.position().byte_index();
-        let token = parser
-            .next_including_whitespace_and_comments()
-            .ok()?
-            .clone();
-        let token_end = parser.position().byte_index();
-        if matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
+    while let Some(lexeme) = lexer.next_lexeme() {
+        if matches!(lexeme.token(), Token::Whitespace | Token::Comment) {
             continue;
         }
-        for (part, range) in
-            crate::tokenization::source_token_parts(window, token, token_start..token_end)
-                .into_iter()
-                .flatten()
-        {
-            previous = Some((
-                window_start + range.start,
-                CssTokenSummary {
-                    kind: token_kind(&part),
-                    authored: window.get(range)?.to_owned(),
-                },
-            ));
-        }
+        let range = lexeme.range();
+        let (start, end) = (range.start.value(), range.end.value());
+        previous = Some((
+            start,
+            CssTokenSummary {
+                kind: syntax_token_kind(lexeme.token()),
+                authored: window
+                    .get(start - window_start..end - window_start)?
+                    .to_owned(),
+            },
+        ));
     }
     previous
 }
@@ -260,11 +240,11 @@ fn authored_at_rule_start(
 fn authored_at_rule_before(source: &str, position: CssSourcePosition) -> Option<(usize, String)> {
     let end = position.byte_offset().value().min(source.len());
     for (start, _) in source[..end].rmatch_indices('@') {
-        let tail = source.get(start..)?;
-        let mut input = ParserInput::new(tail);
-        let mut parser = Parser::new(&mut input);
-        if let Ok(Token::AtKeyword(name)) = parser.next_including_whitespace_and_comments() {
-            return Some((start, name.to_string()));
+        if let Some(Token::AtKeyword(name)) = lexer_at(source, start)?
+            .next_lexeme()
+            .map(|lexeme| lexeme.token())
+        {
+            return Some((start, name.to_owned()));
         }
     }
     None

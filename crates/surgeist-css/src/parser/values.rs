@@ -3,6 +3,7 @@ use super::syntax_types::{Mark, Site, Stream};
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::parser::property_input::{SiteExt, StreamExt};
 use crate::parser::syntax_types::SyntaxError;
+use crate::source::CssSourcePosition;
 use surgeist_css_parser::Token;
 
 use crate::diagnostic::CssFeatureId;
@@ -80,12 +81,12 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("interop.value.device-cmyk"),
 ];
 
-pub(super) fn checked_percentage_value<'i>(
-    location: cssparser::SourceLocation,
+pub(super) fn checked_percentage_value(
+    location: CssSourcePosition,
     token_css: &str,
-) -> std::result::Result<f64, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
-    // cssparser exposes percentages after dividing by 100 and rounding to f32.
-    // Re-multiplication can change the authored magnitude (30% -> 30.000002).
+) -> std::result::Result<f64, crate::diagnostic::error::NativeError> {
+    // The authored digits are the value: dividing by 100 and multiplying back
+    // after a rounding to f32 changes the magnitude (30% -> 30.000002).
     // The caller passes exactly the consumed percentage token, without trivia.
     let value = token_css
         .strip_suffix('%')
@@ -331,10 +332,10 @@ pub(super) fn parse_custom_ident_from_str_at<'i>(
 
 /// Native name grammars retain their own source position while sharing the
 /// exact custom-identifier construction owner with property input.
-pub(super) fn parse_custom_ident_from_str_at_source<'i>(
+pub(super) fn parse_custom_ident_from_str_at_source(
     ident: &str,
-    location: cssparser::SourceLocation,
-) -> Result<CssCustomIdent, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
+    location: CssSourcePosition,
+) -> Result<CssCustomIdent, crate::diagnostic::error::NativeError> {
     CssCustomIdent::try_from_ident(CssIdent::new(ident))
         .ok_or_else(|| crate::diagnostic::error::unexpected_at(location))
 }
@@ -490,10 +491,7 @@ mod typed_calculation_tests {
                 let position = origin.span().start();
                 crate::diagnostic::error::from_parse_error(
                     source,
-                    crate::diagnostic::error::unexpected_at(cssparser::SourceLocation {
-                        line: position.line().value(),
-                        column: position.column().value().saturating_add(1),
-                    }),
+                    crate::diagnostic::error::unexpected_at(position),
                 )
             })?;
         let mut parser = document.root();

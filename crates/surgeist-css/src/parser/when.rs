@@ -10,7 +10,8 @@ use crate::CssParserContext;
 use crate::component::{
     CssBlockKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::NativeError;
 use crate::query::supports::construction::SupportsLexical;
 use crate::query::{
     CssCondition, CssConditionConstructionError, CssConditionKind, CssConditionList,
@@ -18,7 +19,6 @@ use crate::query::{
 };
 use crate::rule::{CssElseRule, CssRule, CssWhenRule};
 use crate::source::CssSourcePosition;
-use cssparser::ParseError;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.rule.when"),
@@ -39,7 +39,7 @@ pub(super) fn parse_prelude<'i>(
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
-) -> Result<WhenPrelude, ParseError<'i, CssError>> {
+) -> Result<WhenPrelude, NativeError> {
     let production = if optional {
         "ext.rule.else"
     } else {
@@ -67,12 +67,12 @@ pub(super) fn parse_prelude<'i>(
     .map_err(|error| prelude_error(source, name, start, error))?;
     Ok((Some(parsed), implicit))
 }
-fn prelude_error<'i>(
+fn prelude_error(
     source: &str,
     name: &str,
     fallback: usize,
     error: CssConditionConstructionError,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     let position = crate::query::media::construction::parsed_position(error.origin())
         .unwrap_or_else(|| {
             CssSourcePosition::from_byte_offset_in(
@@ -80,20 +80,11 @@ fn prelude_error<'i>(
                 super::structure::first_non_trivia(source, fallback, source.len()),
             )
         });
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    };
     match error.into_kind() {
         crate::query::when::ConditionConstructionKind::Component(error) => {
-            crate::diagnostic::error::invalid_component_value(location, error)
+            crate::diagnostic::error::invalid_component_value(position, error)
         }
-        _ => {
-            let token =
-                crate::tokenization::next_source_token(source, position.byte_offset().value())
-                    .map(|(_, _, token)| token);
-            crate::diagnostic::error::invalid_when_prelude(position, name, token.as_ref())
-        }
+        _ => crate::diagnostic::error::invalid_when_prelude(source, position, name),
     }
 }
 fn invalid(lexical: &SupportsLexical, index: usize) -> CssConditionConstructionError {

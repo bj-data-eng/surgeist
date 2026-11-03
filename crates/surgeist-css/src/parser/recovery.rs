@@ -1,11 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::{Offset, Token};
 
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::{is_nesting_limit_error, nesting_limit};
 use crate::rule::{CssNamespaceName, CssNamespacePrefix};
 use crate::source::CssSourcePosition;
@@ -50,6 +49,13 @@ pub(super) fn has_resource_failure(
 /// Lexical errors are independent of whether the enclosing grammar unit survived.
 /// Internal probes and recursive parses leave this step to the caller with the
 /// original complete source.
+///
+/// The errors are those the lexer records for the complete source
+/// (Syntax 3 section 4.3), the same events a token tree lists: a backslash
+/// before a newline (section 4.3.1), a backslash that ends the text (section
+/// 4.3.7) and a comment without its closing `*/` (section 4.3.2). Strings and URLs consume their own payload,
+/// and their existing grammar and end-of-input diagnostics describe that
+/// recovery.
 pub(crate) fn finish_report<T>(
     source: &str,
     report: crate::CssParseReport<T>,
@@ -58,68 +64,53 @@ pub(crate) fn finish_report<T>(
     for diagnostic in &mut diagnostics {
         diagnostic.clear_opening_owner();
     }
-    let options = Options::default();
-    let mut lexer = Lexer::new(source, &options);
-    while let Some(lexeme) = lexer.next_lexeme() {
-        let range = lexeme.range();
-        let (token_start, token_end) = (range.start.value(), range.end.value());
-        let token = lexeme.token();
-        if matches!(token, Token::Delim('\\'))
-            && matches!(
-                source.as_bytes().get(token_end),
-                Some(b'\n' | b'\r' | b'\x0c')
-            )
-        {
-            diagnostics.push(escape_diagnostic(
-                source,
-                token_start..token_end,
-                crate::diagnostic::CssEscapeFailure::Newline,
-            ));
-            continue;
-        }
-        if token_end == source.len()
-            && matches!(
-                token,
+    {
+        let options = Options::default();
+        let mut lexer = Lexer::new(source, &options);
+        // A backslash that ends the text belongs to the last token, which is
+        // a name for the escape to be a fault of the text; a string or a URL
+        // consumes it, and its own diagnostics describe the recovery.
+        let mut ends_in_name = false;
+        while let Some(lexeme) = lexer.next_lexeme() {
+            ends_in_name = matches!(
+                lexeme.token(),
                 Token::Ident(_)
                     | Token::AtKeyword(_)
                     | Token::Hash { .. }
                     | Token::Dimension { .. }
-            )
-            && crate::component::values::parse::odd_trailing_backslashes(
-                &source[token_start..token_end],
-            )
-        {
-            diagnostics.push(escape_diagnostic(
-                source,
-                token_end - 1..token_end,
-                crate::diagnostic::CssEscapeFailure::EndOfInput,
-            ));
-            continue;
+            );
         }
-        if !matches!(token, Token::Comment) {
-            // Strings, URLs and bad tokens consume their own payload. Their
-            // existing grammar/EOF diagnostics already describe that recovery.
-            continue;
+        for error in lexer.errors() {
+            let range = error.range();
+            let (start, end) = (range.start.value(), range.end.value());
+            if error.is_escaped_newline() {
+                diagnostics.push(escape_diagnostic(
+                    source,
+                    start..end,
+                    crate::diagnostic::CssEscapeFailure::Newline,
+                ));
+            } else if error.is_escaped_eof() && ends_in_name {
+                diagnostics.push(escape_diagnostic(
+                    source,
+                    start..end,
+                    crate::diagnostic::CssEscapeFailure::EndOfInput,
+                ));
+            } else if error.is_unterminated_comment() {
+                let span = crate::source::CssSourceSpan::new(
+                    CssSourcePosition::from_byte_offset_in(source, start),
+                    CssSourcePosition::from_byte_offset_in(source, source.len()),
+                )
+                .expect("comment ends at source EOF");
+                diagnostics.push(
+                    crate::diagnostic::CssRecoveryDiagnostic::new(
+                        crate::diagnostic::error::implicit_eof(source),
+                        span,
+                        crate::diagnostic::CssRecoveryAction::IgnoreUnterminatedComment,
+                    )
+                    .expect("comment EOF belongs to its consumed source span"),
+                );
+            }
         }
-        // Only comment tokens participate: strings and URL tokens (including
-        // bad tokens) have already consumed their own comment-looking payload.
-        // Exclude the opening delimiter before checking the terminator so `/*/`
-        // cannot reuse its opening '*' as part of a closing delimiter.
-        let contents = &source[token_start + 2..token_end];
-        if contents.ends_with("*/") {
-            continue;
-        }
-        let start = CssSourcePosition::from_byte_offset_in(source, token_start);
-        let eof = CssSourcePosition::from_byte_offset_in(source, source.len());
-        let span =
-            crate::source::CssSourceSpan::new(start, eof).expect("comment ends at source EOF");
-        let diagnostic = crate::diagnostic::CssRecoveryDiagnostic::new(
-            crate::diagnostic::error::implicit_eof(source),
-            span,
-            crate::diagnostic::CssRecoveryAction::IgnoreUnterminatedComment,
-        )
-        .expect("comment EOF belongs to its consumed source span");
-        diagnostics.push(diagnostic);
     }
     crate::CssParseReport::new(syntax, diagnostics)
 }
@@ -344,14 +335,14 @@ impl RecoveryState {
     /// The nesting of the components that begin at the byte `start`, checked
     /// from the structural depth entered so far, and the end of the grammar unit
     /// they belong to.
-    fn scan<'i>(
+    fn scan(
         &self,
         source: &str,
         start: usize,
         depth: u32,
         enclosing_production: &'static str,
         boundary: ScanBoundary,
-    ) -> Result<usize, ParseError<'i, CssError>> {
+    ) -> Result<usize, NativeError> {
         let document = self.structure().map_err(|error| {
             crate::diagnostic::error::invalid_component_value(
                 crate::parser::block_units::location_at(&self.source_snapshot, 0),
@@ -428,12 +419,12 @@ impl RecoveryState {
     }
 
     /// Enters the rule block whose opening token starts at `at`.
-    pub(super) fn enter_rule_block<'i>(
+    pub(super) fn enter_rule_block(
         &self,
         source: &str,
         at: Offset,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
+    ) -> Result<RecoveryDepthGuard, NativeError> {
         self.enter(source, at.value(), enclosing_production)
     }
 
@@ -444,23 +435,23 @@ impl RecoveryState {
 
     /// Enters the component block whose opening token ends at the byte
     /// `opening_offset`, its last byte.
-    pub(super) fn enter_component_block_at<'i>(
+    pub(super) fn enter_component_block_at(
         &self,
         source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
+    ) -> Result<RecoveryDepthGuard, NativeError> {
         self.enter(source, opening_offset, enclosing_production)
     }
 
     /// Checks the nesting of a declaration value that starts at the byte
     /// `start`, and returns the openings of the blocks the input ends in it.
-    pub(super) fn check_component_values_from<'i>(
+    pub(super) fn check_component_values_from(
         &self,
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
+    ) -> Result<Vec<usize>, NativeError> {
         let end = self.scan(
             source,
             start,
@@ -473,12 +464,12 @@ impl RecoveryState {
 
     /// Checks the nesting of a prelude that starts at the byte `start`, and
     /// returns the openings of the blocks the input ends in it.
-    pub(super) fn check_specialized_components_from<'i>(
+    pub(super) fn check_specialized_components_from(
         &self,
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
+    ) -> Result<Vec<usize>, NativeError> {
         let end = self.scan(
             source,
             start,
@@ -490,12 +481,12 @@ impl RecoveryState {
     }
 
     /// Checks the contents of a component block that start at the byte `start`.
-    pub(super) fn check_component_contents_from<'i>(
+    pub(super) fn check_component_contents_from(
         &self,
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, CssError>> {
+    ) -> Result<(), NativeError> {
         self.scan(
             source,
             start,
@@ -508,12 +499,12 @@ impl RecoveryState {
 
     /// Checks the nesting of a comma-separated member that starts at the byte
     /// `start`, and returns the openings of the blocks the input ends in it.
-    pub(super) fn check_comma_member_components_from<'i>(
+    pub(super) fn check_comma_member_components_from(
         &self,
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
+    ) -> Result<Vec<usize>, NativeError> {
         let end = self.scan(
             source,
             start,
@@ -605,12 +596,12 @@ impl RecoveryState {
 
     /// Checks a failed rule whose block contents start at the byte
     /// `content_start` for the resources entering it would have been charged.
-    pub(super) fn check_failed_rule_block_at<'i>(
+    pub(super) fn check_failed_rule_block_at(
         &self,
         source: &str,
         content_start: usize,
         enclosing_production: &'static str,
-    ) -> Option<ParseError<'i, CssError>> {
+    ) -> Option<NativeError> {
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
             return Some(nesting_limit(
@@ -632,12 +623,12 @@ impl RecoveryState {
 
     /// Checks the contents of an entered `{}`-block that start at the byte
     /// `start` for the resources they would be charged.
-    pub(super) fn check_entered_curly_contents<'i>(
+    pub(super) fn check_entered_curly_contents(
         &self,
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, CssError>> {
+    ) -> Result<(), NativeError> {
         self.scan(
             source,
             start,
@@ -648,12 +639,12 @@ impl RecoveryState {
         .map(|_| ())
     }
 
-    fn enter<'i>(
+    fn enter(
         &self,
         source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
+    ) -> Result<RecoveryDepthGuard, NativeError> {
         let depth = self.depth.get();
         if depth >= STRUCTURAL_NESTING_LIMIT {
             return Err(nesting_limit(
@@ -745,7 +736,7 @@ impl RecoveryProgress {
 }
 
 pub(crate) fn recovery_action_for_error(
-    error: &ParseError<'_, CssError>,
+    error: &NativeError,
     ordinary: crate::diagnostic::CssRecoveryAction,
 ) -> crate::diagnostic::CssRecoveryAction {
     if is_nesting_limit_error(error) {
