@@ -51,7 +51,12 @@ fn decoded_identifier_boundaries() {
         (r"\9", vec!["\t"], "\t"),
         (r"A\,B", vec!["A,B"], "A,B"),
         (r"\31 st", vec!["1st"], "1st"),
-        ("A\u{a0}default", vec!["A\u{a0}default"], "A\u{a0}default"),
+        // Syntax 3 §4.2: U+00B7 is an ident code point and is written as is.
+        ("A\u{b7}default", vec!["A\u{b7}default"], "A\u{b7}default"),
+        // Syntax 3 §4.2: U+00A0 and U+00D7 are not ident code points, so an
+        // unquoted family spells them as escapes (§4.3.7).
+        (r"A\a0 default", vec!["A\u{a0}default"], "A\u{a0}default"),
+        (r"A\d7 default", vec!["A\u{d7}default"], "A\u{d7}default"),
     ] {
         let owned_tokens = tokens
             .iter()

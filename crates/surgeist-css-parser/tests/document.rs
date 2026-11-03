@@ -9,10 +9,6 @@
 //! 5.5.7 to 5.5.10 give: a closing token ends the group it matches, a closing
 //! token that matches no open group is a preserved token, and the end of the
 //! input ends every group still open.
-//!
-//! Section 4.2's non-ASCII ident code points are the 2021 rule in this crate
-//! for now, so these tests use only non-ASCII code points that both editions
-//! admit.
 
 mod common;
 
@@ -323,8 +319,8 @@ fn a_numeric_token_keeps_its_exact_spelling_sign_type_flag_and_unit() {
 
 #[test]
 fn name_classes_and_null_preprocessing_decide_idents_delims_and_replacement() {
-    // Section 4.2 (ASCII classes, and the non-ASCII code points both editions
-    // admit) and section 3.3 (NUL is U+FFFD, an ident-start code point).
+    // Section 4.2 (ASCII classes, and the non-ASCII ident code points) and
+    // section 3.3 (NUL is U+FFFD, an ident-start code point).
     for text in [
         "A",
         "Z",

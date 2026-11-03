@@ -104,7 +104,7 @@ fn can_serialize_family_unquoted(name: &str) -> bool {
         let Some(first) = chars.next() else {
             return false;
         };
-        if !(first.is_ascii_alphabetic() || first == '_' || first == '-' || first as u32 >= 0x80) {
+        if !(first == '-' || surgeist_css_parser::lexical::is_ident_start(first)) {
             return false;
         }
         if first == '-' && word.len() == 1 {
@@ -113,7 +113,7 @@ fn can_serialize_family_unquoted(name: &str) -> bool {
         if first == '-' && chars.clone().next().is_some_and(|c| c.is_ascii_digit()) {
             return false;
         }
-        chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c as u32 >= 0x80)
+        chars.all(surgeist_css_parser::lexical::is_ident_code_point)
     })
 }
 

@@ -413,7 +413,7 @@ struct Class {
     summary: &'static str,
 }
 
-const CLASSES: [Class; 4] = [
+const CLASSES: [Class; 5] = [
     Class {
         id: "V-1",
         sections: "4.3.6, 4.3.15",
@@ -433,6 +433,11 @@ const CLASSES: [Class; 4] = [
         id: "V-4",
         sections: "4.3.1, 4.3.9",
         summary: "A hash token's type flag is \"id\" only when the next three code points would start an ident sequence (4.3.1, 4.3.9); for a hyphen-minus before a backslash and a newline they do not, and cssparser flags it as an id.",
+    },
+    Class {
+        id: "V-8",
+        sections: "4.2, 4.3.1, 4.3.12",
+        summary: "A non-ASCII code point that the ranges of 4.2 do not list is not an ident code point, so it ends an ident sequence (4.3.12) and is a delim (4.3.1), and the tokens after it start over; cssparser admits every code point from U+0080 in a name.",
     },
 ];
 
@@ -496,7 +501,41 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
                 .then(|| (left_end.min(right_end), left_end.max(right_end)))
         })
         .collect();
-    differences
+    // V-8: the spans of the name-like tokens of cssparser that hold a code
+    // point 4.2 leaves out; the token ends at that code point for this lexer.
+    let name_tokens: Vec<(usize, usize, bool)> = differences
+        .iter()
+        .filter_map(|difference| {
+            let (token, start, end) = parts(&difference.cssparser)?;
+            matches!(
+                variant(token),
+                "Ident" | "AtKeyword" | "Hash" | "Dimension" | "Function"
+            )
+            .then_some(())?;
+            let spelling = text.get(start..end)?;
+            spelling
+                .chars()
+                .any(|point| u32::from(point) >= 0x80 && !common::ranges::admitted(point))
+                .then_some((
+                    start,
+                    end,
+                    variant(token) == "Function" || text[end..].starts_with('('),
+                ))
+        })
+        .collect();
+    let name_spans: Vec<(usize, usize)> = name_tokens
+        .iter()
+        .map(|&(start, end, _)| (start, end))
+        .collect();
+    // The first such name that opens a block for cssparser, as a function or
+    // by the parenthesis that follows it: only a block it opens can stay open
+    // where this lexer has closed it or read no block.
+    let first_function = name_tokens
+        .iter()
+        .filter(|&&(_, _, opens)| opens)
+        .map(|&(start, ..)| start)
+        .min();
+    let mut classes: Vec<Option<&'static str>> = differences
         .iter()
         .map(|difference| {
             let (start, end) = extent(difference)?;
@@ -575,7 +614,62 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
             }
             None
         })
-        .collect()
+        .collect();
+    // V-8: a difference that touches a name cssparser kept whole, or the extent
+    // of a difference that does, follows from where the name ends here: the
+    // tokens after it start over (a delim, the rest of the name, a number the
+    // name had swallowed digits of, a function that is a url or a bad url
+    // here). The pass repeats until no other difference joins.
+    let touches = |(low, high): (usize, usize), (start, end): (usize, usize)| {
+        if start == end {
+            low <= start && start <= high
+        } else {
+            start < high && low < end
+        }
+    };
+    let mut spans = name_spans;
+    let mut joined = vec![false; differences.len()];
+    loop {
+        let mut grew = false;
+        for (index, difference) in differences.iter().enumerate() {
+            let Some(found) = extent(difference) else {
+                continue;
+            };
+            if !joined[index] && spans.iter().any(|&span| touches(span, found)) {
+                joined[index] = true;
+                classes[index] = classes[index].or(Some("V-8"));
+                spans.push(found);
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    // Where cssparser keeps a name whole that ends here and opens a block, the
+    // block can stay open to the end of the text while the other reading has
+    // closed it (a url token, a bad url): from there on, block ends differ and
+    // the same tokens sit at a different depth.
+    if let Some(first) = first_function {
+        for (index, difference) in differences.iter().enumerate() {
+            let Some((start, _)) = extent(difference) else {
+                continue;
+            };
+            let block_end = [&difference.cssparser, &difference.surgeist]
+                .into_iter()
+                .any(|side| {
+                    parts(side).is_some_and(|(token, ..)| {
+                        token == "BlockEnd" || variant(token).starts_with("Close")
+                    })
+                });
+            let same_token_deeper =
+                difference.field == "range" && difference.cssparser == difference.surgeist;
+            if classes[index].is_none() && start >= first && (block_end || same_token_deeper) {
+                classes[index] = Some("V-8");
+            }
+        }
+    }
+    classes
 }
 
 // ----------------------------------------------------------- the table
@@ -871,6 +965,89 @@ fn the_comparison_itself_sees_a_difference_in_kind_range_and_structure() {
     );
 }
 
+#[test]
+fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
+    // V-8 explains the differences that follow from where a name ends, and no
+    // others: an injected difference that does not touch the name, in a text
+    // that also holds an excluded code point, stays unexplained.
+    let injected = |field: &'static str, cssparser: &str, surgeist: &str| Difference {
+        input: String::new(),
+        field,
+        cssparser: cssparser.to_owned(),
+        surgeist: surgeist.to_owned(),
+    };
+    // `x`, U+00A0 (two bytes) and `y` are one name for cssparser: bytes 0..4.
+    let text = "x\u{a0}y  z (1) w";
+    let real = compare(text, &Options::default());
+    assert!(
+        !real.is_empty(),
+        "the excluded code point makes a difference"
+    );
+    assert!(
+        classify(text, &real)
+            .iter()
+            .all(|class| *class == Some("V-8")),
+        "{real:?}"
+    );
+    for (name, extra) in [
+        (
+            "a kind elsewhere",
+            injected("kind", "Ident(\"z\")@6..7", "Number(\"1\",int)@6..7"),
+        ),
+        (
+            "a token only one side reads",
+            injected("only-cssparser", "Ident(\"w\")@16..17", ""),
+        ),
+        (
+            "a block end elsewhere",
+            injected("kind", "BlockEnd@14..15", "CloseParenthesis@14..15"),
+        ),
+        (
+            "a depth alone elsewhere",
+            injected("range", "Ident(\"w\")@16..17", "Ident(\"w\")@16..17"),
+        ),
+    ] {
+        let mut all = real.clone();
+        all.push(extra);
+        let classes = classify(text, &all);
+        assert_eq!(
+            classes[..real.len()],
+            vec![Some("V-8"); real.len()],
+            "{name}: the real differences keep their class"
+        );
+        assert_eq!(
+            classes[real.len()],
+            None,
+            "{name}: an unrelated difference surfaces as unexplained"
+        );
+    }
+    // A difference that touches the name is still explained by it.
+    let mut touching = real.clone();
+    touching.push(injected(
+        "kind",
+        "Ident(\"y\")@3..4",
+        "Number(\"1\",int)@3..4",
+    ));
+    assert_eq!(classify(text, &touching).last(), Some(&Some("V-8")));
+    // A name that opens a block for cssparser, as a function or by the
+    // parenthesis after it, leaves that block open where this lexer has read a
+    // url token: the block ends and depths that follow are consequences of it.
+    for text in [
+        ".6\u{2603}URL(;)\u{a0}b) c",
+        "\u{a0}url(a) b {c}",
+        "a\u{a0}b(c) d",
+    ] {
+        let found = compare(text, &Options::default());
+        assert!(!found.is_empty(), "{text:?}");
+        assert!(
+            classify(text, &found)
+                .iter()
+                .all(|class| *class == Some("V-8")),
+            "{text:?}: {found:?}"
+        );
+    }
+}
+
 // ============================================================ sections 6 and 9
 //
 // cssparser exposes three helpers with the same job as three parts of this
@@ -959,7 +1136,7 @@ fn syntax_row_text(id: &str, difference: &SyntaxDifference, section: &str, class
 fn is_syntax_section(section: &str) -> bool {
     section
         .split(", ")
-        .all(|part| ["4.3.1", "6.2", "9", "9.1"].contains(&part))
+        .all(|part| ["4.2", "4.3.1", "6.2", "9", "9.1"].contains(&part))
 }
 
 // ------------------------------------------------------------------- An+B
@@ -1389,10 +1566,10 @@ fn every_an_plus_b_difference_on_a_generated_notation_belongs_to_a_listed_class(
 
 #[test]
 fn the_escaping_functions_agree_with_cssparsers_on_every_input() {
-    // Under the 2021 non-ASCII rule the two write the same text for every
-    // identifier and string of the corpus, so the table lists no row. The 2026
-    // ranges will add rows for the code points they exclude (CSSOM 2.1 writes
-    // those raw; the round-trip rule of section 9 escapes them).
+    // The two write the same text for every identifier and string of the
+    // corpus except the code points that 4.2 excludes from the non-ASCII ident
+    // code points: cssparser writes those raw, and the round-trip rule of
+    // section 9 escapes them. Those are the E rows, class V-8.
     check_listed("escaping", &escaping_differences());
 }
 

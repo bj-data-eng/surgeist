@@ -6,6 +6,9 @@
 //! code points of a class over all of Unicode, the count is derived from the
 //! ranges the clause lists, not from the implementation.
 
+mod common;
+
+use common::ranges::{ADMITTED, admitted};
 use surgeist_css_parser::lexical::{
     is_digit, is_hex_digit, is_ident_code_point, is_ident_start, is_letter, is_lowercase_letter,
     is_newline, is_non_ascii_ident_code_point, is_non_printable, is_uppercase_letter,
@@ -86,23 +89,106 @@ fn letter_is_an_uppercase_or_a_lowercase_letter_and_nothing_else() {
     assert_exactly(is_letter, &members);
 }
 
+/// How many scalar values the ranges of section 4.2 cover, counted by walking
+/// them (none of the ranges holds a surrogate).
+fn admitted_count() -> usize {
+    ADMITTED
+        .iter()
+        .map(|&(low, high)| (low..=high).filter_map(char::from_u32).count())
+        .sum()
+}
+
 #[test]
-fn non_ascii_ident_code_point_is_every_code_point_from_u0080_under_the_2021_rule() {
-    // 24 December 2021 CRD, section 4.2: a "non-ASCII code point" is a code
-    // point with a value equal to or greater than U+0080. The count is the
-    // number of Unicode scalar values from U+0080 up: 0x110000 code points,
-    // less the 0x800 surrogates, less the 0x80 ASCII code points.
-    assert_eq!(
-        count_where(is_non_ascii_ident_code_point),
-        0x11_0000 - 0x800 - 0x80
-    );
+fn non_ascii_ident_code_point_is_exactly_the_ranges_of_section_4_2() {
+    // The pinned edition's list: U+00B7; U+00C0 to U+00D6; U+00D8 to U+00F6;
+    // U+00F8 to U+037D; U+037F to U+1FFF; U+200C; U+200D; U+203F; U+2040;
+    // U+2070 to U+218F; U+2C00 to U+2FEF; U+3001 to U+D7FF; U+F900 to U+FDCF;
+    // U+FDF0 to U+FFFD; and U+10000 and above, all inclusive. Adding the
+    // lengths of those fifteen bullets gives 1,102,639 code points, and no
+    // other scalar value is a member.
+    assert_eq!(admitted_count(), 1_102_639);
+    assert_eq!(count_where(is_non_ascii_ident_code_point), 1_102_639);
+    for code in 0..=0x10_ffff_u32 {
+        let Some(point) = char::from_u32(code) else {
+            continue;
+        };
+        assert_eq!(
+            is_non_ascii_ident_code_point(point),
+            code >= 0x80 && admitted(point),
+            "U+{code:04X}"
+        );
+    }
+}
+
+#[test]
+fn non_ascii_ident_code_point_holds_at_both_edges_of_every_range_and_not_beside_them() {
+    for &(low, high) in &ADMITTED {
+        for edge in [low, high] {
+            let point = char::from_u32(edge).unwrap();
+            assert!(is_non_ascii_ident_code_point(point), "U+{edge:04X}");
+        }
+        // The scalar value on either side is a member only when another range
+        // holds it (U+200C and U+200D, U+203F and U+2040, touch each other).
+        let below = (0..low).rev().find_map(char::from_u32).unwrap();
+        let held_below = ADMITTED
+            .iter()
+            .any(|&(l, h)| (l..=h).contains(&u32::from(below)));
+        assert_eq!(
+            is_non_ascii_ident_code_point(below),
+            held_below && u32::from(below) >= 0x80,
+            "U+{:04X}, below U+{low:04X}",
+            u32::from(below)
+        );
+        if let Some(above) = (high + 1..=0x10_ffff).find_map(char::from_u32) {
+            let held_above = ADMITTED
+                .iter()
+                .any(|&(l, h)| (l..=h).contains(&u32::from(above)));
+            assert_eq!(
+                is_non_ascii_ident_code_point(above),
+                held_above,
+                "U+{:04X}, above U+{high:04X}",
+                u32::from(above)
+            );
+        }
+    }
+    for excluded in [
+        '\u{80}', '\u{a0}', '\u{b6}', '\u{b8}', '\u{bf}', '\u{d7}', '\u{f7}', '\u{37e}',
+        '\u{2000}', '\u{200b}', '\u{200e}', '\u{2028}', '\u{2029}', '\u{203e}', '\u{2041}',
+        '\u{206f}', '\u{2190}', '\u{2603}', '\u{2bff}', '\u{2ff0}', '\u{3000}', '\u{e000}',
+        '\u{f8ff}', '\u{fdd0}', '\u{fdef}', '\u{fffe}', '\u{ffff}', '\u{7f}', 'a',
+    ] {
+        assert!(
+            !is_non_ascii_ident_code_point(excluded),
+            "U+{:04X}",
+            excluded as u32
+        );
+    }
     for member in [
-        '\u{80}',
-        '\u{9f}',
-        '\u{a0}',
-        '\u{d7}',
-        '\u{2603}',
-        '\u{fffe}',
+        '\u{b7}',
+        '\u{c0}',
+        '\u{d6}',
+        '\u{d8}',
+        '\u{f6}',
+        '\u{f8}',
+        '\u{37d}',
+        '\u{37f}',
+        '\u{1fff}',
+        '\u{200c}',
+        '\u{200d}',
+        '\u{203f}',
+        '\u{2040}',
+        '\u{2070}',
+        '\u{218f}',
+        '\u{2c00}',
+        '\u{2fef}',
+        '\u{3001}',
+        '\u{d7ff}',
+        '\u{f900}',
+        '\u{fdcf}',
+        '\u{fdf0}',
+        '\u{fffd}',
+        '\u{10000}',
+        '\u{1f600}',
         '\u{10ffff}',
     ] {
         assert!(
@@ -111,21 +197,19 @@ fn non_ascii_ident_code_point_is_every_code_point_from_u0080_under_the_2021_rule
             member as u32
         );
     }
-    assert!(!is_non_ascii_ident_code_point('\u{7f}'));
-    assert!(!is_non_ascii_ident_code_point('a'));
 }
 
 #[test]
 fn ident_start_is_a_letter_a_non_ascii_ident_code_point_or_low_line() {
-    // 52 letters, the low line, and every non-ASCII scalar value.
-    assert_eq!(
-        count_where(is_ident_start),
-        52 + 1 + (0x11_0000 - 0x800 - 0x80)
-    );
-    for member in ['a', 'Z', '_', '\u{80}', 'é', '\u{10000}'] {
+    // 52 letters, the low line, and the admitted non-ASCII scalar values.
+    assert_eq!(count_where(is_ident_start), 52 + 1 + 1_102_639);
+    for member in ['a', 'Z', '_', '\u{b7}', 'é', '\u{10000}'] {
         assert!(is_ident_start(member), "{member:?}");
     }
-    for other in ['-', '0', '9', ' ', '\\', '\n', '\0', '.', '#', '@'] {
+    for other in [
+        '-', '0', '9', ' ', '\\', '\n', '\0', '.', '#', '@', '\u{80}', '\u{a0}', '\u{d7}',
+        '\u{2603}', '\u{fffe}',
+    ] {
         assert!(!is_ident_start(other), "{other:?}");
     }
 }
@@ -134,12 +218,15 @@ fn ident_start_is_a_letter_a_non_ascii_ident_code_point_or_low_line() {
 fn ident_code_point_is_an_ident_start_a_digit_or_hyphen_minus() {
     assert_eq!(
         count_where(is_ident_code_point),
-        52 + 1 + 10 + 1 + (0x11_0000 - 0x800 - 0x80)
+        52 + 1 + 10 + 1 + 1_102_639
     );
-    for member in ['a', '_', '-', '0', '9', 'é'] {
+    for member in ['a', '_', '-', '0', '9', 'é', '\u{b7}'] {
         assert!(is_ident_code_point(member), "{member:?}");
     }
-    for other in [' ', '\\', '\n', '\0', '.', '#', '@', '+', '(', '"'] {
+    for other in [
+        ' ', '\\', '\n', '\0', '.', '#', '@', '+', '(', '"', '\u{80}', '\u{a0}', '\u{d7}',
+        '\u{2603}', '\u{fffe}',
+    ] {
         assert!(!is_ident_code_point(other), "{other:?}");
     }
 }
@@ -223,7 +310,7 @@ fn escape_treats_carriage_return_and_form_feed_as_ordinary_second_code_points() 
 
 #[test]
 fn ident_starts_after_hyphen_minus_when_the_second_is_an_ident_start() {
-    for second in ['a', 'Z', '_', 'é', '\u{80}', '\u{10000}'] {
+    for second in ['a', 'Z', '_', 'é', '\u{b7}', '\u{10000}'] {
         assert!(
             would_start_ident(Some('-'), Some(second), None),
             "second {second:?}"
@@ -274,11 +361,25 @@ fn ident_does_not_start_after_hyphen_minus_followed_by_anything_else() {
 
 #[test]
 fn ident_starts_with_an_ident_start_code_point_whatever_follows() {
-    for first in ['a', 'z', 'A', 'Z', '_', 'é', '\u{2603}'] {
+    for first in ['a', 'z', 'A', 'Z', '_', 'é', '\u{b7}', '\u{1f600}'] {
         assert!(would_start_ident(Some(first), None, None), "{first:?}");
         assert!(
             would_start_ident(Some(first), Some('\n'), Some(' ')),
             "{first:?}"
+        );
+    }
+}
+
+#[test]
+fn ident_does_not_start_with_a_non_ascii_code_point_that_section_4_2_leaves_out() {
+    for point in ['\u{80}', '\u{a0}', '\u{d7}', '\u{2603}', '\u{fffe}'] {
+        assert!(
+            !would_start_ident(Some(point), Some('a'), Some('a')),
+            "{point:?}"
+        );
+        assert!(
+            !would_start_ident(Some('-'), Some(point), Some('a')),
+            "after a hyphen-minus: {point:?}"
         );
     }
 }

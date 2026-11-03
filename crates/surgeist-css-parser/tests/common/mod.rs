@@ -8,6 +8,7 @@
 pub mod digest;
 pub mod generate;
 pub mod grammar;
+pub mod ranges;
 pub mod tree;
 
 use std::ops::Range;

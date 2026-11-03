@@ -75,10 +75,10 @@ impl std::fmt::Display for CssGridTemplateAreaError {
 }
 impl std::error::Error for CssGridTemplateAreaError {}
 
+/// Grid 1 §7.3: a named cell token is a sequence of Syntax 3 ident code points,
+/// so the non-ASCII ones are those of §4.2.
 fn is_ident_code_point(character: char) -> bool {
-    character.is_ascii_alphanumeric()
-        || matches!(character, '-' | '_')
-        || (character as u32) >= 0x80
+    surgeist_css_parser::lexical::is_ident_code_point(character)
 }
 
 fn is_css_whitespace(character: char) -> bool {
@@ -246,8 +246,8 @@ pub(crate) fn write_area_row(
         }
         match cell {
             CssGridTemplateAreaCell::Empty => context.append(output, ".")?,
-            // Checked names contain only ident code points. Non-ASCII space-like
-            // code points remain data; ASCII quoting/escape delimiters cannot occur.
+            // Checked names contain only ident code points (Syntax 3 §4.2), so no
+            // space-like code point and no quoting or escape delimiter can occur.
             CssGridTemplateAreaCell::Named(name) => context.append(output, name.as_str())?,
         }
     }

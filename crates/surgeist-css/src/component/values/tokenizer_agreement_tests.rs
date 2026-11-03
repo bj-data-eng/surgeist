@@ -573,3 +573,147 @@ fn preprocessed_inputs_decode_to_the_syntax_3_tokens() {
         ));
     }
 }
+
+/// Syntax 3 §4.2, "non-ASCII ident code point", as written in the pinned
+/// edition: every range is inclusive.
+const ADMITTED: [(u32, u32); 15] = [
+    (0x00b7, 0x00b7),
+    (0x00c0, 0x00d6),
+    (0x00d8, 0x00f6),
+    (0x00f8, 0x037d),
+    (0x037f, 0x1fff),
+    (0x200c, 0x200c),
+    (0x200d, 0x200d),
+    (0x203f, 0x203f),
+    (0x2040, 0x2040),
+    (0x2070, 0x218f),
+    (0x2c00, 0x2fef),
+    (0x3001, 0xd7ff),
+    (0xf900, 0xfdcf),
+    (0xfdf0, 0xfffd),
+    (0x1_0000, 0x10_ffff),
+];
+
+fn admitted(point: char) -> bool {
+    let value = u32::from(point);
+    ADMITTED
+        .iter()
+        .any(|&(low, high)| (low..=high).contains(&value))
+}
+
+/// The tokens of an outcome, in a short notation.
+fn shapes(outcome: Outcome) -> Vec<String> {
+    outcome
+        .expect("the text is within the default limits")
+        .items()
+        .iter()
+        .map(|value| match value.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => format!("Ident:{name}"),
+            CssComponentValueRef::Token(CssValueTokenRef::AtKeyword(name)) => {
+                format!("AtKeyword:{name}")
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Hash { value, .. }) => {
+                format!("Hash:{value}")
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => {
+                format!("Dimension:{unit}")
+            }
+            CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => "Number".to_owned(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim(point)) => {
+                format!("Delim:U+{:04X}", u32::from(point))
+            }
+            other => format!("{other:?}"),
+        })
+        .collect()
+}
+
+/// §4.2 decides which code points above U+007F an ident holds, on every
+/// construction path: an admitted code point continues the ident, and any
+/// other ends it and is a delim (§4.3.4, §4.3.1).
+#[test]
+fn non_ascii_ident_code_points_follow_section_4_2_on_every_construction_path() {
+    let mut points = vec![
+        '\u{80}',
+        '\u{a0}',
+        '\u{b6}',
+        '\u{b7}',
+        '\u{d7}',
+        '\u{f7}',
+        '\u{2000}',
+        '\u{200b}',
+        '\u{200c}',
+        '\u{2028}',
+        '\u{2603}',
+        '\u{e000}',
+        '\u{f8ff}',
+        '\u{fdd0}',
+        '\u{fdef}',
+        '\u{feff}',
+        '\u{fffd}',
+        '\u{fffe}',
+        '\u{ffff}',
+        '\u{10000}',
+        '\u{1f600}',
+        '\u{10ffff}',
+    ];
+    for &(low, high) in &ADMITTED {
+        points.extend(char::from_u32(low));
+        points.extend(char::from_u32(high));
+        points.extend((0..low).rev().find_map(char::from_u32));
+        points.extend((high + 1..=0x10_ffff).find_map(char::from_u32));
+    }
+    points.sort_unstable();
+    points.dedup();
+    for point in points {
+        let delim = format!("Delim:U+{:04X}", u32::from(point));
+        let cases = [
+            (
+                format!("a{point}b"),
+                if admitted(point) {
+                    vec![format!("Ident:a{point}b")]
+                } else {
+                    vec!["Ident:a".to_owned(), delim.clone(), "Ident:b".to_owned()]
+                },
+            ),
+            (
+                format!("@{point}b"),
+                if admitted(point) {
+                    vec![format!("AtKeyword:{point}b")]
+                } else {
+                    vec![
+                        "Delim:U+0040".to_owned(),
+                        delim.clone(),
+                        "Ident:b".to_owned(),
+                    ]
+                },
+            ),
+            (
+                format!("#a{point}b"),
+                if admitted(point) {
+                    vec![format!("Hash:a{point}b")]
+                } else {
+                    vec!["Hash:a".to_owned(), delim.clone(), "Ident:b".to_owned()]
+                },
+            ),
+            (
+                format!("1{point}b"),
+                if admitted(point) {
+                    vec![format!("Dimension:{point}b")]
+                } else {
+                    vec!["Number".to_owned(), delim.clone(), "Ident:b".to_owned()]
+                },
+            ),
+        ];
+        for (text, expected) in cases {
+            assert_text_paths_agree(&text);
+            let units: Vec<u16> = text.encode_utf16().collect();
+            assert_eq!(shapes(bounded_utf16(&units)), expected, "metered {text:?}");
+            assert_eq!(shapes(direct(&text)), expected, "unmetered {text:?}");
+            assert_eq!(
+                shapes(bounded_decoded_utf8(&text)),
+                expected,
+                "decoded UTF-8 {text:?}"
+            );
+        }
+    }
+}

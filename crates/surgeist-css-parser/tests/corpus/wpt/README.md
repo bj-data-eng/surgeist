@@ -54,7 +54,7 @@ in the case's `remainder`, or the whole case is deferred, and is claimed nowhere
 | Data | Observable and count |
 | --- | --- |
 | [anb.json](anb.json) | 87 cases (`anb-parsing`, `anb-serialization`): the text must be one `<an+b>` with the upstream-serialized value, or not be one |
-| [tokens.json](tokens.json) | 107 cases: the tokens of a text with the exact source text of each, and for unclosed urls the lexical errors |
+| [tokens.json](tokens.json) | 129 cases: the tokens of a text with the exact source text of each, and for unclosed urls the lexical errors |
 | [not-whitespace.json](not-whitespace.json) | 26 cases: a code point that is not CSS whitespace makes no whitespace token |
 | [units.json](units.json) | 46 cases: the rules and declarations the algorithms of section 5.5 return for a style sheet or a declaration list, with the way each is written back |
 | [consecutive-tokens.json](consecutive-tokens.json) | 65 cases: two tokens written one after the other keep a comment between them and read back as the same two tokens |
@@ -62,7 +62,7 @@ in the case's `remainder`, or the whole case is deferred, and is claimed nowhere
 | [unclosed-constructs.json](unclosed-constructs.json) | 2 cases: an unclosed group holds what the closed group holds |
 | [preprocessing.json](preprocessing.json) | 11 cases (`input-preprocessing`, and the lone surrogate of `non-ascii-codepoints`): preprocessing the UTF-16 input gives the expected text, which is one ident token with the expected value |
 | [profile-expectations.json](profile-expectations.json) | 1 case in which upstream and the pinned edition disagree and the edition governs (below) |
-| [deferred.json](deferred.json) | 29 cases, none exercised (below) |
+| [deferred.json](deferred.json) | 7 cases, none exercised (below) |
 
 The unit vectors describe what the algorithms return. The crate also reports a
 construct that an algorithm drops ("return nothing") as a failed unit so that a
@@ -75,7 +75,6 @@ input of a case (`grammar`), because validity is not a Syntax 3 result.
 
 | Disposition | Cases | Why |
 | --- | --- | --- |
-| `pending-step-15` | 22 | The cases of `non-ascii-codepoints.html` whose code point is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer still applies the 2021 rule until step 15 replaces it with the pinned ranges; the 35 cases whose code point is listed are claimed now |
 | `computed-value-substitution` | 7 | The comment and empty-fallback cases of `serialize-consecutive-tokens.html` observe a computed custom property after `var()` substitution |
 
 `non-ascii-codepoints.html` omits the comma after its `[0x203f, 0x2040]` line, so

@@ -1693,6 +1693,10 @@ front.serialize.identifier.digit-start	serialize.identifier	-	1a	-	-	-	-	-	seria
 front.serialize.identifier.double-dash	serialize.identifier	-	--x	-	-	-	-	-	serialization	--x	-	specified:in=1,proj=1,bytes=3	-
 front.serialize.identifier.empty	serialize.identifier	-		-	-	-	-	-	serialization	<empty>	-	specified:in=1,proj=1,bytes=0	-
 front.serialize.identifier.escapes	serialize.identifier	-	a b c	-	-	-	-	-	serialization	a\\ b�c\\7f 	-	specified:in=1,proj=1,bytes=12	-
+front.serialize.identifier.excluded-2603	serialize.identifier	-	☃	-	-	-	-	-	serialization	\\2603 	-	specified:in=1,proj=1,bytes=6	-
+front.serialize.identifier.excluded-a0	serialize.identifier	-	 	-	-	-	-	-	serialization	\\a0 	-	specified:in=1,proj=1,bytes=4	-
+front.serialize.identifier.excluded-d7	serialize.identifier	-	×	-	-	-	-	-	serialization	\\d7 	-	specified:in=1,proj=1,bytes=4	-
+front.serialize.identifier.excluded-fffe	serialize.identifier	-	￾	-	-	-	-	-	serialization	\\fffe 	-	specified:in=1,proj=1,bytes=6	-
 front.serialize.identifier.non-ascii	serialize.identifier	-	é𝟘	-	-	-	-	-	serialization	é𝟘	-	specified:in=1,proj=1,bytes=6	-
 front.serialize.identifier.plain	serialize.identifier	-	foo	-	-	-	-	-	serialization	foo	-	specified:in=1,proj=1,bytes=3	-
 front.serialize.string.controls	serialize.string	-	a\nb 	-	-	-	-	-	serialization	"a\\a b�"	-	specified:in=1,proj=1,bytes=10	-

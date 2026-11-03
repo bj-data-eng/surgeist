@@ -51,7 +51,7 @@ fn parsed_current_and_authored_text_remain_distinct_and_initial_is_none() {
         "\"1st . auto A b\""
     );
 
-    for (authored, decoded) in [("\"a\\a0 b\"", "a\u{a0}b"), ("\"a\u{85}b\"", "a\u{85}b")] {
+    for (authored, decoded) in [("\"a\\b7 b\"", "a\u{b7}b"), ("\"a\u{e9}b\"", "a\u{e9}b")] {
         let report =
             CssParser::default().parse_block_contents(format!("grid-template-areas:{authored}"));
         assert!(
@@ -156,14 +156,33 @@ fn decoded_name_domain_accepts_digits_keywords_case_and_non_ascii() {
         "revert-layer",
         "A",
         "a",
-        "a\u{a0}b",
-        "a\u{85}b",
+        "a\u{b7}b",
+        "a\u{e9}b",
+        "a\u{1f600}b",
     ] {
         assert_eq!(Name::try_new(value).unwrap().as_str(), value);
     }
     assert_ne!(Name::try_new("A").unwrap(), Name::try_new("a").unwrap());
     for value in [
-        "", ".", "a.b", "a b", "a\tb", "a\nb", "a\rb", "a\u{c}b", "a#b", "a\\b", "a\"b",
+        "",
+        ".",
+        "a.b",
+        "a b",
+        "a\tb",
+        "a\nb",
+        "a\rb",
+        "a\u{c}b",
+        "a#b",
+        "a\\b",
+        "a\"b",
+        // Grid 1 §7.3: a named cell token is a sequence of ident code points,
+        // and Syntax 3 §4.2 leaves these non-ASCII code points out of them.
+        "a\u{a0}b",
+        "a\u{85}b",
+        "\u{d7}",
+        "a\u{2603}",
+        "a\u{fffe}",
+        "a\u{2028}b",
     ] {
         assert!(
             Name::try_new(value).as_ref().unwrap_err().is_invalid_name(),
@@ -222,10 +241,10 @@ fn canonical_serialization_uses_one_cell_separator_and_bounded_css_strings() {
     );
     let areas = Areas::try_rows(vec![
         row(vec![named("a"), Cell::Empty, named("B")]),
-        row(vec![named("auto"), named("a\u{a0}b"), named("a\u{85}b")]),
+        row(vec![named("auto"), named("a\u{b7}b"), named("a\u{e9}b")]),
     ])
     .unwrap();
-    let expected = "\"a . B\" \"auto a\u{a0}b a\u{85}b\"";
+    let expected = "\"a . B\" \"auto a\u{b7}b a\u{e9}b\"";
     assert_eq!(
         areas.serialize_specified(Default::default()).unwrap(),
         expected

@@ -188,7 +188,9 @@ fn class_dot_cannot_be_separated_by_form_feed() {
 
 #[test]
 fn non_css_whitespace_is_identifier_content_or_an_invalid_token() {
-    for non_ascii in ['\u{85}', '\u{a0}', '\u{2003}'] {
+    // Syntax 3 §4.2 lists the non-ASCII ident code points: these continue a
+    // name, and the last is an astral code point.
+    for non_ascii in ['\u{b7}', '\u{200c}', '\u{1f600}'] {
         let source = format!(".{non_ascii}class");
         assert_eq!(
             exact(&source, &source),
@@ -199,6 +201,12 @@ fn non_css_whitespace_is_identifier_content_or_an_invalid_token() {
             exact(&source, &source),
             CssSelector::Tag(format!("a{non_ascii}b"))
         );
+    }
+    // NEL, NBSP and EM SPACE are not CSS whitespace (§4.2) and are not listed
+    // either, so each ends the name and is a delim that no selector holds.
+    for non_ascii in ['\u{85}', '\u{a0}', '\u{2003}'] {
+        reject(&format!(".{non_ascii}class"));
+        reject(&format!("a{non_ascii}b"));
     }
     // Vertical tab is neither CSS whitespace nor a non-ASCII name code point.
     reject(".\u{b}class");

@@ -16,7 +16,7 @@ use surgeist_css::rule::counter_style::{
 fn counter_style_rules_retain_valid_core_definitions() {
     let report = CssParser::default().parse_sheet(concat!(
         ".before { color: red; } ",
-        "@counter-style cycle { system: cyclic; symbols: ● ○; prefix: 👍; suffix: \" \"; } ",
+        "@counter-style cycle { system: cyclic; symbols: α β; prefix: 👍; suffix: \" \"; } ",
         "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; } ",
         "@counter-style letters { system: alphabetic; symbols: a b; symbols: x y; } ",
         ".after { color: blue; }",
@@ -51,7 +51,7 @@ fn counter_style_rules_retain_valid_core_definitions() {
     assert!(matches!(
         symbols.ordinary_symbols().symbols(),
         [CssCounterSymbol::Ident(first), CssCounterSymbol::Ident(second)]
-            if first.as_str() == "●" && second.as_str() == "○"
+            if first.as_str() == "α" && second.as_str() == "β"
     ));
     assert!(matches!(
         cycle.descriptors().prefix().map(|value| value.ordinary_prefix()),

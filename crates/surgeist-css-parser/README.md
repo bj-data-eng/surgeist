@@ -40,8 +40,7 @@ tests for the clauses it implements. It currently offers:
 - `lexical`: the code-point classes of Syntax 3 section 4.2 and the checks of
   sections 4.3.8 to 4.3.11 (valid escape, would start an ident sequence, a
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
-  follows the 2021 rule for now; adopting the pinned edition's narrower set is
-  a deliberate later change.
+  is the list of ranges in section 4.2 of the pinned edition.
 - `Offset`: a byte offset into the text a tokenizer reads.
 - `limits`: `Limits`, `DepthExcess`, the `Meter` contract through which a host
   admits work and storage, and the charged helpers `grow`, `copy_str` and

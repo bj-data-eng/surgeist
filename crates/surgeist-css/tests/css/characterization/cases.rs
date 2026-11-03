@@ -1413,6 +1413,12 @@ const FRONT_CASES: &[(&str, &str, &str, &str)] = &[
     ("serialize.identifier", "-", "escapes", "a b\u{0}c\u{7f}"),
     ("serialize.identifier", "-", "non-ascii", "\u{e9}\u{1d7d8}"),
     ("serialize.identifier", "-", "empty", ""),
+    // Syntax 3 §4.2 excludes these from the ident code points, so §9's round
+    // trip writes each as an escape: U+00D7, U+00A0, U+2603 and U+FFFE.
+    ("serialize.identifier", "-", "excluded-d7", "\u{d7}"),
+    ("serialize.identifier", "-", "excluded-a0", "\u{a0}"),
+    ("serialize.identifier", "-", "excluded-2603", "\u{2603}"),
+    ("serialize.identifier", "-", "excluded-fffe", "\u{fffe}"),
     ("serialize.string", "-", "plain", "abc"),
     ("serialize.string", "-", "quotes", "a\"b\\c"),
     ("serialize.string", "-", "controls", "a\nb\u{0}"),

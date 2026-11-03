@@ -4,10 +4,9 @@
 //! U+FEFF in string input as an identifier code point. Section 5.5.3
 //! discards a qualified rule whose prelude reaches EOF without a block.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
-//! That edition's §4.2 excludes U+FFFE from non-ASCII ident code points; the
-//! U+FFFE rows still follow the 2021-12-24 §4.2 classification, a deferred
-//! tokenizer difference (docs/reference.md#css-syntax-3-edition-differences).
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#non-ascii-code-point
+//! That edition's §4.2 excludes U+FFFE from the non-ASCII ident code points, so
+//! U+FFFE is a `<delim-token>` (§4.3.1) and never part of a name.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#non-ascii-ident-code-point
 
 use crate::css::support::authored_syntax::assert_position;
 use surgeist_css::CssParser;
@@ -69,7 +68,6 @@ fn unicode_feff_is_retained_in_complete_type_selector_names() {
         ("\u{feff}a{} b{}", "\u{feff}a", 7, 5),
         ("\u{feff}\u{feff}a{} b{}", "\u{feff}\u{feff}a", 10, 6),
         ("a\u{feff}{} b{}", "a\u{feff}", 7, 5),
-        ("\u{fffe}a{} b{}", "\u{fffe}a", 7, 5),
     ] {
         let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
@@ -97,4 +95,30 @@ fn unicode_feff_is_retained_in_complete_type_selector_names() {
             assert_position(rule.position(), byte, 0, column);
         }
     }
+}
+
+// Syntax 3 (2026-10-01) §4.2 excludes U+FFFE, so `\u{fffe}a` is a delim and an
+// ident (§4.3.1, §4.3.4), which is not a type selector (Selectors 4 §3.1): the
+// rule is dropped with its block (§5.5.3, §5.5.4) and the next rule is kept.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#non-ascii-ident-code-point
+#[test]
+fn an_excluded_code_point_before_a_type_selector_drops_the_rule() {
+    let source = "\u{fffe}a{} b{}";
+    let report = CssParser::default().parse_sheet(source);
+    assert!(!report.is_clean(), "{:?}", report.diagnostics());
+    assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
+    let diagnostic = &report.diagnostics()[0];
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+    assert_position(diagnostic.span().start(), 0, 0, 0);
+    assert_position(diagnostic.span().end(), 6, 0, 4);
+    assert_eq!(report.syntax().rules().len(), 1);
+    let CssRule::Style(rule) = &report.syntax().rules()[0] else {
+        panic!("expected the style rule `b`");
+    };
+    assert_eq!(
+        rule.selectors().selectors()[0].selector(),
+        &CssSelector::Tag("b".to_owned())
+    );
+    assert_position(rule.position(), 7, 0, 5);
 }

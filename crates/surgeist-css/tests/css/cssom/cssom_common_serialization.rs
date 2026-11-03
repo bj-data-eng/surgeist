@@ -56,7 +56,15 @@ fn identifiers_escape_each_cssom_character_branch() {
         ("a1", "a1"),
         ("_0", "_0"),
         ("a-Z_09", "a-Z_09"),
-        ("\u{80}é😀", "\u{80}é😀"),
+        // CSSOM §2.1 writes every code point from U+0080 as itself. Syntax 3
+        // §9 requires the output to read back as the identifier, and §4.2
+        // lists neither U+0080 nor U+00A0, so those are escapes here.
+        ("\u{80}é😀", "\\80 é😀"),
+        ("a\u{a0}b", "a\\a0 b"),
+        ("\u{d7}", "\\d7 "),
+        ("\u{2603}", "\\2603 "),
+        ("\u{fffe}", "\\fffe "),
+        ("\u{b7}é😀", "\u{b7}é😀"),
         ("a b", "a\\ b"),
         (".", "\\."),
         ("#", "\\#"),

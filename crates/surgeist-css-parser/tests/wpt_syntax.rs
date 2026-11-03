@@ -79,7 +79,7 @@ const CITED: [&str; 23] = [
     "whitespace",
 ];
 
-const DISPOSITIONS: [&str; 2] = ["pending-step-15", "computed-value-substitution"];
+const DISPOSITIONS: [&str; 1] = ["computed-value-substitution"];
 
 // ------------------------------------------------------------------ the data
 
