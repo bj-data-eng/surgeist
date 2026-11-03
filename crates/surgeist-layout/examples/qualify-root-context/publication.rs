@@ -11,8 +11,29 @@ const EDITION: &str = "root-context-v4";
 const PARENT: &str = "tests/layout/browser_parity/captured";
 const ORIGINAL: &str = "tests/layout/browser_parity";
 
-pub(super) fn run(owner: &Path, declaration: &Declaration, mode: QualificationMode) -> Result<()> {
+// Artifact identity of the immutable root-context-v4 declaration, not another
+// source list or a record-count selector. The canonical inventory may append.
+const DECLARATION_PREFIX_LENGTH: usize = 36126;
+const DECLARATION_PREFIX_SHA256: &str =
+    "3d8fd3be19d7e4b5411133a09816954d174725f25d2f76725fc46594ec156abb";
+
+fn edition_input(current: &[u8]) -> Result<DeclarationInput<'_>> {
+    // Inspect ALL current records before selecting the sealed edition: appended
+    // declarations cannot shadow a prior source or duplicate each other.
+    DeclarationInput::parse(current)?;
+    let bytes = current
+        .get(..DECLARATION_PREFIX_LENGTH)
+        .ok_or("canonical declaration is shorter than the fixed edition seal")?;
+    if Sha256Digest::from_bytes(bytes).as_str() != DECLARATION_PREFIX_SHA256 {
+        return Err("canonical declaration prefix differs from the fixed edition seal".into());
+    }
+    DeclarationInput::parse(bytes)
+}
+
+pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     require_current_inputs(owner)?;
+    let input = edition_input(DECLARATION)?;
+    let declaration = &input.declaration;
     let access = match mode {
         QualificationMode::Publish => InputAccess::Prepare,
         QualificationMode::CheckPublished => InputAccess::ReadOnly,
@@ -25,13 +46,13 @@ pub(super) fn run(owner: &Path, declaration: &Declaration, mode: QualificationMo
     match access {
         InputAccess::Prepare => with_new_edition(&parent, |root| {
             CorpusLocation::new(owner, root)?;
-            finish(owner, root, declaration, &origin, access)
+            finish(owner, root, &input, &origin, access)
         }),
         InputAccess::ReadOnly => {
             let root = parent.join(EDITION);
             require_directory(&root)?;
             CorpusLocation::new(owner, &root)?;
-            finish(owner, &root, declaration, &origin, access)
+            finish(owner, &root, &input, &origin, access)
         }
     }
 }
@@ -53,18 +74,13 @@ fn with_new_edition(parent: &Path, action: impl FnOnce(&Path) -> Result<()>) -> 
 fn finish(
     owner: &Path,
     root: &Path,
-    declaration: &Declaration,
+    input: &DeclarationInput<'_>,
     origin: &Origin,
     access: InputAccess,
 ) -> Result<()> {
+    let declaration = &input.declaration;
     let expected = declaration.expected()?;
-    let mut snapshot = inventory(
-        root,
-        owner,
-        &declaration.records,
-        QualificationMode::Regular,
-        access,
-    )?;
+    let mut snapshot = inventory(root, owner, input, QualificationMode::Regular, access)?;
     origin.inputs(root, &mut snapshot, access)?;
     check_input_census(root, &snapshot.expected_inputs)?;
     let owner_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
@@ -118,7 +134,7 @@ fn finish(
     inventory(
         root,
         owner,
-        &declaration.records,
+        input,
         QualificationMode::Regular,
         InputAccess::ReadOnly,
     )?;
