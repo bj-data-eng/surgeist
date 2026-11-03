@@ -944,3 +944,403 @@ fn late_normal_inline_percentage_overflow_refuses_and_recovers_f32() {
 fn late_normal_inline_percentage_overflow_refuses_and_recovers_f64() {
     late_inline_overflow::<f64>();
 }
+
+fn inline_ratio_finishes_auto_main<S: LayoutScalar>() {
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
+            for percentage_gap in [false, true] {
+                for imposed_block in [false, true] {
+                    // The independently authored200-inline control precedes the
+                    // auto-inline case. Only the accepted INLINE size is fixed;
+                    // an auto main size must include the final ratio-based50.
+                    for definite_inline in [true, false] {
+                        let mut parent = native_box::<S>(
+                            WritingMode::HorizontalTb,
+                            direction,
+                            box_sizing,
+                            if definite_inline {
+                                PreferredSizeOf::px(scalar(200.0))
+                            } else {
+                                PreferredSizeOf::AUTO
+                            },
+                            if imposed_block {
+                                PreferredSizeOf::px(scalar(100.0))
+                            } else {
+                                PreferredSizeOf::AUTO
+                            },
+                        );
+                        parent.flex_direction = FlexDirection::Column;
+                        if percentage_gap {
+                            parent.gap.height = LengthOf::percent(scalar(0.1));
+                            assert_eq!(scalar::<S>(0.1) * scalar(100.0), scalar(10.0));
+                        }
+                        let mut ratio = native_box(
+                            WritingMode::HorizontalTb,
+                            direction,
+                            box_sizing,
+                            PreferredSizeOf::percent(scalar(0.5)),
+                            PreferredSizeOf::AUTO,
+                        );
+                        ratio.aspect_ratio = AspectRatioOf::new(scalar(2.0));
+                        let tree = PublicLayoutTreeOf::new()
+                            .children(2, [3, 4])
+                            .children(3, [])
+                            .children(4, [])
+                            .style(2, parent)
+                            .style(
+                                3,
+                                native_box(
+                                    WritingMode::HorizontalTb,
+                                    direction,
+                                    box_sizing,
+                                    PreferredSizeOf::px(scalar(200.0)),
+                                    PreferredSizeOf::px(scalar(10.0)),
+                                ),
+                            )
+                            .style(4, ratio);
+                        assert_eq!(Traverse::children(&tree, 2).collect::<Vec<_>>(), [3, 4]);
+                        assert_eq!(
+                            tree.node_input(4).size.width,
+                            PreferredSizeOf::percent(scalar(0.5))
+                        );
+                        assert!(tree.node_input(4).size.height.is_auto());
+                        assert_eq!(
+                            tree.node_input(4).aspect_ratio,
+                            AspectRatioOf::new(scalar(2.0))
+                        );
+                        for node in [2, 3, 4] {
+                            assert!(!tree.has_leaf_measurement(node));
+                        }
+                        let batch = compute_layout(
+                            &tree,
+                            2,
+                            request(WritingMode::HorizontalTb, SizingOperation::Normal),
+                        )
+                        .expect("real Normal percentage/ratio Flex fixture");
+                        // Fixed sibling pins inline200. Resolved child inline100
+                        // transfers through ratio2 to block50;10+50=60. The
+                        // existing definite100 block allocation remains100.
+                        // A cyclic auto-block percentage gap remains0; an
+                        // initially definite100 basis resolves the same10% to10.
+                        let gap = if percentage_gap && imposed_block {
+                            10.0
+                        } else {
+                            0.0
+                        };
+                        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                            assert_box(
+                                entries,
+                                2,
+                                [0.0, 0.0, 200.0, if imposed_block { 100.0 } else { 60.0 }],
+                                0,
+                            );
+                            assert_box(entries, 3, [0.0, 0.0, 200.0, 10.0], 0);
+                            assert_box(
+                                entries,
+                                4,
+                                [
+                                    if direction == Direction::Ltr {
+                                        0.0
+                                    } else {
+                                        100.0
+                                    },
+                                    10.0 + gap,
+                                    100.0,
+                                    50.0,
+                                ],
+                                1,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
+    use crate::test_support::text::{PreparedParagraph, ahem_style};
+    use surgeist_text as text;
+
+    let mut style = ahem_style(10.0, 10.0);
+    style.wrap = text::Wrap::Word;
+    let paragraph = PreparedParagraph::plain(7, text::Source::new("XXXXX XXXXX"), style);
+    let origin = paragraph.origin(7);
+    let origins = paragraph.prepared.origin_views().collect::<Vec<_>>();
+    assert_eq!(origins.len(), 1);
+    assert_eq!(origins[0].handle(), origin);
+    assert_eq!(
+        origins[0].source().text().code_units(),
+        &[88, 88, 88, 88, 88, 32, 88, 88, 88, 88, 88]
+    );
+    assert_eq!(origins[0].local_range(), text::Range::new(0, 11));
+    assert_eq!(origins[0].aggregate_range(), text::Range::new(0, 11));
+    assert_eq!(
+        paragraph
+            .prepared
+            .unit_views()
+            .map(|unit| unit.advance())
+            .sum::<f64>(),
+        110.0
+    );
+    for unit in paragraph
+        .prepared
+        .unit_views()
+        .filter(|unit| !unit.is_whitespace())
+    {
+        assert_eq!(unit.ascent(), 8.0);
+        assert_eq!(unit.descent(), 2.0);
+    }
+    for definite_inline in [true, false] {
+        let mut parent = native_box::<S>(
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            BoxSizing::BorderBox,
+            if definite_inline {
+                PreferredSizeOf::px(scalar(200.0))
+            } else {
+                PreferredSizeOf::AUTO
+            },
+            PreferredSizeOf::AUTO,
+        );
+        parent.flex_direction = FlexDirection::Column;
+        // A genuine Block owns this actual prepared paragraph. No Text source
+        // is assigned to the fixed native sibling or the outer Flex formatter.
+        let tree = PublicLayoutTreeOf::new()
+            .children(2, [3, 4])
+            .children(3, [])
+            .children(4, [7])
+            .children(7, [])
+            .style(2, parent)
+            .style(
+                3,
+                native_box(
+                    WritingMode::HorizontalTb,
+                    Direction::Ltr,
+                    BoxSizing::BorderBox,
+                    PreferredSizeOf::px(scalar(200.0)),
+                    PreferredSizeOf::px(scalar(10.0)),
+                ),
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::percent(scalar(0.5)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(7, paragraph.text_input(7));
+        for node in [2, 3, 4, 7] {
+            assert!(!tree.has_leaf_measurement(node));
+        }
+        let binding = paragraph.binding(4);
+        assert_eq!(binding.container, 4);
+        assert_eq!(binding.nodes, [7]);
+        assert_eq!(binding.origins.len(), 1);
+        assert_eq!(binding.origins[0].origin, origin);
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            2,
+            vec![binding],
+            WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+            Vec::new(),
+        )
+        .expect("actual complete paragraph belongs to Block4");
+        let batch = compute_layout_with_flow(
+            &capture,
+            2,
+            request(WritingMode::HorizontalTb, SizingOperation::Normal),
+        )
+        .expect("registered Ahem source in real Normal ColumnFlex layout");
+        // Intrinsic one-line source width110 cannot enlarge the fixed200 inline
+        // demand. Used50%=100 admits one50px word per line: two10px lines.
+        // Therefore the auto main extent is fixed sibling10 + Text20 =30.
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            assert_box(entries, 2, [0.0, 0.0, 200.0, 30.0], 0);
+            assert_box(entries, 3, [0.0, 0.0, 200.0, 10.0], 0);
+            assert_box(entries, 4, [0.0, 10.0, 100.0, 20.0], 1);
+            assert_eq!(output(entries, 7).source_index, SourceIndex::ZERO);
+        }
+        let placed = batch.placed_text();
+        assert_eq!(placed.len(), 1);
+        assert_eq!(placed[0].container(), 4);
+        assert_eq!(placed[0].nodes(), &[7]);
+        let layout = placed[0].layout();
+        assert_eq!(
+            layout.source().text().code_units(),
+            &[88, 88, 88, 88, 88, 32, 88, 88, 88, 88, 88]
+        );
+        let lines = layout.lines();
+        assert_eq!(lines.len(), 2);
+        for (index, (range, top, baseline)) in [
+            (text::Range::new(0, 6), 10.0, 18.0),
+            (text::Range::new(6, 11), 20.0, 28.0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(lines[index].range(), range);
+            assert_eq!(lines[index].bounds().origin.y, top);
+            assert_eq!(lines[index].bounds().size.height, 10.0);
+            assert_eq!(lines[index].baseline(), baseline);
+        }
+        for entry in batch.final_inline_fragments() {
+            let fragment = entry.fragment().finalized_fragment();
+            assert_eq!(
+                fragment.view().owner(),
+                text::FinalizedFragmentOwner::Origin(origin.clone())
+            );
+            assert_eq!(fragment.finalized_line().feedback().line_height, 10.0);
+            assert_eq!(
+                fragment
+                    .finalized_line()
+                    .selected_line()
+                    .request()
+                    .context
+                    .available_inline,
+                Some(100.0)
+            );
+        }
+        // Real original X cluster identities determine these rectangles, rather
+        // than an emitted-run ordinal or another publication's measured output.
+        let clusters = layout.clusters();
+        let visible = clusters
+            .iter()
+            .filter(|cluster| cluster.range().start != 5)
+            .collect::<Vec<_>>();
+        assert_eq!(visible.len(), 10);
+        for cluster in visible {
+            let at = cluster.range().start;
+            assert_eq!(cluster.range(), text::Range::new(at, at + 1));
+            let (column, top) = if at < 5 { (at, 10.0) } else { (at - 6, 20.0) };
+            assert_eq!(
+                cluster.bounds(),
+                text::Rect::new(column as f64 * 10.0, top, 10.0, 10.0)
+            );
+        }
+    }
+}
+
+#[test]
+fn resolved_inline_ratio_finishes_auto_main_but_preserves_definite_main_f32() {
+    inline_ratio_finishes_auto_main::<f32>();
+}
+#[test]
+fn resolved_inline_ratio_finishes_auto_main_but_preserves_definite_main_f64() {
+    inline_ratio_finishes_auto_main::<f64>();
+}
+#[test]
+fn actual_normal_text_wrap_finishes_auto_main_after_inline_percentage_f32() {
+    captured_normal_wrapping_finishes_auto_main::<f32>();
+}
+#[test]
+fn actual_normal_text_wrap_finishes_auto_main_after_inline_percentage_f64() {
+    captured_normal_wrapping_finishes_auto_main::<f64>();
+}
+
+fn cyclic_main_gap<S: LayoutScalar>(fixed: f64) {
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        for imposed in [true, false] {
+            for operation in [
+                SizingOperation::Normal,
+                SizingOperation::MinContent,
+                SizingOperation::MaxContent,
+            ] {
+                let mut parent = native_box::<S>(
+                    WritingMode::HorizontalTb,
+                    direction,
+                    BoxSizing::BorderBox,
+                    PreferredSizeOf::px(scalar(100.0)),
+                    if imposed {
+                        PreferredSizeOf::px(scalar(80.0))
+                    } else {
+                        PreferredSizeOf::AUTO
+                    },
+                );
+                parent.flex_direction = FlexDirection::Column;
+                parent.gap.height = LengthOf::value(
+                    LengthPercentageOf::from_coefficients(scalar(fixed), scalar(0.125)).unwrap(),
+                );
+                let tree = PublicLayoutTreeOf::new()
+                    .children(2, [3, 4])
+                    .children(3, [])
+                    .children(4, [])
+                    .style(2, parent)
+                    .style(
+                        3,
+                        native_box(
+                            WritingMode::HorizontalTb,
+                            direction,
+                            BoxSizing::BorderBox,
+                            PreferredSizeOf::px(scalar(20.0)),
+                            PreferredSizeOf::px(scalar(10.0)),
+                        ),
+                    )
+                    .style(
+                        4,
+                        native_box(
+                            WritingMode::HorizontalTb,
+                            direction,
+                            BoxSizing::BorderBox,
+                            PreferredSizeOf::px(scalar(20.0)),
+                            PreferredSizeOf::px(scalar(10.0)),
+                        ),
+                    );
+                let normal = request::<S>(WritingMode::HorizontalTb, SizingOperation::Normal);
+                let mut axes = normal.sizing_request().axes();
+                axes.height = AxisSizingRequestOf::new(
+                    if operation == SizingOperation::Normal {
+                        AvailableSpaceOf::Indefinite
+                    } else {
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(600.0)).unwrap())
+                    },
+                    operation,
+                );
+                let query = LayoutRootRequestOf::standalone(
+                    normal.sizing_request().with_axes(axes),
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Size::NONE,
+                );
+                let batch = compute_layout(&tree, 2, query).expect("real Flex gap basis qualifier");
+                // Align3 §8.3: cyclic Flex gap percentages resolve against ZERO
+                // in every phase. A calc retains its fixed term. An authored
+                // definite80 block size instead supplies80 * 1/8 =10.
+                let gap = fixed + if imposed { 10.0 } else { 0.0 };
+                let height = if imposed { 80.0 } else { 20.0 + fixed };
+                let x = if direction == Direction::Ltr {
+                    0.0
+                } else {
+                    80.0
+                };
+                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    assert_box(entries, 2, [0.0, 0.0, 100.0, height], 0);
+                    assert_box(entries, 3, [x, 0.0, 20.0, 10.0], 0);
+                    assert_box(entries, 4, [x, 10.0 + gap, 20.0, 10.0], 1);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cyclic_main_gap_uses_zero_percentage_basis_f32() {
+    cyclic_main_gap::<f32>(0.0);
+}
+#[test]
+fn cyclic_main_gap_uses_zero_percentage_basis_f64() {
+    cyclic_main_gap::<f64>(0.0);
+}
+#[test]
+fn cyclic_main_calc_gap_retains_fixed_term_f32() {
+    cyclic_main_gap::<f32>(5.0);
+}
+#[test]
+fn cyclic_main_calc_gap_retains_fixed_term_f64() {
+    cyclic_main_gap::<f64>(5.0);
+}
