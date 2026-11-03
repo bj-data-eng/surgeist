@@ -820,3 +820,21 @@ fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_t
         format!("<!doctype html><p>{}", "<b a=i>".repeat(n))
     });
 }
+
+#[test]
+fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doubles() {
+    // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
+    // the `x` that follows reconstructs it, copying every attribute to the new element.
+    assert_each_doubling_costs_at_most_two_point_two_times([250, 500, 1_000, 2_000], |n| {
+        let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
+        format!("<!doctype html><p><b{attributes}></p>x")
+    });
+}
+
+#[test]
+fn work_of_one_long_input_value_at_most_doubles_with_its_length() {
+    // The value is sanitized into a copy that keeps the origin of every code point.
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><input value='{}'>", "x".repeat(n))
+    });
+}
