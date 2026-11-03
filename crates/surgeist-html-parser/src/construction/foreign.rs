@@ -62,7 +62,7 @@ fn adjusted_text(
             }
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<HtmlParseTextOrigin>(c, 1)?;
-            origins.try_push(
+            origins.try_push_geometric(
                 c,
                 HtmlParseTextOrigin {
                     start: origin.start.saturating_sub(skip),
@@ -202,7 +202,7 @@ impl ParserArenaSession {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 payload_write::<HtmlParseTextOrigin>(c, 1)?;
-                origins.try_push(
+                origins.try_push_geometric(
                     c,
                     HtmlParseTextOrigin {
                         start: origin.start,

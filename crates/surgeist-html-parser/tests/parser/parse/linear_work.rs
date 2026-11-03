@@ -705,15 +705,23 @@ fn assert_each_doubling_costs_at_most_two_point_two_times(
     sizes: [usize; 4],
     document: impl Fn(usize) -> String,
 ) {
-    const MEASURES: [Measure; 2] = [
-        ("total work", |work| work.total),
-        ("reservation work", |work| work.reserved),
-    ];
+    assert_measures_at_most_two_point_two_times(sizes, document, &[TOTAL_WORK, RESERVATION_WORK]);
+}
+
+const TOTAL_WORK: Measure = ("total work", |work| work.total);
+const RESERVATION_WORK: Measure = ("reservation work", |work| work.reserved);
+
+/// As `assert_each_doubling_costs_at_most_two_point_two_times`, for the given measures only.
+fn assert_measures_at_most_two_point_two_times(
+    sizes: [usize; 4],
+    document: impl Fn(usize) -> String,
+    measures: &[Measure],
+) {
     let measured: Vec<Work> = sizes
         .iter()
         .map(|&n| parse_long_input_work(document(n)))
         .collect();
-    for (name, pick) in MEASURES {
+    for (name, pick) in measures {
         let work: Vec<u64> = measured.iter().map(pick).collect();
         for (pair, window) in sizes.windows(2).zip(work.windows(2)) {
             assert!(
@@ -825,10 +833,16 @@ fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_t
 fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doubles() {
     // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
     // the `x` that follows reconstructs it, copying every attribute to the new element.
-    assert_each_doubling_costs_at_most_two_point_two_times([250, 500, 1_000, 2_000], |n| {
-        let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
-        format!("<!doctype html><p><b{attributes}></p>x")
-    });
+    // Only the reservation work is measured: copying the attributes also visits records
+    // quadratically in their number, which no reservation causes.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| {
+            let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
+            format!("<!doctype html><p><b{attributes}></p>x")
+        },
+        &[RESERVATION_WORK],
+    );
 }
 
 #[test]

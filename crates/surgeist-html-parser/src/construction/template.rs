@@ -927,7 +927,7 @@ impl ParserArenaSession {
             else {
                 return Err(latch_registry_row(c));
             };
-            nodes.try_push(c, current)?;
+            nodes.try_push_geometric(c, current)?;
             payload_write::<Option<usize>>(c, 1)?;
             next = storage.next_sibling(c, current)?;
         }
