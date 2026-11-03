@@ -233,28 +233,37 @@ impl ConstructionOwner {
                 }
                 control.admit_attribute_work(work)?;
                 let prior = description.prior_index();
-                let expected = if let HtmlConstructionAttributeDescription::ReservePlan {
-                    allocation,
-                    minimum_capacity,
-                    ..
-                } = description
-                {
-                    control.prepare_construction_reserve(
+                // A plan reservation doubles the plan, up to the candidate count it will hold, so
+                // planning N names requests O(log N) reallocations. The capacity depends only on
+                // the plan and the candidate count, never on a limit, and is admitted here,
+                // before it is allocated: a limit that cannot hold it refuses the reservation.
+                let (expected, reserved) =
+                    if let HtmlConstructionAttributeDescription::ReservePlan {
                         allocation,
                         minimum_capacity,
-                        attribute_plan.as_ref(),
-                    )?;
-                    ticket_work(control)?;
-                    let Some(expected) = minimum_capacity.checked_mul(allocation.element_size())
-                    else {
-                        return Err(control
-                            .stop_representation(crate::HtmlParseResource::ManagedCapacityBytes)
-                            .into());
+                        ..
+                    } = description
+                    {
+                        let capacity = allocation
+                            .capacity()
+                            .saturating_mul(2)
+                            .min(names.len())
+                            .max(minimum_capacity);
+                        control.prepare_construction_reserve(
+                            allocation,
+                            capacity,
+                            attribute_plan.as_ref(),
+                        )?;
+                        ticket_work(control)?;
+                        let Some(expected) = capacity.checked_mul(allocation.element_size()) else {
+                            return Err(control
+                                .stop_representation(crate::HtmlParseResource::ManagedCapacityBytes)
+                                .into());
+                        };
+                        (Some(expected), Some(capacity))
+                    } else {
+                        (None, None)
                     };
-                    Some(expected)
-                } else {
-                    None
-                };
                 let prior_name = match prior {
                     Some(prior) => match names.get(prior) {
                         Some(name) => Some(name.name.value.text()),
@@ -262,7 +271,11 @@ impl ConstructionOwner {
                     },
                     None => None,
                 };
-                match action.perform(prior_name) {
+                let performed = match reserved {
+                    Some(capacity) => action.perform_with_capacity(prior_name, capacity),
+                    None => action.perform(prior_name),
+                };
+                match performed {
                     Ok(observation) => {
                         if let Some(expected) = expected {
                             let Some(snapshot) = observation.allocation() else {

@@ -921,6 +921,7 @@ pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 
 impl<'a, 'e, 'n> surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>::description(&self) -> surgeist_html::bounded::HtmlConstructionAttributeDescription<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>::perform(self, prior: core::option::Option<&'n surgeist_html::DocumentString>) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, surgeist_html::HtmlConstructionError>
+pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateAction<'a, 'e, 'n>::perform_with_capacity(self, prior: core::option::Option<&'n surgeist_html::DocumentString>, capacity: usize) -> core::result::Result<surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, surgeist_html::HtmlConstructionError>
 pub struct surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>
 impl surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'_, '_, '_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeCandidateObservation<'_, '_, '_>::accept(self)
@@ -1261,6 +1262,7 @@ pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::capacity(&self
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::is_empty(&self) -> bool
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::len(&self) -> usize
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::record_size(&self) -> usize
+pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::target_capacity(&self) -> usize
 pub fn surgeist_html::bounded::HtmlMicrodataTokenReservation<'_>::try_reserve(&mut self) -> core::result::Result<(), surgeist_html::bounded::HtmlMicrodataTokenInterpretationError>
 pub struct surgeist_html::bounded::HtmlOptionSelectAncestors
 impl surgeist_html::bounded::HtmlOptionSelectAncestors
@@ -1311,6 +1313,7 @@ pub fn surgeist_html::bounded::HtmlRelReservation<'_>::capacity(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::is_empty(&self) -> bool
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::len(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::record_size(&self) -> usize
+pub fn surgeist_html::bounded::HtmlRelReservation<'_>::target_capacity(&self) -> usize
 pub fn surgeist_html::bounded::HtmlRelReservation<'_>::try_reserve(&mut self) -> core::result::Result<(), surgeist_html::bounded::HtmlRelInterpretationError>
 pub struct surgeist_html::bounded::HtmlScriptPreparationCursor
 impl surgeist_html::bounded::HtmlScriptPreparationCursor

@@ -176,7 +176,8 @@ mod tests {
                 &c,
                 &cx,
                 HtmlValueInterpreter::new(1),
-                HtmlSemanticLimits::new(work, 0, 0, 0, 1000, 1),
+                // The first token's reservation targets the minimum amortized capacity, 4 slots.
+                HtmlSemanticLimits::new(work, 0, 0, 0, 1000, 4),
                 HtmlSemanticCancellation::new(),
             )
             .unwrap();
@@ -2631,11 +2632,12 @@ impl crate::bounded::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
         &mut self,
         reservation: &mut crate::bounded::HtmlMicrodataTokenReservation<'_>,
     ) -> Result<(), Self::Error> {
+        let target = reservation.target_capacity();
         self.reserve_record_capacity(
             reservation.len(),
             reservation.capacity(),
             reservation.record_size(),
-            1,
+            target.saturating_sub(reservation.len()),
             HtmlSemanticResource::NestedOutputRecords,
             || {
                 reservation.try_reserve().map_err(|_| ())?;

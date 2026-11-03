@@ -217,11 +217,12 @@ impl HtmlRelMeter for ScratchControl<'_, '_> {
     }
     fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
         let before = guard.capacity();
+        let target = guard.target_capacity();
         let result = self.session.reserve_record_capacity(
             guard.len(),
             guard.capacity(),
             guard.record_size(),
-            1,
+            target.saturating_sub(guard.len()),
             HtmlSemanticResource::ScratchRecords,
             || {
                 guard.try_reserve().map_err(|_| ())?;

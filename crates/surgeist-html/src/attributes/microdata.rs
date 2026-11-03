@@ -364,8 +364,9 @@ impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
     }
 }
 
-/// The only reservation allowed by a pending token is one additional record, together with the
-/// duplicate-index entry that record may need.
+/// The only reservation allowed by a pending token is room for one additional record, together
+/// with the duplicate-index entry that record may need. A full vector grows geometrically, so the
+/// room may exceed that one record; the meter admits and charges the capacity the vectors reach.
 #[derive(Debug)]
 pub struct HtmlMicrodataTokenReservation<'a> {
     values: &'a mut Vec<HtmlMicrodataToken>,
@@ -387,13 +388,32 @@ impl HtmlMicrodataTokenReservation<'_> {
         self.values.capacity()
     }
     /// The size in bytes of one token record, for charging the reservation: the published record
-    /// plus the entry of the unpublished duplicate index that grows with it. The index is released
+    /// plus the entry of the unpublished duplicate index that grows with it. The charge may count
+    /// index slots that a refused index growth did not allocate (see
+    /// [`try_reserve`](Self::try_reserve)). The index is released
     /// when the report is assembled or the interpretation is dropped, and is never published.
     pub fn record_size(&self) -> usize {
         std::mem::size_of::<HtmlMicrodataToken>() + std::mem::size_of::<IndexNode>()
     }
-    /// Performs this guard's fixed request at most once, on its actual vectors. The index grows to
-    /// the token vector's capacity, so [`capacity`](Self::capacity) states both.
+    /// The capacity of the token vector, in tokens, once this guard's reservation has run. The
+    /// current capacity when one more token fits. Otherwise the greater of one more token than the
+    /// vector holds and double its capacity (at least 4), so that `n` tokens request `O(log n)`
+    /// reallocations. It depends only on the vector, never on a limit: a meter that charges for the
+    /// growth admits this capacity before calling [`try_reserve`](Self::try_reserve), and refuses
+    /// the reservation when it cannot. The duplicate index grows to the same capacity.
+    pub fn target_capacity(&self) -> usize {
+        crate::amortized::amortized_capacity(self.values.len(), self.values.capacity())
+    }
+    /// Performs this guard's fixed request at most once, on its actual vectors, growing them to
+    /// [`target_capacity`](Self::target_capacity) when one more token does not fit. The index grows
+    /// to the token vector's capacity, so [`capacity`](Self::capacity) states both. When the
+    /// allocator refuses a larger capacity for either vector, the guard requests the one entry that
+    /// vector needs instead, so an allocator refusal of the spare room never fails where exact
+    /// growth would succeed; the meter charges the capacity the vectors actually reach. The index
+    /// capacity never exceeds the token vector's. The meter charges the token vector's capacity
+    /// growth at [`record_size`](Self::record_size), which includes one index entry per token slot;
+    /// when a refused index growth fell back to exact growth, the charge counts index slots that
+    /// were not allocated, so it may exceed what was allocated and never falls short.
     pub fn try_reserve(&mut self) -> Result<(), HtmlMicrodataTokenInterpretationError> {
         if self.attempted {
             return Err(
@@ -401,23 +421,20 @@ impl HtmlMicrodataTokenReservation<'_> {
             );
         }
         self.attempted = true;
-        let needed = self
-            .values
+        self.values
             .len()
             .checked_add(1)
             .ok_or(HtmlMicrodataTokenInterpretationErrorKind::RepresentationExhausted)?;
-        if needed > self.values.capacity() {
-            self.values
-                .try_reserve_exact(1)
-                .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
-        }
+        crate::amortized::reserve_amortized(self.values)
+            .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
         let target = self.values.capacity();
         if target > self.index.capacity() {
-            // The index never holds more entries than there are tokens, so `target` covers the
-            // entry the pending token may add.
-            let additional = target.saturating_sub(self.index.len());
-            self.index
-                .try_reserve_exact(additional)
+            // The index never holds more entries than there are tokens, so `target`, the token
+            // vector's capacity after its own reservation, covers the entry the pending token may
+            // add and a token fallback lowers it. A refused larger request falls back to that
+            // entry through the shared helper, which is tested on its own: an index-only refusal
+            // would need memory exhaustion between the two allocations and cannot be reproduced.
+            crate::amortized::reserve_to(self.index, target)
                 .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
         }
         self.completed = true;
@@ -433,7 +450,8 @@ pub trait HtmlMicrodataTokenMeter {
     /// Charges `units` of abstract work for the next step. Returning an error stops the
     /// interpretation before the step runs.
     fn work(&mut self, units: usize) -> Result<(), Self::Error>;
-    /// Decides whether to admit the single-record reservation. Admitting it means calling
+    /// Decides whether to admit the reservation of room for one more record, which may be larger
+    /// ([`HtmlMicrodataTokenReservation::target_capacity`]). Admitting it means calling
     /// [`HtmlMicrodataTokenReservation::try_reserve`] exactly once; returning `Ok` without a
     /// successful reservation is a protocol violation, and returning an error stops the
     /// interpretation.
