@@ -558,9 +558,7 @@ mod tests {
         }
         let HtmlConstructionCommit::Changed {
             storage, created, ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        } = slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("mutation published")
         };
@@ -577,9 +575,7 @@ mod tests {
             .unwrap()
             .perform()
             .accept();
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit()
+        slots::initialization(&mut initialization).unwrap().commit()
     }
 
     fn element(local: &str) -> HtmlConstructionCommand {
@@ -646,9 +642,7 @@ mod tests {
             return (storage, false);
         }
         let HtmlConstructionCommit::Changed { storage, .. } =
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("mutation published")
         };

@@ -12,6 +12,76 @@ pub use operations::*;
 mod text_append;
 pub use text_append::*;
 
+/// Test adapters that keep a protocol owner in an `Option` slot, as a driver that stores it in a
+/// field does, and put the owner back when its consuming step refuses it.
+#[cfg(test)]
+mod slots {
+    use super::*;
+
+    fn step<T, R>(
+        slot: &mut Option<T>,
+        consume: impl FnOnce(T) -> Result<R, HtmlConstructionRefusal<T>>,
+    ) -> Result<R, HtmlConstructionError> {
+        let owner = slot.take().expect("slot holds its owner");
+        match consume(owner) {
+            Ok(value) => Ok(value),
+            Err(refusal) => {
+                let (owner, reason) = refusal.into_parts();
+                *slot = Some(owner);
+                Err(reason)
+            }
+        }
+    }
+    pub(super) fn initialization(
+        slot: &mut Option<HtmlConstructionInitialization>,
+    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
+        step(slot, HtmlConstructionInitialization::try_ready)
+    }
+    pub(super) fn operation(
+        slot: &mut Option<HtmlConstructionOperation>,
+    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
+        step(slot, HtmlConstructionOperation::try_ready)
+    }
+    pub(super) fn text_append(
+        slot: &mut Option<HtmlConstructionTextAppend>,
+    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
+        step(slot, HtmlConstructionTextAppend::try_ready)
+    }
+    pub(super) fn attribute_slot<'e>(
+        slot: &mut Option<HtmlConstructionAttributeSlot<'e>>,
+    ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionError> {
+        step(slot, HtmlConstructionAttributeSlot::try_ready)
+    }
+    pub(super) fn candidate(
+        slot: &mut Option<HtmlConstructionAttributeCandidate<'_, '_>>,
+    ) -> Result<bool, HtmlConstructionError> {
+        step(slot, HtmlConstructionAttributeCandidate::try_finish)
+    }
+    pub(super) fn edit(
+        slot: &mut Option<HtmlConstructionAttributeEdit>,
+    ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionError> {
+        step(slot, HtmlConstructionAttributeEdit::try_finish)
+    }
+    pub(super) fn recover(
+        result: &mut Option<HtmlConstructionResult>,
+        lease: &mut Option<HtmlConstructionLease>,
+    ) -> Result<HtmlConstructionRecovery, HtmlConstructionError> {
+        let owners = (
+            result.take().expect("slot holds its result"),
+            lease.take().expect("slot holds its lease"),
+        );
+        match HtmlConstructionLease::try_recover(owners.0, owners.1) {
+            Ok(value) => Ok(value),
+            Err(refusal) => {
+                let ((returned_result, returned_lease), reason) = refusal.into_parts();
+                *result = Some(returned_result);
+                *lease = Some(returned_lease);
+                Err(reason)
+            }
+        }
+    }
+}
+
 /// One hidden allocation's role in a construction owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAllocationRole {
@@ -284,6 +354,23 @@ impl HtmlConstructionResult {
             Self::Fragment(v) => &v.arena,
         }
     }
+    /// The sole owner's arena, or the unchanged result while another strong owner lives.
+    fn try_unwrap_arena(self) -> Result<Arena, Self> {
+        match self {
+            Self::Document(v) => Arc::try_unwrap(v.arena).map_err(|arena| {
+                Self::Document(HtmlDocument {
+                    arena,
+                    root: v.root,
+                })
+            }),
+            Self::Fragment(v) => Arc::try_unwrap(v.arena).map_err(|arena| {
+                Self::Fragment(HtmlFragment {
+                    arena,
+                    root: v.root,
+                })
+            }),
+        }
+    }
     pub(super) fn into_arena(self) -> (Arc<Arena>, Option<usize>) {
         match self {
             Self::Document(v) => (v.arena, None),
@@ -440,10 +527,7 @@ impl HtmlConstructionStorage {
     /// Starts allocation-free initialization of a construction owner. Drive the returned value
     /// with `next_action`; no identity exists until its first action runs.
     pub fn begin() -> HtmlConstructionInitialization {
-        HtmlConstructionInitialization {
-            identity: None,
-            phase: InitializationPhase::Pending,
-        }
+        HtmlConstructionInitialization { created: None }
     }
     /// The admitted usage; it is zero for a new owner.
     pub fn usage(&self) -> HtmlConstructionUsage {
@@ -560,17 +644,18 @@ impl HtmlConstructionStorage {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InitializationPhase {
-    Pending,
-    Observing,
-    Ready,
+/// The identity allocation once an initialization action has created it, and whether its
+/// observation was accepted.
+#[derive(Debug)]
+struct CreatedIdentity {
+    identity: Arc<Identity>,
+    accepted: bool,
 }
 /// Allocation-free initialization; the actual shared identity is created by its action.
 #[derive(Debug)]
 pub struct HtmlConstructionInitialization {
-    identity: Option<Arc<Identity>>,
-    phase: InitializationPhase,
+    /// `None` until the action runs: no identity exists before it.
+    created: Option<CreatedIdentity>,
 }
 /// One pending initialization action. It borrows the initialization exclusively; `perform`
 /// consumes it.
@@ -582,7 +667,7 @@ pub struct HtmlConstructionInitializationAction<'a> {
 /// it is accepted.
 #[derive(Debug)]
 pub struct HtmlConstructionInitializationObservation<'a> {
-    owner: &'a mut HtmlConstructionInitialization,
+    accepted: &'a mut bool,
     snapshot: HtmlConstructionAllocationSnapshot,
 }
 /// An initialization that completed identity allocation. `commit` turns it into storage; `abort`
@@ -597,49 +682,45 @@ impl HtmlConstructionInitialization {
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionInitializationAction<'_>>, HtmlConstructionError> {
-        match self.phase {
-            InitializationPhase::Pending => {
-                Ok(Some(HtmlConstructionInitializationAction { owner: self }))
-            }
-            InitializationPhase::Ready => Ok(None),
-            InitializationPhase::Observing => {
-                Err(HtmlConstructionErrorKind::OperationNotReady.into())
-            }
+        match self.created {
+            None => Ok(Some(HtmlConstructionInitializationAction { owner: self })),
+            Some(CreatedIdentity { accepted: true, .. }) => Ok(None),
+            Some(CreatedIdentity {
+                accepted: false, ..
+            }) => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
         }
     }
-    /// Takes a ready initialization out of `owner`. Returns the consumed error for an empty owner
-    /// and the not-ready error when initialization has not completed; on error the owner is left
-    /// in place.
+    /// Consumes a ready initialization. Returns the not-ready error, with the initialization
+    /// handed back unchanged, when initialization has not completed.
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
-        let value = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if value.phase != InitializationPhase::Ready {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        self,
+    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionRefusal<Self>> {
+        match self.created {
+            Some(CreatedIdentity {
+                identity,
+                accepted: true,
+            }) => Ok(HtmlConstructionReadyInitialization { identity }),
+            created => Err(HtmlConstructionRefusal::new(
+                Self { created },
+                HtmlConstructionErrorKind::OperationNotReady,
+            )),
         }
-        Ok(HtmlConstructionReadyInitialization {
-            identity: owner
-                .take()
-                .expect("occupied initialization")
-                .identity
-                .expect("observed real identity"),
-        })
     }
     /// Abandons initialization. Returns the retirement evidence for the identity allocation if one
     /// had been made.
     pub fn abort(self) -> Option<HtmlConstructionRetired> {
-        self.identity.map(|identity| {
-            let snapshot = HtmlConstructionAllocationSnapshot::shared::<Identity>(
-                &identity,
-                AllocationRole::Identity,
-                0,
-            );
-            drop(identity);
-            HtmlConstructionRetired { snapshot }
-        })
+        self.created
+            .map(|created| retire_identity(created.identity))
     }
+}
+fn retire_identity(identity: Arc<Identity>) -> HtmlConstructionRetired {
+    let snapshot = HtmlConstructionAllocationSnapshot::shared::<Identity>(
+        &identity,
+        AllocationRole::Identity,
+        0,
+    );
+    drop(identity);
+    HtmlConstructionRetired { snapshot }
 }
 impl<'a> HtmlConstructionInitializationAction<'a> {
     /// Describes the pending action's work for the consumer to admit.
@@ -659,10 +740,12 @@ impl<'a> HtmlConstructionInitializationAction<'a> {
             AllocationRole::Identity,
             0,
         );
-        self.owner.identity = Some(identity);
-        self.owner.phase = InitializationPhase::Observing;
+        let created = self.owner.created.insert(CreatedIdentity {
+            identity,
+            accepted: false,
+        });
         HtmlConstructionInitializationObservation {
-            owner: self.owner,
+            accepted: &mut created.accepted,
             snapshot,
         }
     }
@@ -674,7 +757,7 @@ impl HtmlConstructionInitializationObservation<'_> {
     }
     /// Accepts the observation, which makes the initialization ready.
     pub fn accept(self) {
-        self.owner.phase = InitializationPhase::Ready;
+        *self.accepted = true;
     }
 }
 impl HtmlConstructionReadyInitialization {
@@ -693,14 +776,44 @@ impl HtmlConstructionReadyInitialization {
     }
     /// Abandons a ready initialization and returns the retirement evidence for its identity
     /// allocation.
-    pub fn abort(self) -> Option<HtmlConstructionRetired> {
-        HtmlConstructionInitialization {
-            identity: Some(self.identity),
-            phase: InitializationPhase::Ready,
-        }
-        .abort()
+    pub fn abort(self) -> HtmlConstructionRetired {
+        retire_identity(self.identity)
     }
 }
+
+/// A consuming step that its owner refused. The refusal hands the owner back unchanged together
+/// with the cause, so the caller can abort, retry after the missing action, or recover.
+#[derive(Debug)]
+pub struct HtmlConstructionRefusal<T> {
+    owner: T,
+    reason: HtmlConstructionError,
+}
+impl<T> HtmlConstructionRefusal<T> {
+    pub(super) fn new(owner: T, reason: impl Into<HtmlConstructionError>) -> Self {
+        Self {
+            owner,
+            reason: reason.into(),
+        }
+    }
+    /// The cause the step was refused for.
+    pub fn reason(&self) -> &HtmlConstructionError {
+        &self.reason
+    }
+    /// The owner, unchanged.
+    pub fn owner(&self) -> &T {
+        &self.owner
+    }
+    /// Returns the unchanged owner and the cause. Nothing the caller supplied is lost.
+    pub fn into_parts(self) -> (T, HtmlConstructionError) {
+        (self.owner, self.reason)
+    }
+}
+impl<T> fmt::Display for HtmlConstructionRefusal<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "construction step refused: {}", self.reason)
+    }
+}
+impl<T: fmt::Debug> std::error::Error for HtmlConstructionRefusal<T> {}
 
 /// Non-cloneable evidence that the indicated actual allocation was retired.
 #[derive(Debug)]
@@ -739,33 +852,31 @@ impl HtmlConstructionLease {
         &self.snapshot
     }
     /// Takes published storage back into mutable ownership. The result must be the sole strong
-    /// owner of its arena. Returns the consumed error if `result` or `lease` is empty, the
-    /// foreign-allocation error if the lease belongs to another result, and the shared-allocation
-    /// error while any clone of the result lives. On error neither argument is taken.
+    /// owner of its arena. Returns the foreign-allocation error if the lease belongs to another
+    /// result and the shared-allocation error while any clone of the result lives. On error both
+    /// arguments are handed back unchanged.
     pub fn try_recover(
-        result: &mut Option<HtmlConstructionResult>,
-        lease: &mut Option<Self>,
-    ) -> Result<HtmlConstructionRecovery, HtmlConstructionError> {
-        let value = result
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        let capability = lease
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if capability.arena.as_ptr() != Arc::as_ptr(value.arena()) {
-            return Err(HtmlConstructionErrorKind::ForeignAllocation.into());
+        result: HtmlConstructionResult,
+        lease: Self,
+    ) -> Result<HtmlConstructionRecovery, HtmlConstructionRefusal<(HtmlConstructionResult, Self)>>
+    {
+        if lease.arena.as_ptr() != Arc::as_ptr(result.arena()) {
+            return Err(HtmlConstructionRefusal::new(
+                (result, lease),
+                HtmlConstructionErrorKind::ForeignAllocation,
+            ));
         }
-        if Arc::strong_count(value.arena()) != 1 {
-            return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+        match result.try_unwrap_arena() {
+            Ok(arena) => Ok(HtmlConstructionRecovery {
+                storage: HtmlConstructionStorage { arena },
+                retired: HtmlConstructionRetired {
+                    snapshot: lease.snapshot,
+                },
+            }),
+            Err(result) => Err(HtmlConstructionRefusal::new(
+                (result, lease),
+                HtmlConstructionErrorKind::SharedAllocationAliased,
+            )),
         }
-        let (arena, _) = result.take().expect("checked result owner").into_arena();
-        let capability = lease.take().expect("checked lease owner");
-        let arena = Arc::try_unwrap(arena).expect("preflight proved sole strong arena owner");
-        Ok(HtmlConstructionRecovery {
-            storage: HtmlConstructionStorage { arena },
-            retired: HtmlConstructionRetired {
-                snapshot: capability.snapshot,
-            },
-        })
     }
 }

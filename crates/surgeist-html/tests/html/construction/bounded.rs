@@ -2,7 +2,7 @@ mod depth;
 mod focus;
 mod order;
 mod replace;
-use crate::html::support::{Cause, cause, has_cause};
+use crate::html::support::{Cause, cause, has_cause, slots};
 use std::sync::Arc;
 use surgeist_html::{
     DocumentString, HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
@@ -21,9 +21,7 @@ fn storage() -> HtmlConstructionStorage {
         assert_eq!(observation.allocation().capacity(), 1);
         observation.accept();
     }
-    HtmlConstructionInitialization::try_ready(&mut owner)
-        .unwrap()
-        .commit()
+    slots::initialization(&mut owner).unwrap().commit()
 }
 fn ready(
     storage: HtmlConstructionStorage,
@@ -33,7 +31,7 @@ fn ready(
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let ready = slots::operation(&mut operation).unwrap();
     assert!(operation.is_none());
     ready
 }
@@ -108,9 +106,7 @@ fn refuse(
         owner.as_mut().unwrap().next_action().err().as_ref(),
         expected
     ));
-    assert!(
-        matches!(HtmlConstructionOperation::try_ready(&mut owner), Err(error) if error == expected)
-    );
+    assert!(matches!(slots::operation(&mut owner), Err(error) if error == expected));
     owner.unwrap().abort().into_parts().0
 }
 
@@ -173,7 +169,7 @@ fn driven(
         }
         action.perform().unwrap().accept();
     }
-    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let ready = slots::operation(&mut operation).unwrap();
     let HtmlConstructionCommit::Changed { storage, .. } = ready.commit() else {
         panic!("mutation produced publication")
     };
@@ -239,9 +235,7 @@ fn append_amortized(
         observation.accept();
     }
     let HtmlConstructionCommit::Changed { storage, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("mutation produced publication")
     };
@@ -422,9 +416,7 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -544,9 +536,7 @@ fn capacity_is_only_accepted_by_a_described_geometric_reserve() {
     assert_eq!(refused.reason(), &cause::CAPACITY_MISMATCH);
     assert!(refused.allocation().is_none());
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::CAPACITY_MISMATCH
     ));
     let owner = operation.unwrap().abort().into_parts().0;
@@ -595,9 +585,7 @@ fn append_cycle_refuses_before_any_child_order_growth() {
 fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal() {
     let mut initialization = Some(HtmlConstructionStorage::begin());
     assert!(has_cause(
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .err()
-            .as_ref(),
+        slots::initialization(&mut initialization).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let observation = initialization
@@ -610,9 +598,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
     let ticket = observation.allocation().clone();
     drop(observation);
     assert!(has_cause(
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .err()
-            .as_ref(),
+        slots::initialization(&mut initialization).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let receipt = initialization.unwrap().abort().unwrap();
@@ -620,9 +606,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
 
     let mut operation = Some(storage().prepare(HtmlConstructionCommand::CreateFragment));
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     {
@@ -642,9 +626,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
         cause::OPERATION_NOT_READY
     ));
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let (retained, command, retired) = operation.unwrap().abort().into_parts();
@@ -948,15 +930,13 @@ fn publication_lease_rejects_foreign_or_aliased_results_without_taking_slots() {
     let mut result = Some(result);
     let mut lease = Some(lease);
     assert!(has_cause(
-        HtmlConstructionLease::try_recover(&mut result, &mut Some(other_lease))
+        slots::recover(&mut result, &mut Some(other_lease))
             .err()
             .as_ref(),
         cause::FOREIGN_ALLOCATION
     ));
     assert!(has_cause(
-        HtmlConstructionLease::try_recover(&mut result, &mut lease)
-            .err()
-            .as_ref(),
+        slots::recover(&mut result, &mut lease).err().as_ref(),
         cause::SHARED_ALLOCATION_ALIASED
     ));
     assert!(result.is_some() && lease.is_some());
@@ -964,7 +944,7 @@ fn publication_lease_rejects_foreign_or_aliased_results_without_taking_slots() {
     drop(alias);
     drop(other);
     let wrapper = lease.as_ref().unwrap().allocation().clone();
-    let (storage, receipt) = HtmlConstructionLease::try_recover(&mut result, &mut lease)
+    let (storage, receipt) = slots::recover(&mut result, &mut lease)
         .unwrap()
         .into_parts();
     assert!(result.is_none() && lease.is_none());
@@ -1152,9 +1132,7 @@ fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_ide
         storage: owner,
         created,
         ..
-    } = HtmlConstructionOperation::try_ready(&mut operation)
-        .unwrap()
-        .commit()
+    } = slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("creation")
     };
@@ -1247,9 +1225,7 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -1330,9 +1306,7 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
         }
         assert!(preflight);
         let HtmlConstructionCommit::Changed { storage: owner, .. } =
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            slots::operation(&mut operation).unwrap().commit()
         else {
             panic!()
         };
@@ -1390,9 +1364,7 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!()
     };
@@ -1489,9 +1461,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
             }
         }
         assert!(has_cause(
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .err()
-                .as_ref(),
+            slots::operation(&mut operation).err().as_ref(),
             cause::WRONG_NODE_KIND
         ));
         let (owner, command, _) = operation.unwrap().abort().into_parts();
@@ -1540,9 +1510,7 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
         action.perform().unwrap().accept();
     }
     assert!(has_cause(
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .err()
-            .as_ref(),
+        slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
     let (owner, command, _) = operation.unwrap().abort().into_parts();

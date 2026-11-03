@@ -423,20 +423,22 @@ impl HtmlConstructionAttributeEdit {
     pub fn pop(&mut self) -> Result<HtmlConstructionAttributeSlot<'_>, HtmlConstructionError> {
         self.slot(SlotInput::Pop)
     }
-    /// Takes a finished edit out of `owner`. Requires all planning done and every kept candidate
-    /// appended. Returns the latched failure, the consumed error for an empty owner, or the
-    /// not-ready error; on error the owner is left in place.
+    /// Consumes a finished edit. Requires all planning done and every kept candidate appended.
+    /// Returns the latched failure or the not-ready error; either way the edit is handed back
+    /// unchanged.
     pub fn try_finish(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionError> {
-        let edit = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        edit.check_ready()?;
-        if !edit.planning_complete() || edit.appended != edit.selected {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        self,
+    ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionRefusal<Self>> {
+        if let Err(error) = self.check_ready() {
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
-        Ok(owner.take().expect("checked group").abort())
+        if !self.planning_complete() || self.appended != self.selected {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
+        }
+        Ok(self.abort())
     }
     /// Abandons the edit and returns the storage and the retirement owner for the merge plan.
     pub fn abort(self) -> HtmlConstructionAttributeCompletion {
@@ -624,23 +626,23 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
         Ok((!matches!(self.phase, CandidatePhase::Done))
             .then_some(HtmlConstructionAttributeCandidateAction { candidate: self }))
     }
-    /// Takes a finished candidate out of `owner` and returns whether the candidate is kept (no
-    /// matching name). Returns the latched failure, the consumed error for an empty owner, or the
-    /// not-ready error before planning finished; on error the owner is left in place.
-    pub fn try_finish(owner: &mut Option<Self>) -> Result<bool, HtmlConstructionError> {
-        let candidate = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(e) = &candidate.failure {
-            return Err(e.clone());
+    /// Consumes a finished candidate and returns whether it is kept (no matching name). Returns
+    /// the latched failure, or the not-ready error before planning finished; either way the
+    /// candidate is handed back unchanged.
+    pub fn try_finish(mut self) -> Result<bool, HtmlConstructionRefusal<Self>> {
+        if let Some(e) = &self.failure {
+            let e = e.clone();
+            return Err(HtmlConstructionRefusal::new(self, e));
         }
-        if !matches!(candidate.phase, CandidatePhase::Done) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        if !matches!(self.phase, CandidatePhase::Done) {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
         }
-        let mut candidate = owner.take().expect("ready candidate");
-        candidate.complete = true;
-        candidate.edit.busy = false;
-        Ok(!candidate.found)
+        self.complete = true;
+        self.edit.busy = false;
+        Ok(!self.found)
     }
 }
 fn comparison_work(phase: NamePhase) -> HtmlConstructionAttributeWork {
@@ -1020,24 +1022,22 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
         Ok((!matches!(self.phase, SlotPhase::Ready))
             .then_some(HtmlConstructionAttributeSlotAction { slot: self }))
     }
-    /// Takes a ready slot out of `owner`. Returns the latched failure, the consumed error for an
-    /// empty owner, or the not-ready error before the last action was accepted; on error the owner
-    /// is left in place.
+    /// Consumes a ready slot. Returns the latched failure, or the not-ready error before the last
+    /// action was accepted; either way the slot is handed back unchanged.
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionError> {
-        let slot = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(e) = &slot.failure {
-            return Err(e.clone());
+        self,
+    ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionRefusal<Self>> {
+        if let Some(e) = &self.failure {
+            let e = e.clone();
+            return Err(HtmlConstructionRefusal::new(self, e));
         }
-        if !matches!(slot.phase, SlotPhase::Ready) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        if !matches!(self.phase, SlotPhase::Ready) {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
         }
-        Ok(HtmlConstructionReadyAttributeSlot {
-            slot: owner.take().expect("ready slot"),
-        })
+        Ok(HtmlConstructionReadyAttributeSlot { slot: self })
     }
 }
 fn plus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
@@ -1535,9 +1535,7 @@ mod tests {
         while let Some(action) = initialization.as_mut().unwrap().next_action().unwrap() {
             action.perform().accept();
         }
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create {
             kind: HtmlNodeKind::Element(HtmlElement::new(
                 QualifiedName::new(Namespace::none(), None, "root"),
@@ -1548,9 +1546,7 @@ mod tests {
             action.perform().unwrap().accept();
         }
         let HtmlConstructionCommit::Changed { storage, created } =
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("create")
         };
@@ -1572,9 +1568,7 @@ mod tests {
         while let Some(action) = slot.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        HtmlConstructionAttributeSlot::try_ready(&mut slot)
-            .unwrap()
-            .commit()
+        slots::attribute_slot(&mut slot).unwrap().commit()
     }
     fn plan(edit: &mut HtmlConstructionAttributeEdit, names: &[DocumentString]) -> Vec<usize> {
         let mut priors = Vec::new();
@@ -1590,7 +1584,7 @@ mod tests {
                     .unwrap()
                     .accept();
             }
-            HtmlConstructionAttributeCandidate::try_finish(&mut candidate).unwrap();
+            slots::candidate(&mut candidate).unwrap();
         }
         priors
     }
@@ -1612,9 +1606,7 @@ mod tests {
     }
     fn finish(edit: HtmlConstructionAttributeEdit) -> HtmlConstructionStorage {
         let mut owner = Some(edit);
-        let (storage, retirement) = HtmlConstructionAttributeEdit::try_finish(&mut owner)
-            .unwrap()
-            .into_parts();
+        let (storage, retirement) = slots::edit(&mut owner).unwrap().into_parts();
         retire(retirement);
         assert!(owner.is_none());
         storage
@@ -1737,9 +1729,7 @@ mod tests {
             }
         }
         assert!(matches!(owner.as_mut().unwrap().next_action(), Err(error) if error == expected));
-        assert!(
-            matches!(HtmlConstructionAttributeSlot::try_ready(&mut owner), Err(error) if error == expected)
-        );
+        assert!(matches!(slots::attribute_slot(&mut owner), Err(error) if error == expected));
         assert!(
             owner.is_some(),
             "typed refusal retains the same pending owner"
@@ -1953,7 +1943,7 @@ mod tests {
             HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
         ));
         assert!(matches!(
-            HtmlConstructionAttributeEdit::try_finish(&mut edit),
+            slots::edit(&mut edit),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let name = DocumentString::from("x");
@@ -1990,7 +1980,7 @@ mod tests {
             observation.accept();
         }
         assert!(matches!(
-            HtmlConstructionAttributeCandidate::try_finish(&mut candidate),
+            slots::candidate(&mut candidate),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         drop(candidate);
@@ -2091,7 +2081,7 @@ mod tests {
             pending.as_ref().unwrap().shared_attributes(),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
-        let ready = HtmlConstructionAttributeSlot::try_ready(&mut pending).unwrap();
+        let ready = slots::attribute_slot(&mut pending).unwrap();
         drop(ready);
         drop(pending);
         assert!(incoming.is_some());
@@ -2130,7 +2120,7 @@ mod tests {
             action.perform().unwrap().accept();
         }
         assert!(matches!(
-            HtmlConstructionAttributeSlot::try_ready(&mut pending),
+            slots::attribute_slot(&mut pending),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         drop(pending);
@@ -2396,7 +2386,7 @@ mod tests {
                     .unwrap()
                     .accept();
             }
-            HtmlConstructionAttributeCandidate::try_finish(&mut candidate).unwrap();
+            slots::candidate(&mut candidate).unwrap();
         }
         // Original exact comparisons: old a:a, old a:b, prior a:b, one u16 each.
         assert_eq!(inspected, 3 * 2 * size_of::<u16>());
@@ -2430,14 +2420,10 @@ mod tests {
             );
             action.perform().unwrap().accept();
         }
-        HtmlConstructionAttributeSlot::try_ready(&mut pending)
-            .unwrap()
-            .commit();
+        slots::attribute_slot(&mut pending).unwrap().commit();
         drop(pending);
         let mut owner = Some(edit);
-        let (_, retirement) = HtmlConstructionAttributeEdit::try_finish(&mut owner)
-            .unwrap()
-            .into_parts();
+        let (_, retirement) = slots::edit(&mut owner).unwrap().into_parts();
         assert_eq!(retire(retirement), (2, bytes));
     }
 
@@ -2465,7 +2451,7 @@ mod tests {
         }
         std::mem::forget(candidate);
         assert!(matches!(
-            HtmlConstructionAttributeEdit::try_finish(&mut edit),
+            slots::edit(&mut edit),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         assert!(matches!(
@@ -2504,7 +2490,7 @@ mod tests {
                     let prior = description.prior_index();
                     action.perform(prior.map(|i| &names[i])).unwrap().accept();
                 }
-                HtmlConstructionAttributeCandidate::try_finish(&mut candidate).unwrap();
+                slots::candidate(&mut candidate).unwrap();
             }
             assert!(reserves >= 2, "exercise multiple actual plan allocations");
             let report = edit.plan.as_ref().unwrap().clone();
@@ -2582,7 +2568,7 @@ mod tests {
                     }
                     observation.accept();
                 }
-                HtmlConstructionAttributeCandidate::try_finish(&mut candidate).unwrap();
+                slots::candidate(&mut candidate).unwrap();
             }
             assert_eq!(edit.decisions.len(), count);
             let allowed = count.ilog2() as usize + 2;

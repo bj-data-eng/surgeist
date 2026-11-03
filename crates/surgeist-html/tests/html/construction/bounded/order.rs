@@ -236,9 +236,7 @@ fn commit_description(
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("mutation produced publication")
     };

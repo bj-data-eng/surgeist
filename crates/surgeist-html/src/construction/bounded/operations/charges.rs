@@ -28,9 +28,7 @@ fn begin() -> HtmlConstructionStorage {
         .unwrap()
         .perform()
         .accept();
-    HtmlConstructionInitialization::try_ready(&mut initialization)
-        .unwrap()
-        .commit()
+    slots::initialization(&mut initialization).unwrap().commit()
 }
 
 /// Performs `command` and returns the storage and any created node.
@@ -42,10 +40,7 @@ fn change(
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    match HtmlConstructionOperation::try_ready(&mut operation)
-        .unwrap()
-        .commit()
-    {
+    match slots::operation(&mut operation).unwrap().commit() {
         HtmlConstructionCommit::Changed { storage, created } => (storage, created),
         HtmlConstructionCommit::Published { .. } => panic!("mutation published"),
     }
@@ -336,9 +331,7 @@ fn observe(storage: HtmlConstructionStorage, command: HtmlConstructionCommand) -
         .unwrap();
     let (record_writes, copied_bytes) = commit.expect("every operation ends in a Commit action");
     let HtmlConstructionCommit::Changed { storage, .. } =
-        HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        slots::operation(&mut operation).unwrap().commit()
     else {
         panic!("mutation published");
     };

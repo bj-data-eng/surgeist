@@ -671,24 +671,23 @@ impl HtmlConstructionOperation {
         }
         Ok(Some(HtmlConstructionAction { operation: self }))
     }
-    /// Takes a ready operation out of `owner`. Returns the latched failure, the consumed error for
-    /// an empty owner, or the not-ready error before the last action was accepted; on error the
-    /// owner is left in place.
+    /// Consumes a ready operation. Returns the latched failure, or the not-ready error before the
+    /// last action was accepted; either way the operation is handed back unchanged, so the caller
+    /// can abort it and recover the storage and command.
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
-        let operation = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(error) = &operation.failure {
-            return Err(error.clone());
+        self,
+    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionRefusal<Self>> {
+        if let Some(error) = &self.failure {
+            let error = error.clone();
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
-        if !matches!(operation.phase, Phase::Ready) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        if !matches!(self.phase, Phase::Ready) {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
         }
-        Ok(HtmlConstructionReadyOperation {
-            operation: owner.take().expect("occupied operation"),
-        })
+        Ok(HtmlConstructionReadyOperation { operation: self })
     }
     /// Abandons the operation and returns its storage and command. If a publication had already
     /// created the shared arena, it is reclaimed and the retirement evidence is returned.
@@ -2447,9 +2446,7 @@ mod reference_admission_tests {
             };
             action.perform().unwrap().accept();
         }
-        HtmlConstructionOperation::try_ready(&mut Some(operation))
-            .unwrap()
-            .commit()
+        slots::operation(&mut Some(operation)).unwrap().commit()
     }
 
     #[test]
@@ -2463,9 +2460,7 @@ mod reference_admission_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let identity = storage.arena.identity.clone();
         let HtmlConstructionCommit::Changed { storage, .. } = drive(
             storage.prepare(HtmlConstructionCommand::ReserveRecords { additional: 4 }),
@@ -2489,8 +2484,7 @@ mod reference_admission_tests {
         else {
             panic!("published actual storage")
         };
-        let recovery =
-            HtmlConstructionLease::try_recover(&mut Some(result), &mut Some(lease)).unwrap();
+        let recovery = slots::recover(&mut Some(result), &mut Some(lease)).unwrap();
         assert_eq!(recovery.storage.len(), 1);
     }
 }
@@ -2507,10 +2501,7 @@ mod publish_membership_tests {
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        match HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
-        {
+        match slots::operation(&mut operation).unwrap().commit() {
             HtmlConstructionCommit::Changed {
                 storage, created, ..
             } => (storage, created),
@@ -2529,9 +2520,7 @@ mod publish_membership_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let (mut storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
         let root = root.unwrap();
         for local in ["a", "b"] {
@@ -2575,14 +2564,11 @@ mod publish_membership_tests {
         };
         if result.is_ok() {
             let HtmlConstructionCommit::Published { result, lease } =
-                HtmlConstructionOperation::try_ready(&mut operation)
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut operation).unwrap().commit()
             else {
                 panic!("publication produced mutation")
             };
-            let recovery =
-                HtmlConstructionLease::try_recover(&mut Some(result), &mut Some(lease)).unwrap();
+            let recovery = slots::recover(&mut Some(result), &mut Some(lease)).unwrap();
             return (recovery.storage, Ok(()));
         }
         (operation.unwrap().abort().storage, result)
@@ -2657,9 +2643,7 @@ mod order_commit_guard_tests {
             }
             let HtmlConstructionCommit::Changed {
                 storage, created, ..
-            } = HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            } = slots::operation(&mut operation).unwrap().commit()
             else {
                 panic!("mutation published")
             };
@@ -2682,9 +2666,7 @@ mod order_commit_guard_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let (storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
         let root = root.unwrap();
         let (storage, first) = drive(storage, element("first"));
@@ -2831,9 +2813,7 @@ mod order_commit_guard_tests {
             // Bypass the refusing action to reach the commit itself.
             operation.phase = Phase::Ready;
             let HtmlConstructionCommit::Changed { storage, .. } =
-                HtmlConstructionOperation::try_ready(&mut Some(operation))
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut Some(operation)).unwrap().commit()
             else {
                 panic!("mutation published")
             };
@@ -2882,9 +2862,7 @@ mod order_commit_guard_tests {
                 .collect();
             operation.phase = Phase::Ready;
             let HtmlConstructionCommit::Changed { storage, .. } =
-                HtmlConstructionOperation::try_ready(&mut Some(operation))
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut Some(operation)).unwrap().commit()
             else {
                 panic!("mutation published")
             };

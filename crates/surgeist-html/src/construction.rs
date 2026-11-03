@@ -1188,8 +1188,10 @@ impl Builder {
         while let Some(action) = initialization.next_action()? {
             action.perform().accept();
         }
-        let storage =
-            bounded::HtmlConstructionInitialization::try_ready(&mut Some(initialization))?.commit();
+        let storage = initialization
+            .try_ready()
+            .map_err(|refusal| refusal.into_parts().1)?
+            .commit();
         let mut builder = Self {
             storage: Some(storage),
             limits,
@@ -1292,7 +1294,11 @@ impl Builder {
             self.storage = Some(storage);
             return Err(error);
         }
-        match bounded::HtmlConstructionOperation::try_ready(&mut Some(operation))?.commit() {
+        match operation
+            .try_ready()
+            .map_err(|refusal| refusal.into_parts().1)?
+            .commit()
+        {
             bounded::HtmlConstructionCommit::Changed { storage, created } => {
                 self.storage = Some(storage);
                 Ok(created)
@@ -1413,8 +1419,9 @@ impl Builder {
                 .expect("native construction publication")
                 .accept();
         }
-        match bounded::HtmlConstructionOperation::try_ready(&mut Some(operation))
-            .expect("native publication ready")
+        match operation
+            .try_ready()
+            .unwrap_or_else(|_| unreachable!("native publication ready"))
             .commit()
         {
             bounded::HtmlConstructionCommit::Published { result, lease } => {

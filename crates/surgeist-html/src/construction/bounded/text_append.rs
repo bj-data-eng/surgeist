@@ -312,24 +312,22 @@ impl HtmlConstructionTextAppend {
                 .then_some(HtmlConstructionTextAppendAction { owner: self }),
         )
     }
-    /// Takes a ready append out of `owner`. Returns the latched failure, the consumed error for an
-    /// empty owner, or the not-ready error before the last action was accepted; on error the owner
-    /// is left in place.
+    /// Consumes a ready append. Returns the latched failure, or the not-ready error before the
+    /// last action was accepted; either way the append is handed back unchanged.
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
-        let append = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(error) = &append.failure {
-            return Err(error.clone());
+        self,
+    ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionRefusal<Self>> {
+        if let Some(error) = &self.failure {
+            let error = error.clone();
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
-        if append.phase != Phase::Ready {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        if self.phase != Phase::Ready {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
         }
-        Ok(HtmlConstructionTextAppendReady {
-            owner: owner.take().expect("ready append"),
-        })
+        Ok(HtmlConstructionTextAppendReady { owner: self })
     }
     /// Removes initialized tail from reused native backing before storage escapes.
     /// A distinct pending copy keeps all initialized units for its actual ticket's
@@ -708,9 +706,7 @@ mod tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { kind }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
@@ -719,9 +715,7 @@ mod tests {
             storage,
             created: Some(node),
             ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        } = slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("created actual node")
         };
@@ -764,11 +758,10 @@ mod tests {
             }
             action.perform(None).unwrap().accept();
         }
-        let (storage, node, incoming, discarded) =
-            HtmlConstructionTextAppend::try_ready(&mut owner)
-                .unwrap()
-                .commit()
-                .into_parts();
+        let (storage, node, incoming, discarded) = slots::text_append(&mut owner)
+            .unwrap()
+            .commit()
+            .into_parts();
         (storage, node, incoming, discarded, prefix_units, tail_units)
     }
     fn drive_to(owner: &mut HtmlConstructionTextAppend, phase: Phase) {
@@ -928,9 +921,7 @@ mod tests {
             }
             let actual = owner.capacity().unwrap();
             let completion = if complete_tail {
-                HtmlConstructionTextAppend::try_ready(&mut Some(owner))
-                    .unwrap()
-                    .abort()
+                slots::text_append(&mut Some(owner)).unwrap().abort()
             } else {
                 owner.abort()
             };
@@ -985,7 +976,7 @@ mod tests {
         drop(weak);
         action.perform(None).unwrap().accept();
         drive_to(&mut owner, Phase::Ready);
-        let (storage, node, _, _) = HtmlConstructionTextAppend::try_ready(&mut Some(owner))
+        let (storage, node, _, _) = slots::text_append(&mut Some(owner))
             .unwrap()
             .commit()
             .into_parts();
@@ -1101,12 +1092,10 @@ mod tests {
             }
             let mut owner = Some(owner);
             let completion = if accept {
-                HtmlConstructionTextAppend::try_ready(&mut owner)
-                    .unwrap()
-                    .abort()
+                slots::text_append(&mut owner).unwrap().abort()
             } else {
                 assert!(matches!(
-                    HtmlConstructionTextAppend::try_ready(&mut owner),
+                    slots::text_append(&mut owner),
                     Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
                 ));
                 owner.take().unwrap().abort()
