@@ -1446,6 +1446,31 @@ logical capacity model, not a parser-style claim about allocator metadata or
 physical RSS. Query-session accounting begins only after a successful capture
 and context have been built.
 
+Importing is linear in the imported nodes and supplied facts. Node and fact
+lookups use import-scoped hash indexes keyed by source node identity (the
+standard randomly keyed hash map: `HtmlNodeId` provides equality and hashing,
+but neither an order nor a public dense index). Each probe is charged one work
+credit, expected constant, and an index is only probed, never iterated, so no
+outcome depends on hash seeds or bucket order. A repeated fact node is refused
+as `DuplicateNodeFacts` at its first repetition, in fact order, after the
+foreign-result check of the same fact. Retained arrays and indexes are charged
+for moving their existing entries only when growth actually moves them, so those
+charges sum to a constant number of credits per entry. Establishing a container's
+children revises only the depths of the subtrees it attaches, and charges for
+them; a cycle is the parent being found below an attached child. The one
+remaining whole-capture pass is `finish`, which runs once. No charge scales with
+the number of other nodes, so a work allowance sized as a fixed amount per node,
+attribute, name or value unit and relationship admits every import of that size.
+
+Scratch entries are counted per live logical entry: one per supplied fact and
+one per mapped node while the import runs (both indexes are released at its
+end, whatever the outcome), plus the traversal worklist and, for one container
+at a time, its child lists, duplicate-detection set and revised-depth list. All
+of these are bounded by a constant number of entries per node: a fragment of
+`n` childless siblings peaks at `8n + O(1)` scratch entries, measured. The
+mapping's own `builder_subject` and `subject` lookups scan the mapping and are
+not charged; they belong to the caller, not to the import.
+
 `HtmlConstructionCaptureImport` owns the builder, the same source result and
 `HtmlConstructionCaptureMap`, plus adapter usage. `mapping.builder_subject(id)`
 returns the checked handle for a source ID; `into_parts` returns those owners

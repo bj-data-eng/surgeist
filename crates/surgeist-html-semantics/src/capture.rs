@@ -1748,12 +1748,27 @@ impl HtmlCaptureBuilder {
         let mut updates = Vec::new();
         preflight::reserve(&mut updates, 1, admit)?;
         updates.push((child, first));
+        self.propagate_depths(&mut updates, None, admit)?;
+        Ok(updates)
+    }
+    /// Depths of every record below the seeded ones, in breadth-first order. With
+    /// `forbidden`, reaching that record is a cycle. Work is proportional to the
+    /// records visited, never to the whole forest.
+    fn propagate_depths<E>(
+        &self,
+        updates: &mut Vec<(usize, usize)>,
+        forbidden: Option<usize>,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
         let mut cursor = 0;
         while cursor < updates.len() {
             preflight::work(admit, 4)?;
             let (i, depth) = updates[cursor];
+            if forbidden == Some(i) {
+                return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
+            }
             self.depth(depth)?;
-            preflight::reserve(&mut updates, self.data.records[i].dependents.len(), admit)?;
+            preflight::reserve(updates, self.data.records[i].dependents.len(), admit)?;
             preflight::work(
                 admit,
                 self.data.records[i]
@@ -1767,7 +1782,7 @@ impl HtmlCaptureBuilder {
             }
             cursor += 1;
         }
-        Ok(updates)
+        Ok(())
     }
     fn apply_depths(&mut self, updates: Vec<(usize, usize)>) {
         for (i, depth) in updates {
@@ -1839,12 +1854,18 @@ impl HtmlCaptureBuilder {
                 .map_err(|_| preflight::Failure::AllocationFailed)?;
         }
         preflight::work(admit, 0)?;
+        // Duplicate detection probes the hash set per child; only the controlled
+        // path without one compares each child with every earlier child.
         preflight::work(
             admit,
-            children
-                .len()
-                .checked_mul(add(children.len(), 6)?)
-                .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+            if seen.is_some() {
+                children.len()
+            } else {
+                children
+                    .len()
+                    .checked_mul(add(children.len(), 6)?)
+                    .ok_or(HtmlCaptureError::RepresentationExhausted)?
+            },
         )?;
         for child in children {
             preflight::work(admit, 6)?;
@@ -1875,7 +1896,11 @@ impl HtmlCaptureBuilder {
             self.data.records[parent]
                 .dependents
                 .len()
-                .checked_mul(add(children.len(), 1)?)
+                .checked_mul(if seen.is_some() {
+                    2
+                } else {
+                    add(children.len(), 1)?
+                })
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         if self.data.records[parent].dependents.iter().any(|i| {
@@ -1897,10 +1922,22 @@ impl HtmlCaptureBuilder {
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         let usage = self.admit(0, relationships, 0, 0, 0, 0)?;
-        let mut scratch = preflight::DepthScratch::new();
-        preflight::depths(self, &edges, &mut scratch, admit)?;
-        let depths = scratch.into_depths();
-        preflight::work(admit, add(self.data.records.len(), edges.len())?)?;
+        // Only the subtrees attached here change depth: every other record keeps
+        // the depth its own edge established. A cycle needs the parent below one
+        // of the attached children, which the same traversal reaches.
+        let mut updates = Vec::new();
+        if !edges.is_empty() {
+            preflight::work(admit, 8)?;
+            let first = add(self.data.records[parent].depth, 1)?;
+            self.depth(first)?;
+            preflight::reserve(&mut updates, edges.len(), admit)?;
+            for &(child, _) in &edges {
+                preflight::work(admit, 3)?;
+                updates.push((child, first));
+            }
+            self.propagate_depths(&mut updates, Some(parent), admit)?;
+        }
+        preflight::work(admit, add(updates.len(), edges.len())?)?;
         preflight::reserve_storage(
             &mut self.data.records[parent].dependents,
             edges.len(),
@@ -1918,10 +1955,7 @@ impl HtmlCaptureBuilder {
         }
         self.data.records[parent].children = Some(indices);
         self.data.usage = usage;
-        for (i, depth) in depths.into_iter().enumerate() {
-            self.data.records[i].depth = depth;
-            self.data.usage.depth = self.data.usage.depth.max(depth);
-        }
+        self.apply_depths(updates);
         Ok(())
     }
     pub fn establish_unhosted(

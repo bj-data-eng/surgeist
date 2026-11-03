@@ -1793,6 +1793,71 @@ fn cycles_document_conflicts_and_complete_children_fail_atomically() {
 }
 
 #[test]
+fn children_attached_bottom_up_carry_depth_to_every_descendant_and_refuse_atomically() {
+    // A chain of four elements below a document whose depth allowance is three
+    // levels of ordinary nesting below its first element.
+    let chain = |allowance| {
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(16, 64, 0, 1000, allowance, 0, 0, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let d = document(&mut b, HtmlScriptingStatus::Disabled);
+        let e: Vec<_> = (0..4)
+            .map(|_| element(&mut b, &d, Namespace::html(), "div"))
+            .collect();
+        (b, d, e)
+    };
+    let (mut b, d, e) = chain(3);
+    // The deepest pair first: the later attachments must lift the depth of the
+    // grandchildren that were attached before their ancestors were.
+    b.establish_children(&e[2], std::slice::from_ref(&e[3]))
+        .unwrap();
+    b.establish_children(&e[1], std::slice::from_ref(&e[2]))
+        .unwrap();
+    assert_eq!(b.usage().depth(), 2);
+    b.establish_children(&e[0], std::slice::from_ref(&e[1]))
+        .unwrap();
+    assert_eq!(b.usage().depth(), 3);
+    let extra = element(&mut b, &d, Namespace::html(), "span");
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_children(&e[3], std::slice::from_ref(&extra)),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 4,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
+    let (mut b, _, e) = chain(2);
+    b.establish_children(&e[2], std::slice::from_ref(&e[3]))
+        .unwrap();
+    b.establish_children(&e[1], std::slice::from_ref(&e[2]))
+        .unwrap();
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_children(&e[0], std::slice::from_ref(&e[1])),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 3,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
+    // The refused attachment left the lower chain intact and attachable.
+    b.establish_children(&e[0], &[]).unwrap();
+    let c = b.finish().unwrap();
+    assert!(matches!(
+        c.node(&c.subject_id(&e[1]).unwrap()).unwrap().parent(),
+        HtmlCapturedParent::Unavailable
+    ));
+    assert_eq!(
+        children(&c, &c.subject_id(&e[1]).unwrap()),
+        vec![c.subject_id(&e[2]).unwrap()]
+    );
+}
+
+#[test]
 fn association_cycles_and_non_html_template_are_checked() {
     let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
     let d = document(&mut b, HtmlScriptingStatus::Disabled);

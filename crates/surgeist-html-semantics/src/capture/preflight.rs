@@ -88,10 +88,6 @@ impl DepthScratch {
             path: Vec::new(),
         }
     }
-
-    pub(super) fn into_depths(self) -> Vec<usize> {
-        self.depths
-    }
 }
 
 pub(super) fn work<E>(
@@ -121,7 +117,6 @@ pub(super) fn reserve_storage<T, E>(
         record_bytes: std::mem::size_of::<T>(),
     })
     .map_err(Failure::Admission)?;
-    work(admit, values.len())?;
     let old = values
         .capacity()
         .checked_mul(std::mem::size_of::<T>())
@@ -131,6 +126,8 @@ pub(super) fn reserve_storage<T, E>(
         .checked_add(entries)
         .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
     if needed > values.capacity() {
+        // Only a growing reservation can move the existing entries.
+        work(admit, values.len())?;
         let requested = needed
             .checked_mul(std::mem::size_of::<T>())
             .filter(|n| *n <= isize::MAX as usize)
