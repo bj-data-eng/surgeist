@@ -2,6 +2,7 @@ mod admitted_work;
 mod caption;
 mod collections;
 mod indices;
+mod model_work;
 mod scope_work;
 mod sections;
 mod spans_scope;
