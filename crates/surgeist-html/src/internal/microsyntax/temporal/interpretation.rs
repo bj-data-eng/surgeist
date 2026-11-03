@@ -106,8 +106,10 @@ impl std::error::Error for HtmlTimeElementInterpretationError {
 pub enum HtmlTimeElementInterpretationActionKind {
     /// Recognizing which of the time element's alternatives the raw value matches, or, for a
     /// duration, scanning its next component. Each attempt is charged `16 * length + 256`, where
-    /// `length` is the raw length for the value match and the unread remainder for a duration
-    /// component. It allocates nothing.
+    /// `length` is the raw length for the value match and, for a duration component, the units
+    /// that the step consumes: the T markers and whitespace before the component, the
+    /// component, and the whitespace after it (or the trailing whitespace of the last step).
+    /// It allocates nothing.
     Recognition,
     /// Building exact numeric digits from borrowed digits or by arithmetic. It is the only kind
     /// that allocates, and the caller supplies the limits for it.
