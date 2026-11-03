@@ -170,8 +170,115 @@ fn geometry<S: LayoutScalar>(
             .expect("actual Grid visible-overflow geometry");
         assert_eq!(root_scroll.border_box(), normal_rect);
         assert_eq!(root_scroll.scrollable_overflow(), overflow_rect);
+    } else {
+        complete_clipped_scroll(batch, overflow);
     }
 }
+
+fn complete_clipped_scroll<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    overflow: Overflow,
+) {
+    let n = S::from_f64;
+    // Overflow3's own overflow and its propagation are separate: both retain
+    // measured80x90 locally, while Hidden alone exposes scrolling. A parent's
+    // visible propagation stops at either Hidden or Clip, so it remains20x30.
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        let get = |node| {
+            entries
+                .iter()
+                .find(|row| row.node() == node)
+                .unwrap()
+                .output()
+        };
+        let root = get(0);
+        let leaf = get(1);
+        assert_eq!(root.content_size, border());
+        assert_eq!(leaf.content_size, natural());
+        assert_eq!(root.location, Point::ZERO);
+        assert_eq!(leaf.location, Point::ZERO);
+        assert_eq!(root.size, border());
+        assert_eq!(leaf.size, border());
+        assert_eq!(root.source_index, SourceIndex::new(0));
+        assert_eq!(leaf.source_index, SourceIndex::new(0));
+        for (output, used, extent, range_max) in [
+            (root, Overflow::Visible, border(), Size::ZERO),
+            (
+                leaf,
+                overflow,
+                natural(),
+                if overflow == Overflow::Hidden {
+                    Size::new(n(60.0), n(60.0))
+                } else {
+                    Size::ZERO
+                },
+            ),
+        ] {
+            let normal_rect = ScrollRectOf::try_new(Point::ZERO, border()).unwrap();
+            let geometry = output
+                .scroll_geometry
+                .expect("real owned Hidden/Clip scroll payload");
+            assert_eq!(
+                geometry.flow_axes(),
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
+            );
+            assert_eq!(geometry.border_box(), normal_rect);
+            assert_eq!(geometry.padding_box(), normal_rect);
+            assert_eq!(geometry.content_box(), normal_rect);
+            assert_eq!(geometry.scrollport(), normal_rect);
+            assert_eq!(
+                geometry.scrollable_overflow(),
+                ScrollRectOf::try_new(Point::ZERO, extent).unwrap()
+            );
+            assert_eq!(geometry.used_overflow_x(), used);
+            assert_eq!(geometry.used_overflow_y(), used);
+            let clip = geometry.overflow_clip();
+            if used == Overflow::Visible {
+                assert_eq!(clip.x(), None);
+                assert_eq!(clip.y(), None);
+            } else {
+                let x = clip.x().expect("actual clipping interval");
+                let y = clip.y().expect("actual clipping interval");
+                assert_eq!((x.minimum(), x.maximum()), (S::ZERO, n(20.0)));
+                assert_eq!((y.minimum(), y.maximum()), (S::ZERO, n(30.0)));
+            }
+            let range = geometry.physical_range();
+            assert_eq!(
+                (range.x().minimum(), range.x().maximum()),
+                (S::ZERO, range_max.width)
+            );
+            assert_eq!(
+                (range.y().minimum(), range.y().maximum()),
+                (S::ZERO, range_max.height)
+            );
+            assert_eq!(geometry.scrollbar_size(), Size::ZERO);
+            let gutters = geometry.gutters();
+            assert_eq!(
+                (
+                    gutters.top(),
+                    gutters.right(),
+                    gutters.bottom(),
+                    gutters.left()
+                ),
+                (None, None, None, None)
+            );
+            assert_eq!(geometry.resolved_scroll_padding(), Edges::ZERO);
+            assert_eq!(geometry.optimal_viewing_region(), normal_rect);
+            let defaults = NodeInputOf::<S>::default();
+            assert_eq!(geometry.scroll_snap_type(), defaults.scroll_snap_type);
+            let target = geometry.target();
+            assert_eq!(target.border_box(), normal_rect);
+            assert_eq!(
+                target.flow_axes(),
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
+            );
+            assert_eq!(target.scroll_margin(), defaults.scroll_margin);
+            assert_eq!(target.snap_align(), defaults.scroll_snap_align);
+            assert_eq!(target.snap_stop(), defaults.scroll_snap_stop);
+        }
+    }
+}
+
 fn auto_child_contributes<S: LayoutScalar>(tracks: Tracks, overflow: Overflow) {
     let auto = source::<S>(tracks, Preferred::Auto, overflow);
     qualify_leaf(&auto, Preferred::Auto);

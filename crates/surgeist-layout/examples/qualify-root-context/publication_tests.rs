@@ -246,15 +246,12 @@ fn selected_origin_membership_uses_actual_receipt_and_authored_partition() {
 fn complete_durable_inventory_is_admitted_without_browser_or_output() {
     let root = Directory::new();
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let declaration: Declaration = surgeist_generator::parse_manifest(
-        std::str::from_utf8(DECLARATION).unwrap(),
-        "corpus.toml",
-    )
-    .unwrap();
+    let input = edition_input(DECLARATION).unwrap();
+    let declaration = &input.declaration;
     let mut snapshot = inventory(
         &root.0,
         owner,
-        &declaration.records,
+        &input,
         QualificationMode::Regular,
         InputAccess::Prepare,
     )
@@ -291,23 +288,26 @@ fn complete_durable_inventory_is_admitted_without_browser_or_output() {
 fn browser_free_check_of_incomplete_real_inventory_refuses_without_writing() {
     let root = Directory::new();
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let declaration: Declaration = surgeist_generator::parse_manifest(
-        std::str::from_utf8(DECLARATION).unwrap(),
-        "corpus.toml",
-    )
-    .unwrap();
-    let record = declaration
+    let mut input = DeclarationInput::parse(DECLARATION).unwrap();
+    let selected = input
+        .declaration
         .records
         .iter()
         .find(|record| {
             record.relation.is_none()
                 && matches!(&record.expected, ExpectedDisposition::Generated { .. })
         })
-        .unwrap();
+        .unwrap()
+        .source
+        .clone();
+    input
+        .declaration
+        .records
+        .retain(|record| record.source == selected);
     let snapshot = inventory(
         &root.0,
         owner,
-        std::slice::from_ref(record),
+        &input,
         QualificationMode::Regular,
         InputAccess::Prepare,
     )
@@ -345,4 +345,274 @@ fn browser_free_check_of_incomplete_real_inventory_refuses_without_writing() {
     assert_eq!(fs::read(&report).unwrap(), b"not a generation report");
     assert_eq!(fs::read_dir(&reports).unwrap().count(), 1);
     assert!(!root.0.join(".surgeist-generator").exists());
+}
+
+// This is one independent append stimulus, not a second scheduling inventory.
+// Its actual imported HTML/history supplies only input identity, never geometry.
+const APPENDED_ORIGINAL: &str =
+    "html/grid/grid_fit_content_percent_indefinite_max_content_hidden.html";
+
+fn declaration_with_appended_original() -> Vec<u8> {
+    let prefix = edition_input(DECLARATION).unwrap();
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join(ORIGINAL);
+    let source_hash = Sha256Digest::from_bytes(fs::read(owner.join(APPENDED_ORIGINAL)).unwrap());
+    let mut bytes = prefix.bytes.to_vec();
+    let mut suffix = format!(
+        "\n[[records]]\nsource = {APPENDED_ORIGINAL:?}\nsource_sha256 = \"{}\"\n",
+        source_hash.as_str()
+    );
+    suffix.push_str("source_kind = \"original\"\n[records.historical_sha256]\n");
+    let family = APPENDED_ORIGINAL
+        .strip_prefix("html/")
+        .unwrap()
+        .strip_suffix(".html")
+        .unwrap();
+    for (variant, _) in fixture_cases() {
+        let path = format!("xml/{family}__{variant}.xml");
+        let digest = Sha256Digest::from_bytes(fs::read(owner.join(path)).unwrap());
+        suffix.push_str(&format!("{variant} = \"{}\"\n", digest.as_str()));
+    }
+    suffix.push_str(
+        r#"[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+"#,
+    );
+    bytes.extend_from_slice(suffix.as_bytes());
+    bytes
+}
+
+fn case_identities(snapshot: &Inventory) -> Vec<(String, String, String, String)> {
+    snapshot
+        .cases
+        .iter()
+        .map(|case| {
+            (
+                case.source.as_str().to_owned(),
+                case.case.id().to_owned(),
+                case.case.variant().to_owned(),
+                case.case.output().as_str().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
+    let current = edition_input(DECLARATION).unwrap();
+    assert_eq!(
+        Sha256Digest::from_bytes(current.bytes).as_str(),
+        DECLARATION_PREFIX_SHA256
+    );
+    let grown = declaration_with_appended_original();
+    let edition = edition_input(&grown).unwrap();
+    assert_eq!(edition.bytes, current.bytes);
+    assert_eq!(
+        edition.declaration.expected().unwrap(),
+        current.declaration.expected().unwrap()
+    );
+    let root = Directory::new();
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let original = inventory(
+        &root.0,
+        owner,
+        &current,
+        QualificationMode::Regular,
+        InputAccess::Prepare,
+    )
+    .unwrap();
+    let manifest = root.0.join("corpus.toml");
+    let modified = fs::metadata(&manifest).unwrap().modified().unwrap();
+    let checked = inventory(
+        &root.0,
+        owner,
+        &edition,
+        QualificationMode::Regular,
+        InputAccess::ReadOnly,
+    )
+    .unwrap();
+    assert_eq!(checked.expected_inputs, original.expected_inputs);
+    assert_eq!(case_identities(&checked), case_identities(&original));
+    assert_eq!(fs::read(&manifest).unwrap(), current.bytes);
+    assert_eq!(
+        fs::metadata(&manifest).unwrap().modified().unwrap(),
+        modified
+    );
+    check_input_census(&root.0, &checked.expected_inputs).unwrap();
+    // Output bytes cannot select the source prefix or be repaired by checking.
+    fs::write(&manifest, b"schema_version = 3\n").unwrap();
+    assert!(
+        inventory(
+            &root.0,
+            owner,
+            &edition,
+            QualificationMode::Regular,
+            InputAccess::ReadOnly
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(&manifest).unwrap(), b"schema_version = 3\n");
+    assert!(!root.0.join("xml").exists());
+}
+
+#[test]
+fn sealed_edition_refuses_short_edited_reordered_or_missing_prefix() {
+    let source = edition_input(DECLARATION).unwrap();
+    let prefix = source.bytes;
+    assert!(edition_input(b"schema_version = 3\n").is_err());
+    let short = &prefix[..prefix.len() - 1];
+    assert!(DeclarationInput::parse(short).is_ok());
+    assert!(edition_input(short).is_err());
+    let mut edited = prefix.to_vec();
+    let comment = std::str::from_utf8(prefix)
+        .unwrap()
+        .find("# One source")
+        .unwrap();
+    edited[comment + 2] = b'T';
+    assert!(DeclarationInput::parse(&edited).is_ok());
+    assert!(edition_input(&edited).is_err());
+    let text = std::str::from_utf8(prefix).unwrap();
+    let first = text.find("\n[[records]]").unwrap();
+    let second = first + 1 + text[first + 1..].find("\n[[records]]").unwrap();
+    let third = second + 1 + text[second + 1..].find("\n[[records]]").unwrap();
+    let reordered = format!(
+        "{}{}{}{}",
+        &text[..first],
+        &text[second..third],
+        &text[first..second],
+        &text[third..]
+    );
+    assert!(DeclarationInput::parse(reordered.as_bytes()).is_ok());
+    assert!(edition_input(reordered.as_bytes()).is_err());
+}
+
+#[test]
+fn complete_current_declaration_refuses_appended_duplicate_and_prior_source_shadow() {
+    let grown = declaration_with_appended_original();
+    let mut duplicate = grown.clone();
+    duplicate.extend_from_slice(&grown[DECLARATION_PREFIX_LENGTH..]);
+    let error = edition_input(&duplicate).err().unwrap();
+    assert!(error.to_string().contains("duplicate qualification source"));
+    let prefix = edition_input(DECLARATION).unwrap();
+    let shadow_suffix = std::str::from_utf8(&grown[DECLARATION_PREFIX_LENGTH..])
+        .unwrap()
+        .replace(
+            APPENDED_ORIGINAL,
+            prefix.declaration.records[0].source.as_str(),
+        );
+    let shadow = [prefix.bytes, shadow_suffix.as_bytes()].concat();
+    assert!(DeclarationInput::parse(&shadow).is_err());
+    assert!(
+        edition_input(&shadow)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("duplicate qualification source")
+    );
+}
+
+#[test]
+fn full_qualification_and_numeric_focus_keep_appended_original_and_complete_bytes() {
+    let grown = declaration_with_appended_original();
+    let edition = edition_input(&grown).unwrap();
+    let mut full = DeclarationInput::parse(&grown).unwrap();
+    assert_eq!(
+        full.declaration.records.len(),
+        edition.declaration.records.len() + 1
+    );
+    let old_counts = edition.declaration.expected().unwrap();
+    let new_counts = full.declaration.expected().unwrap();
+    assert_eq!(
+        new_counts.generated(),
+        old_counts.generated() + fixture_cases().len()
+    );
+    assert_eq!(new_counts.unsupported(), old_counts.unsupported());
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = Directory::new();
+    let snapshot = inventory(
+        &root.0,
+        owner,
+        &full,
+        QualificationMode::Regular,
+        InputAccess::Prepare,
+    )
+    .unwrap();
+    assert_eq!(snapshot.fixtures.len(), full.declaration.records.len());
+    assert!(
+        snapshot
+            .cases
+            .iter()
+            .any(|case| case.source.as_str() == APPENDED_ORIGINAL)
+    );
+    assert_eq!(fs::read(root.0.join("corpus.toml")).unwrap(), grown);
+    select_records(
+        &mut full.declaration,
+        Some(APPENDED_ORIGINAL),
+        QualificationMode::NumericDiagnostics,
+    )
+    .unwrap();
+    let focused = Directory::new();
+    let snapshot = inventory(
+        &focused.0,
+        owner,
+        &full,
+        QualificationMode::NumericDiagnostics,
+        InputAccess::Prepare,
+    )
+    .unwrap();
+    assert_eq!(snapshot.fixtures.len(), 1);
+    assert_eq!(snapshot.cases.len(), fixture_cases().len());
+    assert!(
+        snapshot
+            .cases
+            .iter()
+            .all(|case| case.source.as_str() == APPENDED_ORIGINAL)
+    );
+    assert_eq!(fs::read(focused.0.join("corpus.toml")).unwrap(), grown);
+}
+
+#[test]
+fn whole_current_declaration_and_shared_input_freshness_still_refuse_stale_binary() {
+    let owner = Directory::new();
+    for (name, bytes) in INPUTS {
+        let name = if *name == "browser-owner.toml" {
+            "corpus.toml"
+        } else {
+            *name
+        };
+        let path = owner.0.join(ORIGINAL).join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+    let declaration = owner.0.join("examples/qualify-root-context/corpus.toml");
+    fs::create_dir_all(declaration.parent().unwrap()).unwrap();
+    fs::write(&declaration, DECLARATION).unwrap();
+    require_current_inputs(&owner.0).unwrap();
+    let grown = declaration_with_appended_original();
+    fs::write(&declaration, &grown).unwrap();
+    assert_eq!(
+        require_current_inputs(&owner.0).unwrap_err().to_string(),
+        "current qualification declaration differs from this executable"
+    );
+    assert_eq!(fs::read(&declaration).unwrap(), grown);
+    fs::write(&declaration, DECLARATION).unwrap();
+    let helper = owner
+        .0
+        .join(ORIGINAL)
+        .join("scripts/gentest/test_helper.js");
+    fs::write(&helper, b"changed current helper").unwrap();
+    assert!(
+        require_current_inputs(&owner.0)
+            .unwrap_err()
+            .to_string()
+            .contains("current source owner differs from this executable")
+    );
+    assert_eq!(fs::read(helper).unwrap(), b"changed current helper");
 }

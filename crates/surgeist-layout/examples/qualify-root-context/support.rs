@@ -245,6 +245,33 @@ impl Declaration {
     }
 }
 
+// The bytes and their parsed source records travel together. A focused run may
+// select records from this declaration, while retaining its complete source bytes.
+struct DeclarationInput<'a> {
+    bytes: &'a [u8],
+    declaration: Declaration,
+}
+
+impl<'a> DeclarationInput<'a> {
+    fn parse(bytes: &'a [u8]) -> Result<Self> {
+        let declaration: Declaration =
+            surgeist_generator::parse_manifest(std::str::from_utf8(bytes)?, "corpus.toml")?;
+        if declaration.schema_version != 3 {
+            return Err("qualification declaration schema_version must be 3".into());
+        }
+        let mut sources = std::collections::BTreeSet::new();
+        for record in &declaration.records {
+            if !sources.insert(record.source.clone()) {
+                return Err(
+                    format!("duplicate qualification source: {}", record.source.as_str()).into(),
+                );
+            }
+        }
+        declaration.expected()?;
+        Ok(Self { bytes, declaration })
+    }
+}
+
 // This intentionally projects only the browser declaration. It does not claim
 // to validate the owning corpus's Taffy import or complete fixture inventory.
 #[derive(Deserialize)]
@@ -279,9 +306,6 @@ impl BrowserCorpusAdapter for QualificationAdapter {
 
 pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut declaration: Declaration =
-        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION)?, "corpus.toml")?;
-    assert_eq!(declaration.schema_version, 3);
     if matches!(
         mode,
         QualificationMode::Publish | QualificationMode::CheckPublished
@@ -289,15 +313,16 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
         }
-        return publication::run(owner, &declaration, mode);
+        return publication::run(owner, mode);
     }
-    select_records(&mut declaration, fixture, mode)?;
+    let mut input = DeclarationInput::parse(DECLARATION)?;
+    select_records(&mut input.declaration, fixture, mode)?;
     if let Some(source) = fixture {
         eprintln!(
             "qualify-root-context: focused declared source {source}; not a full inventory qualification"
         );
     }
-    let _ = declaration.expected()?;
+    let _ = input.declaration.expected()?;
     let owner_bytes = INPUTS
         .iter()
         .find(|(name, _)| *name == "browser-owner.toml")
@@ -320,7 +345,7 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         owner,
         settings,
         browser_path,
-        declaration,
+        input,
         fixture.is_some(),
         mode,
     );
@@ -382,12 +407,12 @@ fn qualify(
     owner: &Path,
     settings: browser::BrowserSettings,
     browser_path: RelativePath,
-    declaration: Declaration,
+    input: DeclarationInput<'_>,
     focused: bool,
     mode: QualificationMode,
 ) -> Result<()> {
-    let expected = declaration.expected()?;
-    let inventory = prepare_inventory(root, owner, &declaration.records, mode)?;
+    let expected = input.declaration.expected()?;
+    let inventory = prepare_inventory(root, owner, &input, mode)?;
     let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
     let report = browser::generate(request, QualificationAdapter)?;
@@ -722,16 +747,16 @@ fn inventory_input(
 fn prepare_inventory(
     root: &Path,
     owner: &Path,
-    records: &[Record],
+    input: &DeclarationInput<'_>,
     mode: QualificationMode,
 ) -> Result<Inventory> {
-    inventory(root, owner, records, mode, InputAccess::Prepare)
+    inventory(root, owner, input, mode, InputAccess::Prepare)
 }
 
 fn inventory(
     root: &Path,
     owner: &Path,
-    records: &[Record],
+    input: &DeclarationInput<'_>,
     mode: QualificationMode,
     access: InputAccess,
 ) -> Result<Inventory> {
@@ -741,12 +766,13 @@ fn inventory(
         global_inputs: Vec::new(),
         expected_inputs: BTreeMap::new(),
     };
+    let records = &input.declaration.records;
     let custody_installation = match mode {
         QualificationMode::StylesheetCustody => {
             Some("installCustodyProbe('stylesheet', 0, 0);".to_owned())
         }
         QualificationMode::FontCustody => {
-            let [record] = records else {
+            let [record] = records.as_slice() else {
                 return Err("font custody requires one selected declaration".into());
             };
             let (paragraphs, grids) = declared_named_font_counts(record)
@@ -763,7 +789,7 @@ fn inventory(
     for (name, bytes) in INPUTS
         .iter()
         .copied()
-        .chain(std::iter::once(("corpus.toml", DECLARATION)))
+        .chain(std::iter::once(("corpus.toml", input.bytes)))
     {
         let path = RelativePath::new(name)?;
         // Instrument only this invocation's real helper input. Register its exact

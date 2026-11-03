@@ -1,6 +1,6 @@
 # Root-context qualification
 
-This example uses the maintained Layout adapter, [source inventory](corpus.toml) and Generator-owned cached Chrome lifecycle. See the [owning browser-corpus guide](../../tests/layout/browser_parity/README.md) for the shared resource/provenance boundary. It writes only an invocation-owned corpus and keeps the declared fixture, original source digests and expected case counts. Browser acquisition is ExistingOnly.
+This example uses the maintained Layout adapter, [source inventory](corpus.toml) and Generator-owned cached Chrome lifecycle. See the [owning browser-corpus guide](../../tests/layout/browser_parity/README.md) for the shared resource/provenance boundary. Ordinary qualification writes an invocation-owned corpus and keeps the declared fixture, original source digests and expected case counts. The fixed durable edition has the separate publication/check boundary below. Browser acquisition is ExistingOnly.
 
 Run one ordinary declared source with:
 
@@ -54,8 +54,27 @@ relocation, retry, arbitrary-output or automatic cleanup mode. Failed preparatio
 capture or validation leaves an **unregistered** diagnostic candidate; authorize
 identity-aware recovery separately rather than deleting or regenerating over it.
 
-Both modes use the complete current [inventory](corpus.toml), with its counts and
-four cases derived from the same records. Snapshot HTML, helper/base/font files,
+The two durable modes reconstruct the complete fixed edition from the first
+36,126 bytes of the current canonical [inventory](corpus.toml), sealed by SHA-256
+`3d8fd3be19d7e4b5411133a09816954d174725f25d2f76725fc46594ec156abb`.
+They parse that sealed declaration for all cases/counts; they never select jobs
+from observed results or read captured output as source. Its retained corpus.toml
+input is exactly those sealed source bytes, so the immutable edition is not
+rewritten when qualification gains records.
+
+Append new records after that byte boundary in the one canonical inventory.
+Shortening, editing or reordering the prior prefix refuses, as do duplicate or
+shadowed source keys anywhere in the complete current declaration. Ordinary,
+focused and numeric qualification continue to use the complete growing canonical
+declaration. A successful fixed-edition check does not qualify appended records.
+
+Both modes still compare the whole current canonical file with the current
+executable before and after validation. Shared helper/base/font/browser-owner
+freshness and all original source/import/history/certificate/Native/report gates
+remain required. Changes to shared inputs or the sealed source prefix continue
+to invalidate the fixed edition.
+
+Snapshot HTML, helper/base/font files,
 owner declarations and historical XML are capture witnesses of the handwritten
 owners, not another editable source tree. The full canonical source-import receipt
 and checked provenance are retained as hashed origin inputs. Selected originals
