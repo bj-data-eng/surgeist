@@ -144,12 +144,18 @@ pub struct NumericMaterialized<T> {
     pub(crate) capacity_bytes: usize,
 }
 
+/// Why a controlled digit materialization failed: the digits were invalid, or the allocation hit a
+/// boundary. The semantic session owns admission of both.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumericMaterializationError {
+    /// The borrowed UTF-16 digits are empty or contain a code unit that is not an ASCII digit.
     Digits(HtmlDecimalDigitsError),
+    /// The digit allocation exceeded a limit, could not be represented, or failed.
     Boundary(IntegerUnitStepError),
 }
 
+/// A failed materialization: its cause and the capacity of every allocation observed before it
+/// failed, which the caller must still account for. Read it with `kind` and `capacity_bytes`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NumericMaterializationFailure {
     pub(crate) kind: NumericMaterializationError,
@@ -268,9 +274,17 @@ fn bounded_work(parts: &[usize]) -> Option<usize> {
 
 impl HtmlNonNegativeInteger {
     // Validation n, zero scan n, copy reads/writes n+n, UTF-8 n.
+    /// The upper bound on the digit-visiting steps the matching `try_from_borrowed_digits`
+    /// performs, for the caller to precharge before it runs. It is a loop-derived envelope, not an
+    /// instruction count or a cancellation quantum. `None` means the bound itself is not
+    /// representable in `usize`. The argument is the digit count `length`.
     pub fn from_borrowed_digits_work_bound(length: usize) -> Option<usize> {
         bounded_work(&[length, length, length, length, length])
     }
+    /// Builds the canonical integer from borrowed UTF-16 digits, dropping leading zeroes (zero
+    /// stays `0`). The digits must be nonempty ASCII digits. The result has at most `max_digits`
+    /// digits, and the total observed allocation stays within `max_bytes`. Failure reports the
+    /// cause and the capacity observed so far.
     pub fn try_from_borrowed_digits(
         input: &[u16],
         max_digits: usize,
@@ -285,9 +299,15 @@ impl HtmlNonNegativeInteger {
     }
     // Existing fixed-width constant owner scans/outputs at most usize's decimal
     // width. On the supported 32/64-bit targets, four passes of 20 bound it.
+    /// The upper bound on the digit-visiting steps the matching `try_from_u32` performs, for the
+    /// caller to precharge before it runs. It is a loop-derived envelope, not an instruction count
+    /// or a cancellation quantum. `None` means the bound itself is not representable in `usize`. It
+    /// is fixed, because a `u32` has a bounded decimal width.
     pub fn from_u32_work_bound() -> Option<usize> {
         bounded_work(&[20, 20, 20, 20])
     }
+    /// Builds the integer for `value` with the same digit and byte limits as
+    /// `try_from_borrowed_digits`.
     pub fn try_from_u32(
         value: u32,
         max_digits: usize,
@@ -301,9 +321,14 @@ impl HtmlNonNegativeInteger {
         })
     }
     // Copy reads/writes n+n and UTF-8 n; native canonical input needs no zero scan.
+    /// The upper bound on the digit-visiting steps the matching `try_copy` performs, for the caller
+    /// to precharge before it runs. It is a loop-derived envelope, not an instruction count or a
+    /// cancellation quantum. `None` means the bound itself is not representable in `usize`.
     pub fn copy_work_bound(&self) -> Option<usize> {
         bounded_work(&[self.digits.len(), self.digits.len(), self.digits.len()])
     }
+    /// Copies the integer into one fresh allocation under the digit and byte limits; the copy is
+    /// equal to the original.
     pub fn try_copy(
         &self,
         max_digits: usize,
@@ -326,10 +351,16 @@ impl HtmlNonNegativeInteger {
     }
     // Division n input visits + n writes, UTF-8 n, canonical quotient length
     // prepass n. The prepass shares write_quotient's exact recurrence below.
+    /// The upper bound on the digit-visiting steps the matching `try_quotient_remainder` performs,
+    /// for the caller to precharge before it runs. It is a loop-derived envelope, not an
+    /// instruction count or a cancellation quantum. `None` means the bound itself is not
+    /// representable in `usize`.
     pub fn quotient_remainder_work_bound(&self) -> Option<usize> {
         let n = self.digits.len();
         bounded_work(&[n, n, n, n])
     }
+    /// Divides by `divisor`, returning the canonical quotient and the remainder, which is less than
+    /// `divisor`. The quotient allocation obeys `max_digits` and `max_bytes`.
     pub fn try_quotient_remainder(
         &self,
         divisor: NonZeroU32,
@@ -359,10 +390,15 @@ impl HtmlNonNegativeInteger {
         })
     }
     // Pivot n, prefix-copy reads n, writes n; zero returns no allocation.
+    /// The upper bound on the digit-visiting steps the matching `try_decremented` performs, for the
+    /// caller to precharge before it runs. It is a loop-derived envelope, not an instruction count
+    /// or a cancellation quantum. `None` means the bound itself is not representable in `usize`.
     pub fn decremented_work_bound(&self) -> Option<usize> {
         let n = self.digits.len();
         bounded_work(&[n, n, n])
     }
+    /// Subtracts one. Zero has no predecessor, so it returns `None` without allocating; otherwise
+    /// the result is the canonical predecessor under the digit and byte limits.
     pub fn try_decremented(
         &self,
         max_digits: usize,
@@ -384,10 +420,16 @@ impl HtmlNonNegativeInteger {
     }
     // Length pass n+10; product reads/writes n+10 each; reversal reads
     // and writes at most n+10 each; UTF-8 validation n+10.
+    /// The upper bound on the digit-visiting steps the matching `try_multiplied_by` performs, for
+    /// the caller to precharge before it runs. It is a loop-derived envelope, not an instruction
+    /// count or a cancellation quantum. `None` means the bound itself is not representable in
+    /// `usize`.
     pub fn multiplied_by_work_bound(&self) -> Option<usize> {
         let n = self.digits.len().checked_add(10)?;
         bounded_work(&[n, n, n, n, n, n])
     }
+    /// Multiplies by `multiplier`. A zero multiplier or a zero value yields zero. The canonical
+    /// product obeys `max_digits` and `max_bytes`.
     pub fn try_multiplied_by(
         &self,
         multiplier: u32,
@@ -413,11 +455,17 @@ impl HtmlNonNegativeInteger {
     }
     // Carry prepass and sum each read m+m. Output writes m+1; reversal
     // reads/writes m+1 each; UTF-8 validation m+1.
+    /// The upper bound on the digit-visiting steps the matching `try_added_to` performs, for the
+    /// caller to precharge before it runs. It is a loop-derived envelope, not an instruction count
+    /// or a cancellation quantum. `None` means the bound itself is not representable in `usize`. It
+    /// covers the longer of the two operands, and `None` also covers an overflowing sum of lengths.
     pub fn added_to_work_bound(&self, other: &Self) -> Option<usize> {
         let m = self.digits.len().max(other.digits.len());
         let n = m.checked_add(1)?;
         bounded_work(&[m, m, m, m, n, n, n, n])
     }
+    /// Adds `other`, producing the canonical sum under `max_digits` and `max_bytes`; the carry may
+    /// add one digit.
     pub fn try_added_to(
         &self,
         other: &Self,
@@ -552,6 +600,10 @@ fn unit_step_materialization_failure(error: IntegerUnitStepError) -> NumericMate
 
 impl HtmlInteger {
     // Pivot scan n, prefix-copy reads n, writes n+1, fixed sign/zero handling.
+    /// The upper bound on the digit-visiting steps the matching `try_materialized_unit_step`
+    /// performs, for the caller to precharge before it runs. It is a loop-derived envelope, not an
+    /// instruction count or a cancellation quantum. `None` means the bound itself is not
+    /// representable in `usize`.
     pub fn materialized_unit_step_work_bound(&self) -> Option<usize> {
         bounded_work(&[
             self.magnitude.digits.len(),
@@ -559,6 +611,10 @@ impl HtmlInteger {
             self.magnitude.digits.len().checked_add(1)?,
         ])
     }
+    /// Increments or decrements the integer by one as `step` selects and reports the observed
+    /// allocation capacity. Its digit and byte limits and exact result are those of
+    /// `try_unit_step`; only the failure shape differs, since it uses
+    /// `NumericMaterializationFailure`.
     pub fn try_materialized_unit_step(
         &self,
         step: IntegerUnitStep,
@@ -576,11 +632,19 @@ impl HtmlInteger {
 
 impl HtmlNonNegativeDecimal {
     // Each part uses validation, canonicalization, copy reads/writes and UTF-8.
+    /// The upper bound on the digit-visiting steps the matching `try_from_borrowed_digits`
+    /// performs, for the caller to precharge before it runs. It is a loop-derived envelope, not an
+    /// instruction count or a cancellation quantum. `None` means the bound itself is not
+    /// representable in `usize`. The arguments are the integer-part and fraction digit counts.
     pub fn from_borrowed_digits_work_bound(integer: usize, fraction: usize) -> Option<usize> {
         HtmlNonNegativeInteger::from_borrowed_digits_work_bound(integer)?.checked_add(
             HtmlNonNegativeInteger::from_borrowed_digits_work_bound(fraction)?,
         )
     }
+    /// Builds the canonical decimal from borrowed UTF-16 digits of the integer part and the
+    /// fraction. The integer part must be nonempty; the fraction may be empty, which is the exact
+    /// integer case, and trailing zeroes of the fraction are dropped. Only the integer part counts
+    /// against `max_digits`; `max_bytes` bounds the total observed allocation.
     pub fn try_from_borrowed_digits(
         integer: &[u16],
         fraction: &[u16],
@@ -600,12 +664,17 @@ impl HtmlNonNegativeDecimal {
             capacity_bytes: observed,
         })
     }
+    /// The upper bound on the digit-visiting steps the matching `try_copy` performs, for the caller
+    /// to precharge before it runs. It is a loop-derived envelope, not an instruction count or a
+    /// cancellation quantum. `None` means the bound itself is not representable in `usize`.
     pub fn copy_work_bound(&self) -> Option<usize> {
         let n = self.fraction.len();
         self.integer
             .copy_work_bound()?
             .checked_add(bounded_work(&[n, n, n])?)
     }
+    /// Copies the decimal into fresh allocations; the copy is equal to the original. `max_digits`
+    /// limits the integer part and `max_bytes` the total observed capacity.
     pub fn try_copy(
         &self,
         max_digits: usize,
@@ -634,12 +703,19 @@ impl HtmlNonNegativeDecimal {
     }
     // Fraction: initialized writes f, product reads/writes f+f, trailing trim f,
     // UTF-8 f; integer: length/read/write/reversal-read/reversal-write/UTF-8.
+    /// The upper bound on the digit-visiting steps the matching `try_multiplied_by` performs, for
+    /// the caller to precharge before it runs. It is a loop-derived envelope, not an instruction
+    /// count or a cancellation quantum. `None` means the bound itself is not representable in
+    /// `usize`.
     pub fn multiplied_by_work_bound(&self) -> Option<usize> {
         let f = self.fraction.len();
         self.integer
             .multiplied_by_work_bound()?
             .checked_add(bounded_work(&[f, f, f, f, f])?)
     }
+    /// Multiplies by `multiplier`, carrying from the fraction into the integer part, with the
+    /// canonical result under the limits of `try_from_borrowed_digits`. A zero multiplier or a zero
+    /// value yields zero.
     pub fn try_multiplied_by(
         &self,
         multiplier: u32,
@@ -674,12 +750,17 @@ impl HtmlNonNegativeDecimal {
     }
     // Fraction: initialization f, operand reads f+f, output f, trim f, UTF-8 f.
     // Integral carry is handled inside the shared sum, without a second sum.
+    /// The upper bound on the digit-visiting steps the matching `try_added_to` performs, for the
+    /// caller to precharge before it runs. It is a loop-derived envelope, not an instruction count
+    /// or a cancellation quantum. `None` means the bound itself is not representable in `usize`.
     pub fn added_to_work_bound(&self, other: &Self) -> Option<usize> {
         let f = self.fraction.len().max(other.fraction.len());
         self.integer
             .added_to_work_bound(&other.integer)?
             .checked_add(bounded_work(&[f, f, f, f, f, f])?)
     }
+    /// Adds `other` exactly, with the canonical result under the limits of
+    /// `try_from_borrowed_digits`.
     pub fn try_added_to(
         &self,
         other: &Self,
@@ -723,7 +804,9 @@ pub struct HtmlInteger {
 /// The two exact arithmetic operations used by HTML's ordinal-value algorithm.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntegerUnitStep {
+    /// Adds one to the integer.
     Increment,
+    /// Subtracts one from the integer. The result of decrementing zero is `-1`.
     Decrement,
 }
 
@@ -737,21 +820,35 @@ pub struct IntegerUnitStepResult {
 /// Numeric allocation boundaries; the semantic session owns their admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntegerUnitStepError {
+    /// The digit count or a capacity sum overflows `usize` or exceeds `isize::MAX`, so no
+    /// allocation could represent it.
     RepresentationExhausted,
+    /// The result needs more digits than the caller's digit limit allows.
     DigitLimitExceeded {
+        /// The caller's digit limit.
         limit: usize,
+        /// The digits the result needs.
         required: usize,
     },
+    /// The bytes the result needs exceed the caller's byte limit before allocation.
     RequestedCapacityLimitExceeded {
+        /// The caller's byte limit.
         limit: usize,
+        /// The bytes the operation needs in total, counting earlier allocations of the same operation.
         required: usize,
     },
+    /// The allocator granted more capacity than the caller's byte limit although the request fit.
     ActualCapacityLimitExceeded {
+        /// The caller's byte limit.
         limit: usize,
+        /// The bytes that were requested from the allocator.
         requested: usize,
+        /// The capacity in bytes the allocator actually granted.
         capacity_bytes: usize,
     },
+    /// The allocator could not provide the requested bytes.
     AllocationFailed {
+        /// The bytes that were requested from the allocator.
         requested: usize,
     },
 }
@@ -1668,9 +1765,18 @@ impl HtmlDimensionList {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum NumericParseError {
+    /// The value does not match the HTML grammar the entry point implements: author mode rejects
+    /// what recovery would skip or truncate, and a value with no digits is always invalid (HTML
+    /// §2.3.4).
     InvalidSyntax,
+    /// A minus sign precedes a nonzero value where a non-negative integer is required (HTML
+    /// §2.3.4.2). `-0` is accepted as zero.
     Negative,
+    /// The value is grammatical but too large to convert to a finite binary64 number (HTML
+    /// §2.3.4.3), which differs from invalid syntax.
     FloatingPointOverflow,
+    /// A percentage, absolute or relative length is zero where a nonzero one is required (HTML
+    /// §2.3.4.5).
     ZeroDimension,
 }
 
@@ -1745,6 +1851,9 @@ enum IntegerPrefixPhase {
     Done,
     Invalid,
 }
+/// The result of scanning an integer prefix: its sign and the range of its digits within the units
+/// that were fed. The range indexes the caller's input, so reading the digits back needs that same
+/// input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ScannedIntegerPrefix {
     pub(crate) negative: bool,
@@ -1752,6 +1861,10 @@ pub struct ScannedIntegerPrefix {
     pub(crate) end: usize,
 }
 impl IntegerPrefixScanner {
+    /// Starts a scan. With `recover` false it follows the author grammar: an optional `-`, then
+    /// ASCII digits to the end of input. With `recover` true it follows the recovery algorithm of
+    /// HTML §2.3.4.1: leading ASCII whitespace is skipped, `+` or `-` may precede the digits, and
+    /// the prefix of digits ends at the first other unit.
     pub fn new(recover: bool) -> Self {
         Self {
             recover,
@@ -1796,6 +1909,9 @@ impl IntegerPrefixScanner {
             false
         }
     }
+    /// Ends the scan after the last unit has been fed. It returns the sign and digit range when at
+    /// least one digit was accepted and the grammar was not violated, and `InvalidSyntax`
+    /// otherwise.
     pub fn finish(self) -> Result<ScannedIntegerPrefix, NumericParseError> {
         if matches!(
             self.phase,
@@ -1845,7 +1961,10 @@ fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseErro
 /// Recovery rejection and allocation admission are separate source outcomes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IntegerRecoveryError {
+    /// The input is not an acceptable integer prefix; no allocation was attempted.
     Syntax(NumericParseError),
+    /// The input is syntactically acceptable but the canonical digit allocation was refused or
+    /// failed.
     Allocation(IntegerUnitStepError),
 }
 
@@ -2016,7 +2135,10 @@ pub(crate) fn parse_floating_point_number(
 /// The source's author grammar and user-agent recovery remain distinct modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FloatingPointParseMode {
+    /// Follows the author grammar: no leading whitespace, no `+`, and no trailing garbage.
     Author,
+    /// Follows the user-agent recovery rules of HTML §2.3.4.3: leading whitespace and `+` are
+    /// skipped and an incomplete exponent or trailing text ends the number.
     Recovery,
 }
 
@@ -2031,17 +2153,27 @@ pub struct FloatingPointParseResult {
 /// Allocation admission failures, distinct from source numeric rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FloatingPointAllocationError {
+    /// The token length overflows or exceeds `isize::MAX`, so no allocation could represent it.
     RepresentationExhausted,
+    /// The bytes the token needs exceed the caller's byte limit before allocation.
     RequestedCapacityLimitExceeded {
+        /// The caller's byte limit.
         limit: usize,
+        /// The bytes the operation needs in total, counting earlier allocations of the same operation.
         required: usize,
     },
+    /// The allocator granted more capacity than the caller's byte limit although the request fit.
     ActualCapacityLimitExceeded {
+        /// The caller's byte limit.
         limit: usize,
+        /// The bytes that were requested from the allocator.
         requested: usize,
+        /// The capacity in bytes the allocator actually granted.
         capacity_bytes: usize,
     },
+    /// The allocator could not provide the requested bytes.
     AllocationFailed {
+        /// The bytes that were requested from the allocator.
         requested: usize,
     },
 }
@@ -2327,6 +2459,8 @@ enum FloatingGrammarStep {
 }
 
 impl<'a> FloatingPointGrammarCursor<'a> {
+    /// Creates a cursor at the start of `units`, the exact UTF-16 code units of the value, to be
+    /// read under `mode`. It does no work.
     pub fn new(units: &'a [u16], mode: FloatingPointParseMode) -> Self {
         Self {
             units,
@@ -2347,14 +2481,19 @@ impl<'a> FloatingPointGrammarCursor<'a> {
         }
     }
 
+    /// Whether the grammar run is over, either accepting or rejecting the input.
     pub fn is_finished(&self) -> bool {
         self.step == FloatingGrammarStep::Done
     }
 
+    /// Whether the run is over and accepted the input. It is false while the run is in progress and
+    /// after a rejection.
     pub fn is_valid(&self) -> bool {
         self.is_finished() && self.valid
     }
 
+    /// Whether the next `advance` reads a source unit. A driver charges the read only when this is
+    /// true; some actions only change state.
     pub fn inspects_unit(&self) -> bool {
         self.position < self.units.len()
             && match self.step {
@@ -2375,6 +2514,8 @@ impl<'a> FloatingPointGrammarCursor<'a> {
         self.step = FloatingGrammarStep::Done;
     }
 
+    /// Performs one fixed grammar action: it reads at most one source unit and never allocates or
+    /// converts. Call it until `is_finished`; calling it afterward has no effect.
     pub fn advance(&mut self) {
         use FloatingGrammarStep::*;
         match self.step {
@@ -2769,53 +2910,73 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 
 // Public readback never permits callers to create canonical digit storage.
 impl<T> NumericMaterialized<T> {
+    /// The materialized value, which can only have been built by the owner's canonical
+    /// constructors.
     pub fn value(&self) -> &T {
         &self.value
     }
+    /// The cumulative capacity in bytes of every variable allocation the operation made, including
+    /// intermediates that were dropped.
     pub const fn capacity_bytes(&self) -> usize {
         self.capacity_bytes
     }
+    /// Splits the result into the value and the cumulative capacity in bytes.
     pub fn into_parts(self) -> (T, usize) {
         (self.value, self.capacity_bytes)
     }
 }
 impl NumericMaterializationFailure {
+    /// The cause of the failure.
     pub const fn kind(&self) -> NumericMaterializationError {
         self.kind
     }
+    /// The cumulative capacity in bytes of every allocation observed before the failure, which the
+    /// caller must still account for.
     pub const fn capacity_bytes(&self) -> usize {
         self.capacity_bytes
     }
 }
 impl IntegerUnitStepResult {
+    /// The canonical result of the step.
     pub fn value(&self) -> &HtmlInteger {
         &self.value
     }
+    /// The capacity in bytes of the sole digit allocation the step made.
     pub const fn capacity_bytes(&self) -> usize {
         self.capacity_bytes
     }
+    /// Splits the result into the integer and its allocation capacity in bytes.
     pub fn into_parts(self) -> (HtmlInteger, usize) {
         (self.value, self.capacity_bytes)
     }
 }
 impl FloatingPointParseResult {
+    /// The conversion outcome: the number, or the numeric rejection. A rejection can follow an
+    /// allocation, whose capacity is reported separately.
     pub fn value(&self) -> &Result<HtmlFloatingPointNumber, NumericParseError> {
         &self.value
     }
+    /// The capacity in bytes of the temporary token the conversion allocated, or zero when syntax
+    /// was rejected before allocating.
     pub const fn capacity_bytes(&self) -> usize {
         self.capacity_bytes
     }
+    /// Splits the result into the conversion outcome and the token capacity in bytes.
     pub fn into_parts(self) -> (Result<HtmlFloatingPointNumber, NumericParseError>, usize) {
         (self.value, self.capacity_bytes)
     }
 }
 impl ScannedIntegerPrefix {
+    /// Whether a `-` sign preceded the digits. A negative zero prefix is still reported negative
+    /// here; the value types normalize it.
     pub const fn is_negative(&self) -> bool {
         self.negative
     }
+    /// The offset of the first digit, in UTF-16 code units from the start of the fed input.
     pub const fn start(&self) -> usize {
         self.start
     }
+    /// The offset one past the last digit, in UTF-16 code units from the start of the fed input.
     pub const fn end(&self) -> usize {
         self.end
     }

@@ -16,9 +16,13 @@ pub struct HtmlLinkFlags {
     explicitly_enabled: bool,
 }
 impl HtmlLinkFlags {
+    /// Creates the initial flags, in which the link has not been explicitly enabled (HTML §4.2.4:
+    /// the boolean is initially false).
     pub fn fresh() -> Self {
         Self::default()
     }
+    /// Whether the `disabled` attribute has ever been removed from the link. Once true it stays
+    /// true; the stylesheet's alternate flag depends on it (HTML §4.2.4).
     pub fn explicitly_enabled(self) -> bool {
         self.explicitly_enabled
     }
@@ -45,15 +49,20 @@ pub struct HtmlLinkHistory {
     created_by_node_document_parser: bool,
 }
 impl HtmlLinkHistory {
+    /// Pairs the link's flags with whether the link's node document's parser created it. The
+    /// constructor checks nothing: both facts come from the owner of the actual link record.
     pub fn new(flags: HtmlLinkFlags, created_by_node_document_parser: bool) -> Self {
         Self {
             flags,
             created_by_node_document_parser,
         }
     }
+    /// The link's flags as recorded in this history.
     pub fn flags(self) -> HtmlLinkFlags {
         self.flags
     }
+    /// Whether the link's node document's parser created the link element, as recorded by the
+    /// history's owner.
     pub fn created_by_node_document_parser(self) -> bool {
         self.created_by_node_document_parser
     }
@@ -62,15 +71,25 @@ impl HtmlLinkHistory {
 /// Element roles have distinct applicability; form is not an anchor alias.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelRole {
+    /// A `link` element, the only role on which keywords such as `canonical`, `icon` and
+    /// `stylesheet` import or describe resources.
     Link,
+    /// An `a` element.
     Anchor,
+    /// An `area` element. Its keywords apply as they do for `a`.
     Area,
+    /// A `form` element. It takes only the annotation keywords and the hyperlink keywords that the
+    /// standard allows on `form`.
     Form,
 }
 impl HtmlRelRole {
+    /// Maps an element name to its role, or `None` when the name is not an HTML `link`, `a`, `area`
+    /// or `form` element, in which case no `rel` interpretation applies.
     pub fn from_element(element: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
         Self::from_known(KnownHtmlElement::from_name(element)?)
     }
+    /// Maps a known HTML element to its role, or `None` for every element other than `link`, `a`,
+    /// `area` and `form`.
     pub fn from_known(element: KnownHtmlElement) -> Option<Self> {
         match element {
             KnownHtmlElement::Link => Some(Self::Link),
@@ -85,35 +104,88 @@ impl HtmlRelRole {
 /// The pinned standard keywords; registry extensions do not extend this enum.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelKeyword {
+    /// `alternate` (HTML §4.6.8.1): alternate representations of the current document, or, with
+    /// `stylesheet` on a `link`, an alternative style sheet.
     Alternate,
+    /// `author` (HTML §4.6.8.2): a link to the author of the current document or of the nearest
+    /// `article` ancestor. A `rev` attribute value of `made` counts as this keyword.
     Author,
+    /// `bookmark` (HTML §4.6.8.3): the permalink for the nearest ancestor section; allowed on `a`
+    /// and `area` only.
     Bookmark,
+    /// `canonical` (HTML §4.6.8.4): the preferred URL for the current document; allowed on `link`
+    /// only.
     Canonical,
+    /// `dns-prefetch` (HTML §4.6.8.5): preemptive DNS resolution for the target resource's origin;
+    /// body-ok.
     DnsPrefetch,
+    /// `expect` (HTML §4.6.8.6): expects an element with the target ID to appear in the current
+    /// document; an internal resource link on `link` only.
     Expect,
+    /// `external` (HTML §4.6.8.7): the referenced document is not part of the same site; an
+    /// annotation on `a`, `area` and `form`.
     External,
+    /// `help` (HTML §4.6.8.8): context-sensitive help.
     Help,
+    /// `icon` (HTML §4.6.8.9): an icon that represents the current document; `link` only. The
+    /// historical `shortcut icon` form is classified separately.
     Icon,
+    /// `license` (HTML §4.6.8.10): the main content of the current document is covered by the
+    /// license the referenced document describes. `copyright` is a forbidden synonym.
     License,
+    /// `manifest` (HTML §4.6.8.11): an application manifest; `link` only.
     Manifest,
+    /// `modulepreload` (HTML §4.6.8.12): preemptively fetches a module script into the document's
+    /// module map; body-ok.
     ModulePreload,
+    /// `next` (HTML §4.6.8.26.1): the referenced document is the next one in a series that includes
+    /// the current document.
     Next,
+    /// `nofollow` (HTML §4.6.8.13): the current document's author or publisher does not endorse the
+    /// referenced document; an annotation.
     NoFollow,
+    /// `noopener` (HTML §4.6.8.14): creates a top-level traversable with a non-auxiliary browsing
+    /// context when the hyperlink would otherwise create an auxiliary one; an annotation.
     NoOpener,
+    /// `noreferrer` (HTML §4.6.8.15): sends no `Referer` header and has the effect of `noopener`;
+    /// an annotation.
     NoReferrer,
+    /// `opener` (HTML §4.6.8.16): creates an auxiliary browsing context when the hyperlink would
+    /// otherwise create a non-auxiliary top-level traversable; an annotation.
     Opener,
+    /// `pingback` (HTML §4.6.8.17): the address of the pingback server for the current document;
+    /// body-ok.
     Pingback,
+    /// `preconnect` (HTML §4.6.8.18): preemptively connects to the target resource's origin;
+    /// body-ok.
     Preconnect,
+    /// `prefetch` (HTML §4.6.8.19): preemptively fetches and caches the target for a likely
+    /// follow-up navigation; body-ok.
     Prefetch,
+    /// `preload` (HTML §4.6.8.20): preemptively fetches and caches the target for the current
+    /// navigation according to the preload destination of the `as` attribute; body-ok.
     Preload,
+    /// `prev` (HTML §4.6.8.26.2): the referenced document is the previous one in a series that
+    /// includes the current document. `previous` is a forbidden synonym.
     Prev,
+    /// `privacy-policy` (HTML §4.6.8.21): information about the data collection and usage practices
+    /// that apply to the current document.
     PrivacyPolicy,
+    /// `search` (HTML §4.6.8.22): a resource that can search the current document and its related
+    /// pages.
     Search,
+    /// `stylesheet` (HTML §4.6.8.23): imports a style sheet; body-ok.
     Stylesheet,
+    /// `tag` (HTML §4.6.8.24): a tag, identified by the given address, that applies to the current
+    /// document; allowed on `a` and `area` only.
     Tag,
+    /// `terms-of-service` (HTML §4.6.8.25): the agreements between the current document's provider
+    /// and its users.
     TermsOfService,
 }
 impl HtmlRelKeyword {
+    /// Every standard keyword exactly once, in declaration order, which is alphabetical by
+    /// spelling.
     pub const ALL: &'static [Self] = &[
         Self::Alternate,
         Self::Author,
@@ -143,6 +215,8 @@ impl HtmlRelKeyword {
         Self::Tag,
         Self::TermsOfService,
     ];
+    /// The keyword's lowercase spelling. Documents compare keywords ASCII case-insensitively, so
+    /// this is the canonical spelling, not the only accepted one (HTML §4.6.8).
     pub fn keyword(self) -> &'static str {
         match self {
             Self::Alternate => "alternate",
@@ -174,6 +248,9 @@ impl HtmlRelKeyword {
             Self::TermsOfService => "terms-of-service",
         }
     }
+    /// Whether the keyword is body-ok: the standard lists exactly `dns-prefetch`, `modulepreload`,
+    /// `pingback`, `preconnect`, `prefetch`, `preload` and `stylesheet`, and a `link` carrying only
+    /// such keywords is allowed in the body (HTML §4.6.8).
     pub fn body_ok(self) -> bool {
         matches!(
             self,
@@ -209,6 +286,10 @@ impl HtmlRelKeyword {
             matches!(self, Self::NoOpener | Self::NoReferrer | Self::Opener)
         }
     }
+    /// The effect the link-type table of HTML §4.6.8 assigns this keyword on an element of `role`,
+    /// or `None` where the table says the keyword is not allowed there. This never returns
+    /// `StylesheetModifier`, which interpretation assigns to `alternate` beside `stylesheet`; it
+    /// also does not consult the registry for extensions.
     pub fn effect(self, role: HtmlRelRole) -> Option<HtmlRelEffect> {
         use HtmlRelEffect as E;
         use HtmlRelKeyword as K;
@@ -245,33 +326,70 @@ impl HtmlRelKeyword {
         }
     }
 }
+/// What a recognised link type does to the element that carries it (HTML §4.6.1 and the table in
+/// §4.6.8). The type names the effect and leaves fetching, navigation and annotation processing to
+/// consumers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelEffect {
+    /// The keyword creates a hyperlink to the referenced document.
     Hyperlink,
+    /// The keyword creates a link to an external resource that the document imports or prepares,
+    /// such as a style sheet or an icon.
     ExternalResource,
+    /// The keyword creates a link to an internal resource, a part of the current document; only
+    /// `expect` does.
     InternalResource,
+    /// The keyword annotates a hyperlink, changing how it is processed, instead of creating a link
+    /// of its own.
     Annotation,
+    /// `alternate` beside `stylesheet` on a `link` modifies that style sheet to be an alternative
+    /// style sheet and does not create a hyperlink (HTML §4.6.8.23).
     StylesheetModifier,
 }
+/// How a `rel` token (or the historical `rev` value) is spelled relative to the standard's keyword
+/// list. Classification is ASCII case-insensitive and never allocates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelSpelling {
+    /// The token matches a standard keyword.
     Standard,
+    /// The token is `copyright` or `previous`, synonyms the standard requires user agents to handle
+    /// as `license` and `prev` but forbids authors to use (HTML §4.6.8).
     ForbiddenSynonym,
+    /// The token is `shortcut` on a `link` whose whole `rel` value is `shortcut icon`, the
+    /// historical spelling that the standard allows before `icon` (HTML §4.6.8.9).
     ShortcutException,
+    /// The token is `shortcut` but the exception does not hold, because the element is not a `link`
+    /// or the whole value is not `shortcut icon`.
     InvalidShortcut,
+    /// The token is neither a standard keyword nor a listed synonym. It may be a registered
+    /// extension; resolving that needs a registry, which this crate does not hold.
     Unknown,
+    /// The occurrence is not a token: it stands for a `rev` attribute whose value is exactly
+    /// `made`, which the standard treats as the `author` keyword (HTML §4.6.8.2).
     HistoricalRev,
 }
+/// The attribute an occurrence came from.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelOccurrenceSource {
+    /// A token of the `rel` attribute.
     Rel,
+    /// The historical `rev` attribute, recorded only for the value `made`; the occurrence spans the
+    /// entire value.
     Rev,
 }
+/// Whether a token's keyword may be used on the element's role, as the table of HTML §4.6.8
+/// decides.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelTokenApplicability {
+    /// The token has an effect on this role.
     Allowed,
+    /// The token is a standard keyword the standard does not allow on this role, or is unknown and
+    /// resolved as having no effect. Authors must not use it.
     NotAllowed,
+    /// The token is the permitted `shortcut` that precedes `icon`; it has no effect of its own.
     ShortcutModifier,
+    /// The token is unknown and no registry has resolved it, so whether it is an allowed extension
+    /// is undetermined.
     UncheckedExtension,
 }
 /// One original authored occurrence; duplicate and spelling findings coexist.
@@ -287,27 +405,45 @@ pub struct HtmlRelOccurrence {
     registry_resolved: bool,
 }
 impl HtmlRelOccurrence {
+    /// Whether a registry refinement has resolved this token. It is false until refinement and
+    /// stays false for a refinement of `Unavailable`.
     pub fn registry_resolved(&self) -> bool {
         self.registry_resolved
     }
+    /// The attribute that supplied this occurrence.
     pub fn source(&self) -> HtmlRelOccurrenceSource {
         self.source
     }
+    /// The half-open range of UTF-16 code-unit offsets of the token within the source attribute's
+    /// exact value, suitable for `HtmlRelReport::occurrence_units`. A `rev` occurrence spans the
+    /// whole value.
     pub fn code_unit_range(&self) -> std::ops::Range<usize> {
         self.start..self.end
     }
+    /// The standard keyword this token denotes, including through a forbidden synonym, or `None`
+    /// when it is unknown, an invalid `shortcut`, or resolved as an extension.
     pub fn keyword(&self) -> Option<HtmlRelKeyword> {
         self.keyword
     }
+    /// How the token is spelled relative to the standard's keywords.
     pub fn spelling(&self) -> HtmlRelSpelling {
         self.spelling
     }
+    /// The index of the earlier occurrence that this token repeats under ASCII case-insensitive
+    /// comparison, or `None` for the first spelling. The standard forbids repeating a keyword
+    /// within one `rel` (HTML §4.6.8), and this finding coexists with the spelling and effect
+    /// findings.
     pub fn duplicate_of(&self) -> Option<usize> {
         self.duplicate_of
     }
+    /// The effect of the token on its element's role, or `None` when the token has none.
+    /// `alternate` beside `stylesheet` on a `link` reports `StylesheetModifier`.
     pub fn effect(&self) -> Option<HtmlRelEffect> {
         self.effect
     }
+    /// Whether the token may be used on its element's role: `Allowed` when it has an effect,
+    /// `ShortcutModifier` for the permitted `shortcut`, `UncheckedExtension` for an unresolved
+    /// unknown token, and `NotAllowed` otherwise.
     pub fn applicability(&self) -> HtmlRelTokenApplicability {
         if self.effect.is_some() {
             HtmlRelTokenApplicability::Allowed
@@ -320,53 +456,96 @@ impl HtmlRelOccurrence {
         }
     }
 }
+/// The author requirement that a `link` has exactly one of `rel` and `itemprop` (HTML §4.2.4).
+/// Elements other than `link` have no such requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelPresenceAuthor {
+    /// The element is not a `link`.
     NotRequired,
+    /// The `link` has exactly one of `rel` and `itemprop`.
     Satisfied,
+    /// The `link` has neither attribute, which the standard does not allow.
     NeitherRelNorItemprop,
+    /// The `link` has both attributes, which the standard does not allow.
     BothRelAndItemprop,
 }
 /// The link address-presence author requirement, independent of URL grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelAddressAuthor {
+    /// The element is not a `link`.
     NotRequired,
+    /// The `link` has an `href` or an `imagesrcset` attribute.
     Satisfied,
+    /// The `link` has neither attribute, so it has no address.
     MissingHrefAndImagesrcset,
 }
 /// Local part of link's nonempty URL author requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelHrefAuthor {
+    /// The element is not a `link` or has no `href`.
     NotRequired,
+    /// The `link`'s `href` is empty or contains only ASCII whitespace, where the standard requires
+    /// a nonempty URL.
     EmptyOrOnlyAsciiSpaces,
+    /// The `link`'s `href` has a non-whitespace code unit. Whether it is a valid URL is not checked
+    /// here.
     GrammarUnchecked,
 }
+/// Whether the element creates a link, summarised from its role, address attributes and tokens.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelLinks {
+    /// The element creates no link: it has no known role, it is an `a` or `area` without `href`,
+    /// it is a `link` with neither `href` nor `imagesrcset`, or it is a `link` with an address but
+    /// no token that has an effect and no unresolved unknown token.
     None,
+    /// On a `link`, some token has an effect. On any other role, some token has the `Hyperlink`
+    /// effect.
     Declared,
+    /// The role is not `link`, no token has the `Hyperlink` effect and no unresolved unknown token
+    /// exists. An `a` or `area` with an `href` is then a hyperlink by default.
     ImpliedHyperlink,
+    /// No token declares an effect and an unresolved unknown token exists, so a registered
+    /// extension might still create a link.
     ExtensionEffectsUnchecked,
 }
+/// How the `alternate` keyword is used, which selects the meaning the standard gives it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelAlternate {
+    /// No `alternate` token with an effect exists.
     NotSelected,
+    /// On a `link` beside `stylesheet`: the link is an alternative style sheet (HTML §4.6.8.23).
     StylesheetModifier,
+    /// The `type` attribute is exactly `application/rss+xml` or `application/atom+xml`, so the link
+    /// refers to a feed (HTML §4.6.8.1).
     Feed,
+    /// Any other use: an alternate representation of the current document.
     Representation,
 }
+/// The author requirement that an alternative style sheet has a nonempty `title` (HTML §4.6.8.23).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelTitleAuthor {
+    /// The link is not an alternative style sheet.
     NotRequired,
+    /// The alternative style sheet has a nonempty `title`.
     Satisfied,
+    /// The alternative style sheet's `title` is absent or empty.
     MissingOrEmpty,
 }
+/// The reason a `link` is or is not allowed in the body (HTML §4.2.4): it is when it has
+/// `itemprop` or a `rel` containing only body-ok keywords (HTML §4.6.8). The variants `Itemprop`
+/// and `AllKeywordsBodyOk` allow it, `RelAbsent` and `ContainsNonBodyOkKeyword` do not, and
+/// `NotLink` marks an element the rule does not govern.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelBodyAllowance {
+    /// The element is not a `link`, so the rule does not apply.
     NotLink,
+    /// The `link` has an `itemprop` attribute.
     Itemprop,
+    /// The `link` has no `rel`, so no keyword makes it body-ok.
     RelAbsent,
+    /// Every `rel` token is a body-ok keyword.
     AllKeywordsBodyOk,
+    /// At least one `rel` token is not a body-ok keyword.
     ContainsNonBodyOkKeyword,
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -394,18 +573,25 @@ pub struct HtmlRelReport {
     data: Vec<RelData>,
 }
 impl HtmlRelReport {
+    /// The element's role, or `None` for an element that takes no `rel`.
     pub fn role(&self) -> Option<HtmlRelRole> {
         self.data[0].role
     }
+    /// The exact `rel` value that was interpreted, or `None` when the attribute is absent.
     pub fn rel(&self) -> Option<&DocumentString> {
         self.data[0].rel.as_ref()
     }
+    /// The exact `rev` value that was considered, or `None` when the attribute is absent.
     pub fn rev(&self) -> Option<&DocumentString> {
         self.data[0].rev.as_ref()
     }
+    /// Every occurrence in source order: the `rel` tokens, then at most one historical `rev`
+    /// occurrence. Repeats are kept and flagged, never removed.
     pub fn occurrences(&self) -> &[HtmlRelOccurrence] {
         &self.data[0].occurrences
     }
+    /// The exact UTF-16 code units of the occurrence at `index`, or `None` when `index` is out of
+    /// range.
     pub fn occurrence_units(&self, index: usize) -> Option<&[u16]> {
         let token = self.occurrences().get(index)?;
         let raw = match token.source {
@@ -414,30 +600,39 @@ impl HtmlRelReport {
         }?;
         Some(&raw.code_units()[token.start..token.end])
     }
+    /// The author finding for the `rel`/`itemprop` presence rule.
     pub fn presence_author(&self) -> HtmlRelPresenceAuthor {
         self.data[0].presence_author
     }
+    /// Whether the element creates a link.
     pub fn links(&self) -> HtmlRelLinks {
         self.data[0].links
     }
+    /// How the `alternate` keyword is used.
     pub fn alternate(&self) -> HtmlRelAlternate {
         self.data[0].alternate
     }
+    /// The author finding for an alternative style sheet's `title`.
     pub fn alternate_stylesheet_title_author(&self) -> HtmlRelTitleAuthor {
         self.data[0].title_author
     }
+    /// Why the element is or is not allowed in the body.
     pub fn body_allowance(&self) -> HtmlRelBodyAllowance {
         self.data[0].body
     }
+    /// Whether the element has an `href` attribute, whatever its value.
     pub fn href_present(&self) -> bool {
         self.data[0].href_present
     }
+    /// Whether the element has an `imagesrcset` attribute, whatever its value.
     pub fn imagesrcset_present(&self) -> bool {
         self.data[0].imagesrcset_present
     }
+    /// The author finding that a `link` has an address.
     pub fn address_presence_author(&self) -> HtmlRelAddressAuthor {
         self.data[0].address_author
     }
+    /// The author finding for a `link`'s `href` being nonempty.
     pub fn href_author(&self) -> HtmlRelHrefAuthor {
         self.data[0].href_author
     }
@@ -450,6 +645,8 @@ impl HtmlRelReport {
     pub fn image_source_preload_context(&self) -> bool {
         self.data[0].image_source_preload
     }
+    /// The URL of the pinned standard's link-types clause, which defines every finding in this
+    /// report.
     pub fn source_clause(&self) -> &'static str {
         concat!(
             "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/",

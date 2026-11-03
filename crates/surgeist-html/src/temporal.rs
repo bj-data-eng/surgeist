@@ -534,16 +534,25 @@ impl HtmlDateWithOptionalTime {
 /// represents an element's human-readable contents or select child-text fallback.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlTimeElementValue {
+    /// A valid month string (HTML §2.3.5.1).
     Month(HtmlMonth),
+    /// A valid date string (HTML §2.3.5.2).
     Date(HtmlDate),
+    /// A valid yearless date string (HTML §2.3.5.3).
     YearlessDate(HtmlYearlessDate),
+    /// A valid time string (HTML §2.3.5.4).
     Time(HtmlTime),
+    /// A valid local date and time string (HTML §2.3.5.5).
     LocalDateTime(HtmlLocalDateTime),
+    /// A valid time-zone offset string (HTML §2.3.5.6).
     TimeZoneOffset(HtmlTimeZoneOffset),
+    /// A valid global date and time string (HTML §2.3.5.7).
     GlobalDateTime(HtmlGlobalDateTime),
+    /// A valid week string (HTML §2.3.5.8).
     Week(HtmlWeek),
     /// A positive exact year, serialized with at least four digits.
     Year(HtmlYear),
+    /// A valid duration string (HTML §2.3.5.9).
     Duration(HtmlDuration),
 }
 
@@ -582,15 +591,30 @@ impl HtmlTimeElementValue {
 /// consulted. Raw spelling remains in the value interpreter's report.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMachineReadableTime {
+    /// The processed value of a valid month string (HTML §2.3.5.1).
     Month(HtmlMonth),
+    /// The processed value of a valid date string (HTML §2.3.5.2).
     Date(HtmlDate),
+    /// The processed value of a valid yearless date string (HTML §2.3.5.3).
     YearlessDate(HtmlYearlessDate),
+    /// The processed value of a valid time string (HTML §2.3.5.4). Its fraction keeps every
+    /// authored digit.
     Time(HtmlParsedTime),
+    /// The processed value of a valid local date and time string (HTML §2.3.5.5). Its time keeps
+    /// every authored fraction digit.
     LocalDateTime(HtmlParsedLocalDateTime),
+    /// The processed value of a valid time-zone offset string (HTML §2.3.5.6).
     TimeZoneOffset(HtmlTimeZoneOffset),
+    /// The processed value of a valid global date and time string (HTML §2.3.5.7). It keeps the
+    /// explicit source offset and the exact UTC instant.
     GlobalDateTime(HtmlParsedGlobalDateTime),
+    /// The processed value of a valid week string (HTML §2.3.5.8).
     Week(HtmlWeek),
+    /// The processed value of a string of ASCII digits read as a positive year; unlike the authored
+    /// form it accepts fewer than four digits.
     Year(HtmlYear),
+    /// The processed value of a valid duration string (HTML §2.3.5.9). Its seconds keep every
+    /// authored fraction digit.
     Duration(HtmlParsedDuration),
 }
 

@@ -31,6 +31,11 @@ enum ActiveHelper {
     Compare(RangeScaledComparisonCursor),
 }
 
+/// Serializes a finite `f64` as the shortest decimal that rounds back to it, choosing the nearest
+/// candidate and then the even significand, as the selected ECMAScript algorithm does. The
+/// arithmetic is exact decimal over caller-owned cells, never floating-point formatting. The output
+/// is at most 25 UTF-16 code units, `-` first for a negative nonzero value, and the cursor emits it
+/// through `EmitUnit` requests.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct BestFiniteNumberCursor {
@@ -65,6 +70,8 @@ pub struct BestFiniteNumberCursor {
     phase: Phase,
 }
 impl BestFiniteNumberCursor {
+    /// Starts serializing `value`. `headers` describes the caller's empty output buffer and its
+    /// scratch buffers. A non-finite `value` or a nonempty output buffer is an `Integrity` error.
     pub fn new(value: f64, headers: RangeNumericHeaders) -> Result<Self, RangeNumericError> {
         let raw = value.to_bits();
         let bits = raw & !(1u64 << 63);
@@ -104,12 +111,18 @@ impl BestFiniteNumberCursor {
             phase: Phase::Start,
         })
     }
+    /// The next effect the cursor needs from its caller, or `None` once the cursor has finished.
+    /// Perform and admit it, then pass the matching `RangeNumericReply` to `reply`; the same
+    /// request stays pending until a valid reply arrives.
     pub fn request(&self) -> Option<RangeNumericRequest> {
         self.io.request
     }
+    /// The cursor's copy of the buffer headers, as updated by the replies it accepted.
     pub fn headers(&self) -> RangeNumericHeaders {
         self.io.headers
     }
+    /// The number of output units emitted once the cursor has finished, or `None` while it is
+    /// running.
     pub fn result(&self) -> Option<usize> {
         matches!(self.phase, Phase::Done).then_some(self.output_len)
     }
@@ -144,6 +157,9 @@ impl BestFiniteNumberCursor {
             ActiveHelper::Compare(..) => 3,
         }
     }
+    /// Accepts the caller's answer to the pending request and advances. A reply that does not match
+    /// the request, or violates the headers, returns an error and leaves the cursor exactly as it
+    /// was.
     pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
@@ -564,6 +580,7 @@ pub(super) fn prefer_candidate(
 }
 
 impl BestFiniteNumberCursor {
+    /// The fixed state and message sizes of this cursor.
     pub const fn layout() -> RangeNumericLayout {
         RangeNumericLayout {
             registers: size_of::<Self>(),

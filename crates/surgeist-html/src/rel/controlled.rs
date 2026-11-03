@@ -14,6 +14,8 @@ pub struct RelInputs<'raw> {
     pub(super) as_destination: Option<HtmlLinkDestination>,
 }
 impl<'raw> RelInputs<'raw> {
+    /// Creates inputs for an element of `role`, with every operand absent. A `role` of `None` is an
+    /// element that takes no `rel`; interpretation then reports no occurrences.
     pub fn new(role: Option<HtmlRelRole>) -> Self {
         Self {
             role,
@@ -27,66 +29,96 @@ impl<'raw> RelInputs<'raw> {
             as_destination: None,
         }
     }
+    /// Sets the raw `rel` attribute value, or marks the attribute absent with `None`. The value is
+    /// borrowed exactly as authored; interpretation reads its UTF-16 code units.
     pub fn with_rel(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.rel = raw;
         self
     }
+    /// Sets the raw `rev` attribute value, or marks the attribute absent with `None`. Only the
+    /// exact value `made` produces an occurrence.
     pub fn with_rev(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.rev = raw;
         self
     }
+    /// Sets the raw `href` attribute value, or marks the attribute absent with `None`. Only its
+    /// presence and whether it contains a non-whitespace unit matter; its URL grammar is not
+    /// checked.
     pub fn with_href(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.href = raw;
         self
     }
+    /// Sets the raw `imagesrcset` attribute value, or marks the attribute absent with `None`. Only
+    /// its presence matters here; its source-set grammar is not checked.
     pub fn with_imagesrcset(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.imagesrcset = raw;
         self
     }
+    /// Sets the raw `itemprop` attribute value, or marks the attribute absent with `None`. Only its
+    /// presence matters; it selects the body allowance and the `rel`/`itemprop` presence rule.
     pub fn with_itemprop(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.itemprop = raw;
         self
     }
+    /// Sets the raw `title` attribute value, or marks the attribute absent with `None`. An
+    /// alternative style sheet needs it nonempty.
     pub fn with_title(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.title = raw;
         self
     }
+    /// Sets the raw `type` attribute value, or marks the attribute absent with `None`. Exactly
+    /// `application/rss+xml` or `application/atom+xml` makes an `alternate` link a feed.
     pub fn with_type_hint(mut self, raw: Option<&'raw DocumentString>) -> Self {
         self.type_hint = raw;
         self
     }
+    /// Sets the `as` attribute's already interpreted destination, or `None` when the attribute is
+    /// absent or invalid. The caller derives it with the `as` interpreter; this type does not
+    /// re-read the attribute.
     pub fn with_as_destination(mut self, destination: Option<HtmlLinkDestination>) -> Self {
         self.as_destination = destination;
         self
     }
+    /// The element's role, or `None` when the element takes no `rel`.
     pub fn role(&self) -> Option<HtmlRelRole> {
         self.role
     }
+    /// The raw `rel` value as supplied, or `None` when the attribute is absent.
     pub fn rel(&self) -> Option<&'raw DocumentString> {
         self.rel
     }
+    /// The raw `rev` value as supplied, or `None` when the attribute is absent.
     pub fn rev(&self) -> Option<&'raw DocumentString> {
         self.rev
     }
+    /// The raw `href` value as supplied, or `None` when the attribute is absent.
     pub fn href(&self) -> Option<&'raw DocumentString> {
         self.href
     }
+    /// The raw `imagesrcset` value as supplied, or `None` when the attribute is absent.
     pub fn imagesrcset(&self) -> Option<&'raw DocumentString> {
         self.imagesrcset
     }
+    /// The raw `itemprop` value as supplied, or `None` when the attribute is absent.
     pub fn itemprop(&self) -> Option<&'raw DocumentString> {
         self.itemprop
     }
+    /// The raw `title` value as supplied, or `None` when the attribute is absent.
     pub fn title(&self) -> Option<&'raw DocumentString> {
         self.title
     }
+    /// The raw `type` value as supplied, or `None` when the attribute is absent.
     pub fn type_hint(&self) -> Option<&'raw DocumentString> {
         self.type_hint
     }
+    /// The interpreted `as` destination, or `None` when none was supplied.
     pub fn as_destination(&self) -> Option<HtmlLinkDestination> {
         self.as_destination
     }
 }
+/// A violation of the rel interpretation protocol or a failed storage reservation. The cause is
+/// private; query it with the `is_*` predicates, exactly one of which is true. New causes do not
+/// break callers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlRelInterpretationError {
     kind: HtmlRelInterpretationErrorKind,
@@ -251,9 +283,14 @@ impl std::fmt::Display for HtmlRelInterpretationError {
 
 impl std::error::Error for HtmlRelInterpretationError {}
 
+/// Why one controlled rel action failed, separating the caller's refusal from this crate's protocol
+/// or allocation fault. Exhaustive: a driver handles its own error and the crate's two cases.
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlRelActionError<E> {
+    /// The caller's meter refused work or a reservation with its own error `E`. The interpretation
+    /// is stopped.
     Admission(E),
+    /// The action was a protocol misuse or the reservation failed; the cause is the wrapped error.
     Protocol(HtmlRelInterpretationError),
 }
 impl<E> From<HtmlRelInterpretationError> for HtmlRelActionError<E> {
@@ -277,11 +314,20 @@ impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error for Htm
         }
     }
 }
+/// The registry's answer for one unknown `rel` token, supplied to `HtmlRelInterpretation::refine`.
+/// The registry of extension link types is outside this crate, so the consumer decides.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelRefinement {
+    /// The registry could not be consulted. The token stays an unresolved unknown token.
     Unavailable,
+    /// The registry resolved the token as having no effect on this element.
     NoEffect,
+    /// The registry maps the token onto a standard keyword. The token takes that keyword's effect
+    /// for its role.
     Standard(HtmlRelKeyword),
+    /// The registry resolved the token as an extension with this effect. `InternalResource` and
+    /// `StylesheetModifier` are never valid for an extension, and `Annotation` is invalid on a
+    /// `link`; `refine` rejects them.
     Extension(HtmlRelEffect),
 }
 
@@ -296,27 +342,35 @@ pub struct HtmlRelReservation<'a> {
     completed: bool,
 }
 impl HtmlRelReservation<'_> {
+    /// The number of records currently in the backing allocation.
     pub fn len(&self) -> usize {
         match &self.storage {
             ReservationStorage::Occurrences(v) => v.len(),
             ReservationStorage::Data(v) => v.len(),
         }
     }
+    /// Whether the backing allocation holds no records.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// The number of records the backing allocation can hold without growing.
     pub fn capacity(&self) -> usize {
         match &self.storage {
             ReservationStorage::Occurrences(v) => v.capacity(),
             ReservationStorage::Data(v) => v.capacity(),
         }
     }
+    /// The size in bytes of one record, so a meter can charge the allocation it admits.
     pub fn record_size(&self) -> usize {
         match self.storage {
             ReservationStorage::Occurrences(_) => std::mem::size_of::<HtmlRelOccurrence>(),
             ReservationStorage::Data(_) => std::mem::size_of::<RelData>(),
         }
     }
+    /// Reserves room for exactly one more record, growing the allocation only when it is full. A
+    /// meter must call this once during `HtmlRelMeter::reserve` after it admits the cost. A second
+    /// call fails with the reservation-already-attempted cause, and a failed allocation or an
+    /// unrepresentable size fails with its own cause.
     pub fn try_reserve(&mut self) -> Result<(), HtmlRelInterpretationError> {
         if self.attempted {
             return Err(HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted.error());
@@ -339,8 +393,13 @@ impl HtmlRelReservation<'_> {
 }
 /// Consumer-owned admission and allocation accounting.
 pub trait HtmlRelMeter {
+    /// The meter's own refusal, carried to the caller in `HtmlRelActionError::Admission`.
     type Error;
+    /// Charges `units` of interpretation work before it is done. An error stops the interpretation.
     fn work(&mut self, units: usize) -> Result<(), Self::Error>;
+    /// Admits and performs one record's storage growth by calling `HtmlRelReservation::try_reserve`
+    /// exactly once. Returning `Ok` without reserving is a protocol fault, reported as the
+    /// reservation-not-performed cause.
     fn reserve(&mut self, reservation: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error>;
 }
 struct Meter<'a, M>(&'a mut M);
@@ -397,6 +456,7 @@ pub struct HtmlRelInterpretation<'raw> {
     last_refinement: Option<usize>,
 }
 impl<'raw> HtmlRelInterpretation<'raw> {
+    /// Starts an interpretation over `inputs`. Nothing runs until `interpret`.
     pub fn new(inputs: RelInputs<'raw>) -> Self {
         Self {
             inputs,
@@ -415,6 +475,9 @@ impl<'raw> HtmlRelInterpretation<'raw> {
             Err(HtmlRelInterpretationErrorKind::WrongPhase.error())
         }
     }
+    /// Interprets the inputs under `meter`, producing the occurrences and the summary. It is valid
+    /// once, from the initial state. A refused charge or reservation stops the interpretation,
+    /// which keeps its partial backing until dropped.
     pub fn interpret<M: HtmlRelMeter>(
         &mut self,
         meter: &mut M,
@@ -433,14 +496,19 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         };
         result
     }
+    /// The inputs this interpretation was created from. Valid after `interpret` has started; before
+    /// then it fails with the wrong-phase cause, and after a stop with the stopped cause.
     pub fn inputs(&self) -> Result<&RelInputs<'raw>, HtmlRelInterpretationError> {
         self.require(|p| !matches!(p, Phase::Initial))?;
         Ok(&self.inputs)
     }
+    /// The occurrences found, in source order. Valid under the same conditions as `inputs`.
     pub fn occurrences(&self) -> Result<&[HtmlRelOccurrence], HtmlRelInterpretationError> {
         self.require(|p| !matches!(p, Phase::Initial))?;
         Ok(self.report.occurrences())
     }
+    /// The exact UTF-16 code units of the occurrence at `index`, or `Ok(None)` when out of range.
+    /// Valid under the same conditions as `inputs`.
     pub fn occurrence_units(
         &self,
         index: usize,
@@ -448,11 +516,18 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         self.require(|p| !matches!(p, Phase::Initial))?;
         Ok(self.report.occurrence_units(index))
     }
+    /// Moves from the interpreted state to refinement. Valid only right after a successful
+    /// `interpret`.
     pub fn begin_refinement(&mut self) -> Result<(), HtmlRelInterpretationError> {
         self.require(|p| matches!(p, Phase::Interpreted))?;
         self.phase = Phase::Refining;
         Ok(())
     }
+    /// Applies a registry `refinement` to the unknown `rel` token at `index`, charging a fixed
+    /// amount of work. Tokens must be refined in increasing index order, each at most once, only if
+    /// their spelling is unknown and they came from `rel`; an extension effect must be valid for
+    /// the role. Any violation is a protocol error that leaves the token unchanged, while a refused
+    /// charge stops the interpretation.
     pub fn refine<M: HtmlRelMeter>(
         &mut self,
         index: usize,
@@ -512,6 +587,9 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         self.last_refinement = Some(index);
         Ok(())
     }
+    /// Recomputes the summary (links, alternate use, authoring findings, body allowance and
+    /// image-source preload context) from the refined tokens. It ends refinement; a refused charge
+    /// or reservation stops the interpretation.
     pub fn refresh<M: HtmlRelMeter>(
         &mut self,
         meter: &mut M,
@@ -525,12 +603,19 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         };
         result
     }
+    /// Abandons the interpretation. Every later action fails with the stopped cause, and
+    /// `try_finish` reports it. Partial backing is released when the owner drops.
     pub fn stop(&mut self) {
         self.phase = Phase::Stopped;
     }
+    /// Gives the inputs back and discards all partial results.
     pub fn abort(self) -> RelInputs<'raw> {
         self.inputs
     }
+    /// Takes the finished report out of `slot`. It succeeds when the interpretation is interpreted
+    /// or refreshed, and then leaves `None` in the slot. An empty slot fails with the consumed
+    /// cause, a stopped interpretation with the stopped cause, and one mid-refinement with the
+    /// not-ready cause; in those failures the slot keeps its owner.
     pub fn try_finish(
         slot: &mut Option<Self>,
     ) -> Result<HtmlRelReport, HtmlRelInterpretationError> {

@@ -18,9 +18,11 @@ pub struct HtmlNonNegativeRational {
     numerator: HtmlNonNegativeInteger,
     denominator: HtmlNonNegativeInteger,
 }
+/// Why an exact rational could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlRationalError {
+    /// The denominator is zero, so the quotient is undefined.
     ZeroDenominator,
 }
 impl fmt::Display for HtmlRationalError {
@@ -32,6 +34,9 @@ impl fmt::Display for HtmlRationalError {
 }
 impl Error for HtmlRationalError {}
 impl HtmlNonNegativeRational {
+    /// Builds a rational from a numerator and a denominator. The denominator must be nonzero. The
+    /// fraction is not reduced, but a zero numerator always takes the denominator one, so zero has
+    /// one representation. Allocation is ordinary and unaccounted.
     pub fn new(
         numerator: HtmlNonNegativeInteger,
         denominator: HtmlNonNegativeInteger,
@@ -49,12 +54,16 @@ impl HtmlNonNegativeRational {
             denominator,
         })
     }
+    /// The numerator, exactly as stored.
     pub fn numerator(&self) -> &HtmlNonNegativeInteger {
         &self.numerator
     }
+    /// The denominator, exactly as stored. It is never zero.
     pub fn denominator(&self) -> &HtmlNonNegativeInteger {
         &self.denominator
     }
+    /// The combined capacity in bytes of the numerator and denominator digit storage, or `None` if
+    /// the sum overflows `usize`.
     pub fn retained_bytes(&self) -> Option<usize> {
         self.numerator
             .digits
@@ -67,6 +76,9 @@ impl HtmlNonNegativeRational {
         self.numerator == other.numerator && self.denominator == other.denominator
     }
 
+    /// The upper bound on the digit-visiting steps `try_copy` performs, for the caller to
+    /// precharge. It is a loop-derived envelope, not an instruction count. `None` means the bound
+    /// is not representable in `usize`.
     pub fn copy_work_bound(&self) -> Option<usize> {
         self.numerator
             .copy_work_bound()?
@@ -111,6 +123,8 @@ impl HtmlNonNegativeRational {
         })
     }
 
+    /// The upper bound on the steps `try_from_integer` performs, which materializes only the
+    /// denominator one. `None` means the bound is not representable in `usize`.
     pub fn integer_work_bound() -> Option<usize> {
         HtmlNonNegativeInteger::from_u32_work_bound()
     }
@@ -147,18 +161,24 @@ pub struct RationalIntegerMaterializationFailure {
     numerator: HtmlNonNegativeInteger,
 }
 impl RationalIntegerMaterializationFailure {
+    /// The numerator that was handed in, unchanged and not copied.
     pub fn numerator(&self) -> &HtmlNonNegativeInteger {
         &self.numerator
     }
+    /// The failure of the denominator materialization.
     pub fn failure(&self) -> &NumericMaterializationFailure {
         &self.failure
     }
+    /// The cumulative capacity in bytes observed while materializing the denominator.
     pub fn capacity_bytes(&self) -> usize {
         self.failure.capacity_bytes()
     }
+    /// The cause of the denominator failure.
     pub fn kind(&self) -> super::NumericMaterializationError {
         self.failure.kind()
     }
+    /// Splits the error into the failure and the original numerator, returning ownership of both
+    /// for cleanup or retry.
     pub fn into_parts(self) -> (NumericMaterializationFailure, HtmlNonNegativeInteger) {
         (self.failure, self.numerator)
     }
@@ -187,6 +207,8 @@ enum NaturalDigitsRepr<'a> {
     Little(&'a [u8]),
 }
 impl<'a> NaturalDigits<'a> {
+    /// Borrows a native integer as an operand. Its digits are already canonical, so no validation
+    /// or allocation occurs.
     pub fn integer(value: &'a HtmlNonNegativeInteger) -> Self {
         Self {
             repr: NaturalDigitsRepr::Integer(value),
@@ -209,6 +231,7 @@ impl<'a> NaturalDigits<'a> {
     pub fn validation_work_bound(length: usize) -> Option<usize> {
         length.checked_add(8)
     }
+    /// The number of decimal digits, which is at least one: zero has the single digit `0`.
     pub fn len(self) -> usize {
         match self.repr {
             NaturalDigitsRepr::Integer(v) => v.digits.len(),
@@ -230,12 +253,31 @@ impl<'a> NaturalDigits<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum NaturalArithmeticError {
+    /// External little-endian digits are empty or end in a leading zero while longer than one
+    /// digit. Zero must be exactly `[0]`.
     NonCanonical,
-    InvalidDigit { index: usize, value: u8 },
+    /// An external digit is not a decimal digit value of 0 to 9.
+    InvalidDigit {
+        /// Offset of the offending digit in the external slice.
+        index: usize,
+        /// The offending digit value, which is greater than 9.
+        value: u8,
+    },
+    /// The caller's scratch buffer already holds digits; arithmetic requires an empty buffer.
     ScratchNotEmpty,
-    ScratchCapacity { required: usize, capacity: usize },
+    /// The caller's scratch buffer has less capacity than the result can need, so a step could have
+    /// to allocate.
+    ScratchCapacity {
+        /// The capacity in digits the operation needs.
+        required: usize,
+        /// The capacity in digits the supplied buffer has.
+        capacity: usize,
+    },
+    /// The result length cannot be represented, as it overflows `usize` or exceeds `isize::MAX`.
     RepresentationExhausted,
+    /// The operation is not complete; only a finished comparison or cursor can be taken.
     NotReady,
+    /// The slot holding the operation is empty because it was already taken.
     EmptySlot,
 }
 impl fmt::Display for NaturalArithmeticError {
@@ -336,6 +378,9 @@ impl<'a> NaturalProductKernel<'a> {
     }
 }
 
+/// Most-significant-first comparison of two checked operands, one digit pair per step, with
+/// admission left to the caller. After it completes, its operands can authorize a difference
+/// through `take_difference`.
 pub struct NaturalComparison<'a> {
     left: NaturalDigits<'a>,
     right: NaturalDigits<'a>,
@@ -343,6 +388,7 @@ pub struct NaturalComparison<'a> {
     result: Option<Ordering>,
 }
 impl<'a> NaturalComparison<'a> {
+    /// Starts a comparison of `left` against `right`. It does no work.
     pub fn new(left: NaturalDigits<'a>, right: NaturalDigits<'a>) -> Self {
         Self {
             left,
@@ -368,6 +414,8 @@ impl<'a> NaturalComparison<'a> {
         self.result = result;
         result
     }
+    /// The final ordering of `left` relative to `right` once a step has reached one, or `None`
+    /// while the comparison is unfinished.
     pub fn result(&self) -> Option<Ordering> {
         self.result
     }
@@ -450,9 +498,13 @@ pub struct NaturalProduct<'input, 'scratch> {
     finished: bool,
 }
 impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
+    /// The scratch capacity in digits the product needs, the sum of the operand lengths, or `None`
+    /// if that is not representable.
     pub fn required_capacity(left: NaturalDigits<'_>, right: NaturalDigits<'_>) -> Option<usize> {
         natural_product_capacity(left.len(), right.len())
     }
+    /// Starts a product of `left` and `right` in `output`, which must be empty and have the
+    /// capacity `required_capacity` reports. Refusal leaves `output` untouched.
     pub fn new(
         left: NaturalDigits<'input>,
         right: NaturalDigits<'input>,
@@ -475,9 +527,12 @@ impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
         }
         self.finished
     }
+    /// The scratch digits written so far, least significant first. After completion they are the
+    /// canonical product.
     pub fn scratch(&self) -> &[u8] {
         self.output
     }
+    /// Whether the product is complete.
     pub fn is_finished(&self) -> bool {
         self.finished
     }
@@ -506,15 +561,20 @@ pub struct NaturalDifference<'input, 'scratch> {
     finished: bool,
 }
 impl<'scratch> NaturalDifference<'_, 'scratch> {
+    /// Performs one subtraction digit or high-zero trim and returns whether the difference is now
+    /// complete. After completion it does nothing more and keeps returning `true`.
     pub fn step(&mut self) -> bool {
         if !self.finished {
             self.finished = self.kernel.step(self.output);
         }
         self.finished
     }
+    /// The scratch digits written so far, least significant first. After completion they are the
+    /// canonical absolute difference.
     pub fn scratch(&self) -> &[u8] {
         self.output
     }
+    /// Whether the difference is complete.
     pub fn is_finished(&self) -> bool {
         self.finished
     }

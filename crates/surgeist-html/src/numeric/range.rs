@@ -6,18 +6,31 @@ pub(crate) mod best;
 pub(crate) mod ingress;
 pub(crate) mod lattice;
 
+/// One of the eight caller-owned scratch buffers of the exact range arithmetic. Each holds decimal
+/// digits, one value of 0 to 9 per cell with the least significant digit first, and the cursor that
+/// issues a request names the role it acts on. `index` is the role's position in
+/// `RangeNumericHeaders`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RangeScratchRole {
+    /// The exact decimal coefficient of the value being converted or serialized.
     Coefficient,
+    /// The exact decimal coefficient of the lower rounding boundary of a value being serialized.
     Lower,
+    /// The exact decimal coefficient of the upper rounding boundary of a value being serialized.
     Upper,
+    /// The left operand of an exact scaled comparison.
     Left,
+    /// The right operand of an exact scaled comparison or product.
     Right,
+    /// A quotient digit sequence. The cursors in this crate do not currently request it.
     Quotient,
+    /// A remainder digit sequence. The cursors in this crate do not currently request it.
     Remainder,
+    /// A candidate value under test, such as a trial significand or a candidate decimal sum.
     Trial,
 }
 impl RangeScratchRole {
+    /// Every role exactly once, in `index` order.
     pub const ALL: [Self; 8] = [
         Self::Coefficient,
         Self::Lower,
@@ -28,6 +41,7 @@ impl RangeScratchRole {
         Self::Remainder,
         Self::Trial,
     ];
+    /// The role's slot, 0 to 7, in the buffer array of `RangeNumericHeaders`.
     pub const fn index(self) -> usize {
         match self {
             Self::Coefficient => 0,
@@ -41,69 +55,125 @@ impl RangeScratchRole {
         }
     }
 }
+/// The address of one digit cell: a scratch role and a zero-based index from the least significant
+/// digit. The index must be less than the buffer's current length when a request names the cell.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RangeCell {
     pub(crate) role: RangeScratchRole,
     pub(crate) index: usize,
 }
+/// One effect a range cursor asks its caller to perform before the cursor can continue. The caller
+/// admits the effect, performs it on its own storage, and answers with the matching
+/// `RangeNumericReply`; any other reply is an integrity error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RangeNumericRequest {
+    /// Read one code unit of the source value; answer with `Unit`.
     SourceUnit {
+        /// The zero-based UTF-16 code-unit offset in the source, which is less than its length.
         index: usize,
     },
+    /// Read up to three scratch digits; answer with `Cells`, which has a digit for each present
+    /// cell and `None` for each absent one.
     ReadCells {
+        /// The cells to read, which may be absent.
         cells: [Option<RangeCell>; 3],
     },
+    /// Ensure the buffer of `role` can hold `required_len` cells without reallocating; answer with
+    /// `Reserved`. The caller chooses the actual capacity.
     Reserve {
+        /// The buffer to grow.
         role: RangeScratchRole,
+        /// The length in cells the buffer must be able to hold.
         required_len: usize,
     },
+    /// Push one digit onto the buffer of `role`, within its reserved capacity; answer with `Ack`.
     AppendCell {
+        /// The buffer to extend.
         role: RangeScratchRole,
+        /// The digit, 0 to 9.
         value: u8,
     },
+    /// Overwrite an existing cell with a digit; answer with `Ack`.
     WriteCell {
+        /// The cell to overwrite, which is within the buffer's length.
         cell: RangeCell,
+        /// The digit, 0 to 9.
         value: u8,
     },
+    /// Remove the last cell of the buffer of `role`, which is nonempty; answer with `Ack`.
     PopCell {
+        /// The buffer to shorten.
         role: RangeScratchRole,
     },
+    /// No storage effect: the cursor performs a fixed scalar transition; answer with `Ack`.
     ScalarStep,
+    /// Ensure the output buffer can hold `required_len` code units; answer with `OutputReserved`.
     ReserveOutput {
+        /// The length in UTF-16 code units the output must be able to hold, at most 25.
         required_len: usize,
     },
+    /// Append one code unit to the output, within its reserved capacity; answer with `Ack`.
     EmitUnit {
+        /// The UTF-16 code unit to append.
         unit: u16,
     },
 }
+/// The caller's answer to a `RangeNumericRequest`. A cursor validates the reply against the pending
+/// request and commits only if it is valid, so a rejected reply leaves the cursor unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RangeNumericReply {
+    /// The source code unit for `SourceUnit`.
     Unit(u16),
+    /// The digits for `ReadCells`, in request order: `Some` digit (0 to 9) exactly where the
+    /// request had a cell and `None` where it had none.
     Cells([Option<u8>; 3]),
+    /// The outcome of `Reserve`: the buffer now has the stated capacity and keeps its length.
     Reserved {
+        /// The capacity in cells the buffer really has, at least the required length and at most
+        /// `isize::MAX`.
         actual_capacity: usize,
+        /// The buffer's current length in cells, which must equal the length the cursor last saw.
         actual_len: usize,
     },
+    /// The caller performed an append, write, pop, scalar step or emit.
     Ack,
+    /// The outcome of `ReserveOutput`: the output now has the stated capacity and keeps its length.
     OutputReserved {
+        /// The capacity in code units the output really has, at least the required length and at
+        /// most `isize::MAX`.
         actual_capacity: usize,
+        /// The output's current length in code units, which must equal the length the cursor last
+        /// saw.
         actual_len: usize,
     },
 }
+/// Why a range cursor refused to start or to accept a reply. The set is open: new causes may be
+/// added.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum RangeNumericError {
+    /// The reply, headers or operands contradict the protocol: a reply that does not match the
+    /// pending request, a header whose length exceeds its capacity, an inconsistent length, or an
+    /// operand that is not finite.
     Integrity,
+    /// A length or count cannot be represented on this platform or exceeds the cursor's bound.
     Representation,
+    /// The value is finite in the source grammar but exceeds the finite binary64 range.
     Overflow,
+    /// The decimal has no digits, so it does not match the HTML floating-point syntax.
     InvalidSyntax,
 }
+/// The live length and the actual capacity of one caller-owned buffer, as the caller reports them.
+/// The length never exceeds the capacity, and the capacity never exceeds `isize::MAX`; `new`
+/// enforces both.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RangeBufferHeader {
     pub(crate) len: usize,
     pub(crate) capacity: usize,
 }
+/// The headers of the eight scratch buffers, indexed by `RangeScratchRole::index`, and of the
+/// output buffer. A cursor keeps its own copy and updates it as replies are accepted, so the
+/// caller's storage and these headers must stay in step.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RangeNumericHeaders {
     pub(crate) buffers: [RangeBufferHeader; 8],
@@ -972,12 +1042,16 @@ const POW10: [u64; 19] = [
 ];
 
 impl RangeCell {
+    /// Names the cell at `index` of the buffer for `role`. It does not check the index against any
+    /// buffer; the cursor does when it receives a request.
     pub const fn new(role: RangeScratchRole, index: usize) -> Self {
         Self { role, index }
     }
+    /// The buffer this cell belongs to.
     pub const fn role(self) -> RangeScratchRole {
         self.role
     }
+    /// The zero-based position from the least significant digit.
     pub const fn index(self) -> usize {
         self.index
     }
@@ -990,23 +1064,30 @@ impl RangeBufferHeader {
         }
         Ok(Self { len, capacity })
     }
+    /// The number of live cells or units.
     pub const fn len(self) -> usize {
         self.len
     }
+    /// Whether the buffer has no live cells or units.
     pub const fn is_empty(self) -> bool {
         self.len == 0
     }
+    /// The actual capacity of the caller's backing, at least `len`.
     pub const fn capacity(self) -> usize {
         self.capacity
     }
 }
 impl RangeNumericHeaders {
+    /// Combines the eight scratch headers, in `RangeScratchRole::index` order, with the output
+    /// header. It validates nothing beyond what each header already guarantees.
     pub const fn new(buffers: [RangeBufferHeader; 8], output: RangeBufferHeader) -> Self {
         Self { buffers, output }
     }
+    /// The header of the scratch buffer for `role`.
     pub const fn buffer(&self, role: RangeScratchRole) -> RangeBufferHeader {
         self.buffers[role.index()]
     }
+    /// The header of the output buffer, whose unit is one UTF-16 code unit.
     pub const fn output(&self) -> RangeBufferHeader {
         self.output
     }
@@ -1018,21 +1099,28 @@ pub struct RangeNumericLayout {
     registers: usize,
 }
 impl RangeNumericLayout {
+    /// The size in bytes of the cursor's own state, which the caller can reserve before
+    /// constructing it.
     pub const fn register_bytes(self) -> usize {
         self.registers
     }
+    /// The size in bytes of one `RangeNumericRequest`.
     pub const fn request_bytes(self) -> usize {
         size_of::<RangeNumericRequest>()
     }
+    /// The size in bytes of one `RangeNumericReply`.
     pub const fn reply_bytes(self) -> usize {
         size_of::<RangeNumericReply>()
     }
+    /// The size in bytes of `RangeNumericHeaders`.
     pub const fn headers_bytes(self) -> usize {
         size_of::<RangeNumericHeaders>()
     }
+    /// The size in bytes of one scratch digit cell, which is one byte.
     pub const fn scratch_cell_bytes(self) -> usize {
         size_of::<u8>()
     }
+    /// The size in bytes of one output unit, which is one UTF-16 code unit.
     pub const fn output_unit_bytes(self) -> usize {
         size_of::<u16>()
     }

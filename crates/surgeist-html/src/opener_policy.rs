@@ -3,16 +3,38 @@
 
 use crate::DocumentString;
 
+/// An opener policy value of HTML §7.1.3, which lets a document navigated to in a
+/// top-level browsing context force a new top-level browsing context and group.
+/// The set is the five values the pinned edition lists; the type records the
+/// value only and applies no navigation or grouping effect.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOpenerPolicyValue {
+    /// `unsafe-none`, the default: the document shares its predecessor's
+    /// top-level browsing context unless the predecessor specified a different
+    /// opener policy.
     UnsafeNone,
+    /// `same-origin-allow-popups`: forces a new top-level browsing context
+    /// unless the predecessor specified the same opener policy and is same
+    /// origin.
     SameOriginAllowPopups,
+    /// `same-origin`: behaves as `same-origin-allow-popups`, and additionally
+    /// requires auxiliary browsing contexts to hold same-origin documents with
+    /// the same opener policy, or they appear closed to the opener.
     SameOrigin,
+    /// `same-origin-plus-COEP`: behaves as `same-origin` and sets the new
+    /// group's cross-origin isolation mode to logical or concrete. No header
+    /// sets it directly; it results from `same-origin` combined with a
+    /// compatible embedder policy.
     SameOriginPlusCoep,
+    /// `noopener-allow-popups`: forces a new top-level browsing context
+    /// regardless of the predecessor, severing the opener relationship without
+    /// creating a security boundary between same-origin documents.
     NoopenerAllowPopups,
 }
 
 impl HtmlOpenerPolicyValue {
+    /// The value's exact spelling in the pinned edition, including the capital
+    /// letters of `same-origin-plus-COEP`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::UnsafeNone => "unsafe-none",
@@ -47,15 +69,20 @@ impl HtmlOpenerPolicy {
         }
     }
 
+    /// The enforced opener policy value; `unsafe-none` in the initial record.
     pub const fn value(&self) -> HtmlOpenerPolicyValue {
         self.value
     }
+    /// The reporting endpoint for the enforced value, or `None` for the
+    /// standard's null. An endpoint keeps its exact UTF-16 code units.
     pub const fn reporting_endpoint(&self) -> Option<&DocumentString> {
         self.reporting_endpoint.as_ref()
     }
+    /// The report-only opener policy value; `unsafe-none` in the initial record.
     pub const fn report_only_value(&self) -> HtmlOpenerPolicyValue {
         self.report_only_value
     }
+    /// The reporting endpoint for the report-only value, or `None` for null.
     pub const fn report_only_reporting_endpoint(&self) -> Option<&DocumentString> {
         self.report_only_reporting_endpoint.as_ref()
     }

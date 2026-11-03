@@ -69,6 +69,8 @@ pub struct RangeMidpointCursor {
     result: Option<u64>,
 }
 impl RangeMidpointCursor {
+    /// Starts the midpoint of two finite binary64 values given as raw IEEE 754 bits, in either
+    /// order. A non-finite operand is an `Integrity` error.
     pub fn new(minimum: u64, maximum: u64) -> Result<Self, RangeNumericError> {
         let a = f64::from_bits(minimum);
         let b = f64::from_bits(maximum);
@@ -94,14 +96,20 @@ impl RangeMidpointCursor {
             result: None,
         })
     }
+    /// A `ScalarStep` request while the cursor is running, or `None` once it has finished. It needs
+    /// no storage, so every request is answered with `Ack`.
     pub fn request(&self) -> Option<RangeNumericRequest> {
         self.result
             .is_none()
             .then_some(RangeNumericRequest::ScalarStep)
     }
+    /// Once the cursor has finished, the raw bits of the exact midpoint, rounded to nearest with
+    /// ties to even. `None` while it is running.
     pub fn result(&self) -> Option<u64> {
         self.result
     }
+    /// Accepts `Ack` for the pending step and advances. Any other reply, or a reply after the
+    /// cursor has finished, is an `Integrity` error and leaves the cursor unchanged.
     pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         if self.result.is_some() || !matches!(reply, RangeNumericReply::Ack) {
             return Err(RangeNumericError::Integrity);
@@ -281,6 +289,10 @@ pub struct RangeLatticeCursor {
     result: Option<Option<u64>>,
 }
 impl RangeLatticeCursor {
+    /// Starts the search for the member of the lattice `base + k * step`, for whole `k`, that is
+    /// nearest to `current` within `minimum` and `maximum`. All values are raw IEEE 754 binary64
+    /// bits. Every value must be finite, `step` positive, and `maximum`, when present, not below
+    /// `minimum`; otherwise `Integrity`.
     pub fn new(
         current: u64,
         minimum: u64,
@@ -337,14 +349,22 @@ impl RangeLatticeCursor {
         })
     }
 
+    /// A `ScalarStep` request while the cursor is running, or `None` once it has finished. It needs
+    /// no storage, so every request is answered with `Ack`.
     pub fn request(&self) -> Option<RangeNumericRequest> {
         (self.phase != Phase::Done).then_some(RangeNumericRequest::ScalarStep)
     }
 
+    /// While running, `None`. Once finished, `Some(None)` when no lattice member exists in the
+    /// bounds, otherwise `Some(Some(bits))` with the raw bits of the member nearest `current`. A
+    /// member equal to `current` is returned with `current`'s own bits, and a tie between two
+    /// members goes to the larger one.
     pub fn result(&self) -> Option<Option<u64>> {
         self.result
     }
 
+    /// Accepts `Ack` for the pending step and advances. Any other reply, or a reply after the
+    /// cursor has finished, is an `Integrity` error and leaves the cursor unchanged.
     pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
         if self.phase == Phase::Done || !matches!(reply, RangeNumericReply::Ack) {
             return Err(RangeNumericError::Integrity);
@@ -626,6 +646,7 @@ impl RangeLatticeCursor {
 }
 
 impl RangeMidpointCursor {
+    /// The fixed state and message sizes of this cursor.
     pub const fn layout() -> RangeNumericLayout {
         RangeNumericLayout {
             registers: size_of::<Self>(),
@@ -634,6 +655,7 @@ impl RangeMidpointCursor {
 }
 
 impl RangeLatticeCursor {
+    /// The fixed state and message sizes of this cursor.
     pub const fn layout() -> RangeNumericLayout {
         RangeNumericLayout {
             registers: size_of::<Self>(),
