@@ -401,7 +401,8 @@ impl HeadState<'_> {
                 }
                 write(size_of::<Option<TableCharacter>>(), 1, c)?;
                 let entry = self.table.transfer.take();
-                if let Err((stop, entry)) = self.table.entries.try_push_recover(c, entry) {
+                if let Err((stop, entry)) = self.table.entries.try_push_recover_geometric(c, entry)
+                {
                     self.table.transfer = entry;
                     return Err(stop.into());
                 }

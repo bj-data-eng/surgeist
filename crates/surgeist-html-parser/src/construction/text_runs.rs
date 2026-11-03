@@ -173,7 +173,7 @@ fn push_text_run(
     control: &mut ParseControl,
 ) -> Result<(), SessionError> {
     let run = draft.freeze(control)?;
-    if let Err((stop, run)) = entries.try_push_recover(control, Some(run)) {
+    if let Err((stop, run)) = entries.try_push_recover_geometric(control, Some(run)) {
         // The refused push hands back the run it was given.
         if let Some(run) = run {
             run.text.release(control)?;
@@ -243,7 +243,7 @@ fn stage_text_runs(
             current.value.extend_units(origin_units, control)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlSourceRange>(control, 1)?;
-            current.origins.try_push(
+            current.origins.try_push_geometric(
                 control,
                 HtmlParseTextOrigin {
                     start,
@@ -447,7 +447,7 @@ fn slice_text(
             ) else {
                 return Err(latch_registry_row(control));
             };
-            origins.try_push(
+            origins.try_push_geometric(
                 control,
                 HtmlParseTextOrigin {
                     start: origin_start,

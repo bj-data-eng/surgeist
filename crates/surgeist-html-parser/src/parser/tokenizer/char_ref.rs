@@ -249,7 +249,7 @@ impl Tokenizer<'_> {
                         continue;
                     }
                     self.read(c, evidence)?;
-                    r.query.try_push(c, p)?;
+                    r.query.try_push_geometric(c, p)?;
                     match references::lookup_name(r.query.as_slice(), c)? {
                         NameLookup::Complete {
                             value,

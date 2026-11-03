@@ -428,6 +428,7 @@ fn reserving_a_plan_that_shrinks_the_allocation_is_refused_before_any_change() {
     let mut vector = Vec::<u32>::new();
     let plan = ReservationPlan {
         additional: 1,
+        needed: 1,
         old_bytes: 10,
         new_bytes: 5,
     };

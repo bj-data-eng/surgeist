@@ -2392,6 +2392,21 @@ assert_eq!(
 assert_eq!(failure.source().as_utf8(), Some("<p>x"));
 ```
 
+The parser's byte limits count real capacity, spare room included. A token's text,
+the open-element stack, the formatting list, pending whitespace and table text, and the
+other lists that grow one record at a time, grow a full vector to the greater of the
+capacity it needs and double its capacity, so `n` records request `O(log n)`
+reallocations and charge `O(n)` reservation work. The target depends only on the vector,
+never on a limit, so a parse follows one allocation path under every limit. The parser
+admits the target capacity before it allocates it, and a limit that holds the capacity
+the record needs but not the target refuses the reservation. A parse therefore succeeds
+under a byte limit (`managed_capacity_bytes`, `peak_transient_bytes` or
+`atomic_layout_bytes`) exactly when the limit holds the peak that the same parse reports
+under generous limits, and a limit that sufficed while such lists grew by one slot at a
+time can now need up to twice their capacity. Only an allocator refusal of the larger
+target falls back to the capacity that is needed, and so does a target whose layout
+would exceed `isize::MAX` bytes, which depends on the vector alone too.
+
 A checked fragment context is supplied to
 `HtmlFragmentParseRequest::new(source, context, limits)`; `with_options` also
 retains the requested scripting mode and declarative-shadow permission. Context

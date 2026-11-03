@@ -106,7 +106,7 @@ pub(super) fn copy_formatting_text(
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<HtmlParseTextOrigin>(control, 1)?;
-            origins.try_push(
+            origins.try_push_geometric(
                 control,
                 HtmlParseTextOrigin {
                     start: origin.start,
@@ -166,7 +166,9 @@ pub(super) fn copy_formatting_tag(
                 value,
                 source: original.source.clone(),
             };
-            if let Err((stop, attribute)) = attributes.try_push_recover(control, attribute) {
+            if let Err((stop, attribute)) =
+                attributes.try_push_recover_geometric(control, attribute)
+            {
                 attribute.name.release(control)?;
                 attribute.value.release(control)?;
                 return Err(stop.into());

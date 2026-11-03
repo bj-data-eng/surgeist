@@ -409,7 +409,7 @@ impl GroupLeafCursor {
                     self.frames
                         .as_mut()
                         .ok_or(SessionError::Consumed)?
-                        .try_push(
+                        .try_push_geometric(
                             c,
                             GroupFrame {
                                 index: original,
@@ -1565,7 +1565,7 @@ impl SessionStorage {
                     let end = output_start.checked_add(from_end).ok_or_else(|| {
                         c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
-                    maps.try_push(
+                    maps.try_push_geometric(
                         c,
                         HtmlParseTextOrigin {
                             start,
@@ -1609,7 +1609,7 @@ impl SessionStorage {
             let source = source
                 .range(first, last)
                 .map_err(|_| SessionError::WrongToken)?;
-            maps.try_push(
+            maps.try_push_geometric(
                 c,
                 HtmlParseTextOrigin {
                     start: output_start,
@@ -2229,7 +2229,7 @@ impl SessionStorage {
         )?;
         let index = evidence.native.groups.len();
         let reference = evidence.group_ref(index, c)?;
-        evidence.native.groups.try_push(
+        evidence.native.groups.try_push_geometric(
             c,
             OriginGroup {
                 body: GroupBody::Leaf {
