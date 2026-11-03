@@ -519,7 +519,9 @@ walk costs about twice the entries between the target and the nearer end of the
 order. Each `Children` bank is a deque, so the commit shifts only the entries
 between the place it closes or opens and the nearer end: for a removal at
 position `p` of `n` entries the lesser of `p` and `n - 1 - p`, and for an
-insertion at `p` among `n` entries the lesser of `p` and `n - p`. Its `Commit`
+insertion at `p` among `n` entries the lesser of `p` and `n - p`. When a node
+moves within one parent, `n` for the insertion counts the entries left after
+its removal. Its `Commit`
 description counts the parent link, the removed and inserted entries and every
 shifted entry as `record_writes` of one word each in `copied_bytes`, besides
 the depth work.
