@@ -91,21 +91,29 @@ struct Root<T: Value> {
     current: Option<usize>,
 }
 impl<T: Value> Root<T> {
+    /// The newest live mark, which `current` indexes; the base frame journals while there is none.
+    /// `refresh_current` re-derives `current` from the live marks whenever they change, so it
+    /// never names an empty cell.
+    fn current_mark(&self) -> Option<&Mark<T>> {
+        self.current
+            .and_then(|index| self.marks.get(index))
+            .and_then(Option::as_ref)
+    }
     fn frame(&self) -> &Frame<T> {
-        self.current.map_or(&self.base, |index| {
-            &self.marks[index].as_ref().expect("current mark").frame
-        })
+        self.current_mark().map_or(&self.base, |mark| &mark.frame)
     }
     fn frame_mut(&mut self) -> &mut Frame<T> {
-        match self.current {
-            Some(index) => &mut self.marks[index].as_mut().expect("current mark").frame,
+        match self
+            .current
+            .and_then(|index| self.marks.get_mut(index))
+            .and_then(Option::as_mut)
+        {
+            Some(mark) => &mut mark.frame,
             None => &mut self.base,
         }
     }
     fn frame_id(&self) -> u64 {
-        self.current.map_or(self.id, |index| {
-            self.marks[index].as_ref().expect("current mark").id
-        })
+        self.current_mark().map_or(self.id, |mark| mark.id)
     }
     fn refresh_current(&mut self) {
         self.current = self
@@ -211,15 +219,24 @@ impl<T: Value> Pool<T> {
             .as_ref()
             .and_then(|page| page[slot % PAGE].entry.as_ref())
     }
-    fn entry_mut(&mut self, slot: usize) -> &mut Option<Entry<T>> {
-        &mut self.pages[slot / PAGE].as_mut().expect("prepared page")[slot % PAGE].entry
+    /// The cell of `slot`, once its page exists.
+    fn entry_mut(&mut self, slot: usize) -> Option<&mut Option<Entry<T>>> {
+        self.pages[slot / PAGE]
+            .as_mut()
+            .map(|page| &mut page[slot % PAGE].entry)
     }
-    fn occurrence(&self, slot: usize, entry: &Entry<T>) -> HtmlValuePoolOccurrence {
-        HtmlValuePoolOccurrence {
-            owner: self.owner.expect("active owner"),
+    /// An occurrence needs an active owner; a pool whose owner identity is exhausted bypasses
+    /// every operation before one is recorded.
+    fn occurrence(
+        &self,
+        slot: usize,
+        entry: &Entry<T>,
+    ) -> Result<HtmlValuePoolOccurrence, HtmlValuePoolError> {
+        Ok(HtmlValuePoolOccurrence {
+            owner: self.owner.ok_or(HtmlValuePoolError::ForeignOwner)?,
             slot,
             generation: entry.generation,
-        }
+        })
     }
     fn target_bytes() -> usize {
         size_of::<Vec<T::Item>>()
@@ -478,7 +495,11 @@ impl<T: Value> Pool<T> {
                 };
             }
             Phase::Commit => {
-                layout.pool = op.prepared.as_ref().expect("prepared mutation").usage;
+                layout.pool = op
+                    .prepared
+                    .as_ref()
+                    .ok_or(HtmlValuePoolError::NotReady)?
+                    .usage;
                 layout.work.copied_bytes = size_of::<Before<T>>() + size_of::<Slot<T>>();
                 // A first-before cell can move through at most MARKS older
                 // surviving checkpoints before restoration or final seal.
@@ -491,7 +512,8 @@ impl<T: Value> Pool<T> {
                     ..HtmlValuePoolWork::default()
                 };
             }
-            _ => unreachable!("terminal actions handled above"),
+            // The terminal phases returned above.
+            _ => return Err(HtmlValuePoolError::NotReady),
         }
         self.action = Some((op.id, serial));
         Ok(Some(HtmlValuePoolAction {
@@ -546,7 +568,11 @@ impl<T: Value> Pool<T> {
                 Ok(HtmlValuePoolProgress::Continue)
             }
             Phase::Upgrade => {
-                let entry = self.entry(action.slot).expect("qualified entry");
+                let Some(entry) = self.entry(action.slot) else {
+                    // The generation check above matched an entry that Inspect saw.
+                    op.bypass();
+                    return Ok(HtmlValuePoolProgress::Finished);
+                };
                 let Some(shared) = entry.weak.upgrade() else {
                     op.vacant.get_or_insert(action.slot);
                     op.advance_candidate();
@@ -681,7 +707,11 @@ impl<T: Value> Pool<T> {
             op.bypass();
             return Ok(HtmlValuePoolProgress::Finished);
         }
-        let prepared = op.prepared.take().expect("commit has prepared owner");
+        let Some(prepared) = op.prepared.take() else {
+            // Only the prepare step enters commit, and it stores what commit consumes.
+            op.bypass();
+            return Ok(HtmlValuePoolProgress::Finished);
+        };
         if prepared.usage.bytes > self.metadata_limit {
             drop(prepared);
             op.bypass();
@@ -698,14 +728,24 @@ impl<T: Value> Pool<T> {
             self.pages[page_index] = Some(page);
             self.page_bits |= 1 << page_index;
         }
-        let inserted = self.occurrence(op.slot, &prepared.entry);
-        let old = self.entry_mut(op.slot).replace(prepared.entry);
-        let old_occurrence = old.as_ref().map(|entry| self.occurrence(op.slot, entry));
+        let inserted = self.occurrence(op.slot, &prepared.entry)?;
+        let old = self
+            .entry_mut(op.slot)
+            .ok_or(HtmlValuePoolError::NotReady)?
+            .replace(prepared.entry);
+        let old_occurrence = old
+            .as_ref()
+            .map(|entry| self.occurrence(op.slot, entry))
+            .transpose()?;
         let bucket = bucket(op.hash);
         let changed_hot = op.clear_hot | (1 << op.slot);
         self.remember_hot(changed_hot);
         self.hot &= !changed_hot;
-        let frame = self.root.as_mut().expect("active root").frame_mut();
+        let frame = self
+            .root
+            .as_mut()
+            .ok_or(HtmlValuePoolError::NotReady)?
+            .frame_mut();
         if let Some(directory) = prepared.directory {
             frame.pages = directory;
         }
@@ -714,7 +754,7 @@ impl<T: Value> Pool<T> {
         }
         let undo_page = frame.pages[page_index]
             .as_mut()
-            .expect("prepared before page");
+            .ok_or(HtmlValuePoolError::NotReady)?;
         let cell = &mut undo_page.cells[op.slot % PAGE];
         let first = matches!(cell, Before::Untouched);
         let released = usize::from(!first && old.is_some());
@@ -770,13 +810,13 @@ impl<T: Value> Pool<T> {
         if !self.root_matches(token.owner, token.id)? {
             return Ok(None);
         }
-        let root = self.root.as_ref().expect("matching root");
+        let root = self.root.as_ref().ok_or(HtmlValuePoolError::NotReady)?;
         if root.frozen || root.suspended {
             return Ok(None);
         }
         let index = root.marks.iter().position(Option::is_none);
         let id = index.and_then(|_| self.issue());
-        let root = self.root.as_mut().expect("authority survives exhaustion");
+        let root = self.root.as_mut().ok_or(HtmlValuePoolError::NotReady)?;
         let (Some(index), Some(id)) = (index, id) else {
             root.suspended = true;
             self.action = None;
@@ -800,7 +840,7 @@ impl<T: Value> Pool<T> {
         if !self.root_matches(token.owner, token.root)? {
             return Ok(());
         }
-        let root = self.root.as_mut().expect("matching root");
+        let root = self.root.as_mut().ok_or(HtmlValuePoolError::NotReady)?;
         let Some(index) = root
             .marks
             .iter()
@@ -811,7 +851,10 @@ impl<T: Value> Pool<T> {
         if root.frozen {
             return Err(HtmlValuePoolError::NotReady);
         }
-        let mut source = root.marks[index].take().expect("selected mark").frame;
+        let Some(source_mark) = root.marks[index].take() else {
+            return Ok(());
+        };
+        let mut source = source_mark.frame;
         let older = root
             .marks
             .iter()
@@ -823,8 +866,8 @@ impl<T: Value> Pool<T> {
             })
             .max()
             .map(|(_, i)| i);
-        let destination = match older {
-            Some(i) => &mut root.marks[i].as_mut().expect("older mark").frame,
+        let destination = match older.and_then(|i| root.marks[i].as_mut()) {
+            Some(mark) => &mut mark.frame,
             None => &mut root.base,
         };
         let new_hot = source.hot_touched & !destination.hot_touched;
@@ -870,7 +913,7 @@ impl<T: Value> Pool<T> {
     }
     pub(super) fn suspend(&mut self, token: &HtmlValuePoolRoot) -> Result<(), HtmlValuePoolError> {
         if self.root_matches(token.owner, token.id)? {
-            let root = self.root.as_mut().expect("matching root");
+            let root = self.root.as_mut().ok_or(HtmlValuePoolError::NotReady)?;
             if root.frozen {
                 return Err(HtmlValuePoolError::NotReady);
             }
@@ -887,7 +930,7 @@ impl<T: Value> Pool<T> {
         if !self.root_matches(token.owner, token.root)? {
             return Ok(self.unchanged());
         }
-        let root = self.root.as_ref().expect("matching root");
+        let root = self.root.as_ref().ok_or(HtmlValuePoolError::NotReady)?;
         if !root.marks.iter().flatten().any(|mark| mark.id == token.id) {
             return Ok(self.unchanged());
         }
@@ -897,7 +940,7 @@ impl<T: Value> Pool<T> {
         let before = self.usage;
         let mut released = 0;
         loop {
-            let root = self.root.as_mut().expect("root retained");
+            let root = self.root.as_mut().ok_or(HtmlValuePoolError::NotReady)?;
             let Some(index) = root
                 .marks
                 .iter()
@@ -912,10 +955,15 @@ impl<T: Value> Pool<T> {
             else {
                 break;
             };
-            let frame = root.marks[index].take().expect("selected mark").frame;
-            released += self.rollback_frame(frame);
+            let Some(mark) = root.marks[index].take() else {
+                break;
+            };
+            released += self.rollback_frame(mark.frame);
         }
-        self.root.as_mut().expect("root retained").refresh_current();
+        self.root
+            .as_mut()
+            .ok_or(HtmlValuePoolError::NotReady)?
+            .refresh_current();
         self.action = None;
         self.operation = None;
         Ok(HtmlValuePoolChange {
@@ -940,7 +988,11 @@ impl<T: Value> Pool<T> {
             };
             for (offset, cell) in page.cells.iter_mut().enumerate() {
                 if let Before::Saved(old) = std::mem::replace(cell, Before::Untouched) {
-                    let current = std::mem::replace(self.entry_mut(index * PAGE + offset), old);
+                    let Some(cell) = self.entry_mut(index * PAGE + offset) else {
+                        // A saved cell belongs to a page that the journaled write introduced.
+                        continue;
+                    };
+                    let current = std::mem::replace(cell, old);
                     if current.is_some() {
                         drop(current);
                         released += 1;
@@ -956,10 +1008,11 @@ impl<T: Value> Pool<T> {
             }
             drop(page);
             if frame.before_pages & (1 << index) == 0 {
-                let page = self.pages[index].take().expect("introduced page");
-                self.usage.bytes -= page.capacity() * size_of::<Slot<T>>();
-                self.page_bits &= !(1 << index);
-                drop(page);
+                if let Some(page) = self.pages[index].take() {
+                    self.usage.bytes -= page.capacity() * size_of::<Slot<T>>();
+                    self.page_bits &= !(1 << index);
+                    drop(page);
+                }
             }
         }
         self.usage.bytes -= frame.pages.capacity() * size_of::<Option<UndoPage<T>>>();
@@ -991,7 +1044,7 @@ impl<T: Value> Pool<T> {
         let before = self.usage;
         let mut released = 0;
         loop {
-            let root = self.root.as_mut().expect("matching root");
+            let root = self.root.as_mut().ok_or(HtmlValuePoolError::NotReady)?;
             let Some(index) = root
                 .marks
                 .iter()
@@ -1002,10 +1055,12 @@ impl<T: Value> Pool<T> {
             else {
                 break;
             };
-            let frame = root.marks[index].take().expect("selected mark").frame;
-            released += self.rollback_frame(frame);
+            let Some(mark) = root.marks[index].take() else {
+                break;
+            };
+            released += self.rollback_frame(mark.frame);
         }
-        let root = self.root.take().expect("matching root");
+        let root = self.root.take().ok_or(HtmlValuePoolError::NotReady)?;
         released += self.rollback_frame(root.base);
         self.action = None;
         self.operation = None;
@@ -1021,18 +1076,23 @@ impl<T: Value> Pool<T> {
         token: HtmlValuePoolRoot,
     ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
         match self.root_matches(token.owner, token.id) {
-            Ok(true)
-                if self
+            Ok(true) => {
+                if let Some(root) = self
                     .root
-                    .as_ref()
-                    .is_some_and(|root| root.marks.iter().all(Option::is_none) && !root.frozen) =>
-            {
-                self.root.as_mut().expect("matching root").frozen = true;
-                self.action = None;
-                self.operation = None;
-                Ok(HtmlValuePoolSeal { root: token })
+                    .as_mut()
+                    .filter(|root| root.marks.iter().all(Option::is_none) && !root.frozen)
+                {
+                    root.frozen = true;
+                    self.action = None;
+                    self.operation = None;
+                    return Ok(HtmlValuePoolSeal { root: token });
+                }
+                Err(HtmlValuePoolSealRefusal::new(
+                    HtmlValuePoolError::NotReady,
+                    token,
+                ))
             }
-            Ok(_) => Err(HtmlValuePoolSealRefusal::new(
+            Ok(false) => Err(HtmlValuePoolSealRefusal::new(
                 HtmlValuePoolError::NotReady,
                 token,
             )),
@@ -1054,7 +1114,7 @@ impl<T: Value> Pool<T> {
     ) -> Result<HtmlValuePoolChange, HtmlValuePoolError> {
         self.validate_seal(&seal)?;
         let before = self.usage;
-        let root = self.root.take().expect("validated seal");
+        let root = self.root.take().ok_or(HtmlValuePoolError::NotReady)?;
         let released = self.discard_frame(root.base);
         self.action = None;
         self.operation = None;
@@ -1153,10 +1213,11 @@ impl<T: Value> Operation<'_, T> {
                     tests::observe_execution_compare_input(left_unit);
                     #[cfg(test)]
                     let right_unit = self.right.units;
+                    // Compare follows the upgrade that stored the candidate.
                     let right = self
                         .candidate
                         .as_ref()
-                        .expect("admitted candidate")
+                        .ok_or(HtmlValuePoolError::NotReady)?
                         .read(&mut self.right)?;
                     #[cfg(test)]
                     {
