@@ -179,3 +179,139 @@ fn leaf_first_template_contents_work_is_linear() {
 fn root_first_template_contents_work_is_linear() {
     assert_linear("root-first", SIZES.map(|n| template_chain(n, false)));
 }
+
+/// Depth, cycle and limit decisions against a model that recomputes every depth
+/// from the parent links, over many attachment orders and every refusal.
+#[test]
+fn random_attachment_orders_agree_with_recomputed_depths() {
+    const NODES: usize = 24;
+    const LIMIT: usize = 6;
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut next = move |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        usize::try_from(state % u64::try_from(bound).unwrap()).unwrap()
+    };
+    let (mut cycles, mut overs, mut accepted) = (0, 0, 0);
+    for _ in 0..40 {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(64, 512, 0, 1000, LIMIT, 0, 0, 1 << 20),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let nodes: Vec<_> = (0..NODES)
+            .map(|_| element(&mut builder, &document, "div"))
+            .collect();
+        let mut parent_of: Vec<Option<usize>> = vec![None; NODES];
+        let mut complete = [false; NODES];
+        let depth_of = |parent_of: &[Option<usize>], mut at: usize| {
+            let mut depth = 0;
+            while let Some(up) = parent_of[at] {
+                depth += 1;
+                at = up;
+            }
+            depth
+        };
+        for _ in 0..400 {
+            let parent = next(NODES);
+            // One edge, or several children at once, among those without a parent.
+            let several = next(3) == 0;
+            let mut children: Vec<usize> = Vec::new();
+            for _ in 0..(if several { 1 + next(3) } else { 1 }) {
+                let child = next(NODES);
+                if parent_of[child].is_none() && !children.contains(&child) {
+                    children.push(child);
+                }
+            }
+            // A parent whose children are complete admits nothing more, and
+            // `establish_children` must name every child it already has.
+            let has_other_child = parent_of
+                .iter()
+                .enumerate()
+                .any(|(i, up)| *up == Some(parent) && !children.contains(&i));
+            if children.is_empty() || complete[parent] || (several && has_other_child) {
+                continue;
+            }
+            let before = builder.usage();
+            let mut trial = parent_of.clone();
+            for &child in &children {
+                trial[child] = Some(parent);
+            }
+            // The edges close a cycle when the walk up from `parent` ends in a child.
+            let mut at = parent;
+            let mut cycle = children.contains(&at);
+            for _ in 0..NODES {
+                match trial[at] {
+                    Some(up) if !cycle => {
+                        at = up;
+                        cycle |= children.contains(&at);
+                    }
+                    _ => break,
+                }
+            }
+            let tallest = if cycle {
+                usize::MAX
+            } else {
+                (0..NODES).map(|i| depth_of(&trial, i)).max().unwrap()
+            };
+            let result = if several {
+                let handles: Vec<_> = children.iter().map(|&c| nodes[c].clone()).collect();
+                builder.establish_children(&nodes[parent], &handles)
+            } else {
+                builder.establish_parent(&nodes[children[0]], &nodes[parent])
+            };
+            let over = !cycle && tallest > LIMIT;
+            match result {
+                Ok(()) => {
+                    assert!(!cycle && !over, "accepted a refused edge");
+                    accepted += 1;
+                    parent_of = trial;
+                    complete[parent] |= several;
+                    assert_eq!(builder.usage().depth(), tallest.max(before.depth()));
+                }
+                Err(error) => {
+                    cycles += usize::from(cycle);
+                    overs += usize::from(over);
+                    assert!(
+                        cycle || over,
+                        "refused an admissible edge with {error:?}: {children:?} -> {parent}"
+                    );
+                    assert!(
+                        matches!(
+                            error,
+                            HtmlCaptureError::Cycle
+                                | HtmlCaptureError::LimitExceeded {
+                                    resource: HtmlCaptureResource::Depth,
+                                    ..
+                                }
+                        ),
+                        "{error:?}"
+                    );
+                    if !cycle {
+                        assert!(
+                            matches!(error, HtmlCaptureError::LimitExceeded { .. }),
+                            "{error:?}"
+                        );
+                    }
+                    assert_eq!(builder.usage(), before, "a refused edge changed usage");
+                }
+            }
+        }
+        let capture = builder.finish().unwrap();
+        assert_eq!(
+            capture.usage().depth(),
+            (0..NODES).map(|i| depth_of(&parent_of, i)).max().unwrap()
+        );
+    }
+    assert!(
+        cycles > 20 && overs > 20 && accepted > 200,
+        "the model must exercise cycles ({cycles}), limits ({overs}) and acceptances ({accepted})"
+    );
+}

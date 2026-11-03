@@ -1483,9 +1483,8 @@ the supplied builder's existing `HtmlCaptureLimits` remain the sole capture
 logical-allocation/relationship/depth limits. Work is a conservative upper
 bound admitted before each source-node, attribute/unit, relationship and
 capture-builder operation, with a cancellation check before and after each
-operation. Full-forest depth passes in `establish_children` are included using
-the existing builder subject/relationship counts, rather than hidden as one
-visit. All adapter and capture scratch reservations are finite and fallible;
+operation. The depth bookkeeping of `establish_children` is charged per record
+visited, rather than hidden as one visit. All adapter and capture scratch reservations are finite and fallible;
 scratch-entry admission precedes them. This is the capture phase's existing
 logical capacity model, not a parser-style claim about allocator metadata or
 physical RSS. Query-session accounting begins only after a successful capture
@@ -1501,12 +1500,21 @@ as `DuplicateNodeFacts` at its first repetition, in fact order, after the
 foreign-result check of the same fact. Retained arrays and indexes are charged
 for moving their existing entries only when growth actually moves them, so those
 charges sum to a constant number of credits per entry. Establishing a container's
-children or attaching template contents revises only the depths of the subtrees
-it attaches, and charges for them. The new edge's own depth, the parent's depth
-plus one, is checked against the limit first. A cycle is the parent being found
-at or below an attached child, reported at the first such record the
-breadth-first revision reaches (before that record's depth is checked against
-the limit). The one
+children or attaching template contents links each attached root below the root
+of the parent's component and charges the records visited finding it, so the
+cost of an edge does not depend on the order in which a producer attaches edges
+or on the size of the subtree below the attached child. The builder keeps each
+owning edge's depth as a weighted union-find (path halving, amortized logarithmic
+per edge) and the greatest depth below each component root; no record's depth
+is materialized or revised. An edge is refused as a cycle exactly when the root of
+the parent's component is an attached child, and as over the depth limit exactly
+when the parent's depth plus one plus the tallest attached subtree exceeds it;
+both are decided from those roots and heights. Only a refusal walks the attached
+subtrees breadth first, charged per record, to report the failure reached first:
+the new edge's own depth, the parent's depth plus one, is checked against the
+limit first, and a cycle is the parent being found at or below an attached child,
+reported at the first such record the walk reaches (before that record's depth is
+checked against the limit). The one
 remaining whole-capture pass is `finish`, which runs once. No
 `HtmlConstructionCaptureAdapter` charge scales with the number of other nodes,
 so a work allowance sized as a fixed amount per node, attribute, name or value
@@ -1517,8 +1525,8 @@ ordinary storage mode.
 
 Scratch entries are counted per live logical entry: one per supplied fact and
 one per mapped node while the import runs, plus the traversal worklist and, for
-one container at a time, its child lists, duplicate-detection set and
-revised-depth list. All of these are bounded by a constant number of entries per
+one container at a time, its child lists and duplicate-detection set (and, only
+while a refusal is named, the list of records its walk visits). All of these are bounded by a constant number of entries per
 node: a fragment of `n` childless siblings peaks at `8n + O(1)` scratch entries,
 measured. The fact index is released when the import ends, whatever the outcome.
 The node index is released on refusal; after success it is moved, not copied,

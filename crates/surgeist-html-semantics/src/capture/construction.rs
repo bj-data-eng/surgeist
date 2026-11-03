@@ -154,7 +154,8 @@ impl HtmlConstructionCaptureFacts {
 /// Importing through the adapter is linear in the nodes and facts: node and fact
 /// lookups are indexed and charged one work credit each, array and index growth
 /// is charged when it moves entries, and establishing a container's children or
-/// attaching template contents revises only the subtrees it attaches. Each
+/// attaching template contents links each attached root, charging the records
+/// visited, whatever order the edges arrive in. Each
 /// supplied fact and each mapped node holds one scratch entry for the whole
 /// import, in addition to the worklist and one container's temporary lists, so
 /// scratch is a constant number of entries per node. The node lookup of a
