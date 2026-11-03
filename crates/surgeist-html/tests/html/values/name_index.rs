@@ -277,16 +277,13 @@ fn a_vacancy_held_across_inserts_is_stale_only_when_its_own_slot_was_taken() {
     let mut storage = empty_storage(slots);
     let (first, second, other_slot) = {
         let table = HtmlNameIndexTable::new(&mut index, &mut storage).unwrap();
-        let mut vacancies = [2_u64, 2, 6].map(|hash| {
+        let [first, second, other_slot] = [2_u64, 2, 6].map(|hash| {
             let mut probe = table.probe(hash);
             let Ok(Some(HtmlNameIndexStep::Vacant(vacancy))) = table.advance(&mut probe) else {
                 panic!("an empty table is vacant at once");
             };
             vacancy
         });
-        let other_slot = vacancies.pop().unwrap();
-        let second = vacancies.pop().unwrap();
-        let first = vacancies.pop().unwrap();
         (first, second, other_slot)
     };
     let mut table = HtmlNameIndexTable::new(&mut index, &mut storage).unwrap();
