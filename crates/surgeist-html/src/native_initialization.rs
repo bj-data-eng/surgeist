@@ -206,8 +206,8 @@ impl<R> HtmlCommonState<R> {
 }
 
 /// HTML877d #custom-element-reactions gives all elements an initially empty
-/// per-element reaction queue; #activation gives each element an initially
-/// unset click-in-progress flag. This is not an agent queue or activation API.
+/// per-element reaction queue. Each element also starts with an unset click-in-progress flag,
+/// which the retained captures do not define. This is not an agent queue or activation API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlClosedElementState {
     closed: (),
@@ -223,9 +223,9 @@ impl HtmlClosedElementState {
     }
 }
 
-/// HTML-only current common state from #previously-focused-element,
-/// #attached-internals and #the-popover-attribute. Previous focus retains its
-/// actual nullable reference; internals and popover fields remain closed.
+/// HTML-only current common state from #previously-focused-element, #attached-internals and the
+/// popover attribute, whose defining section the retained captures do not include. Previous focus
+/// retains its actual nullable reference; internals and popover fields remain closed.
 /// Popover runtime visibility is distinct from HtmlPopoverState's attribute rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCommonHtmlState<R> {
