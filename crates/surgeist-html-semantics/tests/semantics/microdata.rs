@@ -782,6 +782,34 @@ fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
     }
 }
 #[test]
+fn author_itemref_checks_scale_with_the_tree_not_tokens_times_tree() {
+    // The referrer lists `count` itemref tokens, each naming a distinct
+    // element of a tree whose size is proportional to `count`, in the reverse
+    // of tree order. Resolving each token by its own scan of the tree reads
+    // about count * count / 2 elements, so doubling the tokens grows the work
+    // by about 4; one pass over the IDs and a search per token grows it by
+    // about 2.3 (a logarithmic search factor). The bound is a growth
+    // property, not a pinned cost.
+    let work = |count: usize| {
+        let doc = flat_property_document(count);
+        let r = run(
+            &doc.capture,
+            &context(&doc.capture),
+            &doc.referrer,
+            HtmlSemanticQuery::MicrodataAuthor,
+        );
+        // Every token names an element of the tree: HTML §5.2 requires each
+        // itemref token to match the ID of an element in the same tree.
+        assert_eq!(author(&r).references(), &HtmlMicrodataCondition::Satisfied);
+        r.usage().work() as f64
+    };
+    let growth = work(128) / work(64);
+    assert!(
+        growth < 2.75,
+        "author work grew by {growth:.2} when the itemref tokens doubled"
+    );
+}
+#[test]
 fn item_graph_cycle_is_distinct_from_crawl_revisit() {
     let (mut b, d) = builder();
     let a = el(
