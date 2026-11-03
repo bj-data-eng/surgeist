@@ -562,7 +562,7 @@ impl PayloadStorage {
     /// Checks that `row` is the kind of row `prepared` admitted and that
     /// everything the append writes was admitted with it, and returns the
     /// counts the append leaves. Writes nothing.
-    pub(super) fn admit_row(
+    fn admit_row(
         &self,
         prepared: &PreparedSlot,
         row: &RetainedPayload,
@@ -615,7 +615,7 @@ impl PayloadStorage {
     /// The entries admitted for its lists stay outstanding in
     /// `prepared_entries`. A refusal is an inconsistency of the registry, which
     /// the caller reports as the registry row.
-    pub(super) fn retain_refused(&mut self, row: RetainedPayload) {
+    fn retain_refused(&mut self, row: RetainedPayload) {
         if self.values.len() < self.values.capacity() {
             self.prepared_entries = self.prepared_entries.saturating_sub(1);
             self.values.push(row);
@@ -669,7 +669,7 @@ impl PayloadStorage {
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
     #[cfg(test)]
-    pub(super) fn assert_joins_match_registry(&self) {
+    fn assert_joins_match_registry(&self) {
         let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
         let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();
         for (slot, row) in self.values.iter().enumerate() {
@@ -724,7 +724,7 @@ impl PayloadStorage {
         self.audited_rows = self.values.len();
         Ok(())
     }
-    pub(super) fn audit_aliases(
+    fn audit_aliases(
         &self,
         records: ConstructionView<'_>,
         control: &mut ParseControl,

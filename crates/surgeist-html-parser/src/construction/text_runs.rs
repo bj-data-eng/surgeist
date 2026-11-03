@@ -21,7 +21,7 @@ pub(crate) struct TextRun {
 /// until collection disposal; no mutable vector escapes.
 pub(crate) struct BodyTextRuns {
     pub(super) entries: Option<OwnedVec<Option<TextRun>>>,
-    pub(super) next: usize,
+    next: usize,
 }
 
 impl BodyTextRuns {
@@ -98,28 +98,25 @@ impl BodyTextRuns {
 }
 
 struct TextRunDraft {
-    pub(super) kind: BodyTextKind,
-    pub(super) value: Utf16Buffer,
-    pub(super) origins: OwnedVec<HtmlParseTextOrigin>,
+    kind: BodyTextKind,
+    value: Utf16Buffer,
+    origins: OwnedVec<HtmlParseTextOrigin>,
 }
 
 impl TextRunDraft {
-    pub(super) fn new(
-        kind: BodyTextKind,
-        control: &mut ParseControl,
-    ) -> Result<Self, SessionError> {
+    fn new(kind: BodyTextKind, control: &mut ParseControl) -> Result<Self, SessionError> {
         Ok(Self {
             kind,
             value: Utf16Buffer::new(control)?,
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
         })
     }
-    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
+    fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
         self.value.release(control)?;
         self.origins.release(control)?;
         Ok(())
     }
-    pub(super) fn freeze(self, control: &mut ParseControl) -> Result<TextRun, SessionError> {
+    fn freeze(self, control: &mut ParseControl) -> Result<TextRun, SessionError> {
         let Self {
             kind,
             value,

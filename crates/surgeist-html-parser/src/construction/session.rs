@@ -303,7 +303,7 @@ impl ParserArenaSession {
         self.qualify_intrinsic_mutation(control, node, capability)?;
         self.active_mut()?.remove(control, node)
     }
-    pub(super) fn qualify_intrinsic_mutation(
+    fn qualify_intrinsic_mutation(
         &self,
         c: &mut ParseControl,
         node: &ParserNode,

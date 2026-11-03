@@ -39,7 +39,7 @@ pub(super) struct FormEffects {
 }
 
 impl SessionStorage {
-    pub(super) fn nearest_form(
+    fn nearest_form(
         &self,
         control: &mut ParseControl,
         node: usize,
@@ -213,17 +213,13 @@ impl SessionStorage {
         Ok(None)
     }
 
-    pub(super) fn has_id(
-        &self,
-        control: &mut ParseControl,
-        node: usize,
-    ) -> Result<bool, SessionError> {
+    fn has_id(&self, control: &mut ParseControl, node: usize) -> Result<bool, SessionError> {
         let id = self.form_attribute(control, node, "id")?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(id.is_some_and(|id| !id.is_empty()))
     }
 
-    pub(super) fn first_id_form(
+    fn first_id_form(
         &self,
         control: &mut ParseControl,
         node: usize,

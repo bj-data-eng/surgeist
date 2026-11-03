@@ -6,10 +6,10 @@ use super::*;
 /// Only this arena can issue it; every replay copies into independent tickets.
 pub(crate) struct FormattingCreation {
     pub(super) token: Option<Tag>,
-    pub(super) source: crate::HtmlSourceRange,
-    pub(super) control: ControlIdentity,
-    pub(super) arena: HtmlBuilderNode,
-    pub(super) cause: Option<provenance::ConstructionCauseRef>,
+    source: crate::HtmlSourceRange,
+    control: ControlIdentity,
+    arena: HtmlBuilderNode,
+    cause: Option<provenance::ConstructionCauseRef>,
 }
 
 impl FormattingCreation {

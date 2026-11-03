@@ -150,7 +150,7 @@ impl SessionStorage {
         }
         Err(SessionError::AttributeStorageUnavailable)
     }
-    pub(super) fn install_sanitized_input_value(
+    fn install_sanitized_input_value(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -448,7 +448,7 @@ impl SessionStorage {
         }
         Ok(())
     }
-    pub(super) fn append_input_value_from_current(
+    fn append_input_value_from_current(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -514,7 +514,7 @@ impl SessionStorage {
         *destination = state;
         Ok(position)
     }
-    pub(super) fn writeback_input_value(
+    fn writeback_input_value(
         &mut self,
         control: &mut ParseControl,
         node: usize,

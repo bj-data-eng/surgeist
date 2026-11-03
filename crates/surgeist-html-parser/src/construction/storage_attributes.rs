@@ -9,7 +9,7 @@ pub(super) enum AttributeMergeName {
 }
 
 impl AttributeMergeName {
-    pub(super) fn local(self) -> &'static str {
+    fn local(self) -> &'static str {
         match self {
             Self::Html => "html",
             Self::Body => "body",

@@ -235,7 +235,7 @@ impl SessionStorage {
         self.require(control)?;
         self.node_owned(control, index)
     }
-    pub(super) fn node_owned(
+    fn node_owned(
         &self,
         control: &mut ParseControl,
         index: usize,
