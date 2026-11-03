@@ -262,3 +262,56 @@ fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_t
             .is_stopped()
     );
 }
+
+/// Answers every reservation and counts the reservations that changed the occurrence vector's
+/// capacity, found by its record size. A capacity change is exactly one reallocation request,
+/// because a vector that already has room is not asked to grow.
+#[derive(Default)]
+struct CapacityChanges {
+    capacity: std::collections::BTreeMap<usize, usize>,
+    changes: std::collections::BTreeMap<usize, usize>,
+}
+impl HtmlRelMeter for CapacityChanges {
+    type Error = std::convert::Infallible;
+    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        guard.try_reserve().unwrap();
+        let known = self.capacity.entry(guard.record_size()).or_insert(0);
+        if *known != guard.capacity() {
+            *known = guard.capacity();
+            *self.changes.entry(guard.record_size()).or_insert(0) += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Appending n occurrences one at a time requests a logarithmic number of reallocations in n. The
+/// oracle is the doubling bound: from any positive capacity, `ceil(log2 n)` doublings reach `n`,
+/// so `floor(log2 n) + 2` changes allow the first allocation and one more for rounding. The
+/// record-sized report data takes exactly one record, so its single reservation is one change.
+#[test]
+fn reallocation_requests_for_n_occurrences_grow_at_most_logarithmically() {
+    for count in [64_usize, 1_024] {
+        let words: Vec<String> = (0..count).map(|i| format!("x{i:06}")).collect();
+        let raw = DocumentString::from(words.join(" ").as_str());
+        let mut owner = HtmlRelInterpretation::new(
+            RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        );
+        let mut meter = CapacityChanges::default();
+        owner.interpret(&mut meter).unwrap();
+        assert_eq!(owner.occurrences().unwrap().len(), count);
+        let allowed = count.ilog2() as usize + 2;
+        let mut by_size: Vec<_> = meter.changes.into_iter().collect();
+        by_size.sort();
+        assert_eq!(by_size.len(), 2, "occurrence and data vectors: {by_size:?}");
+        for (size, changes) in by_size {
+            assert!(
+                changes <= allowed,
+                "{count} occurrences changed the {size}-byte vector's capacity {changes} times, \
+                 more than {allowed}"
+            );
+        }
+    }
+}

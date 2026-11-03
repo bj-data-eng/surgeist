@@ -1015,11 +1015,12 @@ impl HtmlRelMeter for RelControl<'_, '_> {
         self.session.charge(n)
     }
     fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        let target = guard.target_capacity();
         self.session.reserve_record_capacity(
             guard.len(),
             guard.capacity(),
             guard.record_size(),
-            1,
+            target.saturating_sub(guard.len()),
             HtmlSemanticResource::NestedOutputRecords,
             || {
                 guard.try_reserve().map_err(|_| ())?;

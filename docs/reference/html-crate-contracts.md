@@ -717,6 +717,16 @@ the editor's actions report actual reservation and uniqueness work. They do not
 need a second opaque attribute-vector/wrapper ticket or another ledger. Only
 the private name-decision plan requires the opaque `AttributePlan` role.
 
+A plan reservation plans one candidate's decision at a time. Its description's minimum
+capacity is the least capacity that holds that decision. `perform` reserves exactly
+the minimum; the consumer may admit a larger, amortizing capacity, which cannot be
+smaller and is requested with the candidate action's `perform_with_capacity`, so planning
+`n` candidates requests `O(log n)` reallocations. A smaller capacity, or use on any other
+candidate action, latches `CapacityMismatch` before a provider call. The parser
+doubles the plan, never beyond the edit's candidate count; the capacity depends on the
+plan and the candidate count only, never on a limit, and is admitted before it is
+allocated.
+
 Allocation reports never issue construction node handles. A pending creation
 can allocate its child bank before committing a record; aborting it leaves that
 record position available for a later creation. Issuing a handle from the bank's
@@ -1268,11 +1278,23 @@ The small rel meter retains its work callback. Its reservation callback receives
 `HtmlRelReservation<'_>`, an opaque borrowing guard over the owner's actual
 occurrence or single data-record vector, instead of `&mut Vec<T>`. Microdata
 uses a concrete `HtmlMicrodataTokenReservation<'_>` over its actual token vector.
-Each guard describes only the current fixed request for one additional record:
-actual length, capacity and record byte size, plus one checked reservation
-operation. That operation reserves exactly the pending required length using
-`try_reserve_exact`, at most once; when existing capacity suffices, the same
-operation completes without allocation after the existing one-unit admission.
+Each guard describes only the current fixed request for room for one additional
+record: actual length, capacity and record byte size, the capacity the reservation
+will reach (`target_capacity`) and one checked reservation operation. When one more
+record fits, nothing grows. When a vector that takes records one at a time is full
+(the microdata tokens and rel occurrences), the target is the greater of one more
+record and double its capacity (at least 4), so `n` records request `O(log n)`
+reallocations. The target depends only on the vector, never on a limit, so the
+allocation path and the usage it needs are fixed by the input: a consumer that
+admits the target against a limit refuses the reservation when the limit cannot
+hold it, and a query that grows only such lists succeeds under a limit exactly when
+the limit is at least that usage. The report-data vector of a rel interpretation takes one record and is
+reserved exactly. The meter admits the target capacity before the operation
+allocates it and charges the capacity the vector actually reaches. The operation
+uses `try_reserve_exact` at most once for the target; only if the allocator refuses
+a target larger than the one record that is needed does it request that one record
+instead. It runs at most once, and when existing capacity suffices it completes
+without allocation after the existing one-unit admission.
 The guard exposes neither record mutation nor
 a vector/slice escape, and accepts no arbitrary additional count. Dropping an
 unexecuted guard performs no reservation; successful callback return without a

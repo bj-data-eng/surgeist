@@ -337,7 +337,8 @@ enum ReservationStorage<'a> {
     Occurrences(&'a mut Vec<HtmlRelOccurrence>),
     Data(&'a mut Vec<RelData>),
 }
-/// A fixed one-record reservation against the actual private output allocation.
+/// A one-record reservation against the actual private output allocation. A full allocation may
+/// grow by more than one record; the meter admits and charges the capacity it reaches.
 #[derive(Debug)]
 pub struct HtmlRelReservation<'a> {
     storage: ReservationStorage<'a>,
@@ -370,10 +371,28 @@ impl HtmlRelReservation<'_> {
             ReservationStorage::Data(_) => std::mem::size_of::<RelData>(),
         }
     }
-    /// Reserves room for exactly one more record, growing the allocation only when it is full. A
-    /// meter must call this once during `HtmlRelMeter::reserve` after it admits the cost. A second
-    /// call fails with the reservation-already-attempted cause, and a failed allocation or an
-    /// unrepresentable size fails with its own cause.
+    /// The number of records the backing allocation can hold once this guard's reservation has run.
+    /// The current capacity when one more record fits. For the occurrences, which grow one at a
+    /// time, a full allocation grows to the greater of one more record and double its capacity (at
+    /// least 4), so that `n` occurrences request `O(log n)` reallocations. The interpretation's
+    /// single report-data record is always reserved exactly. It depends only on the allocation,
+    /// never on a limit: a meter that charges for the growth admits this capacity before calling
+    /// [`try_reserve`](Self::try_reserve), and refuses the reservation when it cannot.
+    pub fn target_capacity(&self) -> usize {
+        match self.storage {
+            ReservationStorage::Occurrences(_) => {
+                crate::amortized::amortized_capacity(self.len(), self.capacity())
+            }
+            // One report-data record per interpretation: spare room would never be used.
+            ReservationStorage::Data(_) => self.len().saturating_add(1).max(self.capacity()),
+        }
+    }
+    /// Reserves room for one more record, growing the allocation only when it is full, to
+    /// [`target_capacity`](Self::target_capacity). A meter must call this once during
+    /// `HtmlRelMeter::reserve` after it admits the cost. A second call fails with the
+    /// reservation-already-attempted cause, and a failed allocation or an unrepresentable size
+    /// fails with its own cause. When the allocator refuses a larger capacity the guard requests
+    /// the one record it needs instead; the meter charges the capacity it then finds.
     pub fn try_reserve(&mut self) -> Result<(), HtmlRelInterpretationError> {
         if self.attempted {
             return Err(HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted.error());
@@ -383,13 +402,11 @@ impl HtmlRelReservation<'_> {
             .len()
             .checked_add(1)
             .ok_or(HtmlRelInterpretationErrorKind::RepresentationExhausted)?;
-        if needed > self.capacity() {
-            match &mut self.storage {
-                ReservationStorage::Occurrences(v) => v.try_reserve_exact(1),
-                ReservationStorage::Data(v) => v.try_reserve_exact(1),
-            }
-            .map_err(|_| HtmlRelInterpretationErrorKind::AllocationFailed)?;
+        match &mut self.storage {
+            ReservationStorage::Occurrences(v) => crate::amortized::reserve_amortized(v),
+            ReservationStorage::Data(v) => crate::amortized::reserve_to(v, needed),
         }
+        .map_err(|_| HtmlRelInterpretationErrorKind::AllocationFailed)?;
         self.completed = true;
         Ok(())
     }
@@ -400,8 +417,9 @@ pub trait HtmlRelMeter {
     type Error;
     /// Charges `units` of interpretation work before it is done. An error stops the interpretation.
     fn work(&mut self, units: usize) -> Result<(), Self::Error>;
-    /// Admits and performs one record's storage growth by calling `HtmlRelReservation::try_reserve`
-    /// exactly once. Returning `Ok` without reserving is a protocol fault, reported as the
+    /// Admits and performs room for one more record by calling `HtmlRelReservation::try_reserve`
+    /// exactly once, after it admits the capacity from `HtmlRelReservation::target_capacity`.
+    /// Returning `Ok` without reserving is a protocol fault, reported as the
     /// reservation-not-performed cause.
     fn reserve(&mut self, reservation: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error>;
 }
