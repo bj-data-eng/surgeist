@@ -2546,4 +2546,51 @@ mod tests {
         }
         assert_eq!(storage.usage().attributes(), 1);
     }
+
+    /// Planning n candidates one at a time requests a logarithmic number of plan reallocations in
+    /// n. A reservation that changes the plan's capacity is exactly one reallocation request, and
+    /// each is visible in the allocation the observation reports. The oracle is the doubling
+    /// bound: from any positive capacity, `ceil(log2 n)` doublings reach `n`, so
+    /// `floor(log2 n) + 2` changes allow the first allocation and one more for rounding.
+    #[test]
+    fn plan_reallocation_requests_for_n_candidates_grow_at_most_logarithmically() {
+        for count in [16_usize, 128, 512] {
+            let (storage, target) = make_storage(Vec::new());
+            let names: Vec<_> = (0..count)
+                .map(|i| DocumentString::from(format!("a{i}").as_str()))
+                .collect();
+            let mut edit = make_edit(
+                storage,
+                target,
+                HtmlConstructionAttributeEditMode::NamedMerge {
+                    candidate_count: count,
+                },
+            );
+            let mut capacity = 0;
+            let mut changes = 0;
+            for (index, name) in names.iter().enumerate() {
+                let mut candidate = Some(edit.candidate(index, name).unwrap());
+                while let Some(action) = candidate.as_mut().unwrap().next_action().unwrap() {
+                    let prior = action.description().prior_index();
+                    let observation = action.perform(prior.map(|prior| &names[prior])).unwrap();
+                    if let Some(allocation) = observation.allocation()
+                        && allocation.capacity() != capacity
+                    {
+                        capacity = allocation.capacity();
+                        changes += 1;
+                    }
+                    observation.accept();
+                }
+                HtmlConstructionAttributeCandidate::try_finish(&mut candidate).unwrap();
+            }
+            assert_eq!(edit.decisions.len(), count);
+            let allowed = count.ilog2() as usize + 2;
+            assert!(
+                changes <= allowed,
+                "{count} candidates changed the plan capacity {changes} times, more than {allowed}"
+            );
+            let (_, retirement) = edit.abort().into_parts();
+            assert_eq!(retire(retirement).0, count);
+        }
+    }
 }

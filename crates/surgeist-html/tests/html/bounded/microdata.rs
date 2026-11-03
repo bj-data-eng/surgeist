@@ -326,3 +326,52 @@ fn charged_work_stays_within_a_constant_of_total_length_for_deep_prefix_chains()
         "charged {work} units for {weight} units of length and tokens"
     );
 }
+
+/// Answers every reservation and counts the reservations that changed the token vector's
+/// capacity. A capacity change is exactly one reallocation request, because a vector that already
+/// has room is not asked to grow.
+#[derive(Default)]
+struct CapacityChanges {
+    capacity: usize,
+    changes: usize,
+}
+impl HtmlMicrodataTokenMeter for CapacityChanges {
+    type Error = std::convert::Infallible;
+    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(
+        &mut self,
+        guard: &mut HtmlMicrodataTokenReservation<'_>,
+    ) -> Result<(), Self::Error> {
+        guard.try_reserve().unwrap();
+        if guard.capacity() != self.capacity {
+            self.capacity = guard.capacity();
+            self.changes += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Appending n tokens one at a time requests a logarithmic number of reallocations in n. The
+/// oracle is the doubling bound: from any positive capacity, `ceil(log2 n)` doublings reach `n`,
+/// so `floor(log2 n) + 2` changes allow the first allocation and one more for rounding.
+#[test]
+fn reallocation_requests_for_n_tokens_grow_at_most_logarithmically() {
+    for count in [64_usize, 1_024, 8_192] {
+        let words: Vec<String> = (0..count).map(|i| format!("t{i:06}")).collect();
+        let text = DocumentString::from(words.join(" ").as_str());
+        let mut owner = Some(Owner::new(HtmlMicrodataTokenKind::ItemRef, Some(&text)));
+        let mut meter = CapacityChanges::default();
+        while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
+            action.advance(&mut meter).unwrap();
+        }
+        assert_eq!(Owner::try_finish(&mut owner).unwrap().tokens().len(), count);
+        let allowed = count.ilog2() as usize + 2;
+        assert!(
+            meter.changes <= allowed,
+            "{count} tokens changed the capacity {} times, more than {allowed}",
+            meter.changes
+        );
+    }
+}
