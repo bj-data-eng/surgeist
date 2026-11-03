@@ -168,7 +168,23 @@ use surgeist_html::bounded::{
 ///   charges 1 work, adds the actual capacity growth to the usage of its
 ///   resource and `growth * size_of::<element>()` to allocated bytes. Output and
 ///   nested records use exact reservation, so reserving one record at a time
-///   grows capacity one record at a time.
+///   grows capacity one record at a time. The two vectors that HTML fills one
+///   record at a time under this session's admission, the microdata token list
+///   and the link-relationship occurrences, instead grow to the greater of one
+///   more record and double their capacity (at least 4), so that `n` records
+///   request `O(log n)` reallocations. That target depends only on the vector,
+///   never on a limit. It is admitted at the capacity it reaches, before it is
+///   allocated, and charged as above; a limit that cannot hold it refuses the
+///   reservation. Only an allocator refusal falls back to the one record needed.
+///   The unused capacity of such a vector counts against the limits while the
+///   vector is retained, as any capacity does. These lists' own usage is
+///   therefore fixed by the input and is up to about twice the exact growth for
+///   each live list, plus the minimum of 4: a one-token list needs 4 records.
+///   A query whose other reservations are likewise independent of the limits
+///   succeeds under a limit exactly when the limit is at least its peak usage;
+///   this is established for the queries that grow only these lists, and is not
+///   claimed for others. A query that passed a nested-record or allocated-byte
+///   limit under exact growth can now be refused by up to that spare capacity.
 ///
 /// Scratch records count the live capacity of any transient working vector
 /// reserved for a query, whatever it holds, and are released when that query

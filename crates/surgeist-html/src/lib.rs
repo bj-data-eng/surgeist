@@ -87,6 +87,7 @@
 #![deny(unfulfilled_lint_expectations)]
 #![warn(missing_docs)]
 
+mod amortized;
 mod attributes;
 mod autofocus;
 /// Controlled operations over HTML-owned immutable values.

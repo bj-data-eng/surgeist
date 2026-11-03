@@ -760,10 +760,33 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     }
     /// Performs the candidate action. Pass the admitted name of the earlier candidate when
     /// `description().prior_index()` is `Some`; the name must be the same shared allocation
-    /// planned earlier, or the attribute-name-mismatch error is returned.
+    /// planned earlier, or the attribute-name-mismatch error is returned. A plan reservation
+    /// reserves exactly the described minimum capacity.
     pub fn perform(
         self,
         prior: Option<&'n DocumentString>,
+    ) -> Result<HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, HtmlConstructionError>
+    {
+        self.perform_reserving(prior, None)
+    }
+    /// Performs a plan reservation with the consumer's admitted `capacity`, so that planning `n`
+    /// candidates one at a time can request `O(log n)` reallocations by growing the plan
+    /// geometrically, up to the edit's candidate count. The capacity cannot be below the described
+    /// minimum. Any other action, or a smaller capacity, latches the capacity-mismatch error
+    /// before any provider call. When the allocator refuses the larger capacity the reservation
+    /// requests the minimum instead, and the observation reports the capacity actually reached.
+    pub fn perform_with_capacity(
+        self,
+        prior: Option<&'n DocumentString>,
+        capacity: usize,
+    ) -> Result<HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, HtmlConstructionError>
+    {
+        self.perform_reserving(prior, Some(capacity))
+    }
+    fn perform_reserving(
+        self,
+        prior: Option<&'n DocumentString>,
+        reserved: Option<usize>,
     ) -> Result<HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, HtmlConstructionError>
     {
         let c = self.candidate;
@@ -774,6 +797,11 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
         }
         let mut allocation = false;
         let result = (|| -> Result<_, HtmlConstructionError> {
+            if reserved.is_some_and(|capacity| {
+                !matches!(c.phase, CandidatePhase::Reserve) || capacity <= c.index
+            }) {
+                return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+            }
             Ok(match c.phase {
                 CandidatePhase::Target(index) => {
                     if index == c.edit.attributes().len() {
@@ -851,12 +879,13 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                             .temporary_generation
                             .checked_add(1)
                             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-                    let bytes = (c.index + 1)
+                    let minimum = c.index + 1;
+                    let target = reserved.unwrap_or(minimum);
+                    target
                         .checked_mul(size_of::<NameDecision>())
                         .filter(|v| *v <= isize::MAX as usize)
                         .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-                    let _ = bytes;
-                    let result = c.edit.decisions.try_reserve_exact(1);
+                    let result = crate::amortized::reserve_to(&mut c.edit.decisions, target);
                     let snapshot = c.edit.plan.as_mut().expect("plan report");
                     snapshot.capacity = c.edit.decisions.capacity();
                     snapshot.payload_bytes = snapshot.capacity * size_of::<NameDecision>();
@@ -2548,10 +2577,11 @@ mod tests {
     }
 
     /// Planning n candidates one at a time requests a logarithmic number of plan reallocations in
-    /// n. A reservation that changes the plan's capacity is exactly one reallocation request, and
-    /// each is visible in the allocation the observation reports. The oracle is the doubling
-    /// bound: from any positive capacity, `ceil(log2 n)` doublings reach `n`, so
-    /// `floor(log2 n) + 2` changes allow the first allocation and one more for rounding.
+    /// n when the consumer requests a doubling capacity, up to the candidate count. A reservation
+    /// that changes the plan's capacity is exactly one reallocation request, and each is visible in
+    /// the allocation the observation reports. The oracle is the doubling bound: from any positive
+    /// capacity, `ceil(log2 n)` doublings reach `n`, so `floor(log2 n) + 2` changes allow the first
+    /// allocation and one more for rounding.
     #[test]
     fn plan_reallocation_requests_for_n_candidates_grow_at_most_logarithmically() {
         for count in [16_usize, 128, 512] {
@@ -2571,8 +2601,21 @@ mod tests {
             for (index, name) in names.iter().enumerate() {
                 let mut candidate = Some(edit.candidate(index, name).unwrap());
                 while let Some(action) = candidate.as_mut().unwrap().next_action().unwrap() {
-                    let prior = action.description().prior_index();
-                    let observation = action.perform(prior.map(|prior| &names[prior])).unwrap();
+                    let description = action.description();
+                    let prior = description.prior_index().map(|prior| &names[prior]);
+                    let doubled = match description {
+                        HtmlConstructionAttributeDescription::ReservePlan {
+                            allocation,
+                            minimum_capacity,
+                            ..
+                        } => Some(minimum_capacity.max(2 * allocation.capacity()).min(count)),
+                        _ => None,
+                    };
+                    let observation = match doubled {
+                        Some(doubled) => action.perform_with_capacity(prior, doubled),
+                        None => action.perform(prior),
+                    }
+                    .unwrap();
                     if let Some(allocation) = observation.allocation()
                         && allocation.capacity() != capacity
                     {
@@ -2592,5 +2635,64 @@ mod tests {
             let (_, retirement) = edit.abort().into_parts();
             assert_eq!(retire(retirement).0, count);
         }
+    }
+
+    /// The reservation's minimum is the least capacity that holds the candidate's decision; a
+    /// smaller request, or any request on another action, is refused before the plan is touched.
+    #[test]
+    fn plan_capacity_below_the_minimum_or_for_another_action_is_refused_before_any_reserve() {
+        let (storage, target) = make_storage(Vec::new());
+        let names = ["a", "b"].map(DocumentString::from);
+        let mut edit = make_edit(
+            storage,
+            target,
+            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 2 },
+        );
+        plan(&mut edit, &names[..1]);
+        let mut candidate = Some(edit.candidate(1, &names[1]).unwrap());
+        // The candidate's first action does not reserve, so a capacity is refused.
+        let action = candidate.as_mut().unwrap().next_action().unwrap().unwrap();
+        assert!(!matches!(
+            action.description(),
+            HtmlConstructionAttributeDescription::ReservePlan { .. }
+        ));
+        assert_eq!(
+            action.perform_with_capacity(None, 8).err().unwrap(),
+            HtmlConstructionErrorKind::CapacityMismatch.error()
+        );
+        drop(candidate);
+        let (_, retirement) = edit.abort().into_parts();
+        assert_eq!(retire(retirement).0, 1);
+
+        let (storage, target) = make_storage(Vec::new());
+        let mut edit = make_edit(
+            storage,
+            target,
+            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 2 },
+        );
+        plan(&mut edit, &names[..1]);
+        let mut candidate = Some(edit.candidate(1, &names[1]).unwrap());
+        // Step to the second candidate's reservation, which needs two slots.
+        let refused = loop {
+            let action = candidate.as_mut().unwrap().next_action().unwrap().unwrap();
+            let description = action.description();
+            let prior = description.prior_index().map(|prior| &names[prior]);
+            if matches!(
+                description,
+                HtmlConstructionAttributeDescription::ReservePlan {
+                    minimum_capacity: 2,
+                    ..
+                }
+            ) {
+                break action.perform_with_capacity(prior, 1).err().unwrap();
+            }
+            action.perform(prior).unwrap().accept();
+        };
+        assert_eq!(refused, HtmlConstructionErrorKind::CapacityMismatch.error());
+        drop(candidate);
+        // The refusal reserved nothing: the plan keeps its single slot.
+        assert_eq!(edit.decisions.capacity(), 1);
+        let (_, retirement) = edit.abort().into_parts();
+        assert_eq!(retire(retirement).0, 1);
     }
 }
