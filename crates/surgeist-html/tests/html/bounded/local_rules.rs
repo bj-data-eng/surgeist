@@ -11,6 +11,11 @@ use surgeist_html::bounded::{
         HtmlTemplateMarkerFirst as MarkerFirst, HtmlTemplateMarkerSiblings,
         HtmlTemplateMarkerTarget, template_marker_first,
     },
+    values::{
+        HtmlNameIndex as PiNameIndex, HtmlNameIndexHasher as PiNameHasher,
+        HtmlNameIndexLookup as PiLookup, HtmlNameIndexSlot as PiNameSlot,
+        HtmlNameIndexTable as PiNameTable,
+    },
 };
 use surgeist_html::values::{
     DocumentString, HtmlCustomElementNameError, HtmlValueInterpreter, Namespace, QualifiedName,
@@ -128,11 +133,25 @@ fn space_cursor_can_be_inspected_without_advancing_the_next_read() {
 type PseudoAttributePairs = Vec<(Vec<u16>, Vec<u16>)>;
 
 fn pseudo_attributes(raw: &str) -> (bool, PseudoAttributePairs) {
+    let (valid, pairs, _) = pseudo_attribute_requests(raw);
+    (valid, pairs)
+}
+
+/// Drives the cursor like a conforming consumer and also counts the requests it made.
+fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
     let units: Vec<_> = raw.encode_utf16().collect();
     let mut cursor = PiCursor::new(units.len());
     let mut current = (Vec::<u16>::new(), Vec::<u16>::new());
     let mut pairs = Vec::<(Vec<u16>, Vec<u16>)>::new();
+    let mut requests = 0;
+    // The consumer's index of committed names: a table at most half full, probed from a keyed hash.
+    let hasher = PiNameHasher::new();
+    let mut name_index = PiNameIndex::new(PiCursor::name_index_slots(units.len()));
+    let mut table: Vec<PiNameSlot> = (0..name_index.slots().get())
+        .map(|_| PiNameSlot::default())
+        .collect();
     while let Some(action) = cursor.action() {
+        requests += 1;
         let reply = match action {
             PiAction::Read(offset) => PiReply::Unit(units.get(offset).copied()),
             PiAction::Step => PiReply::Ack,
@@ -150,6 +169,22 @@ fn pseudo_attributes(raw: &str) -> (bool, PseudoAttributePairs) {
                 }
                 PiReply::Ack
             }
+            PiAction::FindName => PiReply::Pair(
+                match PiNameTable::new(&mut name_index, &mut table)
+                    .unwrap()
+                    .find_or_insert(
+                        hasher.hash(&current.0),
+                        pairs.len(),
+                        &mut (),
+                        |_| Ok::<_, std::convert::Infallible>(()),
+                        |_, pair| Ok(pairs[pair].0 == current.0),
+                    )
+                    .unwrap()
+                {
+                    PiLookup::Found(pair) => Some(pair),
+                    PiLookup::Inserted => None,
+                },
+            ),
             PiAction::NameLength(index) => PiReply::Length(pairs[index].0.len()),
             PiAction::NameUnit(name, offset) => PiReply::Unit(match name {
                 PiName::Current => current.0.get(offset).copied(),
@@ -170,7 +205,7 @@ fn pseudo_attributes(raw: &str) -> (bool, PseudoAttributePairs) {
             PiAction::Ready(valid) => {
                 cursor.reply(PiReply::Ack).unwrap();
                 assert_eq!(cursor.action(), None);
-                return (valid, pairs);
+                return (valid, pairs, requests);
             }
         };
         cursor.reply(reply).unwrap();
@@ -192,6 +227,77 @@ fn pseudo_attribute_grammar_decodes_references_and_rejects_duplicate_names_atomi
     assert_eq!(pseudo_attributes("name='a' name='b'"), (false, Vec::new()));
     assert_eq!(pseudo_attributes("name='unterminated"), (false, Vec::new()));
     assert_eq!(pseudo_attributes(""), (true, Vec::new()));
+}
+
+/// The parsing result is an error if two pseudo-attributes have the same name
+/// (references/xml-stylesheet-pseudo-attributes--REC-xml-stylesheet-20101028--a0e1a5198a21.md:168),
+/// so each new name needs a lookup among the committed names rather than a request pair per
+/// committed pair: the requests of a scan of distinct names must grow linearly with its size.
+#[test]
+fn pseudo_attribute_requests_grow_linearly_with_distinct_names() {
+    let requests: Vec<usize> = [250, 500, 1000, 2000]
+        .into_iter()
+        .map(|count| {
+            let raw: String = (0..count).map(|n| format!("n{n}='' ")).collect();
+            let (valid, pairs, requests) = pseudo_attribute_requests(&raw);
+            assert!(valid);
+            assert_eq!(pairs.len(), count);
+            requests
+        })
+        .collect();
+    for pair in requests.windows(2) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 22,
+            "doubling the pairs grew the requests from {} to {}: {requests:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+/// Two pseudo-attributes with the same name make the parsing result an error; names are exact XML
+/// Names, so case and every unit matter.
+#[test]
+fn pseudo_attribute_duplicates_are_exactly_the_repeated_names() {
+    let names = [
+        "a",
+        "A",
+        "b",
+        "ab",
+        "aB",
+        "a-b",
+        "\u{e9}",
+        "\u{c9}",
+        "x:y",
+        "\u{1F600}",
+    ];
+    let mut state = 0x853c_49e6_748f_ea9b_u64;
+    let mut next = move |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    for _ in 0..500 {
+        let chosen: Vec<&str> = (0..next(9)).map(|_| names[next(names.len())]).collect();
+        let raw = chosen
+            .iter()
+            .map(|name| format!("{name}='v'"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let distinct = chosen
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            == chosen.len();
+        let (valid, pairs) = pseudo_attributes(&raw);
+        assert_eq!(valid, distinct, "{raw}");
+        assert_eq!(
+            pairs.len(),
+            if distinct { chosen.len() } else { 0 },
+            "{raw}"
+        );
+    }
 }
 
 #[test]

@@ -167,6 +167,14 @@ machine-integer magnitude cap. Time and duration author values use millisecond
 precision, matching the strict author grammar. A global date/time retains its
 explicit local value and offset; it does not perform an implicit UTC conversion.
 
+Recovery durations let one unit repeat, so the ordinary operation adds each
+component's digits into per-place column sums (carries resolved once, when the
+value is read) instead of rebuilding the running decimal; its work is linear in
+the input however long the first number or fraction is. The controlled
+interpretation charges each duration recognition step `16 * units consumed + 256`
+(it previously charged the whole unread remainder), which is linear in total;
+its exact staged accumulation still charges each addition by the accumulated size.
+
 Temporal recovery returns separate parsed values where the source accepts a
 wider domain. Exact decimal seconds retain arbitrary admitted fractional
 precision; projection to millisecond author values fails when that value cannot
@@ -2914,7 +2922,12 @@ record the consumed boundary.
 `HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
 types for the distinct `link`, `a`, `area` and `form` roles. Its
 [local report](../../crates/surgeist-html/src/internal/elements/rel.rs) retains exact `rel`/`rev` fields, token occurrence
-ranges and duplicate relationships. It separates recognized keywords, role
+ranges and duplicate relationships. A token's `duplicate_of` names the first earlier
+token equal under ASCII case folding. Finding them heap-sorts the token occurrences
+in place by (folded content, position), marks the adjacent equal runs and restores
+the source order by the strictly increasing offsets; nothing is allocated, and each
+comparison is charged before it is made, so the work is O(token units * log tokens)
+instead of one comparison per pair of tokens. It separates recognized keywords, role
 applicability, actual relationship effects and author constraints. Token
 recognition does not establish supported browser capabilities or URL grammar.
 
@@ -3142,6 +3155,23 @@ work, scratch, nested output, cancellation, sticky failure and atomic publicatio
 The [captured tests](../../crates/surgeist-html-semantics/tests/semantics/elements/template_for.rs) cover literal names, first
 selection, partial coverage, sibling ranges and finite refusal boundaries.
 This query reports immutable facts; it does not execute patching or attachment.
+
+When a name is complete the pseudo-attribute cursor asks the consumer (`FindName`) for the
+committed pair with that name and verifies the one candidate unit by unit, so its requests
+grow with the pairs plus the name units, not with their product. Each consumer keeps the
+index in slot storage that it allocates and admits (`HtmlPiPseudoAttributeCursor::name_index_slots`
+sizes it for the data length), and HTML owns its rules in the generic `bounded::values` name
+index, which the types carry: a power-of-two slot count; opaque slots that a consumer cannot
+forge; an index with a unique identity that is not `Clone`, that guards the one empty storage
+it was first lent and that counts its entries against a capacity of at most half the slots;
+and probes and vacancies that only that index produces and accepts. The one way to write is the
+vacancy that a probe yields at the first empty slot of its sequence. The hash key is random for
+each scan, so no input can pick colliding names. The consumer charges the table, the hash of
+the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert` serve
+consumers that admit each probe as an action, and `find_or_insert` serves those that charge
+inside closures. A `None` answer to `FindName` is trusted, and the index is never consulted
+after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge totals vary
+from run to run.
 
 <a id="private-ordinary-templates"></a>
 

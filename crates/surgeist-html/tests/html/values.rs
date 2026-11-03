@@ -1,6 +1,7 @@
 mod borrowed_inputs;
 mod core;
 mod interpretation;
+mod name_index;
 mod newlines;
 mod numeric_retained_capacity;
 mod pool_protocol;
