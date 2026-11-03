@@ -3648,15 +3648,26 @@ assertEqual("vertical", capture({{ inlineSize: "24px", blockSize: "72px" }}, "ve
   width: {{ unit: "px", value: 72 }},
   height: {{ unit: "px", value: 24 }},
 }});
-assertEqual("physical wins", capture({{
-  width: "10px",
-  height: "11px",
-  inlineSize: "24px",
-  blockSize: "72px",
-}}, "vertical-rl"), {{
+assertEqual("horizontal distinct axes", capture({{ width: "10px", blockSize: "72px" }}, "horizontal-tb"), {{
   width: {{ unit: "px", value: 10 }},
-  height: {{ unit: "px", value: 11 }},
+  height: {{ unit: "px", value: 72 }},
 }});
+assertEqual("vertical distinct axes", capture({{ width: "10px", inlineSize: "24px" }}, "vertical-rl"), {{
+  width: {{ unit: "px", value: 10 }},
+  height: {{ unit: "px", value: 24 }},
+}});
+let conflict;
+try {{
+  capture({{
+    width: "10px",
+    height: "11px",
+    inlineSize: "24px",
+    blockSize: "72px",
+  }}, "vertical-rl");
+}} catch (error) {{ conflict = error.message; }}
+if (conflict !== 'Root context: ConflictingSizingDeclarations') {{
+  throw new Error(`mixed physical/logical sizing needs cascade authority, got ${{conflict}}`);
+}}
 "#
     );
     fs::write(&script_path, script).expect("script");

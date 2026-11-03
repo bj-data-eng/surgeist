@@ -566,3 +566,27 @@ source_kind = "authored"
 [records.expected]
 kind = "unsupported"
 reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/conflicting-inline-width.html"
+source_sha256 = "c34afa173c2c5562285b98bfd35fc1e1a37aba011b682a1d3587f643171e2225"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingSizingDeclarations"
+
+[[records]]
+source = "html/qualification/conflicting-vertical-height.html"
+source_sha256 = "5d27c3b88b02cf1bbdbca7050c0d7c945099b0fdb80cdda60f3861ae1a9890e1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingSizingDeclarations"
+
+[[records]]
+source = "html/qualification/unrepresented-second-gap.html"
+source_sha256 = "e335a8252c512a4dbd936c045bfc7ae224d0552dabe490a42703f45c50ffaded"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
