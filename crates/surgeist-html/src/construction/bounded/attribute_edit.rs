@@ -272,6 +272,15 @@ impl HtmlConstructionAttributeCompletion {
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeAction<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
+    pending: SetupAction,
+}
+/// The setup action that the edit is about to issue.
+#[derive(Clone, Copy, Debug)]
+enum SetupAction {
+    /// Qualify the target element.
+    Target,
+    /// Prepare the merge plan's report.
+    Report,
 }
 /// The observation after a setup action. It borrows the edit exclusively; `accept` resumes it.
 #[derive(Debug)]
@@ -392,7 +401,15 @@ impl HtmlConstructionAttributeEdit {
         if self.busy || self.observing {
             return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
-        Ok((!self.stage.is_ready()).then_some(HtmlConstructionAttributeAction { edit: self }))
+        let pending = match self.stage {
+            EditStage::Target => SetupAction::Target,
+            EditStage::Report { .. } => SetupAction::Report,
+            EditStage::Slots { .. } | EditStage::Merge { .. } => return Ok(None),
+        };
+        Ok(Some(HtmlConstructionAttributeAction {
+            edit: self,
+            pending,
+        }))
     }
     /// Starts planning candidate `index` whose name is `name`. Candidates are planned in order
     /// from 0, and `index` must equal the number planned so far. Only in `NamedMerge` mode;
@@ -545,8 +562,8 @@ impl HtmlConstructionAttributeEdit {
 impl<'a> HtmlConstructionAttributeAction<'a> {
     /// Describes the pending setup action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
-        match self.edit.stage {
-            EditStage::Target => {
+        match self.pending {
+            SetupAction::Target => {
                 // The capacity is the action's own write; the stage it reaches is charged with
                 // the transition.
                 HtmlConstructionAttributeDescription::Inspect(HtmlConstructionAttributeWork {
@@ -558,7 +575,7 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
                     ..Default::default()
                 })
             }
-            EditStage::Report { .. } => {
+            SetupAction::Report => {
                 // The generation counter is the action's own write; the plan report it issues is
                 // stored with the stage and charged with the transition.
                 HtmlConstructionAttributeDescription::PrepareAllocationReport(
@@ -571,9 +588,6 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
                         ..Default::default()
                     },
                 )
-            }
-            EditStage::Slots { .. } | EditStage::Merge { .. } => {
-                unreachable!("only pending group actions")
             }
         }
         .stage_transitions()
@@ -620,8 +634,9 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
                     edit.storage.arena.temporary_generation = generation;
                     EditStage::Merge { target, plan }
                 }
+                // A ready edit issues no setup action.
                 EditStage::Slots { .. } | EditStage::Merge { .. } => {
-                    unreachable!("only pending group actions")
+                    return Err(HtmlConstructionErrorKind::OperationNotReady.into());
                 }
             })
         })();

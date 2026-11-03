@@ -1423,9 +1423,8 @@ impl Builder {
                 .expect("native construction publication")
                 .accept();
         }
-        match operation
-            .try_ready()
-            .unwrap_or_else(|_| unreachable!("native publication ready"))
+        match bounded::HtmlConstructionOperation::try_ready(operation)
+            .expect("native publication ready")
             .commit()
         {
             bounded::HtmlConstructionCommit::Published { result, lease } => {

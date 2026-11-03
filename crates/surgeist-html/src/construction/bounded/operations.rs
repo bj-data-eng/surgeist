@@ -1766,7 +1766,11 @@ impl HtmlConstructionOperation {
                 storage.arena.wrapper_generation = wrapper_generation;
                 storage.arena.usage = self.plan.usage;
                 // The arena moves into its shared wrapper. The storage keeps an empty arena of the
-                // same identity only until the owner is replaced just below, which drops it.
+                // same identity only until the owner is replaced a few statements below, which
+                // drops it. Nothing can observe the vacated arena in between: this action holds
+                // the only reference to the operation, the code between the swap and the
+                // replacement calls no user code and returns no early error, and a failed
+                // allocation aborts the process instead of unwinding.
                 let vacated = Arena::vacated(&storage.arena.identity);
                 let arena = Arc::new(std::mem::replace(&mut storage.arena, vacated));
                 let snapshot = HtmlConstructionAllocationSnapshot::shared::<Arena>(
