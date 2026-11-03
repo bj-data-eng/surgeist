@@ -4383,11 +4383,13 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             contributions: column_inputs,
             phases: column_reduction.phases,
             available: column_reduction.available,
+            finishing_available: column_reduction.finishing_available,
         }),
         row_preparation: Some(intrinsic_stage::GridAxisTrackPreparation {
             contributions: row_inputs,
             phases: row_reduction.phases,
             available: row_reduction.available,
+            finishing_available: row_reduction.finishing_available,
         }),
     };
     let execution_input = ComputeInputOf::for_child(

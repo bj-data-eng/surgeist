@@ -2035,7 +2035,6 @@ where
     let resolved = if !opposite_inherited && stage.has_resolved_axis(opposite) {
         let track_available = intrinsic_container_available(
             &container_style,
-            &constants,
             constants.flow_axes,
             prepared.parent(),
             prepared.available(),

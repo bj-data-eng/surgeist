@@ -63,13 +63,17 @@ pub(super) struct GridAxisTrackInputs<S: LayoutScalar> {
 pub(super) struct GridAxisTrackPreparation<S: LayoutScalar> {
     pub(super) contributions: GridAxisTrackInputs<S>,
     pub(super) phases: GridAxisTrackPhases<S>,
+    // The request operation owns the phases and normal-recomputation decision.
     pub(super) available: AvailableOf<S>,
+    // A maximum can constrain finishing without replacing that operation.
+    pub(super) finishing_available: AvailableOf<S>,
 }
 
 pub(super) struct GridAxisTrackReduction<S: LayoutScalar> {
     pub(super) sizes: Vec<S>,
     pub(super) phases: GridAxisTrackPhases<S>,
     pub(super) available: AvailableOf<S>,
+    pub(super) finishing_available: AvailableOf<S>,
 }
 
 struct EvaluatedAxis<Node, S: LayoutScalar> {
@@ -315,7 +319,7 @@ pub(super) fn finish_axis_track_preparation<Node: Copy, S: LayoutScalar, M>(
         axis,
         &preparation.phases,
         &preparation.contributions.rows,
-        preparation.available,
+        preparation.finishing_available,
         stretch_size,
     )
 }
@@ -358,7 +362,7 @@ pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     let gap = axis_available(input.context.gap, axis);
     let gutters = axis_gutters(input, axis);
     let basis = axis_available(input.context.percent_basis, axis);
-    let mut phases = resolve_grid_contribution_rows(
+    let phases = resolve_grid_contribution_rows(
         SpanningTrackContext {
             tracks,
             basis,
@@ -372,6 +376,28 @@ pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     .map_err(|error| grid_track_sizing_error(node, error))?;
     let flow = input.sizing_flow_axes;
     let inner = axis_available(flow.logical_size(input.constants.node_inner_size), axis);
+    let maximum = if matches!(space, GridAxisTrackSpace::Intrinsic) && inner.is_none() {
+        axis_available(flow.logical_size(input.constants.node_max_size), axis).map(|maximum| {
+            let remaining = maximum
+                - axis_available(
+                    flow.logical_size(input.constants.content_box_inset.sum_axes()),
+                    axis,
+                );
+            // Saturate a real exhausted budget; preserve nonfinite arithmetic
+            // for the existing finisher's typed numeric validation.
+            if remaining.is_finite() {
+                remaining.max(S::ZERO)
+            } else {
+                remaining
+            }
+        })
+    } else {
+        None
+    };
+    let mut finishing_available = match (available, maximum) {
+        (AvailableOf::MaxContent, Some(maximum)) => AvailableOf::Definite(maximum),
+        _ => available,
+    };
     let stretch = match space {
         GridAxisTrackSpace::Intrinsic => {
             let stretch_enabled = axis_available(input.intrinsic_max_available, axis)
@@ -381,7 +407,7 @@ pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
                 tracks,
                 &phases,
                 inner,
-                available,
+                finishing_available,
                 axis_alignment(input, axis),
                 stretch_enabled,
             )
@@ -395,53 +421,29 @@ pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
         axis,
         &phases,
         &contributions.rows,
-        available,
+        finishing_available,
         stretch,
     )?;
-    if matches!(space, GridAxisTrackSpace::Intrinsic)
-        && inner.is_none()
-        && let Some(maximum) =
-            axis_available(flow.logical_size(input.constants.node_max_size), axis)
+    if let Some(maximum) = maximum
+        && finishing_available != AvailableOf::Definite(maximum)
+        && track_sum_with_gutters(&sizes, gap, Some(gutters)) > maximum
     {
-        let maximum = (maximum
-            - axis_available(
-                flow.logical_size(input.constants.content_box_inset.sum_axes()),
-                axis,
-            ))
-        .max(S::ZERO);
-        if available != AvailableOf::Definite(maximum)
-            && track_sum_with_gutters(&sizes, gap, Some(gutters)) > maximum
-        {
-            available = AvailableOf::Definite(maximum);
-            let replacement = resolve_grid_contribution_rows(
-                SpanningTrackContext {
-                    tracks,
-                    basis,
-                    available,
-                    gap,
-                    gutters: Some(gutters),
-                    base_floors: &contributions.base_floors,
-                },
-                &contributions.rows,
-            )
-            .map_err(|error| grid_track_sizing_error(node, error))?;
-            let replacement_sizes = finish_axis_track_phases(
-                node,
-                input,
-                axis,
-                &replacement,
-                &contributions.rows,
-                available,
-                None,
-            )?;
-            phases = replacement;
-            sizes = replacement_sizes;
-        }
+        finishing_available = AvailableOf::Definite(maximum);
+        sizes = finish_axis_track_phases(
+            node,
+            input,
+            axis,
+            &phases,
+            &contributions.rows,
+            finishing_available,
+            None,
+        )?;
     }
     Ok(GridAxisTrackReduction {
         sizes,
         phases,
         available,
+        finishing_available,
     })
 }
 fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
@@ -469,6 +471,7 @@ fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
             contributions,
             phases: reduced.phases,
             available: reduced.available,
+            finishing_available: reduced.finishing_available,
         },
     ))
 }
