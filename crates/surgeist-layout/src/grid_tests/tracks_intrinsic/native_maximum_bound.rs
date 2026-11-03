@@ -306,3 +306,6 @@ fn native_grid_min_content_keeps_content_opposite_width_under_maximum_f32() {
 fn native_grid_min_content_keeps_content_opposite_width_under_maximum_f64() {
     intrinsic_maximum_preserves_opposite_width::<f64>(AvailableOf::MIN_CONTENT);
 }
+
+#[path = "native_maximum_bound_controls.rs"]
+mod controls;
