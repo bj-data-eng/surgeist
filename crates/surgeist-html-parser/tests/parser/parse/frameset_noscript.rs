@@ -12,7 +12,7 @@
 //!   case, and the token is ignored.
 //! * "after body", `</html>` (capture line 5604): "If the parser's fragment
 //!   context element is non-null, this is a parse error; ignore the token."
-//! * Parser scripting mode (capture lines 1347-1370, 6792): Normal, Disabled,
+//! * Parser scripting mode (capture lines 1347-1370, 6786): Normal, Disabled,
 //!   Inert or Fragment. The fragment parsing algorithm takes Inert or Fragment;
 //!   a context document without scripting forces Disabled (the request layer
 //!   records that resolution in `tests/parser/requests.rs`).
@@ -22,6 +22,15 @@
 //!   (insert the element, tokenizer to RAWTEXT, switch to "text") makes the
 //!   element's content one text node; the "text" mode's end tag pops it and
 //!   restores the original insertion mode.
+//! * "in table", anything else (capture line 5182): enable foster parenting,
+//!   process the token using the "in body" rules, disable foster parenting.
+//! * "in template", any other start tag (capture line 5552): replace the
+//!   current template insertion mode with "in body" and reprocess the token.
+//! * Fragment parsing algorithm, tokenizer state for a `noscript` context
+//!   (capture line 6837): RAWTEXT when the scripting mode is not Disabled,
+//!   otherwise the data state. Step 19 (capture line 6860) makes the context's
+//!   start tag only the context's token for integration-point checks, so no
+//!   end tag is "appropriate" (capture line 1391) and `</noscript>` is text.
 //! * "in head", `noscript` start tag with scripting Disabled (capture line
 //!   3932): insert the element and switch to "in head noscript", where a start
 //!   tag other than basefont, bgsound, link, meta, noframes or style is a parse
@@ -291,5 +300,92 @@ fn inert_head_noscript_with_a_leading_comment_keeps_the_comment_as_text() {
         HtmlScriptingStatus::Enabled,
         "<noscript><!--</noscript>",
         "<head>\n  <noscript>\n    \"<!--\"\n<body>\n",
+    );
+}
+
+// The tests below are characterization checks of behaviour the scripting-mode
+// rules reach through other insertion modes. Their trees are hand-derived.
+
+#[test]
+fn inert_noscript_in_a_table_is_foster_parented_raw_text() {
+    // Context `div`: `<table>` is inserted and "in table" applies. `<noscript>`
+    // is "anything else": foster parenting is enabled and the "in body" rule
+    // inserts the raw text element before the table (the table's parent is
+    // `html`). The element's text is data, the original insertion mode "in
+    // table" is restored by `</noscript>`, and `</table>` closes the table.
+    assert_fragment(
+        "div",
+        HtmlScriptingStatus::Enabled,
+        "<table><noscript><p>y</p></noscript></table>",
+        "<noscript>\n  \"<p>y</p>\"\n<table>\n",
+    );
+}
+
+#[test]
+fn inert_noscript_in_a_table_context_is_raw_text_before_table_rows() {
+    // Context `table` ("in table", stack `[html]`): the `noscript` is inserted
+    // into `html` with its text, "in table" returns, and `<tr>` clears the
+    // stack back to a table context (already `html`), implies `tbody` and
+    // inserts `tr`.
+    assert_fragment(
+        "table",
+        HtmlScriptingStatus::Enabled,
+        "<noscript>a</noscript><tr>",
+        "<noscript>\n  \"a\"\n<tbody>\n  <tr>\n",
+    );
+}
+
+#[test]
+fn disabled_noscript_in_a_table_is_a_foster_parented_ordinary_element() {
+    // Disabled: `noscript` is an ordinary element, inserted before the table
+    // by foster parenting. It is then the current node, so the paragraph and
+    // its text are inserted inside it (a foster-parent target that is not a
+    // table part is the current node itself).
+    assert_fragment(
+        "div",
+        HtmlScriptingStatus::Disabled,
+        "<table><noscript><p>y</p></noscript></table>",
+        "<noscript>\n  <p>\n    \"y\"\n<table>\n",
+    );
+}
+
+#[test]
+fn inert_noscript_in_a_template_context_is_raw_text() {
+    // Context `template` starts in "in template" with that template mode. The
+    // `noscript` start tag is "any other start tag": the mode becomes "in
+    // body" and the token is reprocessed there as raw text.
+    assert_fragment(
+        "template",
+        HtmlScriptingStatus::Enabled,
+        "<noscript><p>x</p></noscript><i>z",
+        "<noscript>\n  \"<p>x</p>\"\n<i>\n  \"z\"\n",
+    );
+}
+
+#[test]
+fn inert_noscript_context_tokenizes_its_content_as_raw_text() {
+    // The tokenizer starts in RAWTEXT, and no start tag has been emitted, so
+    // even `</noscript>` is character data; the insertion mode is "in body".
+    assert_fragment(
+        "noscript",
+        HtmlScriptingStatus::Enabled,
+        "<p>x</p>",
+        "\"<p>x</p>\"\n",
+    );
+    assert_fragment(
+        "noscript",
+        HtmlScriptingStatus::Enabled,
+        "a</noscript>b",
+        "\"a</noscript>b\"\n",
+    );
+}
+
+#[test]
+fn disabled_noscript_context_tokenizes_its_content_as_data() {
+    assert_fragment(
+        "noscript",
+        HtmlScriptingStatus::Disabled,
+        "<p>x</p>",
+        "<p>\n  \"x\"\n",
     );
 }

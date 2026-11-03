@@ -2498,9 +2498,9 @@ The owning head-stage driver consumes that continuation and the same paused
 tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
 InHeadNoscript for Disabled scripting and RCDATA/RAWTEXT Text processing; under
 any other scripting mode (Inert) a `noscript` start tag is RAWTEXT. Text
-restores its actual return mode, including delegated noscript processing. It transfers an
-owned AfterHead continuation, or stops with the untouched script/template token
-for further dispatch. These boundaries retain the actual tree, head pointer,
+restores its actual return mode, including delegated noscript processing. It
+transfers an owned AfterHead continuation, or stops with the untouched
+script/template token for further dispatch. These boundaries retain the actual tree, head pointer,
 lexical input and diagnostics; they are unfinished execution states.
 Head-stage `html` delegation adds missing attributes to managed root storage,
 preserving expanded-name matching, order and origins under the shared controller.
