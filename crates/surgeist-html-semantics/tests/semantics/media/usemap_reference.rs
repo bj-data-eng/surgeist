@@ -1,25 +1,22 @@
 use crate::semantics::support::{
-    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
-    semantic_limits_without_nested_output as limits, session, validated_work,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, capture_limits, context,
+    result_record_bytes, semantic_limits_without_nested_output as limits, session, validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlUsemapAuthorDefinition, HtmlUsemapMatch, HtmlUsemapProcessingResult,
-    HtmlUsemapReferenceResult, HtmlUsemapSelectedTargetDiagnostic,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue, HtmlUsemapAuthorDefinition,
+    HtmlUsemapMatch, HtmlUsemapProcessingResult, HtmlUsemapReferenceResult,
+    HtmlUsemapSelectedTargetDiagnostic,
 };
 
 fn capture_builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut builder = HtmlCaptureBuilder::new(capture_limits(), HtmlHostFactsRevision::fresh());
     let document = builder
         .add_document(
             HtmlDocumentMode::NoQuirks,

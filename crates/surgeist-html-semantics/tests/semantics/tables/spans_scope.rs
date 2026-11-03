@@ -5,20 +5,15 @@
 //! `colspan`, `rowspan`, `span` and `scope` attribute definitions), never from
 //! the semantics implementation's own output.
 
-use crate::semantics::support::{builder_with, context};
+use crate::semantics::support::{context, wide_builder_without_registries as builder};
 use surgeist_html::*;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFact,
-    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlSemanticValue, HtmlTableModel,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession,
+    HtmlSemanticValue, HtmlTableModel,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    builder_with(HtmlCaptureLimits::new(
-        10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216,
-    ))
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,

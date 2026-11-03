@@ -8,11 +8,9 @@
 //! `scope` enumerated attribute; see `surgeist_html::bounded`.
 
 use super::scope_work::{cell, element, fixture, limits, query, usage};
-use crate::semantics::support::builder_with;
+use crate::semantics::support::wide_builder_without_registries;
 use surgeist_html::bounded::{HtmlTableSpanRule, th_scope_work_bound};
-use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilderSubject, HtmlCaptureLimits, HtmlSemanticUsage,
-};
+use surgeist_html_semantics::{HtmlCapture, HtmlCaptureBuilderSubject, HtmlSemanticUsage};
 
 const SHORT: usize = 3;
 const LONG: usize = 2003;
@@ -25,9 +23,7 @@ fn one_padded(units: usize) -> String {
 /// A table whose only read of `rule`'s attribute carries a raw value of `units`
 /// code units whose span value is one; every other span read is absent.
 fn span_fixture(rule: HtmlTableSpanRule, units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
-    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
-        10000, 100000, 10000, 1_000_000, 1000, 0, 0, 16_777_216,
-    ));
+    let (mut b, d) = wide_builder_without_registries();
     let table = element(&mut b, &d, "table", &[]);
     let raw = one_padded(units);
     match rule {

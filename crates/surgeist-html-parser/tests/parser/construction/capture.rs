@@ -1,3 +1,4 @@
+use crate::parser::support::small_limits_builder;
 use surgeist_html::{bounded::HtmlConstructionResult, *};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
@@ -5,26 +6,9 @@ use surgeist_html_semantics::*;
 
 #[test]
 fn parsed_document_enters_the_same_adapter_with_original_result_identity() {
-    let limits = HtmlParseLimits::builder()
-        .source_units(10000)
-        .buffered_utf16_units(10000)
-        .token_attributes(1000)
-        .auxiliary_entries(10000)
-        .managed_nodes(1000)
+    let limits = small_limits_builder()
         .managed_edges(2000)
-        .managed_attributes(1000)
-        .managed_utf16_units(10000)
-        .source_map_entries(10000)
-        .source_map_payload_units(10000)
-        .diagnostics(1000)
         .diagnostic_payload_units(10000)
-        .context_effects(1000)
-        .open_elements(100)
-        .tree_depth(1000)
-        .managed_capacity_bytes(10_000_000)
-        .peak_transient_bytes(10_000_000)
-        .atomic_layout_bytes(10_000_000)
-        .work_credits(10_000_000)
         .finish()
         .unwrap();
     let report =
