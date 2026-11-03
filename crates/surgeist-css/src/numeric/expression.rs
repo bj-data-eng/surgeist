@@ -9,6 +9,7 @@ use crate::component::{
 use crate::numeric::CssLengthUnit;
 use crate::numeric::{controlled_check, ordinary_expression, projection, units};
 use crate::parser::property_input::SiteExt;
+use crate::source::CssSourcePosition;
 use std::{borrow::Cow, fmt};
 
 #[cfg(test)]
@@ -167,9 +168,9 @@ impl<'a> NumericInputContext<'a> {
     pub(crate) fn error_location(
         &self,
         error: &CssNumericConstructionError,
-        fallback: cssparser::SourceLocation,
+        fallback: CssSourcePosition,
         root_offset: usize,
-    ) -> cssparser::SourceLocation {
+    ) -> CssSourcePosition {
         match self.ordinary() {
             Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
             Self::Parsed(source) => {
@@ -179,11 +180,8 @@ impl<'a> NumericInputContext<'a> {
                 if !source.same_snapshot(origin.source()) {
                     return fallback;
                 }
-                let position = origin.span().start();
-                cssparser::SourceLocation {
-                    line: position.line().value(),
-                    column: position.column().value() + 1,
-                }
+
+                origin.span().start()
             }
             Self::Checked => {
                 unreachable!("checked property errors use their actual component cursor")
@@ -200,14 +198,8 @@ impl<'a> NumericInputContext<'a> {
                 let Some(offset) = serialized.component_offset_for_path(&path) else {
                     return fallback;
                 };
-                let position = crate::source::CssSourcePosition::from_byte_offset_in(
-                    serialized.as_css(),
-                    offset,
-                );
-                cssparser::SourceLocation {
-                    line: position.line().value(),
-                    column: position.column().value().saturating_add(1),
-                }
+
+                crate::source::CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset)
             }
         }
     }

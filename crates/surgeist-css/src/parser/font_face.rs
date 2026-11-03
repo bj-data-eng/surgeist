@@ -1,7 +1,7 @@
+use crate::source::CssSourcePosition;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use cssparser::{ParseError, ParseErrorKind};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
@@ -150,11 +150,7 @@ pub(super) fn parse_contents(
 
 impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
     type Declaration = CssFontFaceDescriptor;
-    fn check_name<'i>(
-        &self,
-        name: &str,
-        location: cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, CssError>> {
+    fn check_name<'i>(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError> {
         descriptor_kind(name, location).map(|_| ())
     }
     fn admit<'i>(
@@ -162,7 +158,7 @@ impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
         name: &str,
         text: &DeclarationText,
         _recovery: &RecoveryState,
-    ) -> Result<CssFontFaceDescriptor, ParseError<'i, CssError>> {
+    ) -> Result<CssFontFaceDescriptor, NativeError> {
         FontFaceDescriptorParser::admit(self, name, text)
     }
     fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
@@ -170,10 +166,10 @@ impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
     }
 }
 
-fn descriptor_kind<'i>(
+fn descriptor_kind(
     name: &str,
-    location: cssparser::SourceLocation,
-) -> Result<CssFontFaceDescriptorKind, ParseError<'i, CssError>> {
+    location: CssSourcePosition,
+) -> Result<CssFontFaceDescriptorKind, NativeError> {
     CssFontFaceDescriptorKind::from_css_name(name)
         .ok_or_else(|| descriptor_name_error(location, "font-face", name))
 }
@@ -182,7 +178,7 @@ fn descriptor_kind<'i>(
 // misplaced here; an unrecognized one stays unknown.
 impl<'i> RuleGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
     type Item = CssFontFaceDescriptor;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let name = rule.name();
@@ -199,12 +195,7 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
                     "a font-face descriptor list",
                 )
             } else {
-                ParseError {
-                    kind: ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
-                        cssparser::CowRcStr::from(name),
-                    )),
-                    location,
-                }
+                crate::diagnostic::error::unknown_at_rule(location, name)
             },
         ))
     }
@@ -232,11 +223,11 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
 
 impl FontFaceDescriptorParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssFontFaceDescriptor, NativeError<'i>> {
+    ) -> Result<CssFontFaceDescriptor, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let mut implicit_closures = self.recovery.check_component_values_from(
             self.source,
@@ -247,18 +238,12 @@ impl FontFaceDescriptorParser<'_> {
         let kind = descriptor_kind(name, location_at(snapshot, text.name_start()))?;
         let mut member_diagnostics = Vec::new();
         let value = self
-            .read_value(
-                text,
-                kind,
-                &mut member_diagnostics,
-                &mut implicit_closures,
-            )
+            .read_value(text, kind, &mut member_diagnostics, &mut implicit_closures)
             .map_err(|error| {
                 if name.eq_ignore_ascii_case("font-stretch")
                     && matches!(
-                        &error.kind,
-                        ParseErrorKind::Custom(error)
-                            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidDeclarationAnnotation(_))
+                        error.error.kind(),
+                        crate::diagnostic::error::ErrorKind::InvalidDeclarationAnnotation(_)
                     )
                 {
                     // The legacy spelling is the actual authored descriptor name.
@@ -431,10 +416,7 @@ pub(crate) fn construct_font_face_descriptor_value(
             0,
         )
         .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                cssparser::SourceLocation { line: 0, column: 1 },
-                error,
-            )
+            crate::diagnostic::error::invalid_component_value(CssSourcePosition::START, error)
         })?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "font-face", kind.as_str())

@@ -1,9 +1,8 @@
-use crate::diagnostic::CssError;
+use crate::diagnostic::error::NativeError;
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::{descriptor_stream, fragments, keyframes};
 use crate::rule::keyframes::{CssParsedKeyframeRule, CssParsedKeyframeSelectors};
 use crate::source::CssParsedOrigin;
-use cssparser::ParseError;
 
 #[must_use]
 pub(crate) fn parse_keyframe_selector_list(
@@ -84,7 +83,7 @@ pub(crate) fn parse_keyframe_rule_with_context(
 
 fn finish<T>(
     source: &str,
-    result: Result<T, ParseError<'_, CssError>>,
+    result: Result<T, NativeError>,
     mut diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     state: &RecoveryState,
 ) -> crate::CssParseReport<Option<T>> {

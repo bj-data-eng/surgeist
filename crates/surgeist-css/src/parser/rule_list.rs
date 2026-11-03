@@ -12,7 +12,6 @@
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule>
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
 use crate::declaration::{CssDeclaration, CssDeclarationList};
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::{
     invalid_at_rule_body_at, invalid_at_rule_placement, invalid_syntax, unexpected_syntax_end,
     unexpected_syntax_token, with_at_rule_prelude_context, with_media_query_context,
@@ -62,7 +61,7 @@ use crate::rule::{
     CssNestedDeclarationsRule, CssRule, CssScopeRule, CssSheet, CssSupportsRule,
 };
 use crate::selector::CssStyleSelectorList;
-use cssparser::ParseError;
+use crate::source::CssSourcePosition;
 use surgeist_css_parser::Offset;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
@@ -213,7 +212,7 @@ const PAGE_PLACEMENT: &str =
 const STYLESHEET_TOP_LEVEL: &str = "the stylesheet top level";
 
 /// Where the stream `input` stands, as the native errors say it.
-fn here(input: &Stream<'_>, recovery: &RecoveryState) -> cssparser::SourceLocation {
+fn here(input: &Stream<'_>, recovery: &RecoveryState) -> CssSourcePosition {
     location_at(recovery.source_snapshot(), offset_of(input.site()))
 }
 
@@ -222,7 +221,7 @@ fn reject_with_style_ancestor<'i>(
     input: &Stream<'i>,
     recovery: &RecoveryState,
     name: &str,
-) -> Result<(), NativeError<'i>> {
+) -> Result<(), NativeError> {
     if context.style_ancestor() {
         Err(invalid_at_rule_placement(
             here(input, recovery),
@@ -250,7 +249,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
     input: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<AtRulePrelude, NativeError<'i>> {
+) -> Result<AtRulePrelude, NativeError> {
     match_ignore_ascii_case! { name,
         "import" => {
             let Some(phase) = phase else {
@@ -420,12 +419,10 @@ pub(super) fn parse_at_rule_prelude<'i>(
                     .map_err(with_scope_prelude_context)?,
             ))
         },
-        _ => Err(ParseError {
-            kind: cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
-                cssparser::CowRcStr::from(name),
-            )),
-            location: here(input, recovery),
-        }),
+        _ => Err(crate::diagnostic::error::unknown_at_rule(
+            here(input, recovery),
+            name,
+        )),
     }
 }
 
@@ -434,10 +431,10 @@ pub(crate) struct UnitState {
     pub(super) boundary: nesting::StyleRuleBoundary,
     /// A typed resource failure from a qualified-rule attempt, which a
     /// declaration fallback would otherwise discard.
-    pub(super) qualified_resource_error: Option<ParseError<'static, CssError>>,
+    pub(super) qualified_resource_error: Option<NativeError>,
     /// The resource failure found in the block of a rule whose prelude failed,
     /// which is what entering the block would have been charged.
-    pub(super) block_error: Option<ParseError<'static, CssError>>,
+    pub(super) block_error: Option<NativeError>,
     /// The prelude of a rule that has a block failed, so the block was left
     /// pending.
     pub(super) prelude_failed: bool,
@@ -459,15 +456,11 @@ impl UnitState {
 
     /// Records a qualified-rule attempt's resource failure from its prelude or
     /// block.
-    pub(super) fn record_qualified_failure<T>(&mut self, result: &Result<T, NativeError<'_>>) {
+    pub(super) fn record_qualified_failure<T>(&mut self, result: &Result<T, NativeError>) {
         if let Err(error) = result
             && crate::diagnostic::error::is_nesting_limit_error(error)
-            && let cssparser::ParseErrorKind::Custom(custom) = &error.kind
         {
-            self.qualified_resource_error = Some(ParseError {
-                kind: cssparser::ParseErrorKind::Custom(custom.clone()),
-                location: error.location,
-            });
+            self.qualified_resource_error = Some(error.clone());
         }
     }
 }
@@ -488,7 +481,7 @@ pub(crate) trait RuleListSink<I> {
 /// A grammar of a rule list: the parser crate's block grammar, and what the
 /// recovery loop reads of it and asks of it.
 pub(crate) trait RuleListGrammar<'i>:
-    BlockGrammar<'i, Attached<'i>, Error = NativeError<'i>>
+    BlockGrammar<'i, Attached<'i>, Error = NativeError>
 {
     /// What the grammar recorded of the unit it was last handed.
     fn unit(&mut self) -> &mut UnitState;
@@ -505,14 +498,14 @@ pub(crate) trait RuleListGrammar<'i>:
         end: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<Self::Item, NativeError<'i>>;
+    ) -> Result<Self::Item, NativeError>;
     /// Admits a qualified rule, as [`admit_at_rule`](Self::admit_at_rule) does.
     fn admit_qualified(
         &mut self,
         start: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<Self::Item, NativeError<'i>>;
+    ) -> Result<Self::Item, NativeError>;
     /// Reads the prelude of a qualified rule that met no block, for what
     /// reading it records.
     fn read_prelude(&mut self, _prelude: &mut Stream<'i>) {}
@@ -674,8 +667,8 @@ pub(crate) fn recover_rule_list<'i, G, S>(
 /// What the recovery of a dropped unit reads: the failure the grammar's
 /// callbacks would have returned for it, and where they would have left the
 /// unit.
-struct Facts<'i, 's> {
-    error: NativeError<'i>,
+struct Facts<'s> {
+    error: NativeError,
     /// The text of the unit up to where the callbacks left it.
     text: &'s str,
     unit_start: usize,
@@ -725,12 +718,7 @@ fn report_returned_nothing<'i, G: RuleListGrammar<'i>>(
             return;
         };
         let (from, to) = (offset_of(from), offset_of(to));
-        let error = ParseError {
-            kind: cssparser::ParseErrorKind::Basic(
-                cssparser::BasicParseErrorKind::QualifiedRuleInvalid,
-            ),
-            location: location_at(&snapshot, from),
-        };
+        let error = crate::diagnostic::error::invalid_syntax(location_at(&snapshot, from));
         if let Some(diagnostic) = structural_rule_diagnostic(
             source,
             error,
@@ -753,7 +741,7 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
     grammar: &mut G,
     before: &Stream<'i>,
     failed: &Failure<'i>,
-) -> Facts<'i, 's> {
+) -> Facts<'s> {
     use crate::syntax_consumption::DocumentExt as _;
     let dropped = dropped_unit(snapshot, source, failed);
     let unit_start = dropped.start;
@@ -865,12 +853,9 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
                     };
                     let (error, unit_end) = if returned_nothing {
                         (
-                            ParseError {
-                                kind: cssparser::ParseErrorKind::Basic(
-                                    cssparser::BasicParseErrorKind::QualifiedRuleInvalid,
-                                ),
-                                location: location_at(snapshot, unit_start),
-                            },
+                            crate::diagnostic::error::invalid_syntax(location_at(
+                                snapshot, unit_start,
+                            )),
                             before_semicolon,
                         )
                     } else if failed.rule_end() == Some(RuleEnd::Semicolon) {
@@ -909,7 +894,7 @@ pub(super) fn denied_rule_error<'i, G: RuleListGrammar<'i>>(
     grammar: &mut G,
     before: &Stream<'i>,
     failed: &Failure<'i>,
-) -> NativeError<'i> {
+) -> NativeError {
     let snapshot = grammar.recovery().source_snapshot().clone();
     let dropped = dropped_unit(&snapshot, source, failed);
     denied_facts(grammar, before, failed, &dropped).error
@@ -920,8 +905,8 @@ fn denied_facts<'i, 's, G: RuleListGrammar<'i>>(
     grammar: &mut G,
     before: &Stream<'i>,
     failed: &Failure<'i>,
-    dropped: &crate::parser::block_units::DroppedUnit<'s, 'i>,
-) -> Facts<'i, 's> {
+    dropped: &crate::parser::block_units::DroppedUnit<'s>,
+) -> Facts<'s> {
     let start = failed.start();
     let end = failed.end();
     // The block the document denied ends the rule; its opening is where the
@@ -1019,20 +1004,18 @@ impl From<LeafRule> for CssRule {
 
 /// The error of a block that an at-rule whose body is a statement refuses,
 /// located at the block's opening token.
-fn block_refused<'i>(
+fn block_refused(
     recovery: &RecoveryState,
     contents: usize,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> NativeError<'i> {
+) -> NativeError {
     let snapshot = recovery.source_snapshot();
     let position =
         crate::source::CssSourcePosition::from_byte_offset_in(snapshot.as_str(), contents)
             .previous_ascii_byte();
-    let mut location = location_at(snapshot, contents);
-    location.column = location.column.saturating_sub(1).max(1);
-    invalid_at_rule_body_at(position, location, name, production, expectation)
+    invalid_at_rule_body_at(position, position, name, production, expectation)
 }
 
 /// Parses the block of a leaf rule, or rejects the block of a statement-only
@@ -1047,7 +1030,7 @@ pub(super) fn parse_leaf_block<'i>(
     mut contents: Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<Result<LeafRule, AtRulePrelude>, NativeError<'i>> {
+) -> Result<Result<LeafRule, AtRulePrelude>, NativeError> {
     let refused = |name, production, expectation| {
         Err(block_refused(
             recovery,
@@ -1362,7 +1345,7 @@ impl<'s> RuleParser<'s> {
         end: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         self.unit.boundary = nesting::StyleRuleBoundary::AtRule;
         self.unit.start_index = Some(start.index());
         let parsed = parse_at_rule_prelude(
@@ -1498,7 +1481,7 @@ impl<'s> RuleParser<'s> {
         start: Site<'i>,
         opening: usize,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         let mut depth = self.recovery.enter_rule_block(
             self.source,
             Offset::new(opening),
@@ -1604,7 +1587,7 @@ impl<'s> RuleParser<'s> {
     pub(super) fn qualified_prelude<'i>(
         &mut self,
         input: &mut Stream<'i>,
-    ) -> Result<CssStyleSelectorList, NativeError<'i>> {
+    ) -> Result<CssStyleSelectorList, NativeError> {
         self.unit.boundary = nesting::StyleRuleBoundary::QualifiedPrelude;
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
@@ -1631,7 +1614,7 @@ impl<'s> RuleParser<'s> {
         start: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         self.unit.start_index = Some(start.index());
         let parsed = self.qualified_prelude(prelude);
         let Some(opening) = block.opening() else {
@@ -1669,7 +1652,7 @@ impl<'s> RuleParser<'s> {
         start: Site<'i>,
         opening: usize,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         let mut depth = self.recovery.enter_rule_block(
             self.source,
             Offset::new(opening),
@@ -1732,7 +1715,7 @@ impl<'s> RuleParser<'s> {
     /// The resource failure found in the block of the rule that failed, which
     /// is what entering the block would have been charged. It takes
     /// precedence over the rule's own failure.
-    pub(super) fn take_block_resource_error<'i>(&mut self) -> Option<NativeError<'i>> {
+    pub(super) fn take_block_resource_error(&mut self) -> Option<NativeError> {
         self.unit
             .qualified_resource_error
             .take()
@@ -1740,11 +1723,11 @@ impl<'s> RuleParser<'s> {
     }
 
     /// Admits the declaration named `name` that lies at `text`.
-    pub(super) fn admit_declaration<'i>(
+    pub(super) fn admit_declaration(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         StrictDeclarationParser::new(self.source, self.recovery.clone())
             .admit(name, text)
             .map(Box::new)
@@ -1770,7 +1753,7 @@ fn block_opening(end: Site<'_>) -> Option<usize> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for RuleParser<'_> {
     type Item = RuleListItem;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -1820,7 +1803,7 @@ impl<'i> RuleListGrammar<'i> for RuleParser<'_> {
         end: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         RuleParser::admit_at_rule(self, name, start, rule_end, end, prelude, block)
     }
 
@@ -1829,7 +1812,7 @@ impl<'i> RuleListGrammar<'i> for RuleParser<'_> {
         start: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<RuleListItem, NativeError<'i>> {
+    ) -> Result<RuleListItem, NativeError> {
         RuleParser::admit_qualified(self, start, prelude, block)
     }
 

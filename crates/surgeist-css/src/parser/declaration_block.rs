@@ -20,10 +20,10 @@ use crate::parser::{
     DeclarationMode, block_item_diagnostic_from_start, fragments, recovery, syntax_bridge,
 };
 use crate::property::properties::resolve_property_name;
+use crate::source::CssSourcePosition;
 use crate::source::CssSourceSnapshot;
 use crate::syntax_consumption::DocumentExt;
 use crate::{CssParseReport, CssParserContext};
-use cssparser::SourceLocation;
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
@@ -73,14 +73,14 @@ pub(super) trait Receiver {
     /// Ordinary raw admission retains its established resource recovery policy.
     /// Domain replacement must reject preparation rather than publish a prefix.
     const ABORT_ON_RESOURCE: bool = true;
-    fn check_name<'i>(&self, name: &str, location: SourceLocation) -> Result<(), NativeError<'i>>;
+    fn check_name(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError>;
     /// Admits the declaration named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
         recovery: &RecoveryState,
-    ) -> Result<Self::Declaration, NativeError<'i>>;
+    ) -> Result<Self::Declaration, NativeError>;
     fn retained(&self, _declaration: &Self::Declaration, _recovery: &RecoveryState) {}
     fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
         Vec::new()
@@ -93,7 +93,7 @@ struct OrdinaryReceiver {
 impl Receiver for OrdinaryReceiver {
     type Declaration = CssDeclaration;
     const ABORT_ON_RESOURCE: bool = false;
-    fn check_name<'i>(&self, name: &str, location: SourceLocation) -> Result<(), NativeError<'i>> {
+    fn check_name<'i>(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError> {
         if !self.parser_context.selects_svg_glyph(name) && resolve_property_name(name).is_none() {
             Err(property_name_error(location, name))
         } else {
@@ -105,7 +105,7 @@ impl Receiver for OrdinaryReceiver {
         name: &str,
         text: &DeclarationText,
         recovery: &RecoveryState,
-    ) -> Result<CssDeclaration, NativeError<'i>> {
+    ) -> Result<CssDeclaration, NativeError> {
         parse_declaration_unit(
             DeclarationMode::Ordinary,
             name,
@@ -140,7 +140,7 @@ struct Contents<'r, R> {
 
 impl<'i, R: Receiver> RuleGrammar<'i, Attached<'i>> for Contents<'_, R> {
     type Item = R::Declaration;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -183,7 +183,7 @@ impl<'i, R: Receiver> BlockGrammar<'i, Attached<'i>> for Contents<'_, R> {
 /// The error a declaration that failed is reported with: the declaration
 /// attempt's own, with a `;` where the declaration needed more reported as the
 /// end of the declaration.
-fn declaration_failure<'i>(snapshot: &CssSourceSnapshot, failed: &Failure<'i>) -> NativeError<'i> {
+fn declaration_failure<'i>(snapshot: &CssSourceSnapshot, failed: &Failure<'i>) -> NativeError {
     let error = failed.declaration_error().unwrap_or_else(|| failed.error());
     // A `;` or the `}` that ends the contents is the end of the declaration.
     if matches!(

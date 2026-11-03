@@ -1,4 +1,3 @@
-use cssparser::ParseError;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
@@ -41,7 +40,7 @@ pub(super) fn parse_name<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssColorProfileRuleName, ParseError<'i, CssError>> {
+) -> Result<CssColorProfileRuleName, NativeError> {
     recovery.check_specialized_components_from(
         source,
         offset_of(input.site()),
@@ -122,7 +121,7 @@ struct BodyParser<'i> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
     type Item = CssColorProfileDescriptor;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     // The body is a descriptor list: an at-rule is not valid in it.
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
@@ -155,11 +154,11 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
 
 impl BodyParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssColorProfileDescriptor, NativeError<'i>> {
+    ) -> Result<CssColorProfileDescriptor, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let implicit = self.recovery.check_component_values_from(
             self.source,
@@ -189,7 +188,7 @@ pub(super) fn parse_text_value(
     value_start: usize,
     end: usize,
     kind: CssColorProfileDescriptorKind,
-) -> Result<CssColorProfileDescriptorValue, ParseError<'static, CssError>> {
+) -> Result<CssColorProfileDescriptorValue, NativeError> {
     parse_descriptor_range(
         snapshot,
         value_start..end,
@@ -206,7 +205,7 @@ fn parse_declared_value(
     snapshot: &crate::source::CssSourceSnapshot,
     text: &DeclarationText,
     kind: CssColorProfileDescriptorKind,
-) -> Result<CssColorProfileDescriptorValue, ParseError<'static, CssError>> {
+) -> Result<CssColorProfileDescriptorValue, NativeError> {
     parse_descriptor_range(
         snapshot,
         text.value_start..text.value_end(),
@@ -244,9 +243,7 @@ pub(crate) fn construct_descriptor_value(
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
-        .map_err(|error| {
-            invalid_component_value(cssparser::SourceLocation { line: 0, column: 1 }, error)
-        })?;
+        .map_err(|error| invalid_component_value(CssSourcePosition::START, error))?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "color-profile", kind.as_str())
             .map_err(|error| native(&numeric, &error))?;

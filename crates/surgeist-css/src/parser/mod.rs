@@ -220,7 +220,7 @@ use shape_outside::parse_shape_outside;
 use view_transitions::parse_view_transition_name;
 // Shared checked media construction uses the same private admission engine.
 
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
 
 use crate::parser::alignment::*;
 use crate::parser::background::*;
@@ -279,12 +279,12 @@ use crate::declaration::{
     CssAuthoredDeclarationValue, CssCustomDeclaration, CssCustomPropertyName, CssDeclaration,
     CssDeclarationBody, CssGlobalKeyword, CssImportance, CssSubstitutionDependentValue,
 };
+use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::{
     from_parse_error, from_rule_parse_error, invalid_at_rule_placement,
     invalid_custom_declaration_annotation, invalid_known_declaration_annotation, invalid_syntax,
     property_name_error, with_at_rule_prelude_context, with_property_context,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
 use crate::property::CssPropertyNameRef;
 use crate::property::properties::{
     CssKnownDeclarationValue, CssLegacyPropertyAlias, CssResolvedPropertyName, property_schema,
@@ -720,7 +720,7 @@ pub(crate) struct Recovered<T> {
 
 pub(crate) fn block_item_diagnostic(
     source: &str,
-    error: ParseError<'_, CssError>,
+    error: NativeError,
     failed_unit: &str,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
@@ -731,7 +731,7 @@ pub(crate) fn block_item_diagnostic(
 
 pub(crate) fn block_item_diagnostic_from_start(
     source: &str,
-    error: ParseError<'_, CssError>,
+    error: NativeError,
     unit_start: usize,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
@@ -751,7 +751,7 @@ pub(crate) fn block_item_diagnostic_from_start(
 /// A dropped unit's diagnostic, spanning exactly that unit.
 pub(crate) fn structural_rule_diagnostic(
     source: &str,
-    error: ParseError<'_, CssError>,
+    error: NativeError,
     failed_unit: &str,
     unit_start: usize,
     unit_end: usize,
@@ -779,10 +779,10 @@ pub(crate) fn structural_recovery_action(
     }
 }
 
-pub(crate) fn top_level_only_at_rule_placement<'i>(
-    location: cssparser::SourceLocation,
+pub(crate) fn top_level_only_at_rule_placement(
+    location: CssSourcePosition,
     name: &str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     invalid_at_rule_placement(location, name, "the stylesheet top level")
 }
 
@@ -901,7 +901,7 @@ fn parse_container_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssContainerPrelude, ParseError<'i, CssError>> {
+) -> std::result::Result<CssContainerPrelude, NativeError> {
     let (values, implicit) = collect_container_components(source, input, recovery)?;
     let prelude = container_prelude_from_components(
         values,
@@ -914,7 +914,7 @@ fn parse_container_prelude<'i>(
     Ok(prelude)
 }
 
-fn with_container_prelude_context<'i>(error: ParseError<'i, CssError>) -> ParseError<'i, CssError> {
+fn with_container_prelude_context(error: NativeError) -> NativeError {
     if queries::media_terminal_error(&error) {
         error
     } else {
@@ -951,7 +951,7 @@ fn parse_page_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> std::result::Result<CssPageSelectorList, ParseError<'i, CssError>> {
+) -> std::result::Result<CssPageSelectorList, NativeError> {
     let selector = page::read_page_selector(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -976,13 +976,13 @@ fn parse_page_prelude<'i>(
 
 /// The error of an at-rule that has no block where its grammar needs one, at
 /// the byte `at`.
-fn block_form_required<'i>(
+fn block_form_required(
     snapshot: &CssSourceSnapshot,
     at: usize,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     crate::diagnostic::error::invalid_at_rule_body_at(
         CssSourcePosition::from_byte_offset_in(snapshot.as_str(), at),
         block_units::location_at(snapshot, at),
@@ -1019,7 +1019,7 @@ fn parse_scoped_rule_list<'i>(
 fn parse_namespace_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> std::result::Result<CssNamespacePrelude, ParseError<'i, CssError>> {
+) -> std::result::Result<CssNamespacePrelude, NativeError> {
     descriptor_stream::read_scope(input, snapshot, |input, _| {
         use surgeist_css_parser::Token as T;
         let prefix = input
@@ -1048,7 +1048,7 @@ fn parse_namespace_prelude<'i>(
 fn parse_layer_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<Vec<CssLayerName>, ParseError<'i, CssError>> {
+) -> std::result::Result<Vec<CssLayerName>, NativeError> {
     descriptor_stream::read_scope(input, snapshot, read_layer_prelude)
 }
 
@@ -1128,7 +1128,7 @@ fn parse_scope_prelude<'i>(
     state: &RecoveryState,
     root_anchors: selectors::SelectorAnchorMode,
     relative_root: bool,
-) -> std::result::Result<CssScopePrelude, ParseError<'i, CssError>> {
+) -> std::result::Result<CssScopePrelude, NativeError> {
     descriptor_stream::read_scope(input, state.source_snapshot(), |input, numeric| {
         scope_prelude(
             source,
@@ -1209,12 +1209,12 @@ fn enter_boundary<'i>(
     opening: usize,
     at: syntax_types::Site<'i>,
 ) -> std::result::Result<recovery::RecoveryDepthGuard, descriptor_stream::ValueError<'i>> {
-    let entered: std::result::Result<_, ParseError<'static, CssError>> =
+    let entered: std::result::Result<_, NativeError> =
         state.enter_component_block_at(source, opening, "baseline.rule.scope");
     entered.map_err(|error| syntax_types::SyntaxError::custom(at, error))
 }
 
-fn with_scope_prelude_context(error: ParseError<'_, CssError>) -> ParseError<'_, CssError> {
+fn with_scope_prelude_context(error: NativeError) -> NativeError {
     if crate::diagnostic::error::is_nesting_limit_error(&error) {
         error
     } else {
@@ -1231,7 +1231,7 @@ fn parse_counter_style_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     source_snapshot: &CssSourceSnapshot,
-) -> Result<CounterStylePrelude, ParseError<'i, CssError>> {
+) -> Result<CounterStylePrelude, NativeError> {
     let name = parse_counter_style_name(input, source_snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1257,7 +1257,7 @@ fn parse_counter_style_prelude<'i>(
 fn parse_font_face_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<(), ParseError<'i, CssError>> {
+) -> Result<(), NativeError> {
     if !input.only_whitespace_remains() {
         return Err(with_at_rule_prelude_context(
             invalid_syntax(block_units::location_at(
@@ -1275,7 +1275,7 @@ fn parse_font_face_prelude<'i>(
 fn parse_keyframes_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> Result<CssKeyframesName, ParseError<'i, CssError>> {
+) -> Result<CssKeyframesName, NativeError> {
     let name = parse_keyframes_name(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1312,11 +1312,11 @@ impl<'s> StrictDeclarationParser<'s> {
     }
 
     /// Admits the declaration named `name` that lies at `text`.
-    pub(crate) fn admit<'i>(
+    pub(crate) fn admit(
         &self,
         name: &str,
         text: &declaration_unit::DeclarationText,
-    ) -> std::result::Result<CssDeclaration, ParseError<'i, CssError>> {
+    ) -> std::result::Result<CssDeclaration, NativeError> {
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
             text.value_start,
@@ -1429,7 +1429,7 @@ impl DeclarationPlan {
         }
     }
 
-    fn contextualize<'i>(&self, error: ParseError<'i, CssError>) -> ParseError<'i, CssError> {
+    fn contextualize(&self, error: NativeError) -> NativeError {
         match &self.custom_name {
             Some(name) => with_property_context(error, name),
             None => error,
@@ -1437,12 +1437,12 @@ impl DeclarationPlan {
     }
 }
 
-fn declaration_plan<'i>(
+fn declaration_plan(
     mode: DeclarationMode,
     name: &str,
-    location: cssparser::SourceLocation,
+    location: CssSourcePosition,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<DeclarationPlan, ParseError<'i, CssError>> {
+) -> std::result::Result<DeclarationPlan, NativeError> {
     if name.starts_with("--") {
         let Some(custom_name) = parse_custom_property_name(name) else {
             return Err(property_name_error(location, name));
@@ -2100,10 +2100,10 @@ pub(crate) fn trailing_importance<T>(
     (is_bang(&items[bang]) && is_important(&items[word])).then_some((bang, word))
 }
 
-fn invalid_annotation_for_context<'i>(
-    location: cssparser::SourceLocation,
+fn invalid_annotation_for_context(
+    location: CssSourcePosition,
     context: &DeclarationBoundaryContext,
-) -> ParseError<'i, CssError> {
+) -> NativeError {
     match context {
         DeclarationBoundaryContext::OrdinarySvgGlyph
         | DeclarationBoundaryContext::KeyframeSvgGlyph => {
@@ -2139,7 +2139,7 @@ fn parse_custom_media_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CustomMediaPrelude, ParseError<'i, CssError>> {
+) -> Result<CustomMediaPrelude, NativeError> {
     descriptor_stream::read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         custom_media_prelude(source, stream, numeric, recovery)
     })

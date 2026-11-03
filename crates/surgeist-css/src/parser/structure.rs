@@ -9,13 +9,12 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
 use surgeist_css_parser::document::{BlockKind, GroupEnd, GroupKind, ListId, NodeId};
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::{Offset, Token};
 
 use crate::STRUCTURAL_NESTING_LIMIT;
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::nesting_limit;
 use crate::parser::syntax_types::Document;
 
@@ -399,14 +398,14 @@ pub(super) enum ScanBoundary {
 ///
 /// Returns the nesting limit, located at the first opening whose depth is at the
 /// limit: `base_depth` and the blocks opened since `start` count.
-pub(super) fn scan_nested<'i>(
+pub(super) fn scan_nested(
     document: &Document<'_>,
     source: &str,
     start: usize,
     base_depth: u32,
     enclosing_production: &'static str,
     boundary: ScanBoundary,
-) -> Result<usize, ParseError<'i, CssError>> {
+) -> Result<usize, NativeError> {
     let end_of_source = source.len();
     let Some(site) = document.node_at_offset(Offset::new(start.min(end_of_source))) else {
         return Ok(end_of_source);

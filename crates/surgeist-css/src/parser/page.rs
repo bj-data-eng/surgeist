@@ -9,7 +9,7 @@ use super::descriptor_stream::{
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
-use cssparser::ParseError;
+use crate::source::CssSourcePosition;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
 };
@@ -23,11 +23,11 @@ use super::{
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
 use crate::declaration::CssDeclarationBody;
 use crate::declaration::syntax::DeclarationContext;
+use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::{
     invalid_at_rule_body_at, property_name_error, unexpected_at, unexpected_syntax_end,
     unexpected_syntax_token, with_property_context,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::NumericInputContext;
 use crate::property::{CssKnownProperty, CssKnownPropertyValueRef};
 use crate::rule::page::{
@@ -48,7 +48,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
 pub(crate) fn read_page_selector<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> Result<CssPageSelectorList, NativeError<'i>> {
+) -> Result<CssPageSelectorList, NativeError> {
     super::descriptor_stream::read_scope(input, snapshot, |stream, numeric| {
         page_selector_list(stream, numeric, snapshot)
     })
@@ -262,7 +262,7 @@ struct MarginBodyParser<'s> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
     type Item = CssPageDeclaration;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let snapshot = self.recovery.source_snapshot();
@@ -316,11 +316,11 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
 
 impl MarginBodyParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssPageDeclaration, NativeError<'i>> {
+    ) -> Result<CssPageDeclaration, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
@@ -362,10 +362,10 @@ impl MarginBodyParser<'_> {
 
 /// The error of a rule in a margin box's block, whose contents are declarations
 /// of the properties that apply to the box.
-fn page_margin_body_error<'i>(
+fn page_margin_body_error(
     snapshot: &crate::source::CssSourceSnapshot,
     offset: usize,
-) -> NativeError<'i> {
+) -> NativeError {
     invalid_at_rule_body_at(
         snapshot
             .position_at(offset)
@@ -380,12 +380,12 @@ fn page_margin_body_error<'i>(
 /// The error of a declaration that applies to a margin box but breaks one of
 /// the additional Page restrictions, at `location` when the violation names no
 /// component.
-fn page_violation_error<'i>(
+fn page_violation_error(
     violation: &PageDeclarationViolation<'_>,
     components: &crate::component::CssComponentValues,
     name: &str,
-    location: cssparser::SourceLocation,
-) -> NativeError<'i> {
+    location: CssSourcePosition,
+) -> NativeError {
     let component = violation
         .component()
         .or_else(|| first_page_component(components));
@@ -413,7 +413,7 @@ struct DetachedMarginParser<'s> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for DetachedMarginParser<'_> {
     type Item = CssMarginRule;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -439,10 +439,7 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for DetachedMarginParser<'_> {
 }
 
 impl DetachedMarginParser<'_> {
-    fn admit<'i>(
-        &mut self,
-        rule: &AtRule<'i, Attached<'i>>,
-    ) -> Result<CssMarginRule, NativeError<'i>> {
+    fn admit<'i>(&mut self, rule: &AtRule<'i, Attached<'i>>) -> Result<CssMarginRule, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let name = rule.name();
         let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
@@ -457,12 +454,7 @@ impl DetachedMarginParser<'_> {
             {
                 Err(top_level_only_at_rule_placement(location, name))
             }
-            None => Err(cssparser::ParseError {
-                kind: cssparser::ParseErrorKind::Basic(
-                    cssparser::BasicParseErrorKind::AtRuleInvalid(cssparser::CowRcStr::from(name)),
-                ),
-                location,
-            }),
+            None => Err(crate::diagnostic::error::unknown_at_rule(location, name)),
         };
         let margin = match prelude {
             Ok(margin) => margin,
@@ -565,11 +557,7 @@ pub(super) fn parse_contents(
 
 impl super::declaration_block::Receiver for PageBodyParser<'_> {
     type Declaration = CssPageDeclaration;
-    fn check_name<'i>(
-        &self,
-        name: &str,
-        location: cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, CssError>> {
+    fn check_name<'i>(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError> {
         if CssPageDescriptorKind::from_name(name).is_some() {
             Ok(())
         } else {
@@ -581,7 +569,7 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
         name: &str,
         text: &DeclarationText,
         _recovery: &RecoveryState,
-    ) -> Result<CssPageDeclaration, ParseError<'i, CssError>> {
+    ) -> Result<CssPageDeclaration, NativeError> {
         PageBodyParser::admit(self, name, text).map(|item| match item {
             PageBodyItem::Declaration(declaration) => declaration,
             PageBodyItem::Margin(_) => {
@@ -594,10 +582,10 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
     }
 }
 
-fn page_property_name<'i>(
+fn page_property_name(
     name: &str,
-    location: cssparser::SourceLocation,
-) -> Result<Option<CssKnownProperty>, ParseError<'i, CssError>> {
+    location: CssSourcePosition,
+) -> Result<Option<CssKnownProperty>, NativeError> {
     let property = CssKnownProperty::from_name(name);
     if property.is_none() && !name.starts_with("--") {
         Err(property_name_error(location, name))
@@ -613,7 +601,7 @@ enum PageBodyItem {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
     type Item = PageBodyItem;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     // A margin box is the one at-rule a page body admits.
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
@@ -686,11 +674,7 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
 
 impl PageBodyParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
-    fn admit<'i>(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<PageBodyItem, NativeError<'i>> {
+    fn admit(&mut self, name: &str, text: &DeclarationText) -> Result<PageBodyItem, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
@@ -742,11 +726,11 @@ impl PageBodyParser<'_> {
 
 /// The value of the page descriptor `kind` that lies at `text`, and its
 /// importance.
-fn descriptor_value<'i>(
+fn descriptor_value(
     snapshot: &crate::source::CssSourceSnapshot,
     text: &DeclarationText,
     kind: CssPageDescriptorKind,
-) -> Result<(CssPageDescriptorValue, crate::declaration::CssImportance), NativeError<'i>> {
+) -> Result<(CssPageDescriptorValue, crate::declaration::CssImportance), NativeError> {
     let numeric = NumericInputContext::parsed(snapshot);
     let range = text.value_start..text.value_end();
     let failed_at = |error| {

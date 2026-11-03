@@ -32,13 +32,7 @@ pub(super) fn component_error_diagnostic(
         crate::component::CssValueOrigin::Parsed(origin) => origin.span().start(),
         _ => crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
     };
-    let parsed = crate::diagnostic::error::invalid_component_value(
-        cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        },
-        error,
-    );
+    let parsed = crate::diagnostic::error::invalid_component_value(position, error);
     let action = recovery_action_for_error(&parsed, ordinary_action);
     crate::diagnostic::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
         .expect("arena failure belongs to this source")

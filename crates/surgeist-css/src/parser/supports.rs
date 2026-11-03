@@ -14,8 +14,8 @@ use crate::component::{
     CssValueOrigin, CssValueTokenRef,
 };
 use crate::declaration::{CssDeclarationBody, CssImportance};
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::error::NativeError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     invalid_component_value, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
@@ -32,7 +32,7 @@ use crate::rule::font_face::{
     CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
 };
 use crate::selector::CssNamespaceContext;
-use cssparser::ParseError;
+use crate::source::CssSourcePosition;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
     crate::diagnostic::CssFeatureId::new("ext.supports.general-enclosed"),
@@ -47,10 +47,12 @@ pub(super) static IMPLEMENTED_SELECTORS: &[crate::diagnostic::CssFeatureId] =
         "ext.supports.selector",
     )];
 
-fn terminal_error(error: &ParseError<'_, CssError>) -> bool {
+fn terminal_error(error: &NativeError) -> bool {
     is_nesting_limit_error(error)
-        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error)
-            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)))
+        || matches!(
+            error.error.kind(),
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)
+        )
 }
 
 /// Only a grammar mismatch permits another supports interpretation. A lexical
@@ -63,9 +65,7 @@ pub(super) fn grammar_probe<'i, T>(result: Value<'i, T>) -> Value<'i, Option<T>>
     }
 }
 
-pub(crate) fn with_supports_prelude_context<'i>(
-    error: ParseError<'i, CssError>,
-) -> ParseError<'i, CssError> {
+pub(crate) fn with_supports_prelude_context(error: NativeError) -> NativeError {
     if terminal_error(&error) {
         error
     } else {
@@ -83,7 +83,7 @@ pub(crate) fn parse_supports_condition<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssCondition<CssSupportsLeaf>, ParseError<'i, CssError>> {
+) -> Result<CssCondition<CssSupportsLeaf>, NativeError> {
     read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         supports_condition(source, stream, numeric, recovery)
     })
@@ -138,17 +138,9 @@ pub(super) fn supports_declaration<'i>(
     )
     .map_err(|e| SyntaxError::custom(input.site(), parser_error(e, start)))
 }
-fn parser_error<'i>(
-    error: CssSupportsConstructionError,
-    fallback: cssparser::SourceLocation,
-) -> ParseError<'i, CssError> {
+fn parser_error(error: CssSupportsConstructionError, fallback: CssSourcePosition) -> NativeError {
     let location =
-        crate::query::media::construction::parsed_position(error.origin()).map_or(fallback, |p| {
-            cssparser::SourceLocation {
-                line: p.line().value(),
-                column: p.column().value() + 1,
-            }
-        });
+        crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     match error.into_kind() {
         crate::query::supports::construction::SupportsConstructionKind::Component(e) => {
             crate::diagnostic::error::invalid_component_value(location, e)
@@ -417,11 +409,8 @@ fn operand(
                         CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector))
                     }
                     Err(error) if terminal_error(&error) => {
-                        let kind = match &error.kind {
-                            cssparser::ParseErrorKind::Custom(error) => match error.kind() {
-                                ErrorKind::InvalidComponentValue(component) => component.kind,
-                                _ => CssComponentValueErrorKind::NestingLimit,
-                            },
+                        let kind = match error.error.kind() {
+                            ErrorKind::InvalidComponentValue(component) => component.kind,
                             _ => CssComponentValueErrorKind::NestingLimit,
                         };
                         let position =

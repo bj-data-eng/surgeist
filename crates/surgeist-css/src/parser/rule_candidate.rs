@@ -49,10 +49,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
             let position = snapshot
                 .position_at(offset)
                 .expect("actual syntax boundary");
-            let error = invalid_syntax(cssparser::SourceLocation {
-                line: position.line().value(),
-                column: position.column().value() + 1,
-            });
+            let error = invalid_syntax(position);
             return recovery::finish_report(
                 source,
                 CssParseReport::new(

@@ -76,6 +76,13 @@ pub struct CssSourcePosition {
 }
 
 impl CssSourcePosition {
+    /// The start of the input: the position of a failure that names none.
+    pub(crate) const START: Self = Self {
+        byte_offset: CssByteOffset::new(0),
+        line: CssLineIndex::new(0),
+        column: CssUtf16ColumnIndex::new(0),
+    };
+
     /// Advances a parser-owned checkpoint over original source text. Checkpoints
     /// never split CRLF; the final requested position may stop between its bytes.
     pub(crate) fn advanced_by(self, source: &str) -> Self {
@@ -110,76 +117,11 @@ impl CssSourcePosition {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn from_cssparser(
-        position: cssparser::SourcePosition,
-        location: cssparser::SourceLocation,
-    ) -> Self {
-        Self {
-            byte_offset: CssByteOffset::new(position.byte_index()),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(location.column.saturating_sub(1)),
-        }
-    }
-
     pub(crate) const fn previous_ascii_byte(self) -> Self {
         Self {
             byte_offset: CssByteOffset::new(self.byte_offset.value().saturating_sub(1)),
             line: self.line,
             column: CssUtf16ColumnIndex::new(self.column.value().saturating_sub(1)),
-        }
-    }
-
-    pub(crate) const fn from_source_location(location: cssparser::SourceLocation) -> Self {
-        Self {
-            byte_offset: CssByteOffset::new(0),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(location.column.saturating_sub(1)),
-        }
-    }
-
-    pub(crate) fn from_source_location_in(
-        source: &str,
-        location: cssparser::SourceLocation,
-    ) -> Self {
-        let target_line = location.line;
-        let target_column = location.column.saturating_sub(1);
-        let mut line = 0_u32;
-        let mut column = 0_u32;
-        let mut byte_offset = 0_usize;
-        let mut characters = source.char_indices().peekable();
-
-        while let Some((index, character)) = characters.next() {
-            if line == target_line && column >= target_column {
-                byte_offset = index;
-                break;
-            }
-
-            byte_offset = index + character.len_utf8();
-            match character {
-                '\r' => {
-                    if characters
-                        .peek()
-                        .is_some_and(|(_, next_character)| *next_character == '\n')
-                        && let Some((next_index, next_character)) = characters.next()
-                    {
-                        byte_offset = next_index + next_character.len_utf8();
-                    }
-                    line = line.saturating_add(1);
-                    column = 0;
-                }
-                '\n' | '\u{000c}' => {
-                    line = line.saturating_add(1);
-                    column = 0;
-                }
-                _ => column = column.saturating_add(character.len_utf16() as u32),
-            }
-        }
-
-        Self {
-            byte_offset: CssByteOffset::new(byte_offset),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(target_column),
         }
     }
 
@@ -287,15 +229,10 @@ impl CssSourceSpan {
 
 #[cfg(test)]
 mod tests {
-    use cssparser::{Parser, ParserInput};
-
     use super::*;
 
     fn position_after_tokenizing(source: &str) -> CssSourcePosition {
-        let mut input = ParserInput::new(source);
-        let mut parser = Parser::new(&mut input);
-        while parser.next().is_ok() {}
-        CssSourcePosition::from_cssparser(parser.position(), parser.current_source_location())
+        CssSourcePosition::from_byte_offset_in(source, source.len())
     }
 
     fn assert_position(position: CssSourcePosition, byte_offset: usize, line: u32, column: u32) {
@@ -348,18 +285,6 @@ mod tests {
         assert_eq!(empty.start(), start);
         assert_eq!(empty.end(), start);
         assert_eq!(CssSourceSpan::new(end, start), None);
-    }
-
-    #[test]
-    fn source_dependency_zero_column_saturates_to_zero() {
-        let mut input = ParserInput::new("");
-        let parser = Parser::new(&mut input);
-        let position = CssSourcePosition::from_cssparser(
-            parser.position(),
-            cssparser::SourceLocation { line: 0, column: 0 },
-        );
-
-        assert_position(position, 0, 0, 0);
     }
 }
 

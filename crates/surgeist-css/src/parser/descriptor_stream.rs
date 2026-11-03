@@ -9,7 +9,6 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
-use cssparser::{ParseError, SourceLocation};
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{BlockGrammar, UnitKind};
 use surgeist_css_parser::stream::StopToken;
@@ -31,12 +30,12 @@ use crate::diagnostic::error::{
     invalid_component_value, invalid_descriptor_annotation, invalid_descriptor_syntax_token_at,
     unexpected_authored_syntax_token, unexpected_syntax_end, unexpected_syntax_token,
 };
-use crate::diagnostic::{CssError, CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::numeric::expression::NumericInputContext;
 use crate::source::{CssSourcePosition, CssSourceSnapshot};
 
 /// The native error of a value grammar. It borrows nothing from the input.
-pub(super) type NativeValueError = ParseError<'static, CssError>;
+pub(super) type NativeValueError = NativeError;
 /// The failure of a value grammar.
 pub(super) type ValueError<'i> = SyntaxError<'i, NativeValueError>;
 /// The result of a value grammar.
@@ -45,14 +44,14 @@ pub(super) type Value<'i, T> = Result<T, ValueError<'i>>;
 /// Where the boundary `site` of a document is, as the native diagnostics say
 /// it: a bytes position of the source for a document of source text, and one
 /// of the serialization for a document of checked components.
-pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> SourceLocation {
+pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> CssSourcePosition {
     match numeric.ordinary() {
         NumericInputContext::Parsed(snapshot) => location_at(snapshot, offset_of(site)),
         NumericInputContext::Components(values, serialized) => {
             at_serialized_offset(serialized, serialized_offset(values, serialized, site))
         }
         NumericInputContext::Checked | NumericInputContext::QuirkyLengths(_) => {
-            SourceLocation { line: 0, column: 1 }
+            CssSourcePosition::START
         }
     }
 }
@@ -62,12 +61,8 @@ pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> Sou
 pub(super) fn at_serialized_offset(
     serialized: &CssSerializedValue,
     offset: usize,
-) -> SourceLocation {
-    let position = CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset);
-    SourceLocation {
-        line: position.line().value(),
-        column: position.column().value().saturating_add(1),
-    }
+) -> CssSourcePosition {
+    CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset)
 }
 
 /// The byte of the serialization of `values` that the boundary `site` of the
@@ -159,7 +154,7 @@ pub(super) fn native(
 pub(super) fn fail<'i>(
     numeric: &NumericInputContext<'_>,
     at: Site<'i>,
-    make: impl FnOnce(SourceLocation) -> NativeValueError,
+    make: impl FnOnce(CssSourcePosition) -> NativeValueError,
 ) -> ValueError<'i> {
     SyntaxError::custom(at, make(location(numeric, at)))
 }
@@ -375,7 +370,7 @@ pub(super) fn from_here<'i, T, E>(
 pub(super) fn collect_scope(
     input: &Stream<'_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssComponentValues, (crate::component::CssComponentValueError, SourceLocation)> {
+) -> Result<CssComponentValues, (crate::component::CssComponentValueError, CssSourcePosition)> {
     let document = input.start_site().document();
     input.remaining_components().map_err(|error| {
         let end = input.end_site();
@@ -394,8 +389,8 @@ pub(super) fn collect_scope(
 /// collected and where it is reported. `start` is where the scope begins.
 pub(super) struct CollectedScope {
     pub(super) values:
-        Result<CssComponentValues, (crate::component::CssComponentValueError, SourceLocation)>,
-    pub(super) start: SourceLocation,
+        Result<CssComponentValues, (crate::component::CssComponentValueError, CssSourcePosition)>,
+    pub(super) start: CssSourcePosition,
 }
 
 /// Whether the comma just consumed ends the stream, so that it adds no member
@@ -690,7 +685,7 @@ pub(super) fn drive_descriptors<'i, Item, G>(
     context: &DescriptorRecovery<'_>,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
 {
     let diagnostics = RefCell::new(Vec::new());
     let items = drive_descriptors_into(contents, grammar, context, &diagnostics);
@@ -707,7 +702,7 @@ pub(super) fn drive_descriptors_into<'i, Item, G>(
     sink: &RefCell<Vec<CssRecoveryDiagnostic>>,
 ) -> Vec<Item>
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
 {
     let snapshot = context.recovery.source_snapshot();
     let mut items = Vec::new();
@@ -839,7 +834,7 @@ pub(super) fn read_scope<'i, T>(
     input: &mut Stream<'i>,
     snapshot: &CssSourceSnapshot,
     parse: impl FnOnce(&mut Stream<'i>, &NumericInputContext<'_>) -> Value<'i, T>,
-) -> Result<T, NativeError<'i>> {
+) -> Result<T, NativeError> {
     let numeric = NumericInputContext::parsed(snapshot);
     parse(input, &numeric).map_err(|error| native(&numeric, &error))
 }
@@ -879,7 +874,7 @@ pub(super) fn drive_block_items<'i, Item, G>(
     declaration: CssRecoveryAction,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
 {
     let snapshot = recovery.source_snapshot();
     let mut items = Vec::new();
@@ -932,7 +927,7 @@ pub(super) fn component_failure_location(
     document: &Document<'_>,
     error: &crate::component::CssComponentValueError,
     end: usize,
-) -> SourceLocation {
+) -> CssSourcePosition {
     let at = match error.origin() {
         crate::component::CssValueOrigin::Parsed(origin) => {
             let failing = origin.span().start().byte_offset().value();
@@ -1055,11 +1050,8 @@ mod tests {
         .unwrap_err();
         let native = native(&numeric, &error);
         assert!(matches!(
-            native.kind,
-            cssparser::ParseErrorKind::Custom(CssError {
-                kind: crate::diagnostic::error::ErrorKind::UnexpectedEnd(_),
-                ..
-            })
+            native.error.kind(),
+            crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
     }
 
@@ -1132,17 +1124,12 @@ mod tests {
         assert!(rest.is_refused());
         // Mapped to the error the declaration reports, it is a resource
         // failure and no unexpected end.
-        let native = crate::parser::block_units::native_error_located(&error, |_| SourceLocation {
-            line: 0,
-            column: 1,
-        });
+        let native =
+            crate::parser::block_units::native_error_located(&error, |_| CssSourcePosition::START);
         assert!(crate::diagnostic::error::is_resource_parse_error(&native));
         assert!(!matches!(
-            native.kind,
-            cssparser::ParseErrorKind::Custom(CssError {
-                kind: crate::diagnostic::error::ErrorKind::UnexpectedEnd(_),
-                ..
-            })
+            native.error.kind(),
+            crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
         let exhausted = expect_exhausted::<()>(&mut document.root()).unwrap_err();
         assert!(exhausted.is_refused());
@@ -1195,11 +1182,8 @@ mod tests {
         let native = native(&numeric, &error);
         assert!(crate::diagnostic::error::is_resource_parse_error(&native));
         assert!(!matches!(
-            native.kind,
-            cssparser::ParseErrorKind::Custom(CssError {
-                kind: crate::diagnostic::error::ErrorKind::UnexpectedEnd(_),
-                ..
-            })
+            native.error.kind(),
+            crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
         // The same text without a refusal is read to its end.
         let free = After(std::cell::Cell::new(usize::MAX));

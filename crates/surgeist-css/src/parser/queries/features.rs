@@ -136,9 +136,8 @@ pub(super) fn construct_when_media_feature(
     })();
     let admitted = result.map_err(|error| {
         let error = native(&numeric, &error);
-        if let cssparser::ParseErrorKind::Custom(error) = &error.kind
-            && let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
-                error.kind()
+        if let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
+            error.error.kind()
         {
             return CssConditionConstructionError::from(
                 crate::query::when::ConditionConstructionKind::Component(

@@ -1,46 +1,35 @@
 //! The units of a block that the parser crate's driver hands to a ported
 //! grammar, and the failures it reports for them, in the terms the recovery
-//! diagnostics of the grammars still driven by cssparser are written in.
+//! diagnostics of the grammars are written in.
 //!
 //! A ported grammar reports its own errors as the native errors those
 //! diagnostics take. The driver's own failures (a unit that is not a
 //! declaration, a rule the protocol rejects) are converted to the same native
-//! errors here, with the location cssparser gives them.
-use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, SourceLocation};
+//! errors here.
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{BlockGrammar, Declaration, Failed, RuleEnd, UnitKind};
 
-use crate::diagnostic::error::{unexpected_syntax_end, unexpected_syntax_token};
-use crate::diagnostic::{CssError, CssRecoveryAction, CssRecoveryDiagnostic};
+pub(super) use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::{
+    invalid_at_rule_body, invalid_syntax, unexpected_syntax_end, unexpected_syntax_token,
+    unknown_at_rule,
+};
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
 use crate::source::{CssSourcePosition, CssSourceSnapshot, CssSourceSpan};
 
-/// The error the ported grammars report: what the native callbacks report.
-pub(super) type NativeError<'i> = ParseError<'i, CssError>;
 /// The failure of a ported grammar, as the driver carries it.
-pub(super) type GrammarError<'i> = SyntaxError<'i, NativeError<'i>>;
+pub(super) type GrammarError<'i> = SyntaxError<'i, NativeError>;
 /// A unit the driver consumed and the grammar did not accept.
-pub(super) type Failure<'i> = Failed<'i, NativeError<'i>, Attached<'i>>;
+pub(super) type Failure<'i> = Failed<'i, NativeError, Attached<'i>>;
 /// A declaration the driver consumed.
 pub(super) type DeclarationUnit<'i> = Declaration<'i, Attached<'i>>;
 
-/// The line and column cssparser reports for the byte `offset` of the source.
-pub(super) fn location_at(snapshot: &CssSourceSnapshot, offset: usize) -> SourceLocation {
-    let position = snapshot
+/// The position of the byte `offset` of the source.
+pub(super) fn location_at(snapshot: &CssSourceSnapshot, offset: usize) -> CssSourcePosition {
+    snapshot
         .position_at(offset)
-        .expect("a driver boundary of the source is a character boundary");
-    SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    }
-}
-
-/// The line and column cssparser reports for `position`.
-pub(super) fn location_of(position: crate::source::CssSourcePosition) -> SourceLocation {
-    SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    }
+        .expect("a driver boundary of the source is a character boundary")
 }
 
 /// The byte offset of a boundary of a document of source text.
@@ -51,24 +40,25 @@ pub(super) fn offset_of(site: Site<'_>) -> usize {
 }
 
 /// A grammar's own error, at the boundary `at`.
-pub(super) fn grammar_error<'i>(at: Site<'i>, error: NativeError<'i>) -> GrammarError<'i> {
+pub(super) fn grammar_error<'i>(at: Site<'i>, error: NativeError) -> GrammarError<'i> {
     SyntaxError::custom(at, error)
 }
 
-/// The native error a failure stands for: the grammar's own, or the one
-/// cssparser reports for the same fault.
+/// The native error a failure stands for: the grammar's own, or the one the
+/// parser crate's failure names (Syntax 3 sections 5.3 and 5.5.2), read through
+/// its predicates and accessors.
 pub(super) fn native_error<'i>(
     snapshot: &CssSourceSnapshot,
     error: &GrammarError<'i>,
-) -> NativeError<'i> {
+) -> NativeError {
     native_error_located(error, |site| location_at(snapshot, offset_of(site)))
 }
 
 /// [`native_error`] for a document whose boundaries `locate` places.
 pub(super) fn native_error_located<'i>(
     error: &GrammarError<'i>,
-    locate: impl FnOnce(Site<'i>) -> SourceLocation,
-) -> NativeError<'i> {
+    locate: impl FnOnce(Site<'i>) -> CssSourcePosition,
+) -> NativeError {
     if let Some(native) = error.custom_value() {
         return native.clone();
     }
@@ -78,18 +68,14 @@ pub(super) fn native_error_located<'i>(
         // end of the input.
         return refused_error(location);
     }
-    let basic = |kind| ParseError {
-        kind: ParseErrorKind::Basic(kind),
-        location,
-    };
     if let Some(name) = error.unknown_at_rule() {
-        return basic(BasicParseErrorKind::AtRuleInvalid(CowRcStr::from(name)));
+        return unknown_at_rule(location, name);
     }
     if error.is_invalid_at_rule_body() {
-        return basic(BasicParseErrorKind::AtRuleBodyInvalid);
+        return invalid_at_rule_body(location);
     }
     if error.is_invalid_qualified_rule() {
-        return basic(BasicParseErrorKind::QualifiedRuleInvalid);
+        return invalid_syntax(location);
     }
     match error.unexpected_token() {
         Some(token) => unexpected_syntax_token(location, token),
@@ -98,7 +84,7 @@ pub(super) fn native_error_located<'i>(
 }
 
 /// The error of a stream whose meter refused a step, at `location`.
-pub(super) fn refused_error<'i>(location: SourceLocation) -> NativeError<'i> {
+pub(super) fn refused_error(location: CssSourcePosition) -> NativeError {
     crate::diagnostic::error::invalid_component_value(
         location,
         crate::component::CssComponentValueError::new(
@@ -108,13 +94,12 @@ pub(super) fn refused_error<'i>(location: SourceLocation) -> NativeError<'i> {
     )
 }
 
-/// A unit that was dropped: what the recovery diagnostic of the grammars still
-/// driven by cssparser is made of.
-pub(super) struct DroppedUnit<'s, 'i> {
+/// A dropped unit: what the recovery diagnostic of the grammars is made of.
+pub(super) struct DroppedUnit<'s> {
     pub(super) kind: UnitKind,
     /// Why the unit is reported as dropped: the declaration's error for a unit
     /// that begins with an identifier, otherwise the rule's.
-    pub(super) error: NativeError<'i>,
+    pub(super) error: NativeError,
     /// The source the offsets belong to.
     source: &'s str,
     pub(super) start: usize,
@@ -139,7 +124,7 @@ pub(super) fn drive_units<'i, G>(
     mut unit: impl FnMut(Result<G::Item, Failure<'i>>),
 ) -> bool
 where
-    G: BlockGrammar<'i, Attached<'i>, Error = NativeError<'i>>,
+    G: BlockGrammar<'i, Attached<'i>, Error = NativeError>,
 {
     let mut stream = contents.clone();
     let mut units = stream.block_contents(&mut *grammar);
@@ -191,7 +176,7 @@ pub(super) fn dropped_unit<'s, 'i>(
     snapshot: &CssSourceSnapshot,
     source: &'s str,
     failed: &Failure<'i>,
-) -> DroppedUnit<'s, 'i> {
+) -> DroppedUnit<'s> {
     let kind = failed.kind();
     let rule_end = failed.rule_end();
     let first = failed.start();
@@ -284,7 +269,7 @@ pub(super) fn dropped_unit<'s, 'i>(
     }
 }
 
-impl<'s> DroppedUnit<'s, '_> {
+impl<'s> DroppedUnit<'s> {
     /// The text of the unit, to the end of the unit.
     pub(super) fn text(&self) -> &'s str {
         &self.source[self.start..self.end]

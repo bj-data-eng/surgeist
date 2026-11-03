@@ -10,6 +10,7 @@ use super::syntax_types::{Mark, Site, Stream, SyntaxError};
 use super::url::parse_url;
 use super::{queries, supports};
 use crate::diagnostic::CssError;
+use crate::diagnostic::error::NativeError;
 use crate::diagnostic::error::{from_parse_error, invalid_syntax};
 use crate::numeric::expression::NumericInputContext;
 use crate::query::condition::SupportsAuthoredForm;
@@ -23,7 +24,6 @@ use crate::rule::{
 };
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
-use cssparser::ParseError;
 use surgeist_css_parser::stream::StopToken;
 
 pub(crate) struct CssImportPrelude {
@@ -323,7 +323,7 @@ pub(crate) fn parse_import_prelude<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssImportPrelude, ParseError<'i, CssError>> {
+) -> Result<CssImportPrelude, NativeError> {
     read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         import_prelude(source, stream, numeric, recovery)
     })

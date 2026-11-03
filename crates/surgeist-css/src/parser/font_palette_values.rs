@@ -1,8 +1,7 @@
-use cssparser::ParseError;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, location_of, offset_of,
+    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
@@ -44,7 +43,7 @@ pub(super) fn parse_name<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssFontPaletteName, ParseError<'i, CssError>> {
+) -> Result<CssFontPaletteName, NativeError> {
     recovery.check_specialized_components_from(
         source,
         offset_of(input.site()),
@@ -73,11 +72,11 @@ pub(super) fn parse_rule<'i>(
     position: CssSourcePosition,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssFontPaletteValuesRule, ParseError<'i, CssError>> {
+) -> Result<CssFontPaletteValuesRule, NativeError> {
     let descriptors = parse_body(source, contents, diagnostics, recovery);
     CssFontPaletteValuesRule::try_new(name, descriptors)
         .map(|rule| rule.with_position(position))
-        .map_err(|_| invalid_syntax(location_of(position)))
+        .map_err(|_| invalid_syntax(position))
 }
 
 /// The descriptors of the block `contents` holds.
@@ -121,7 +120,7 @@ struct BodyParser<'i> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
     type Item = CssFontPaletteDescriptor;
-    type Error = NativeError<'i>;
+    type Error = NativeError;
 
     // The body is a descriptor list: an at-rule is not valid in it.
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
@@ -154,11 +153,11 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
 
 impl BodyParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
-    fn admit<'i>(
+    fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssFontPaletteDescriptor, NativeError<'i>> {
+    ) -> Result<CssFontPaletteDescriptor, NativeError> {
         let snapshot = self.recovery.source_snapshot();
         let implicit = self.recovery.check_component_values_from(
             self.source,
@@ -188,7 +187,7 @@ pub(super) fn parse_text_value(
     value_start: usize,
     end: usize,
     kind: CssFontPaletteDescriptorKind,
-) -> Result<CssFontPaletteDescriptorValue, ParseError<'static, CssError>> {
+) -> Result<CssFontPaletteDescriptorValue, NativeError> {
     parse_descriptor_range(
         snapshot,
         value_start..end,
@@ -205,7 +204,7 @@ fn parse_declared_value(
     snapshot: &crate::source::CssSourceSnapshot,
     text: &DeclarationText,
     kind: CssFontPaletteDescriptorKind,
-) -> Result<CssFontPaletteDescriptorValue, ParseError<'static, CssError>> {
+) -> Result<CssFontPaletteDescriptorValue, NativeError> {
     parse_descriptor_range(
         snapshot,
         text.value_start..text.value_end(),
@@ -243,9 +242,7 @@ pub(crate) fn construct_descriptor_value(
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
-        .map_err(|error| {
-            invalid_component_value(cssparser::SourceLocation { line: 0, column: 1 }, error)
-        })?;
+        .map_err(|error| invalid_component_value(CssSourcePosition::START, error))?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "font-palette-values", kind.as_str())
             .map_err(|error| native(&numeric, &error))?;

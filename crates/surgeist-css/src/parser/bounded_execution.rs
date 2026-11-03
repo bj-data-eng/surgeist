@@ -443,7 +443,7 @@ mod tests {
         let error = crate::diagnostic::error::from_parse_error(
             &source,
             crate::diagnostic::error::invalid_component_value(
-                cssparser::SourceLocation { line: 0, column: 1 },
+                crate::source::CssSourcePosition::START,
                 component,
             ),
         );

@@ -12,7 +12,7 @@
 //! a document of its own.
 use std::ops::Range;
 
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
 
 use super::block_units::{DeclarationUnit, location_at, offset_of};
 use super::{
@@ -20,7 +20,6 @@ use super::{
     invalid_annotation_for_context, parse_property_declaration_body_from_property_input,
 };
 use crate::declaration::CssImportance;
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::DocumentExt;
@@ -114,13 +113,13 @@ impl DeclarationText {
 /// Admits the declaration named `name` that lies at `text` in the way of
 /// `mode`: its name selects the grammar of its value, which is read first;
 /// then its importance is judged.
-pub(super) fn parse_declaration_unit<'i>(
+pub(super) fn parse_declaration_unit(
     mode: DeclarationMode,
     name: &str,
     text: &DeclarationText,
     snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
-) -> Result<ParsedDeclaration, ParseError<'i, CssError>> {
+) -> Result<ParsedDeclaration, NativeError> {
     let name_origin = CssParsedOrigin::from_range(snapshot, text.name.clone())
         .expect("parser name boundaries belong to the original source");
     let plan = declaration_plan(

@@ -11,7 +11,7 @@
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value>
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token>
 
-use cssparser::SourceLocation;
+use crate::source::CssSourcePosition;
 use surgeist_css_parser::Token;
 
 use crate::component::{CssSerializedOrigin, CssSerializedValue};
@@ -46,7 +46,7 @@ enum Locator<'a> {
 }
 
 impl Locator<'_> {
-    fn at(&self, site: Site<'_>) -> SourceLocation {
+    fn at(&self, site: Site<'_>) -> CssSourcePosition {
         let offset = site.offset().map_or(0, surgeist_css_parser::Offset::value);
         match self {
             Self::Source(snapshot) => location_at(snapshot, offset),

@@ -427,7 +427,6 @@ mod syntax_consumption;
 mod test_support;
 #[cfg(test)]
 mod tests;
-mod tokenization;
 mod validation;
 
 #[doc(inline)]

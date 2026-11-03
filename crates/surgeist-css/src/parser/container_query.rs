@@ -1,4 +1,5 @@
-use cssparser::ParseError;
+use crate::diagnostic::error::NativeError;
+use crate::source::CssSourcePosition;
 
 use super::boolean_condition::{
     BooleanModel, BooleanNode, BooleanNodeKind, ComponentOperands, ConditionFailure,
@@ -14,7 +15,6 @@ use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::invalid_syntax;
 use crate::numeric::expression::CalculationRoot;
 use crate::numeric::expression::CssCalculationExpression;
@@ -487,7 +487,7 @@ pub(crate) fn collect_container_components<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, CssError>> {
+) -> Result<(CssComponentValues, Vec<usize>), NativeError> {
     let implicit = recovery.check_specialized_components_from(
         source,
         super::block_units::offset_of(input.site()),
@@ -584,10 +584,10 @@ fn admit_container_prelude(
     Ok(CssContainerPrelude::new(entries, lexical))
 }
 
-pub(crate) fn container_prelude_from_components<'i>(
+pub(crate) fn container_prelude_from_components(
     values: CssComponentValues,
-    location: cssparser::SourceLocation,
-) -> Result<CssContainerPrelude, ParseError<'i, CssError>> {
+    location: CssSourcePosition,
+) -> Result<CssContainerPrelude, NativeError> {
     let end = values.items().len();
     admit_container_prelude(values).map_err(|error| match error {
         ContainerPreludeAdmissionError::Component(error) => {
@@ -599,26 +599,18 @@ pub(crate) fn container_prelude_from_components<'i>(
             } else {
                 crate::query::media::construction::parsed_position(&origin)
             };
-            let location = failure.map_or(location, |position| cssparser::SourceLocation {
-                line: position.line().value(),
-                column: position.column().value() + 1,
-            });
+            let location = failure.unwrap_or(location);
             invalid_syntax(location)
         }
     })
 }
 
-fn container_component_error<'i>(
-    fallback: cssparser::SourceLocation,
+fn container_component_error(
+    fallback: CssSourcePosition,
     error: crate::component::CssComponentValueError,
-) -> ParseError<'i, CssError> {
-    let location = crate::query::media::construction::parsed_position(error.origin()).map_or(
-        fallback,
-        |position| cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        },
-    );
+) -> NativeError {
+    let location =
+        crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     crate::diagnostic::error::invalid_component_value(location, error)
 }
 #[derive(Clone, Copy)]
