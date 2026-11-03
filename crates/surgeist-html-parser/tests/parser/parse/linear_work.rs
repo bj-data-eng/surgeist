@@ -376,23 +376,46 @@ fn work_added_by_each_doubling_of_repeated_tables_with_cells_is_near_double() {
     );
 }
 
+/// The three lowercase letters of `n` in base 26, least significant first, so that names
+/// for consecutive `n` differ in their first unit.
+fn letters(n: usize) -> String {
+    [n % 26, n / 26 % 26, n / 676 % 26]
+        .iter()
+        .map(|&digit| char::from(b'a' + digit as u8))
+        .collect()
+}
+
+/// The bytes inspected beyond those of a processing instruction whose `pairs` distinct names
+/// differ in their first unit, when the names share a 20-unit prefix instead. The two documents
+/// have the same length and structure, so every other charge, including the walk over the
+/// instruction's source-map origins that grows with the instruction on its own, is identical;
+/// only comparing names inspects units to a depth that depends on a shared prefix.
+fn shared_prefix_name_bytes(pairs: usize) -> u64 {
+    let document = |name: &dyn Fn(usize) -> String| {
+        let names: Vec<String> = (0..pairs).map(|n| format!("{}=''", name(n))).collect();
+        format!("<?marker {}?>", names.join(" "))
+    };
+    let prefix = "x".repeat(20);
+    let shared = parse_fragment_work(document(&|n| format!("{prefix}{}", letters(n))));
+    let early = parse_fragment_work(document(&|n| format!("{}{prefix}", letters(n))));
+    shared.inspected.saturating_sub(early.inspected)
+}
+
 #[test]
-fn work_added_by_each_doubling_of_a_processing_instructions_distinct_pseudo_attributes_is_near_double()
- {
+fn bytes_inspected_comparing_a_processing_instructions_names_grow_no_faster_than_its_pairs() {
     // XML-stylesheet 20101028 section 3 makes a repeated name an error, so each name is checked
-    // against the earlier ones; that check must not compare every pair of names. Only the
-    // inspected bytes are measured: comparing names inspects them, and reading the instruction
-    // once inspects each unit once, while the walk over the instruction's source-map origins
-    // (`pi_piece_origins`) adds record visits of its own.
-    assert_parses_add_near_double(
-        [100, 200, 400, 800],
-        |pairs| {
-            let names: Vec<String> = (0..pairs).map(|n| format!("p{n}=''")).collect();
-            format!("<?marker {}?>", names.join(" "))
-        },
-        parse_fragment_work,
-        &[("inspected bytes", |work| work.inspected)],
-    );
+    // against the earlier ones; that check must not compare every pair of names. Each
+    // doubling of the pairs may at most triple the previous extra, with a little slack for the
+    // random slot collisions of the keyed name table; comparing every pair quadruples it.
+    let extra: Vec<u64> = [25, 50, 100, 200].map(shared_prefix_name_bytes).to_vec();
+    for window in extra.windows(2) {
+        assert!(
+            window[1] <= 3 * window[0] + 4_000,
+            "doubling the pairs grew the extra inspected bytes from {} to {}: {extra:?}",
+            window[0],
+            window[1]
+        );
+    }
 }
 
 #[test]
