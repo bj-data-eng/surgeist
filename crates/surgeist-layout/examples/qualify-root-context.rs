@@ -17,6 +17,8 @@ mod measurement;
 pub mod parity_support;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[path = "../tests/bin/surgeist-layout-generate/source_owner.rs"]
+mod source_owner;
 #[path = "qualify-root-context/support.rs"]
 mod support;
 #[path = "../tests/bin/surgeist-layout-generate/xml.rs"]
@@ -37,7 +39,11 @@ fn parse_arguments(
     use support::QualificationMode;
     match arguments {
         [] => Ok((None, QualificationMode::Regular)),
-        [flag, source] if flag == "--fixture" => {
+        [mode] if mode == "--publish-root-context-v4" => Ok((None, QualificationMode::Publish)),
+        [mode] if mode == "--check-published-root-context-v4" => {
+            Ok((None, QualificationMode::CheckPublished))
+        }
+        [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
         [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
@@ -50,7 +56,7 @@ fn parse_arguments(
             Ok((Some(source.as_str()), QualificationMode::NumericDiagnostics))
         }
         _ => Err(
-            "usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -132,6 +138,32 @@ mod tests {
             ],
         ] {
             assert!(parse_arguments(&arguments(&values)).is_err());
+        }
+    }
+    #[test]
+    fn durable_modes_are_full_inventory_only_and_mutually_exclusive() {
+        for (flag, mode) in [
+            ("--publish-root-context-v4", QualificationMode::Publish),
+            (
+                "--check-published-root-context-v4",
+                QualificationMode::CheckPublished,
+            ),
+        ] {
+            assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));
+            for extra in [
+                "--fixture",
+                "--numeric-diagnostics",
+                "--font-custody",
+                "--stylesheet-custody",
+                "--publish-root-context-v4",
+                "--check-published-root-context-v4",
+            ] {
+                assert!(parse_arguments(&arguments(&[flag, extra])).is_err());
+            }
+            assert!(
+                parse_arguments(&arguments(&[flag, "--fixture", "html/grid/case.html"])).is_err()
+            );
+            assert!(parse_arguments(&arguments(&["--fixture", flag])).is_err());
         }
     }
 }

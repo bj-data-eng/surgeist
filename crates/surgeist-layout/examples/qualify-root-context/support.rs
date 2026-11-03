@@ -18,6 +18,9 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 
+#[path = "publication.rs"]
+mod publication;
+
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -26,6 +29,8 @@ pub(super) enum QualificationMode {
     StylesheetCustody,
     FontCustody,
     NumericDiagnostics,
+    Publish,
+    CheckPublished,
 }
 
 fn select_records(
@@ -72,6 +77,9 @@ fn select_records(
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
                 QualificationMode::Regular => {}
+                QualificationMode::Publish | QualificationMode::CheckPublished => {
+                    return Err("durable modes require the complete inventory".into());
+                }
             }
         }
         let named = declared_named_font_counts(&declaration.records[0]);
@@ -274,6 +282,15 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
     let mut declaration: Declaration =
         surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION)?, "corpus.toml")?;
     assert_eq!(declaration.schema_version, 3);
+    if matches!(
+        mode,
+        QualificationMode::Publish | QualificationMode::CheckPublished
+    ) {
+        if fixture.is_some() {
+            return Err("durable modes require the complete inventory".into());
+        }
+        return publication::run(owner, &declaration, mode);
+    }
     select_records(&mut declaration, fixture, mode)?;
     if let Some(source) = fixture {
         eprintln!(
@@ -371,6 +388,30 @@ fn qualify(
 ) -> Result<()> {
     let expected = declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &declaration.records, mode)?;
+    let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
+    let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
+    let report = browser::generate(request, QualificationAdapter)?;
+    validate_corpus(
+        root,
+        &inventory,
+        &corpus,
+        expected,
+        &report,
+        Validation {
+            mode,
+            filesystem_tampering: true,
+        },
+    )
+}
+
+fn corpus_for_inventory(
+    root: &Path,
+    owner: &Path,
+    settings: browser::BrowserSettings,
+    inventory: &Inventory,
+    focused: bool,
+    expected: BrowserReportSummary,
+) -> Result<BrowserCorpus> {
     let mut exact_roots = vec![
         RelativePath::new("scripts/gentest")?,
         RelativePath::new("fonts")?,
@@ -378,7 +419,14 @@ fn qualify(
     if inventory.cases.iter().any(|case| case.historical.is_some()) {
         exact_roots.push(RelativePath::new("historical")?);
     }
-    let corpus = BrowserCorpus::new(
+    if inventory
+        .expected_inputs
+        .contains_key(&RelativePath::new("origin/source-receipt.json")?)
+    {
+        exact_roots.push(RelativePath::new("origin")?);
+        exact_roots.push(RelativePath::new("html")?);
+    }
+    Ok(BrowserCorpus::new(
         BrowserLocation::new(owner, root)?,
         RelativePath::new("corpus.toml")?,
         if focused {
@@ -392,15 +440,29 @@ fn qualify(
             None,
         )?],
         settings,
-        inventory.fixtures,
-        inventory.global_inputs,
+        inventory.fixtures.clone(),
+        inventory.global_inputs.clone(),
         Vec::new(),
     )?
-    .with_expected_inputs(inventory.expected_inputs)?
+    .with_expected_inputs(inventory.expected_inputs.clone())?
     .with_exact_input_roots(exact_roots)?
-    .with_expected_counts(expected);
-    let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
-    let report = browser::generate(request, QualificationAdapter)?;
+    .with_expected_counts(expected))
+}
+
+struct Validation {
+    mode: QualificationMode,
+    filesystem_tampering: bool,
+}
+
+fn validate_corpus(
+    root: &Path,
+    inventory: &Inventory,
+    corpus: &BrowserCorpus,
+    expected: BrowserReportSummary,
+    report: &browser::BrowserGenerationReport,
+    validation: Validation,
+) -> Result<()> {
+    let mode = validation.mode;
     assert_eq!(*report.summary(), expected);
     assert!(report.filter().is_none());
     assert_eq!(
@@ -417,7 +479,7 @@ fn qualify(
         report.to_bytes()?
     );
     assert_eq!(
-        browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
+        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
 
@@ -488,18 +550,17 @@ fn qualify(
         }
     }
     qualify_pairs(root, &inventory.cases)?;
-    let tamper_count = if let Some(first) = inventory
-        .cases
-        .iter()
-        .find(|case| matches!(case.expected, ExpectedDisposition::Generated { .. }))
-    {
-        qualify_tampering(root, &corpus, &first.source, first.case.output())?;
+    let tamper_count = if let Some(first) = inventory.cases.iter().find(|case| {
+        validation.filesystem_tampering
+            && matches!(case.expected, ExpectedDisposition::Generated { .. })
+    }) {
+        qualify_tampering(root, corpus, &first.source, first.case.output())?;
         3
     } else {
         0
     };
     assert_eq!(
-        browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
+        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
     if mode == QualificationMode::NumericDiagnostics {
@@ -537,7 +598,10 @@ fn qualify(
         QualificationMode::FontCustody => eprintln!(
             "qualify-root-context: focused real-browser loaded-font custody checks completed; original loaded identity, declarations and strict observations retained"
         ),
-        QualificationMode::Regular | QualificationMode::NumericDiagnostics => {}
+        QualificationMode::Regular
+        | QualificationMode::NumericDiagnostics
+        | QualificationMode::Publish
+        | QualificationMode::CheckPublished => {}
     }
     Ok(())
 }
@@ -619,15 +683,34 @@ impl NumericDiagnostics {
     }
 }
 
-fn write_input(
+#[derive(Clone, Copy)]
+enum InputAccess {
+    Prepare,
+    ReadOnly,
+}
+
+fn inventory_input(
     root: &Path,
     path: &RelativePath,
     bytes: &[u8],
     expected: &mut BTreeMap<RelativePath, Sha256Digest>,
+    access: InputAccess,
 ) -> Result<()> {
     let destination = root.join(path.as_str());
-    fs::create_dir_all(destination.parent().expect("input parent"))?;
-    fs::write(destination, bytes)?;
+    match access {
+        InputAccess::Prepare => {
+            fs::create_dir_all(destination.parent().expect("input parent"))?;
+            fs::write(destination, bytes)?;
+        }
+        InputAccess::ReadOnly => {
+            publication::require_regular_input(root, path)?;
+            if fs::read(&destination)? != bytes {
+                return Err(
+                    format!("stale or changed publication input: {}", path.as_str()).into(),
+                );
+            }
+        }
+    }
     assert!(
         expected
             .insert(path.clone(), Sha256Digest::from_bytes(bytes))
@@ -642,6 +725,16 @@ fn prepare_inventory(
     owner: &Path,
     records: &[Record],
     mode: QualificationMode,
+) -> Result<Inventory> {
+    inventory(root, owner, records, mode, InputAccess::Prepare)
+}
+
+fn inventory(
+    root: &Path,
+    owner: &Path,
+    records: &[Record],
+    mode: QualificationMode,
+    access: InputAccess,
 ) -> Result<Inventory> {
     let mut inventory = Inventory {
         fixtures: Vec::new(),
@@ -663,7 +756,10 @@ fn prepare_inventory(
                 "installCustodyProbe('font', {paragraphs}, {grids});"
             ))
         }
-        QualificationMode::Regular | QualificationMode::NumericDiagnostics => None,
+        QualificationMode::Regular
+        | QualificationMode::NumericDiagnostics
+        | QualificationMode::Publish
+        | QualificationMode::CheckPublished => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -681,7 +777,7 @@ fn prepare_inventory(
             None
         };
         let bytes = augmented.as_deref().unwrap_or(bytes);
-        write_input(root, &path, bytes, &mut inventory.expected_inputs)?;
+        inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
         if name != "corpus.toml" {
             inventory.global_inputs.push(path);
         }
@@ -693,18 +789,17 @@ fn prepare_inventory(
             SourceKind::Original => &original,
             SourceKind::Authored => &authored,
         };
+        publication::require_regular_input(source_owner, &record.source)?;
         let source = fs::read(source_owner.join(record.source.as_str()))?;
-        assert_eq!(
-            Sha256Digest::from_bytes(&source),
-            record.source_sha256,
-            "declared source changed: {}",
-            record.source.as_str()
-        );
-        write_input(
+        if Sha256Digest::from_bytes(&source) != record.source_sha256 {
+            return Err(format!("declared source changed: {}", record.source.as_str()).into());
+        }
+        inventory_input(
             root,
             &record.source,
             &source,
             &mut inventory.expected_inputs,
+            access,
         )?;
         let family = record
             .source
@@ -734,18 +829,24 @@ fn prepare_inventory(
             let output = RelativePath::new(format!("xml/{family}__{variant}.xml"))?;
             let historical = if matches!(record.source_kind, SourceKind::Original) {
                 let historical = RelativePath::new(format!("historical/{family}__{variant}.xml"))?;
+                publication::require_regular_input(&original, &output)?;
                 let bytes = fs::read(original.join(output.as_str()))?;
                 let digest = record
                     .historical_sha256
                     .get(variant)
                     .ok_or("missing historical variant digest")?;
-                assert_eq!(
-                    &Sha256Digest::from_bytes(&bytes),
-                    digest,
-                    "historical observation changed: {}",
-                    output.as_str()
-                );
-                write_input(root, &historical, &bytes, &mut inventory.expected_inputs)?;
+                if &Sha256Digest::from_bytes(&bytes) != digest {
+                    return Err(
+                        format!("historical observation changed: {}", output.as_str()).into(),
+                    );
+                }
+                inventory_input(
+                    root,
+                    &historical,
+                    &bytes,
+                    &mut inventory.expected_inputs,
+                    access,
+                )?;
                 inventory.global_inputs.push(historical.clone());
                 Some(historical)
             } else {
