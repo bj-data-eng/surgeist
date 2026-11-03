@@ -4369,3 +4369,6 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[path = "inline_runs/auto_inline_block_shrink_to_fit.rs"]
+mod auto_inline_block_shrink_to_fit;
