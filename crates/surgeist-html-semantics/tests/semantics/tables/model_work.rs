@@ -333,3 +333,153 @@ fn tall_header_cells_beside_rows_cost_the_size_of_the_input() {
         );
     }
 }
+
+// ---- Work follows the input and the associations it must produce -----------
+
+/// A model query over a table the closure builds, with the model's checks.
+fn associated_work(
+    build: impl FnOnce(
+        &mut surgeist_html_semantics::HtmlCaptureBuilder,
+        &HtmlCaptureBuilderSubject,
+    ) -> HtmlCaptureBuilderSubject,
+    size: (usize, usize),
+    cells: usize,
+    associations: usize,
+) -> usize {
+    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
+        1_000_000,
+        10_000_000,
+        1_000_000,
+        100_000_000,
+        1000,
+        0,
+        0,
+        16_777_216,
+    ));
+    let table = build(&mut b, &d);
+    let capture = b.finish().unwrap();
+    let report = query(&capture, &table, limits()).0.unwrap();
+    let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
+    else {
+        panic!("expected a complete table model");
+    };
+    assert_eq!(
+        (model.width(), model.height(), model.cells().len()),
+        (size.0, size.1, cells)
+    );
+    assert!(model.errors().is_empty());
+    assert_eq!(model.headers().len(), associations);
+    report.usage().work()
+}
+
+/// Work divided by the input and the associations may grow only a little when
+/// the input doubles: the work is `O((input + associations) log input)`, not
+/// the product of the headers a scan meets and the headers it has already seen.
+/// `measured` holds (input, associations, work) for each size.
+fn assert_work_follows_input_and_associations(label: &str, measured: &[(usize, usize, usize)]) {
+    for pair in measured.windows(2) {
+        let (before, after) = (pair[0], pair[1]);
+        let (before_units, after_units) = (before.0 + before.1, after.0 + after.1);
+        // work / units grows by at most 1.25 per doubling.
+        assert!(
+            u128::try_from(after.2).unwrap() * u128::try_from(before_units).unwrap() * 100
+                <= u128::try_from(before.2).unwrap() * u128::try_from(after_units).unwrap() * 125,
+            "{label}: {} units cost {} but {} units cost {} \
+             (work per unit may grow at most x1.25 per doubling)",
+            before_units,
+            before.2,
+            after_units,
+            after.2,
+        );
+    }
+}
+
+/// `n` tall cells (n even), alternately `th scope=row` and `td`, the cell at
+/// position `k` spanning `n + 1 - k` rows, so that every row end differs; `n`
+/// rows after, each with one `td`. Row `r` has the tall cells `k < n + 1 - r`
+/// still under it, so its `td` takes column `n + 1 - r`.
+///
+/// By the scanning algorithm every cell takes the row-header `th` cells before
+/// it, since no two of them cross the same rows and so none hides another.
+/// Tall cell `k` takes the `th` at the even positions below `k`: `(k + 1) / 2`
+/// for a `td`, `k / 2` for a `th`, `n * n / 4` in all. The `td` of a later row
+/// at column `x` takes the `th` at the even positions below `x`, `(x + 1) / 2`
+/// each, for `x` from 1 to `n`: `n / 2 * (n / 2 + 1)`.
+fn staggered_work(n: usize) -> (usize, usize, usize) {
+    let associations = n * n / 4 + n / 2 * (n / 2 + 1);
+    let work = associated_work(
+        |b, d| {
+            let table = element(b, d, "table", &[]);
+            let first: Vec<_> = (0..n)
+                .map(|k| {
+                    let span = (n + 1 - k).to_string();
+                    if k % 2 == 0 {
+                        cell(b, d, "th", &[("scope", "row"), ("rowspan", &span)])
+                    } else {
+                        cell(b, d, "td", &[("rowspan", &span)])
+                    }
+                })
+                .collect();
+            let mut trs = Vec::new();
+            let row = element(b, d, "tr", &[]);
+            b.establish_children(&row, &first).unwrap();
+            trs.push(row);
+            for _ in 0..n {
+                let row = element(b, d, "tr", &[]);
+                let td = cell(b, d, "td", &[]);
+                b.establish_children(&row, &[td]).unwrap();
+                trs.push(row);
+            }
+            b.establish_children(&table, &trs).unwrap();
+            table
+        },
+        (n + 1, n + 1),
+        2 * n,
+        associations,
+    );
+    (2 * n, associations, work)
+}
+
+#[test]
+fn staggered_tall_headers_cost_the_input_and_the_associations() {
+    let measured: Vec<_> = [50, 100, 200, 400]
+        .into_iter()
+        .map(staggered_work)
+        .collect();
+    assert_work_follows_input_and_associations("staggered", &measured);
+}
+
+/// `n` rows of one `th` each. A `th` in the column takes every `th` above it:
+/// no data cell shares a row with one, so each is a column header, and no data
+/// cell closes a block, so none is hidden: `n * (n - 1) / 2` associations.
+fn stacked_column_work(n: usize) -> (usize, usize, usize) {
+    let associations = n * (n - 1) / 2;
+    let work = associated_work(
+        |b, d| {
+            let table = element(b, d, "table", &[]);
+            let trs: Vec<_> = (0..n)
+                .map(|_| {
+                    let row = element(b, d, "tr", &[]);
+                    let th = cell(b, d, "th", &[]);
+                    b.establish_children(&row, &[th]).unwrap();
+                    row
+                })
+                .collect();
+            b.establish_children(&table, &trs).unwrap();
+            table
+        },
+        (1, n),
+        n,
+        associations,
+    );
+    (n, associations, work)
+}
+
+#[test]
+fn a_stacked_header_column_costs_the_input_and_the_associations() {
+    let measured: Vec<_> = [50, 100, 200, 400]
+        .into_iter()
+        .map(stacked_column_work)
+        .collect();
+    assert_work_follows_input_and_associations("stacked column", &measured);
+}
