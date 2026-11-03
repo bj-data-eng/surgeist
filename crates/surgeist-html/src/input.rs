@@ -820,6 +820,8 @@ pub enum HtmlInputTypeEffect {
 }
 /// The ordered effects of the type-change algorithm in HTML877d #input-type-change. The adapter
 /// applies each effect, including nested attribute effects, before it asks for the next one.
+/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
+/// every effect still needs the consumer's own operation.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputTypeChange {
     previous: HtmlInputType,

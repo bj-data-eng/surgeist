@@ -59,7 +59,10 @@ pub enum HtmlConstructionCommand {
         properties: HtmlShadowRootProperties,
     },
     /// Inserts `node` into `parent`'s ordinary children, first detaching it from any previous
-    /// parent. A move that leaves the order unchanged is a no-op.
+    /// parent. The insertion is refused with the cycle error when `parent` is `node` or lies
+    /// inside `node`'s subtree. Only inserting `node` before itself is a no-op that changes
+    /// nothing. Every other insertion runs the full ordering and ancestry phases, including
+    /// appending a child that is already last or inserting a child before its own next sibling.
     Insert {
         /// The record to insert. Documents, fragments, association fragments and nodes that hold
         /// an association cannot be moved this way.
@@ -153,6 +156,8 @@ pub enum HtmlConstructionCommand {
 #[derive(Debug)]
 pub enum HtmlConstructionContent {
     /// Replaces an element's qualified name. Link history is cleared unless the new name keeps it.
+    /// A rename that changes whether the element has template contents is refused with the
+    /// invalid template association error.
     ElementName(QualifiedName),
     /// Replaces a text node's UTF-16 content.
     Text(DocumentString),

@@ -121,8 +121,8 @@ pub fn hyperlink_attribute_effect(
         _ => E::None,
     }
 }
-/// A change of an `a` or `area` element's position in the tree. Each form carries the connectedness
-/// fact the speculative-load hook reads.
+/// A change of an `a` or `area` element's position in the tree. `Insertion` and `Removal` carry the
+/// connectedness fact the speculative-load hook reads; `Moving` carries none.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlHyperlinkTreeMutation {
     /// The element was inserted.

@@ -550,8 +550,9 @@ macro_rules! concrete_pool {
                 }
             }
             /// Starts a lookup of `input` that inserts it as a weak occurrence on a miss, when the
-            /// pool admits it. Equality uses the exact ordered names, prefix presence and raw
-            /// UTF-16.
+            /// pool admits it. A string matches only the same UTF-16 code units. An attribute
+            /// list matches only the same attributes in the same order, each with its exact
+            /// namespace URI, prefix, local name and value.
             pub fn offer<'a>(&mut self, input: &'a $value) -> $operation<'a> {
                 $operation {
                     inner: self.inner.operation(input, true),

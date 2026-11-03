@@ -191,7 +191,7 @@ pub enum HtmlStyleExecutionProfile {
     NoExecutableJavaScript,
 }
 
-/// The next owner action of the update a style block algorithm (HTML877d #update-a-style-block).
+/// The next owner action of the *update a style block* algorithm (HTML877d #update-a-style-block).
 /// The consumer performs it and acknowledges it with `HtmlStyleUpdateReply`; the order is fixed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleUpdateAction {
@@ -249,6 +249,8 @@ impl Error for HtmlStyleProtocolError {}
 /// Complete each actual owner action before acknowledging. Removal precedes ALL
 /// guards. CSP receives exact direct-child Text, current Document and nonce/policy
 /// context; neither no browsing context nor absent loader proves permission.
+/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
+/// every effect still needs the consumer's own operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleUpdateCursor {
     action: HtmlStyleUpdateAction,
@@ -364,8 +366,10 @@ pub fn style_attribute_effect(
         HtmlStyleAttributeEffect::None
     }
 }
-/// An event that may require an update a style block run (HTML877d #update-a-style-block). Each
-/// carries whether the element is on a parser's open-element stack, which suppresses the update.
+/// An event that may require a run of the *update a style block* algorithm (HTML877d
+/// #update-a-style-block). `Insertion`, `Removal` and `ChildrenChanged` carry whether the element
+/// is on a parser's open-element stack, which suppresses the update. `ParserPopped` carries
+/// nothing and always requires the update.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleTrigger {
     /// The element was inserted.
@@ -390,9 +394,9 @@ pub enum HtmlStyleTrigger {
     /// A parser popped the element from its stack of open elements.
     ParserPopped,
 }
-/// Whether the trigger requires an update a style block run: a pop always does; the others do only
-/// when the element is off a parser's stack, and insertion and removal also require the element to
-/// have become connected or disconnected.
+/// Whether the trigger requires a run of the *update a style block* algorithm: a pop always does;
+/// the others do only when the element is off a parser's stack, and insertion and removal also
+/// require the element to have become connected or disconnected.
 pub const fn style_update_is_required(trigger: HtmlStyleTrigger) -> bool {
     match trigger {
         HtmlStyleTrigger::Insertion {
@@ -439,6 +443,8 @@ pub enum HtmlStyleNotificationReply {
 /// The event action must complete before reading current predicates. The
 /// consumer permits event-handler reentry and then reads the live element's
 /// current Document; queue-time owner or blocking observations are insufficient.
+/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
+/// every effect still needs the consumer's own operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleNotificationCursor {
     action: HtmlStyleNotificationAction,
