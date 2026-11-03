@@ -1414,7 +1414,7 @@ fn meta_ascii(
     }
     for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         c.charge_unit_inspection()?;
-        if !u8::try_from(*unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte)) {
+        if !bounded::ascii_case_insensitive_unit(*unit, byte) {
             return Ok(false);
         }
     }

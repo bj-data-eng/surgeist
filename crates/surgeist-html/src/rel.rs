@@ -1,6 +1,9 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
-use crate::tokens::{SpaceTokenCursor, SpaceTokenStep};
+use crate::tokens::{
+    SpaceTokenCursor, SpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,
+    ascii_whitespace,
+};
 pub(crate) mod controlled;
 use crate::semantic_input::{attributes_iter, find_attribute};
 use crate::{
@@ -670,19 +673,12 @@ trait RelMeter {
     ) -> Result<(), Self::Error>;
     fn reserve_data(&mut self, values: &mut Vec<RelData>) -> Result<(), Self::Error>;
 }
-pub(crate) fn fold(unit: u16) -> u16 {
-    if (65..=90).contains(&unit) {
-        unit + 32
-    } else {
-        unit
-    }
-}
 pub(crate) fn ascii_keyword(units: &[u16], keyword: &str) -> bool {
     units.len() == keyword.len()
         && units
             .iter()
             .zip(keyword.bytes())
-            .all(|(u, b)| fold(*u) == u16::from(b))
+            .all(|(&u, b)| ascii_case_insensitive_unit(u, b))
 }
 /// Narrow membership shares the token owner; no full author certificate is implied.
 pub(crate) fn contains_ascii_keyword(raw: &DocumentString, keyword: &str) -> bool {
@@ -698,7 +694,7 @@ fn keyword_at<C: RelMeter>(units: &[u16], keyword: &str, m: &mut C) -> Result<bo
     }
     for (unit, byte) in units.iter().zip(keyword.bytes()) {
         m.work(3)?;
-        if fold(*unit) != u16::from(byte) {
+        if !ascii_case_insensitive_unit(*unit, byte) {
             return Ok(false);
         }
     }
@@ -711,7 +707,7 @@ fn equal_at<C: RelMeter>(a: &[u16], b: &[u16], m: &mut C) -> Result<bool, C::Err
     }
     for (a, b) in a.iter().zip(b) {
         m.work(3)?;
-        if fold(*a) != fold(*b) {
+        if ascii_lowercase(*a) != ascii_lowercase(*b) {
             return Ok(false);
         }
     }
@@ -829,15 +825,11 @@ fn interpret<C: RelMeter>(
         HtmlRelAddressAuthor::MissingHrefAndImagesrcset
     };
     let href_author = if let (Some(HtmlRelRole::Link), Some(href)) = (input.role, input.href) {
-        let mut nonspace = false;
-        for &u in href.code_units() {
-            m.work(6)?;
-            nonspace |= !matches!(u, 9 | 10 | 12 | 13 | 32);
-        }
-        if nonspace {
-            HtmlRelHrefAuthor::GrammarUnchecked
-        } else {
+        if controlled::rel_href_is_empty_or_ascii_whitespace_with(href.code_units(), |n| m.work(n))?
+        {
             HtmlRelHrefAuthor::EmptyOrOnlyAsciiSpaces
+        } else {
+            HtmlRelHrefAuthor::GrammarUnchecked
         }
     } else {
         HtmlRelHrefAuthor::NotRequired

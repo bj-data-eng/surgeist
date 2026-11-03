@@ -657,8 +657,8 @@ impl TryFrom<HtmlProcessingInstruction> for HtmlAuthoredProcessingInstruction {
             units
                 .iter()
                 .copied()
-                .map(|unit| (unit as u8).to_ascii_lowercase())
-                .eq(text.bytes())
+                .map(crate::tokens::ascii_lowercase)
+                .eq(text.bytes().map(u16::from))
         };
         if reserved("xml") || reserved("xml-stylesheet") {
             return Err(HtmlProcessingInstructionError::ReservedTarget);

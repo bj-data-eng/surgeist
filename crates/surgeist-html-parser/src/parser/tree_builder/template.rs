@@ -64,8 +64,8 @@ impl HeadState<'_> {
                 if tag_sets::ascii_eq(attr.name.value.text(), "shadowrootmode", c)? {
                     let value = attr.value.value.text();
                     write(size_of::<bool>(), 1, c)?;
-                    shadow = super::foreign::insensitive(value, "open", c)?
-                        || super::foreign::insensitive(value, "closed", c)?;
+                    shadow = c.ascii_case_insensitive_literal_matches(value, "open")?
+                        || c.ascii_case_insensitive_literal_matches(value, "closed")?;
                 }
             }
             (patch, shadow)

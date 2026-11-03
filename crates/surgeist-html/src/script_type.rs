@@ -4,6 +4,7 @@
 //! recorded by this crate's NOTICE. This is not MIME parsing or author validation.
 
 use crate::DocumentString;
+use crate::tokens::{ascii_case_insensitive_unit, ascii_whitespace};
 
 /// A script kind selected by HTML's type/language classification step.
 /// This value alone does not establish preparation, saved metadata or execution.
@@ -122,12 +123,7 @@ impl<'a> ScriptTypeMatchCursor<'a> {
             } else {
                 self.value.code_units()[self.start + self.position - self.prefix.len()]
             };
-            let folded = if (0x41..=0x5a).contains(&actual) {
-                actual + 0x20
-            } else {
-                actual
-            };
-            if folded != u16::from(self.expected[self.position].to_ascii_lowercase()) {
+            if !ascii_case_insensitive_unit(actual, self.expected[self.position]) {
                 self.result = Some(false);
             } else {
                 self.position += 1;
@@ -243,20 +239,14 @@ impl<'a> Scan<'a> {
             }
             Stage::Match(matcher) => matcher.advance(),
             Stage::TrimStart => {
-                if matches!(
-                    self.value.code_units()[self.start],
-                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
-                ) {
+                if ascii_whitespace(self.value.code_units()[self.start]) {
                     self.start += 1;
                 } else {
                     self.stage = Stage::TrimEnd;
                 }
             }
             Stage::TrimEnd => {
-                if matches!(
-                    self.value.code_units()[self.end - 1],
-                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
-                ) {
+                if ascii_whitespace(self.value.code_units()[self.end - 1]) {
                     self.end -= 1;
                 } else {
                     self.pass = Pass::TrimmedEssences;

@@ -6,7 +6,9 @@ pub use collections::*;
 
 use super::*;
 use crate::HtmlCapturedChildIds;
-use surgeist_html::bounded::{HtmlTableSpanRule, th_scope_state, th_scope_work_bound};
+use surgeist_html::bounded::{
+    HtmlTableSpanRule, is_ascii_whitespace, th_scope_state, th_scope_work_bound,
+};
 use surgeist_html::{HtmlTableHeaderScope, HtmlTableHeaderScopeState};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -908,7 +910,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlCapturedNodeKind::Text(text) => {
                     for unit in text.code_units() {
                         self.charge(1)?;
-                        if !table_whitespace(*unit) {
+                        if !is_ascii_whitespace(*unit) {
                             return Ok(false);
                         }
                     }
@@ -933,14 +935,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 let mut position = 0;
                 while position < units.len() {
                     self.charge(1)?;
-                    if table_whitespace(units[position]) {
+                    if is_ascii_whitespace(units[position]) {
                         position += 1;
                         continue;
                     }
                     let start = position;
                     while position < units.len() {
                         self.charge(1)?;
-                        if table_whitespace(units[position]) {
+                        if is_ascii_whitespace(units[position]) {
                             break;
                         }
                         position += 1;
@@ -1037,8 +1039,4 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(())
     }
-}
-
-fn table_whitespace(unit: u16) -> bool {
-    matches!(unit, 9 | 10 | 12 | 13 | 32)
 }
