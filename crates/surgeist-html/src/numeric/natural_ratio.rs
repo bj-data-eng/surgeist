@@ -319,6 +319,7 @@ fn check_scratch(output: &Vec<u8>, required: usize) -> Result<(), NaturalArithme
 /// Each step initializes one cell, multiplies one cell, writes one carry, or
 /// trims one zero. Workspace allocation/admission is the consuming session's
 /// responsibility. A cell accumulator is at most 9+81+9=99.
+#[derive(Debug)]
 pub(crate) struct NaturalProductKernel<'a> {
     left: NaturalDigits<'a>,
     right: NaturalDigits<'a>,
@@ -381,6 +382,7 @@ impl<'a> NaturalProductKernel<'a> {
 /// Most-significant-first comparison of two checked operands, one digit pair per step, with
 /// admission left to the caller. After it completes, its operands can authorize a difference
 /// through `take_difference`.
+#[derive(Debug)]
 pub struct NaturalComparison<'a> {
     left: NaturalDigits<'a>,
     right: NaturalDigits<'a>,
@@ -450,6 +452,7 @@ impl<'a> NaturalComparison<'a> {
         })
     }
 }
+#[derive(Debug)]
 pub(crate) struct NaturalDifferenceKernel<'a> {
     large: NaturalDigits<'a>,
     small: NaturalDigits<'a>,
@@ -492,6 +495,7 @@ impl<'a> NaturalDifferenceKernel<'a> {
 
 /// Bounded multiplication over checked operands and caller-reserved scratch.
 /// Exclusive borrowing prevents workspace replacement between admitted steps.
+#[derive(Debug)]
 pub struct NaturalProduct<'input, 'scratch> {
     kernel: NaturalProductKernel<'input>,
     output: &'scratch mut Vec<u8>,
@@ -555,6 +559,7 @@ impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
 }
 /// Absolute difference authorized by a completed immutable comparison.
 /// Each step writes one subtraction digit or trims one high zero.
+#[derive(Debug)]
 pub struct NaturalDifference<'input, 'scratch> {
     kernel: NaturalDifferenceKernel<'input>,
     output: &'scratch mut Vec<u8>,

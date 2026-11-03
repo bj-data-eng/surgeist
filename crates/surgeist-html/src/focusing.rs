@@ -8,7 +8,7 @@
 
 /// Whether this invocation actually supplied a fallback target. This is not the
 /// nullable result of get-the-focusable-area; the adapter retains the exact value.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusingFallback {
     /// The invocation was run without a fallback target.
     Omitted,

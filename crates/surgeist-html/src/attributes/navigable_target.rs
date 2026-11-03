@@ -200,7 +200,7 @@ impl HtmlNavigableTargetAttribute {
 }
 
 /// One exact unit per action; adapters own their admission and traversal.
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TargetRecovery {
     newline: Option<usize>,
     angle: Option<usize>,

@@ -2,6 +2,7 @@
 use super::*;
 
 /// The explicit original operands, independent of captured-tree qualification.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RelInputs<'raw> {
     pub(super) role: Option<HtmlRelRole>,
     pub(super) rel: Option<&'raw DocumentString>,
@@ -331,11 +332,13 @@ pub enum HtmlRelRefinement {
     Extension(HtmlRelEffect),
 }
 
+#[derive(Debug)]
 enum ReservationStorage<'a> {
     Occurrences(&'a mut Vec<HtmlRelOccurrence>),
     Data(&'a mut Vec<RelData>),
 }
 /// A fixed one-record reservation against the actual private output allocation.
+#[derive(Debug)]
 pub struct HtmlRelReservation<'a> {
     storage: ReservationStorage<'a>,
     attempted: bool,
@@ -439,7 +442,7 @@ impl<M: HtmlRelMeter> super::RelMeter for Meter<'_, M> {
         self.reserve(ReservationStorage::Data(values))
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Phase {
     Initial,
     Interpreted,
@@ -448,6 +451,7 @@ enum Phase {
     Stopped,
 }
 /// Owns all unpublished backing, even after a consumer stops inside a rule.
+#[derive(Debug)]
 pub struct HtmlRelInterpretation<'raw> {
     inputs: RelInputs<'raw>,
     occurrences: Vec<HtmlRelOccurrence>,

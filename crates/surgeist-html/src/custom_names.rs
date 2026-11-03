@@ -114,6 +114,7 @@ pub fn validate_custom_element_name(
 /// Actual borrowed scanner actions. A consuming controlled operation admits
 /// each action before the indicated dereference; native validation remains
 /// explicitly unbudgeted and uses the same grammar.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CustomNameScanAction {
     /// The fixed per-name step, admitted once before any unit of the name is inspected.
     Header,

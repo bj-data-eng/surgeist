@@ -174,6 +174,7 @@ enum GroupPhase {
 }
 
 /// Owns the arena and its only merge plan; no name admission escapes this owner.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeEdit {
     storage: HtmlConstructionStorage,
     element: HtmlBuilderNode,
@@ -225,6 +226,7 @@ impl fmt::Display for HtmlConstructionAttributeRejection {
 }
 impl std::error::Error for HtmlConstructionAttributeRejection {}
 /// The result of a finished or abandoned edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCompletion {
     storage: HtmlConstructionStorage,
     retirement: HtmlConstructionAttributePlanRetirement,
@@ -243,10 +245,12 @@ impl HtmlConstructionAttributeCompletion {
 }
 /// One pending action of an edit's own setup. It borrows the edit exclusively; `perform` consumes
 /// it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeAction<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
 }
 /// The observation after a setup action. It borrows the edit exclusively; `accept` resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeObservation<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     /// The phase this accepted observation resumes.
@@ -602,6 +606,7 @@ enum CandidatePhase<'n> {
 /// The planning of one named candidate. It compares the candidate's name with the target's
 /// existing attributes and then with earlier candidates. Dropping it before `try_finish` poisons
 /// the edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     edit: &'e mut HtmlConstructionAttributeEdit,
     index: usize,
@@ -612,11 +617,13 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     failure: Option<HtmlConstructionError>,
 }
 /// One pending candidate action. It borrows the candidate exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
 }
 /// The observation after a candidate action. It borrows the candidate exclusively; `accept`
 /// resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
     /// The phase this accepted observation resumes.
@@ -905,6 +912,7 @@ impl HtmlConstructionAttributeCandidateObservation<'_, '_, '_> {
     }
 }
 
+#[derive(Debug)]
 enum SlotInput<'a> {
     Reserve(usize),
     Append(&'a mut Vec<Attribute>),
@@ -945,6 +953,7 @@ enum SlotPhase {
 }
 /// One positional step on an edit: reserve, append, replace, swap or pop. Dropping it before it
 /// commits poisons the edit.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlot<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     input: SlotInput<'a>,
@@ -956,10 +965,12 @@ pub struct HtmlConstructionAttributeSlot<'a> {
     plan_index: usize,
 }
 /// One pending slot action. It borrows the slot exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotAction<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
 }
 /// The observation after a slot action. It borrows the slot exclusively; `accept` resumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotObservation<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
     /// The phase this accepted observation resumes.
@@ -967,6 +978,7 @@ pub struct HtmlConstructionAttributeSlotObservation<'a, 'e> {
     capacity: bool,
 }
 /// A slot whose every action was accepted. `commit` applies it.
+#[derive(Debug)]
 pub struct HtmlConstructionReadyAttributeSlot<'a> {
     slot: HtmlConstructionAttributeSlot<'a>,
 }
@@ -1450,6 +1462,7 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
 }
 
 /// Cleanup owns the same initialized decision cells and their actual allocation.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributePlanRetirement {
     decisions: Vec<NameDecision>,
     snapshot: Option<HtmlConstructionAllocationSnapshot>,
@@ -1469,6 +1482,7 @@ pub enum HtmlConstructionAttributeRetirementDescription {
 }
 /// One pending cleanup action of the merge plan. It borrows the retirement exclusively; `perform`
 /// consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeRetirementAction<'a> {
     retirement: &'a mut HtmlConstructionAttributePlanRetirement,
 }

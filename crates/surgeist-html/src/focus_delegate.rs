@@ -6,7 +6,7 @@
 //! reply. Neither tabindex nor absent rendering services certify focusability.
 
 /// Classification of the original focus target, not the current descendant.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateTargetKind {
     /// The focus target is a `dialog` element, so a descendant is chosen when it is
     /// sequentially focusable.
@@ -19,7 +19,7 @@ pub enum HtmlFocusDelegateTargetKind {
 /// string except exact `click`. The adapter must still retain and forward the
 /// actual original trigger to called resolution and nested delegation; this
 /// classification is not a replacement string. Dialog supplies default `other`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusTriggerKind {
     /// The trigger is exactly the string `click`, so a candidate must also be click
     /// focusable.
@@ -28,7 +28,7 @@ pub enum HtmlFocusTriggerKind {
     Other,
 }
 /// Role of the actual whereToLook local, retained by the adapter.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateRoot {
     /// `whereToLook` is the focus target itself, which is not a shadow host.
     Target,
@@ -38,7 +38,7 @@ pub enum HtmlFocusDelegateRoot {
 }
 /// Actual shadow-host/root relation and delegates-focus state. When present,
 /// the adapter retains the exact root observed with this reply.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateShadowRoot {
     /// The focus target is not a shadow host.
     Absent,
@@ -49,7 +49,7 @@ pub enum HtmlFocusDelegateShadowRoot {
     DoesNotDelegateFocus,
 }
 /// Role of the actual selected area, never its identity or a fabricated anchor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateCandidate {
     /// The current descendant is itself the focusable area.
     Descendant,
@@ -57,7 +57,7 @@ pub enum HtmlFocusDelegateCandidate {
     ResolvedArea,
 }
 /// The result of an autofocus delegate: null, or the selected area's role.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlAutofocusDelegateOutcome {
     /// No descendant with an `autofocus` attribute yielded a suitable area.
     Null,
@@ -66,7 +66,7 @@ pub enum HtmlAutofocusDelegateOutcome {
 }
 /// The result of a focus delegate: null, an area from the autofocus delegate, or
 /// the selected area's role.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusDelegateOutcome {
     /// No suitable focusable area exists below `whereToLook`, or the target is a
     /// shadow host that does not delegate focus.

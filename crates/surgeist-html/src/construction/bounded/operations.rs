@@ -438,6 +438,7 @@ struct Plan {
     edits_order: bool,
     children_capacity: Option<usize>,
 }
+#[derive(Debug)]
 enum StorageOwner {
     Mutable(HtmlConstructionStorage),
     Shared(Arc<Arena>),
@@ -458,6 +459,7 @@ impl StorageOwner {
 }
 
 /// A pending operation retains its exact storage and command through refusal.
+#[derive(Debug)]
 pub struct HtmlConstructionOperation {
     owner: Option<StorageOwner>,
     command: HtmlConstructionCommand,
@@ -501,6 +503,7 @@ impl fmt::Display for HtmlConstructionRejection {
 impl std::error::Error for HtmlConstructionRejection {}
 /// The storage and command of an abandoned operation, plus retirement evidence for any allocation
 /// the operation had already created.
+#[derive(Debug)]
 pub struct HtmlConstructionAbort {
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
@@ -520,10 +523,12 @@ impl HtmlConstructionAbort {
     }
 }
 /// An operation whose every action was accepted. `commit` applies it; `abort` abandons it.
+#[derive(Debug)]
 pub struct HtmlConstructionReadyOperation {
     operation: HtmlConstructionOperation,
 }
 /// The outcome of committing an operation.
+#[derive(Debug)]
 pub enum HtmlConstructionCommit {
     /// The command changed the storage, which comes back as the sole owner.
     Changed {
@@ -544,11 +549,13 @@ pub enum HtmlConstructionCommit {
 }
 /// One pending action of an operation. It borrows the operation exclusively; `perform` consumes
 /// it.
+#[derive(Debug)]
 pub struct HtmlConstructionAction<'a> {
     operation: &'a mut HtmlConstructionOperation,
 }
 /// The observation after an action. It borrows the operation exclusively; `accept` resumes the
 /// operation at the phase the action selected.
+#[derive(Debug)]
 pub struct HtmlConstructionObservation<'a> {
     operation: &'a mut HtmlConstructionOperation,
     /// The phase this accepted observation resumes.
@@ -2292,11 +2299,13 @@ enum RetirementPhase {
     Complete,
 }
 /// Deterministic cleanup of the original banks; it never resumes construction.
+#[derive(Debug)]
 pub struct HtmlConstructionRetirement {
     storage: Option<HtmlConstructionStorage>,
     phase: RetirementPhase,
 }
 /// One pending cleanup action. It borrows the retirement exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionRetirementAction<'a> {
     owner: &'a mut HtmlConstructionRetirement,
     snapshot: Option<HtmlConstructionAllocationSnapshot>,

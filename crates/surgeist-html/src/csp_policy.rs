@@ -130,7 +130,7 @@ impl std::fmt::Display for HtmlCspProtocolError {
 impl std::error::Error for HtmlCspProtocolError {}
 
 /// Original-controller interruption remains distinct from protocol misuse.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCspError<E> {
     /// The request violated the CSP protocol: an input was foreign, stale or
     /// mismatched, or checked accounting could not be represented. The wrapped error
@@ -191,7 +191,7 @@ impl<T: fmt::Debug, E: Error + 'static> Error for HtmlCspRejected<T, E> {
 }
 
 /// Required external capability; absence never certifies empty policy.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlCspUnavailable {
     /// The call required an external processor and none was supplied. Absence is not

@@ -438,7 +438,7 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
 /// that charges `BEGIN_WORK` once and `STEP_WORK` per step
 /// accounts for all of its work. The `Token` spans index into the supplied
 /// slice, split on ASCII whitespace with each token nonempty (HTML §2.3.7).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SpaceTokenCursor<'a> {
     units: &'a [u16],
     position: usize,
@@ -447,6 +447,7 @@ pub struct SpaceTokenCursor<'a> {
     done: bool,
 }
 /// The outcome of one `SpaceTokenCursor` step.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpaceTokenStep {
     /// The step inspected one code unit and emitted no token; step again.
     Continue,

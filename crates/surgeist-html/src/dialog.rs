@@ -15,7 +15,7 @@ pub use request::*;
 
 /// Ordered partial observations for HTML's allow-focus steps. Unknown feature
 /// permission cannot be replaced by a known activation state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlAllowFocusDecision {
     /// The document's feature permission is not yet known, so neither it nor the
     /// activation state decides the result. Nothing is concluded from unknown input.
@@ -48,7 +48,7 @@ pub const fn allow_focus_decision(
 
 /// Exact creation values, not a getter for an advanced live Dialog.
 /// Common HTML previous-focus initialization remains its existing owner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogFreshState {
     _private: (),
 }
@@ -92,7 +92,7 @@ impl HtmlDialogFreshState {
 }
 
 /// One exact recognized open-attribute change, including equal presence.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogOpenChange {
     old_present: bool,
     new_present: bool,
@@ -116,7 +116,7 @@ impl HtmlDialogOpenChange {
 
 /// The selected source algorithm. Actual close text/source remain with the
 /// adapter for their original lifetime; supplied empty text is still present.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogOperation {
     /// The `show()` method steps of HTML 4.11.4 (The dialog element).
     Show,
@@ -156,7 +156,7 @@ pub fn dialog_attribute_operation(
 }
 
 /// Exact ToggleEvent state spelling, independent of current attributes at delivery.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogState {
     /// The ToggleEvent state `"closed"`.
     Closed,
@@ -173,7 +173,7 @@ impl HtmlDialogState {
     }
 }
 /// A source operand role; this contains no actual Element identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogEventSource {
     /// The source is null, as for the `show()`, `showModal()` and `requestClose()`
     /// methods.
@@ -182,7 +182,7 @@ pub enum HtmlDialogEventSource {
     OperationSource,
 }
 /// Normal source return versus a show()/showModal() InvalidState error.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogOutcome {
     /// The operation returned normally.
     Completed,
@@ -804,7 +804,7 @@ pub enum HtmlDialogToggleEffect {
     },
 }
 /// Language-only first-old/latest-new decision; it retains no task/source identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogToggleDecision {
     old: HtmlDialogState,
     new: HtmlDialogState,
@@ -864,13 +864,13 @@ impl HtmlDialogToggleDecision {
 }
 
 /// Pure manager policy. Runtime owns the ordered groups and watcher records.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlCloseWatcherManager {
     allowed_groups: usize,
     next_interaction_allows_new_group: bool,
 }
 /// Placement selected from the actual manager and current group count.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlCloseWatcherPlacement {
     /// The new watcher forms a new group in the Window's close watcher manager.
     NewGroup,
@@ -905,7 +905,7 @@ impl HtmlCloseWatcherManager {
     }
 }
 /// Original fresh watcher cancellation state; no invocation route is implied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlCloseWatcherState {
     running_cancel_action: bool,
 }

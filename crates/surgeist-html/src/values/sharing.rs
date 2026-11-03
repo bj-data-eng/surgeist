@@ -669,10 +669,25 @@ macro_rules! concrete_pool {
                 self.inner.abort(seal.root)
             }
         }
+        impl fmt::Debug for $pool {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($pool))
+                    .field("heap_usage", &self.heap_usage())
+                    .finish_non_exhaustive()
+            }
+        }
         /// A caller-input-borrowing operation, independent of the pool lock.
         /// On refusal, drop this owner before its provisional/candidate receipts.
         pub struct $operation<'a> {
             inner: Operation<'a, $value>,
+        }
+        impl fmt::Debug for $operation<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($operation))
+                    .field("phase", &self.inner.phase)
+                    .field("change", &self.inner.change)
+                    .finish_non_exhaustive()
+            }
         }
         impl $operation<'_> {
             /// Performs a read action, such as hashing or comparing, outside the consumer's pool

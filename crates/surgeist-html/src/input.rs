@@ -218,6 +218,7 @@ pub enum HtmlInputColorEffect {
 /// The ordered Color serialization steps of HTML877d #serialize-a-color-well-control-color for one
 /// control. The cursor yields each step through `next_effect`; CSS performs the conversions and
 /// spelling. It is a single-pass state machine, so it is not `Clone`.
+#[derive(Debug)]
 pub struct HtmlInputColorSerialization {
     alpha: bool,
     space: crate::HtmlInputColorSpace,
@@ -373,6 +374,16 @@ pub struct HtmlInputSanitizationCursor<'a> {
     pending: Option<HtmlInputRetainedRange>,
     count: usize,
     temporal_plan: Option<crate::temporal::TemporalInputPlan>,
+}
+impl std::fmt::Debug for HtmlInputSanitizationCursor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HtmlInputSanitizationCursor")
+            .field("policy", &self.policy)
+            .field("mode", &self.mode)
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .finish_non_exhaustive()
+    }
 }
 impl<'a> HtmlInputSanitizationCursor<'a> {
     /// Starts the sanitization of `units` under `policy`. `mode` matters only for
@@ -759,6 +770,7 @@ pub enum HtmlInputResetEffect {
 }
 /// The per-control reset algorithm as ordered effects. It is not a form reset event. A single-pass
 /// cursor, so it is not `Clone`.
+#[derive(Debug)]
 pub struct HtmlInputReset {
     initial: HtmlInputFlags,
     stage: u8,
@@ -881,6 +893,7 @@ pub enum HtmlInputRuleWork {
     InspectValueUnit,
 }
 
+#[derive(Debug)]
 enum TypeStep<'a> {
     Row,
     Length(&'a DocumentString, &'static str, HtmlInputType),
@@ -889,6 +902,7 @@ enum TypeStep<'a> {
 }
 /// Borrowed recognizer over the authoritative attributes-owned 22-state rows.
 /// No trimming, allocation, copied keyword table or whole-string advance.
+#[derive(Debug)]
 pub struct HtmlInputTypeCursor<'a> {
     value: Option<&'a DocumentString>,
     row: usize,
@@ -966,6 +980,7 @@ impl<'a> HtmlInputTypeCursor<'a> {
     }
 }
 
+#[derive(Debug)]
 enum ColorSpaceStep<'a> {
     Row,
     Length(&'a DocumentString, &'static str, crate::HtmlInputColorSpace),
@@ -979,6 +994,7 @@ enum ColorSpaceStep<'a> {
 }
 /// Borrowed recognizer over the authoritative attributes-owned colorspace rows.
 /// No trimming, allocation, copied keyword table or whole-string advance.
+#[derive(Debug)]
 pub struct HtmlInputColorSpaceCursor<'a> {
     value: Option<&'a DocumentString>,
     row: usize,
@@ -1068,6 +1084,7 @@ impl HtmlInputValueComparison {
     }
 }
 /// One pair per advance; exact code units, not Unicode or semantic equality.
+#[derive(Debug)]
 pub struct HtmlInputValueComparisonCursor<'a> {
     old: &'a [u16],
     current: &'a [u16],

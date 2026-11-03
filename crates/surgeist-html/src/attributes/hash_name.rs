@@ -161,16 +161,19 @@ impl HtmlValueInterpreter {
 ///
 /// The scan is a consuming cursor: it is not `Clone`, so one state cannot be
 /// stepped twice. It borrows the raw value for `'raw`.
+#[derive(Debug)]
 pub struct HashNameScan<'raw> {
     raw: &'raw DocumentString,
     len: usize,
     phase: HashNameScanPhase,
 }
+#[derive(Debug)]
 enum HashNameScanPhase {
     Searching(usize),
     Ready(Option<usize>),
 }
 /// The result of one `HashNameScan::step`.
+#[derive(Debug)]
 pub enum HashNameScanStep<'raw> {
     /// The scan has more steps. Step this state to continue.
     Continue(HashNameScan<'raw>),

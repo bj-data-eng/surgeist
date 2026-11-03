@@ -326,7 +326,7 @@ const IMAGE_ELEMENTS: &[KnownHtmlElement] = &[
 
 /// Already established expanded-name evidence; None is known non-HTML/unknown,
 /// never a missing capture relation. This classifier owns no tree or controller.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EmbeddedDimensionParent {
     /// The `source` element has an HTML parent of the known kind, or `None`
     /// for a parent that is not a known HTML element.
@@ -338,7 +338,7 @@ pub enum EmbeddedDimensionParent {
 }
 /// Role evidence for the embedded dimension attributes, as a copyable fact for
 /// `embedded_dimension_applicability`.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EmbeddedDimensionContext {
     /// The actual state of an `input` element.
     InputState(HtmlInputType),
@@ -346,7 +346,7 @@ pub enum EmbeddedDimensionContext {
     SourceParent(EmbeddedDimensionParent),
 }
 /// The kind of evidence that was missing when applicability is undecided.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EmbeddedDimensionEvidenceNeeded {
     /// The element is an `input` and its actual state was not supplied.
     InputState,
@@ -354,7 +354,7 @@ pub enum EmbeddedDimensionEvidenceNeeded {
     SourceParent,
 }
 /// Whether `width` and `height` apply to an element, given the evidence.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EmbeddedDimensionApplicability {
     /// The element carries the dimension attributes in this context.
     Applicable,

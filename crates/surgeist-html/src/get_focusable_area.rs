@@ -10,7 +10,7 @@ use crate::HtmlCurrentlyFocusedAreaOutcome;
 
 /// The exact source result's role. Actual objects remain adapter-owned: a shape,
 /// scroll region, viewport, Document, anchor and delegated area are distinct.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlGetFocusableAreaOutcome {
     /// No focusable area: the target matched no case, or it is a delegating shadow
     /// host whose focus delegate returned null.

@@ -7,7 +7,7 @@
 
 /// Event names selected by focus-update, rather than a restriction on the
 /// original event-name operand of fire-a-focus-event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusEventName {
     /// The `blur` event, fired at an entry of the old focus chain.
     Blur,
@@ -26,7 +26,7 @@ impl HtmlFocusEventName {
 
 /// Actual classification of the source's Element-or-Window target. This does
 /// not classify a focusable area's anchor in place of that event target.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusEventTargetKind {
     /// The event target is an element.
     Element,
@@ -34,7 +34,7 @@ pub enum HtmlFocusEventTargetKind {
     Window,
 }
 /// Where the `view` attribute of the event comes from.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusEventView {
     /// The target itself, a `Window` object.
     TargetWindow,
@@ -42,7 +42,7 @@ pub enum HtmlFocusEventView {
     ElementDocumentGlobal,
 }
 /// Required interface of the source event constructor, distinct from Event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusEventInterface {
     /// The event uses the `FocusEvent` interface.
     FocusEvent,

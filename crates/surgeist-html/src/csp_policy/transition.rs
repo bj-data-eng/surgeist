@@ -10,7 +10,7 @@ pub struct HtmlCspOwner {
 }
 
 /// Why a distinct Document association shares an existing immutable artifact.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlCspAssociationCause {
     /// The adapter installed the source association's policy artifact into a distinct
     /// Document.
@@ -108,7 +108,7 @@ fn association_layout(
 }
 
 /// Fixed HTML Meta processing vocabulary; callers cannot select other modes.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspSource {
     /// The policy came from a `meta` element, the source that the Content security
     /// policy state of HTML 4.2.5.3 (Pragma directives) passes to Content Security
@@ -117,7 +117,7 @@ pub enum HtmlMetaCspSource {
 }
 /// The disposition that the Content security policy state of HTML 4.2.5.3 (Pragma
 /// directives) passes to Content Security Policy parsing of a `meta` element.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspDisposition {
     /// The parsed policy is enforced on the Document.
     Enforce,
@@ -125,7 +125,7 @@ pub enum HtmlMetaCspDisposition {
 /// A directive that the Content security policy state of HTML 4.2.5.3 (Pragma
 /// directives) removes from a policy parsed from a `meta` element before it is
 /// enforced.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspRemovedDirective {
     /// The `report-uri` directive.
     ReportUri,
@@ -135,7 +135,7 @@ pub enum HtmlMetaCspRemovedDirective {
     Sandbox,
 }
 /// What caused a meta policy request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlMetaCspTrigger {
     /// The `meta` element was inserted into a Document, the only trigger this
     /// protocol attests.

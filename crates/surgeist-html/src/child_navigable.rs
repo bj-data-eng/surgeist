@@ -3,7 +3,7 @@
 use crate::DocumentString;
 
 /// Source candidate selection in shared Frame/Iframe attribute processing.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFrameIframeSrcDecision<'a> {
     /// Use the initial `about:blank` candidate: the `src` attribute is absent or empty, so there
     /// is nothing to parse.

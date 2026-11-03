@@ -905,7 +905,7 @@ const REFERRER_POLICY_VOCABULARY: &str = concat!(
 macro_rules! keyword_type {
     ($name:ident, $attribute:ident, [$($(#[$vmeta:meta])* $variant:ident => $keyword:literal),+ $(,)?]) => {
         #[doc = concat!("Conforming native keywords for the HTML ", stringify!($attribute), " attribute.")]
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         pub enum $name { $($(#[$vmeta])* $variant),+ }
         impl $name {
             /// Returns a conforming canonical author spelling.
@@ -923,7 +923,7 @@ macro_rules! keyword_type {
 macro_rules! default_state {
     ($name:ident, $value:ident, $default:ident, $default_doc:literal) => {
         #[doc = concat!("Intrinsic ", stringify!($value), " state; the default is not a conforming author keyword.")]
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         pub enum $name {
             #[doc = concat!("The value matched a conforming [`", stringify!($value), "`] keyword.")]
             Keyword($value),

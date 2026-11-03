@@ -34,7 +34,7 @@ pub fn first(target: Target, name_matches: bool) -> First {
     }
 }
 /// The nesting counter for the sibling scan after a `start` instruction.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Siblings {
     nesting: usize,
 }

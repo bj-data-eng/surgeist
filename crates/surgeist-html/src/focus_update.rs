@@ -10,7 +10,7 @@
 use crate::focus_event::HtmlFocusEventName;
 
 /// Which chain of the focus update steps an entry belongs to.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusUpdateChain {
     /// The old chain, whose entries are blurred.
     Old,
@@ -18,7 +18,7 @@ pub enum HtmlFocusUpdateChain {
     New,
 }
 /// Classification of the actual ENTRY, independently of its DOM anchor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusUpdateEntryKind {
     /// The entry is an element.
     Element,
@@ -30,7 +30,7 @@ pub enum HtmlFocusUpdateEntryKind {
     Other,
 }
 /// The input data that the `change` event conditions inspect.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusUpdateInputData {
     /// The element's value.
     Value,
@@ -38,7 +38,7 @@ pub enum HtmlFocusUpdateInputData {
     SelectedFiles,
 }
 /// What the focus or blur event is fired at.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusUpdateEventTarget {
     /// The entry itself, an element.
     EntryElement,
@@ -46,7 +46,7 @@ pub enum HtmlFocusUpdateEventTarget {
     EntryDocumentGlobal,
 }
 /// The related target of the focus or blur event.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusUpdateRelatedTarget {
     /// There is no related target.
     Null,

@@ -461,7 +461,7 @@ pub enum IconSizeShape {
     },
 }
 /// The grammar stage; each stage owns the data it requires.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum IconSizeStage {
     /// Compare the whole token with `any`.
     Any,
@@ -477,6 +477,7 @@ enum IconSizeStage {
 }
 /// A stepper that reads one icon size token over a borrowed slice of UTF-16 code units, one bounded
 /// action per step. It performs no allocation.
+#[derive(Clone, Debug)]
 pub struct IconSizeCursor<'a> {
     units: &'a [u16],
     stage: IconSizeStage,

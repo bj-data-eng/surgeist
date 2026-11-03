@@ -1746,6 +1746,7 @@ impl<'a> BorrowedDurationComponent<'a> {
         self.millisecond
     }
 }
+#[derive(Debug)]
 pub(crate) struct BorrowedDurationCursor<'a> {
     cursor: Cursor<'a>,
     phase: TemporalPhase,
@@ -1945,6 +1946,7 @@ impl<'a> BorrowedDurationCursor<'a> {
     }
 }
 
+#[derive(Debug)]
 struct Cursor<'a> {
     input: &'a [u16],
     position: usize,

@@ -330,7 +330,7 @@ impl std::fmt::Display for HtmlMicrodataTokenInterpretationError {
 impl std::error::Error for HtmlMicrodataTokenInterpretationError {}
 
 /// Execution preserves the caller's original admission error.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenActionError<E> {
     /// The caller's meter refused the work or reservation; the payload is the meter's own error,
     /// unchanged.
@@ -365,6 +365,7 @@ impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
 }
 
 /// The only reservation allowed by a pending token is one additional record.
+#[derive(Debug)]
 pub struct HtmlMicrodataTokenReservation<'a> {
     values: &'a mut Vec<HtmlMicrodataToken>,
     attempted: bool,
@@ -447,7 +448,7 @@ pub enum HtmlMicrodataTokenStep {
     Complete,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Phase {
     Begin,
     Header,
@@ -464,6 +465,7 @@ enum Phase {
 }
 
 /// One original raw operand, its scan state, and its actual unpublished vector.
+#[derive(Debug)]
 pub struct HtmlMicrodataTokenInterpretation<'raw> {
     kind: HtmlMicrodataTokenKind,
     raw: Option<&'raw DocumentString>,
@@ -553,6 +555,7 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
 }
 
 /// An exclusive action cannot be replayed or supplied with a different operand.
+#[derive(Debug)]
 pub struct HtmlMicrodataTokenAction<'owner, 'raw> {
     owner: &'owner mut HtmlMicrodataTokenInterpretation<'raw>,
 }

@@ -59,6 +59,7 @@ enum Pending<'a> {
 }
 
 /// Allocation-free borrowed scan. Each advance performs one announced action.
+#[derive(Debug)]
 pub struct HtmlMediaValueCursor<'a> {
     units: Option<&'a [u16]>,
     position: usize,
@@ -158,6 +159,7 @@ pub enum HtmlMetaMediaPlacement {
 pub(crate) mod theme {
     use super::ascii_equal;
     /// One fixed-name comparison step; shared by ordinary and controlled owners.
+    #[derive(Debug)]
     pub struct ThemeColorNameCursor<'a> {
         /// Empty when the name is absent, which is never equal.
         units: &'a [u16],

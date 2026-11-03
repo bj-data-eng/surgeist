@@ -166,6 +166,7 @@ enum Phase {
 }
 
 /// Exclusive pending owner. No mutable backing or reusable uniqueness proof escapes.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppend {
     storage: HtmlConstructionStorage,
     node: HtmlBuilderNode,
@@ -183,23 +184,27 @@ pub struct HtmlConstructionTextAppend {
     tail: usize,
 }
 /// One pending text-append action. It borrows the append exclusively; `perform` consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendAction<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
 }
 /// The observation after a text-append action. It borrows the append exclusively; `accept` resumes
 /// it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendObservation<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
     /// The phase this accepted observation resumes.
     next: Phase,
 }
 /// A text append whose every action was accepted. `commit` applies it; `abort` abandons it.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendReady {
     owner: HtmlConstructionTextAppend,
 }
 
 /// Original operands and actual storage, plus a distinct backing needing retirement.
 /// On abort, a pending preserved copy retains all of its initialized units.
+#[derive(Debug)]
 pub struct HtmlConstructionTextAppendCompletion {
     storage: HtmlConstructionStorage,
     node: HtmlBuilderNode,

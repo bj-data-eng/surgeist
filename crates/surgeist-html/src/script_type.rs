@@ -58,6 +58,7 @@ pub enum HtmlScriptTypeWork {
 /// Borrowed ASCII-insensitive virtual-prefix/range matcher consumed by
 /// [`HtmlScriptTypeCursor`]. Credits precede length comparison and each read;
 /// a completed result has no further work.
+#[derive(Debug)]
 pub(crate) struct ScriptTypeMatchCursor<'a> {
     prefix: &'static [u8],
     value: &'a DocumentString,
@@ -145,6 +146,7 @@ enum Pass {
     Keywords,
 }
 /// A scan stage; only the matching stage owns a matcher.
+#[derive(Debug)]
 enum Stage<'a> {
     Candidate,
     Match(ScriptTypeMatchCursor<'a>),
@@ -153,6 +155,7 @@ enum Stage<'a> {
 }
 
 /// A classification over one established nonempty input.
+#[derive(Debug)]
 struct Scan<'a> {
     value: &'a DocumentString,
     prefix: &'static [u8],
@@ -261,6 +264,7 @@ impl<'a> Scan<'a> {
     }
 }
 
+#[derive(Debug)]
 enum State<'a> {
     Initial {
         explicit: Option<&'a DocumentString>,
@@ -277,6 +281,7 @@ enum State<'a> {
 /// Finite work: sixteen raw matches, at most two linear trim passes and sixteen
 /// stripped matches for explicit preparation, then three exact keyword matches.
 /// A virtual language prefix never allocates a concatenated string.
+#[derive(Debug)]
 pub struct HtmlScriptTypeCursor<'a> {
     state: State<'a>,
 }

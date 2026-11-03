@@ -8,7 +8,7 @@
 /// Classification of the candidate Document's actual focused area at the loop
 /// test. The adapter retains the exact area when present. This is not a proof
 /// about the separately reached final focused-area read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlFocusedAreaKind {
     /// The candidate Document has no focused area.
     Null,
@@ -22,7 +22,7 @@ pub enum HtmlFocusedAreaKind {
 
 /// Source result role. The adapter supplies the actual retained identity/area;
 /// CandidateDocument is a real result, not a fabricated nullable Element.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlCurrentlyFocusedAreaOutcome {
     /// The traversable lacks system focus, so the result is null.
     Null,

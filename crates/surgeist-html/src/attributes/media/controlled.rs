@@ -20,6 +20,7 @@ impl HtmlMediaField {
     }
 }
 /// A successful match is bound to the actual immutable candidate and field.
+#[derive(Debug)]
 pub struct HtmlMediaFieldMatch<'raw, A: HtmlAttributeInput> {
     attribute: &'raw A,
     field: HtmlMediaField,
@@ -211,7 +212,7 @@ impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Name<'raw, A: HtmlAttributeInput> {
     NotSupplied,
     SuppliedAbsent,
@@ -224,6 +225,7 @@ enum Name<'raw, A: HtmlAttributeInput> {
 /// before it runs. A refused admission stops the owner. `assemble` produces the
 /// report and `try_finish` hands it out once. It is not `Clone`, so one owner
 /// cannot be advanced twice.
+#[derive(Debug)]
 pub struct HtmlMediaInterpretation<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
     element: &'raw N,
     raw: Option<&'raw A>,
@@ -708,6 +710,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
 }
 
 /// Original name operand supply, with absence distinct from non-selection.
+#[derive(Debug)]
 pub enum HtmlMediaNameSupply<'raw, A: HtmlAttributeInput> {
     /// No name operand was supplied: the caller did not ask for meta placement.
     NotSupplied,
@@ -717,6 +720,7 @@ pub enum HtmlMediaNameSupply<'raw, A: HtmlAttributeInput> {
     Present(&'raw A),
 }
 /// Operands recovered without scanning, sharing or allocation.
+#[derive(Debug)]
 pub struct HtmlMediaInputs<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
     element: &'raw N,
     raw: Option<&'raw A>,

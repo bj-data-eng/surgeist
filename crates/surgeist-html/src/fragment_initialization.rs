@@ -63,6 +63,7 @@ pub enum HtmlFragmentInsertionMode {
 
 /// The finite comparisons needed by fragment initialization. The consumer
 /// admits and executes a comparison before the policy can inspect its result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentNameTest<'a> {
     /// Compare the supplied name's namespace with the HTML namespace.
     HtmlNamespace,

@@ -249,6 +249,7 @@ type Report = HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>;
 /// alternative tried (duration), exactly as
 /// [`HtmlValueInterpreter::time_element_value`] reports: §4.5.14 (elements
 /// capture lines 6855-6877) defines no failure order across alternatives.
+#[derive(Debug)]
 pub struct HtmlTimeElementInterpretation<'raw> {
     raw: &'raw DocumentString,
     interpreter: HtmlValueInterpreter,
@@ -1012,6 +1013,7 @@ fn materialized<T>(
     }
 }
 /// Dropping the guard refuses admission without changing its retained owner.
+#[derive(Debug)]
 pub struct HtmlTimeElementInterpretationAction<'step, 'raw> {
     owner: &'step mut HtmlTimeElementInterpretation<'raw>,
     layout: HtmlTimeElementInterpretationLayout,

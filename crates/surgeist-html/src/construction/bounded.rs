@@ -546,11 +546,13 @@ pub struct HtmlConstructionInitialization {
 }
 /// One pending initialization action. It borrows the initialization exclusively; `perform`
 /// consumes it.
+#[derive(Debug)]
 pub struct HtmlConstructionInitializationAction<'a> {
     owner: &'a mut HtmlConstructionInitialization,
 }
 /// The observation after an initialization action. It borrows the initialization exclusively until
 /// it is accepted.
+#[derive(Debug)]
 pub struct HtmlConstructionInitializationObservation<'a> {
     owner: &'a mut HtmlConstructionInitialization,
     snapshot: HtmlConstructionAllocationSnapshot,

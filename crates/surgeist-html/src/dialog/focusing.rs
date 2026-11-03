@@ -6,7 +6,7 @@
 
 /// The selected control's source role. The adapter retains the actual delegate
 /// identity returned by FindFocusDelegate; this value carries no Node identity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogFocusControl {
     /// The dialog itself is the control: it has the `autofocus` attribute, or it has
     /// no focus delegate.
@@ -191,7 +191,7 @@ impl Default for HtmlDialogFocusingCursor {
 /// Qualified facts about the actual Dialog subject only, never a delegate,
 /// descendant, arbitrary focusable area, or renderer's guessed geometry.
 /// None means unavailable; false is an actual negative observation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlDialogSubjectFocusFacts {
     /// Actual inert attribute interpretation on the subject itself. Ancestor
     /// inertness is insufficient: a modal Dialog escapes its ancestors' inertness.
@@ -205,7 +205,7 @@ pub struct HtmlDialogSubjectFocusFacts {
 
 /// Only the called focusing invocation's no-change proof, not completion of
 /// Dialog focusing: control topDocument/origin/autofocus steps still remain.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HtmlDialogSubjectFocusingDecision {
     /// Focusing the subject cannot change focus, so the called focusing steps need
     /// not run.
