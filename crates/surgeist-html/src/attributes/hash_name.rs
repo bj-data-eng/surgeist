@@ -34,50 +34,85 @@ pub enum HtmlHashNameProcessing {
 }
 
 /// Exact shared raw evidence, with borrowed suffixes and no tree conformance claim.
+///
+/// The author form and the processing observation are functions of the raw value and the position
+/// of its first `#`, so the report stores only those and derives both; no stored classification
+/// can disagree with the evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlHashNameReferenceReport {
-    raw: Option<DocumentString>,
-    first_hash: Option<usize>,
-    author_form: HtmlHashNameAuthorForm,
-    processing: HtmlHashNameProcessing,
+    operand: HashNameOperand,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum HashNameOperand {
+    Absent,
+    Present {
+        raw: DocumentString,
+        first_hash: Option<usize>,
+    },
 }
 impl HtmlHashNameReferenceReport {
     /// The exact raw value, retained by shared handle. `None` is an absent
     /// operand; an empty value is `Some`.
     pub fn raw(&self) -> Option<&DocumentString> {
-        self.raw.as_ref()
+        match &self.operand {
+            HashNameOperand::Absent => None,
+            HashNameOperand::Present { raw, .. } => Some(raw),
+        }
     }
     /// Offset in the original UTF-16 code units.
     pub fn first_hash_offset(&self) -> Option<usize> {
-        self.first_hash
+        match &self.operand {
+            HashNameOperand::Absent => None,
+            HashNameOperand::Present { first_hash, .. } => *first_hash,
+        }
     }
     /// Whether the value has the leading-`#` shape of a valid hash-name
     /// reference. The name after it is not checked against any tree.
     pub fn author_form(&self) -> HtmlHashNameAuthorForm {
-        self.author_form
+        match &self.operand {
+            HashNameOperand::Absent => HtmlHashNameAuthorForm::Missing,
+            HashNameOperand::Present {
+                first_hash: Some(0),
+                ..
+            } => HtmlHashNameAuthorForm::LeadingHashName,
+            HashNameOperand::Present { .. } => HtmlHashNameAuthorForm::NoLeadingHash,
+        }
     }
     /// How the rules for parsing a hash-name reference classify the value,
     /// before any lookup in a tree.
     pub fn processing(&self) -> HtmlHashNameProcessing {
-        self.processing
+        match &self.operand {
+            HashNameOperand::Absent => HtmlHashNameProcessing::Missing,
+            HashNameOperand::Present {
+                first_hash: None, ..
+            } => HtmlHashNameProcessing::NoHash,
+            HashNameOperand::Present {
+                raw,
+                first_hash: Some(offset),
+            } if offset + 1 == raw.len() => HtmlHashNameProcessing::EmptyTail,
+            HashNameOperand::Present { .. } => HtmlHashNameProcessing::Name,
+        }
     }
     /// Some(empty) is a leading # with an empty author-definition name.
     pub fn author_name_units(&self) -> Option<&[u16]> {
-        (self.author_form == HtmlHashNameAuthorForm::LeadingHashName).then(|| {
-            &self
-                .raw
-                .as_ref()
-                .expect("present leading hash")
-                .code_units()[1..]
-        })
+        match &self.operand {
+            HashNameOperand::Present {
+                raw,
+                first_hash: Some(0),
+            } => Some(&raw.code_units()[1..]),
+            _ => None,
+        }
     }
     /// The UTF-16 code units after the first `#`, exactly as the parsing rules
     /// take them. `Some` only for `HtmlHashNameProcessing::Name`.
     pub fn processing_name_units(&self) -> Option<&[u16]> {
-        (self.processing == HtmlHashNameProcessing::Name).then(|| {
-            &self.raw.as_ref().expect("present hash").code_units()
-                [self.first_hash.expect("recognized hash") + 1..]
-        })
+        match &self.operand {
+            HashNameOperand::Present {
+                raw,
+                first_hash: Some(offset),
+            } if offset + 1 < raw.len() => Some(&raw.code_units()[offset + 1..]),
+            _ => None,
+        }
     }
     /// The clause that defines a valid hash-name reference (HTML877d #syntax-references).
     pub fn author_source_clause(&self) -> &'static str {
@@ -91,10 +126,7 @@ impl HtmlHashNameReferenceReport {
     /// The local observation for an absent operand, without tree evidence.
     pub fn missing() -> Self {
         Self {
-            raw: None,
-            first_hash: None,
-            author_form: HtmlHashNameAuthorForm::Missing,
-            processing: HtmlHashNameProcessing::Missing,
+            operand: HashNameOperand::Absent,
         }
     }
 }
@@ -223,21 +255,11 @@ impl<'raw> HashNameScan<'raw> {
                 HashNameScanStep::Continue(self)
             }
             HashNameScanPhase::Ready(first_hash) => {
-                let author_form = if first_hash == Some(0) {
-                    HtmlHashNameAuthorForm::LeadingHashName
-                } else {
-                    HtmlHashNameAuthorForm::NoLeadingHash
-                };
-                let processing = match first_hash {
-                    None => HtmlHashNameProcessing::NoHash,
-                    Some(offset) if offset + 1 == self.len => HtmlHashNameProcessing::EmptyTail,
-                    Some(_) => HtmlHashNameProcessing::Name,
-                };
                 HashNameScanStep::Complete(HtmlHashNameReferenceReport {
-                    raw: Some(self.raw.clone()),
-                    first_hash,
-                    author_form,
-                    processing,
+                    operand: HashNameOperand::Present {
+                        raw: self.raw.clone(),
+                        first_hash,
+                    },
                 })
             }
         }
