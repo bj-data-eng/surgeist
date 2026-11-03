@@ -590,3 +590,54 @@ source_kind = "authored"
 [records.expected]
 kind = "unsupported"
 reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/logical-inline-minimum.html"
+source_sha256 = "592572264d0fac1497ecf74ede20bac68792c593c34fe1534c40d3e2c12d53a9"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 10
+
+[[records]]
+source = "html/qualification/logical-inline-maximum.html"
+source_sha256 = "2357eeb46f318261ee0271c41ff6e87b9a808f7b45c3274ea70dc664f91d580b"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 10
+
+[[records]]
+source = "html/qualification/logical-vertical-inline-minimum.html"
+source_sha256 = "0efda7dcdc9bb0b7ec16cc285742dcc756158cbfd6796fac4955ab51161c1b44"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
