@@ -167,10 +167,6 @@ type Plan<'raw> = BorrowedTemporalPlan<'raw>;
 /// the assembled year, date, day or local value, and the duration cursor and component. The
 /// shared numeric scratch registers are the one thing a stage does not own.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "the finished report moves once, and boxing it would allocate outside the admitted accounting"
-)]
 enum Stage<'raw> {
     Recognize,
     Begin(Plan<'raw>),
