@@ -13,7 +13,7 @@ use crate::{
     internal::attributes::HtmlClosedBy, internal::attributes::HtmlClosedByState,
     internal::values::Namespace, vocabulary::KnownHtmlAttribute,
 };
-pub use request::*;
+use request::*;
 
 /// Ordered partial observations for HTML's allow-focus steps. Unknown feature
 /// permission cannot be replaced by a known activation state.
