@@ -435,7 +435,7 @@ const CLASSES: [Class; 5] = [
         summary: "A hash token's type flag is \"id\" only when the next three code points would start an ident sequence (4.3.1, 4.3.9); for a hyphen-minus before a backslash and a newline they do not, and cssparser flags it as an id.",
     },
     Class {
-        id: "V-8",
+        id: "V-5",
         sections: "4.2, 4.3.1, 4.3.12",
         summary: "A non-ASCII code point that the ranges of 4.2 do not list is not an ident code point, so it ends an ident sequence (4.3.12) and is a delim (4.3.1), and the tokens after it start over; cssparser admits every code point from U+0080 in a name.",
     },
@@ -501,7 +501,7 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
                 .then(|| (left_end.min(right_end), left_end.max(right_end)))
         })
         .collect();
-    // V-8: the spans of the name-like tokens of cssparser that hold a code
+    // V-5: the spans of the name-like tokens of cssparser that hold a code
     // point 4.2 leaves out; the token ends at that code point for this lexer.
     let name_tokens: Vec<(usize, usize, bool)> = differences
         .iter()
@@ -551,14 +551,18 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
             {
                 return Some("V-4");
             }
-            // V-2: a pair token, and the equals sign it swallowed.
-            if let Some((token, ..)) = cssparser
+            // V-2: a pair token read here as the delim of its first code
+            // point, and the equals sign it swallowed.
+            if let Some((token, low, _)) = cssparser
                 && difference.field == "kind"
                 && matches!(
                     variant(token),
                     "IncludeMatch" | "DashMatch" | "PrefixMatch" | "SuffixMatch" | "SubstringMatch"
                 )
-                && surgeist.is_some_and(|(right, ..)| right.starts_with("Delim("))
+                && let Some(first) = text.get(low..).and_then(|rest| rest.chars().next())
+                && surgeist.is_some_and(|(right, at, high)| {
+                    right == format!("Delim('{first}')") && at == low && high == low + 1
+                })
             {
                 return Some("V-2");
             }
@@ -615,7 +619,7 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
             None
         })
         .collect();
-    // V-8: a difference that touches a name cssparser kept whole, or the extent
+    // V-5: a difference that touches a name cssparser kept whole, or the extent
     // of a difference that does, follows from where the name ends here: the
     // tokens after it start over (a delim, the rest of the name, a number the
     // name had swallowed digits of, a function that is a url or a bad url
@@ -637,7 +641,7 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
             };
             if !joined[index] && spans.iter().any(|&span| touches(span, found)) {
                 joined[index] = true;
-                classes[index] = classes[index].or(Some("V-8"));
+                classes[index] = classes[index].or(Some("V-5"));
                 spans.push(found);
                 grew = true;
             }
@@ -665,7 +669,7 @@ fn classify(text: &str, differences: &[Difference]) -> Vec<Option<&'static str>>
             let same_token_deeper =
                 difference.field == "range" && difference.cssparser == difference.surgeist;
             if classes[index].is_none() && start >= first && (block_end || same_token_deeper) {
-                classes[index] = Some("V-8");
+                classes[index] = Some("V-5");
             }
         }
     }
@@ -966,8 +970,57 @@ fn the_comparison_itself_sees_a_difference_in_kind_range_and_structure() {
 }
 
 #[test]
+fn the_pair_class_explains_a_merged_pair_and_nothing_else() {
+    // V-2 explains a pair token read here as the delim of its first code
+    // point, and the equals sign after it; an injected difference outside
+    // that shape stays unexplained.
+    let injected = |field: &'static str, cssparser: &str, surgeist: &str| Difference {
+        input: String::new(),
+        field,
+        cssparser: cssparser.to_owned(),
+        surgeist: surgeist.to_owned(),
+    };
+    let text = "[a|=b] c =";
+    let real = compare(text, &Options::default());
+    assert_eq!(real.len(), 2, "{real:?}");
+    assert_eq!(classify(text, &real), [Some("V-2"), Some("V-2")]);
+    for (name, extra) in [
+        (
+            "a pair read as something other than a delim",
+            injected("kind", "IncludeMatch@7..9", "Ident(\"c\")@7..8"),
+        ),
+        (
+            "a pair read as a delim of another code point",
+            injected("kind", "IncludeMatch@7..9", "Delim('?')@7..8"),
+        ),
+        (
+            "a pair read as a delim of another extent",
+            injected("kind", "IncludeMatch@7..9", "Delim('c')@7..9"),
+        ),
+        (
+            "an equals sign no pair precedes",
+            injected("only-surgeist", "", "Delim('=')@9..10"),
+        ),
+    ] {
+        let mut all = real.clone();
+        all.push(extra);
+        let classes = classify(text, &all);
+        assert_eq!(
+            classes[..real.len()],
+            [Some("V-2"), Some("V-2")],
+            "{name}: the real differences keep their class"
+        );
+        assert_eq!(
+            classes[real.len()],
+            None,
+            "{name}: a difference outside the class surfaces as unexplained"
+        );
+    }
+}
+
+#[test]
 fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
-    // V-8 explains the differences that follow from where a name ends, and no
+    // V-5 explains the differences that follow from where a name ends, and no
     // others: an injected difference that does not touch the name, in a text
     // that also holds an excluded code point, stays unexplained.
     let injected = |field: &'static str, cssparser: &str, surgeist: &str| Difference {
@@ -986,7 +1039,7 @@ fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
     assert!(
         classify(text, &real)
             .iter()
-            .all(|class| *class == Some("V-8")),
+            .all(|class| *class == Some("V-5")),
         "{real:?}"
     );
     for (name, extra) in [
@@ -1012,7 +1065,7 @@ fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
         let classes = classify(text, &all);
         assert_eq!(
             classes[..real.len()],
-            vec![Some("V-8"); real.len()],
+            vec![Some("V-5"); real.len()],
             "{name}: the real differences keep their class"
         );
         assert_eq!(
@@ -1028,7 +1081,7 @@ fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
         "Ident(\"y\")@3..4",
         "Number(\"1\",int)@3..4",
     ));
-    assert_eq!(classify(text, &touching).last(), Some(&Some("V-8")));
+    assert_eq!(classify(text, &touching).last(), Some(&Some("V-5")));
     // A name that opens a block for cssparser, as a function or by the
     // parenthesis after it, leaves that block open where this lexer has read a
     // url token: the block ends and depths that follow are consequences of it.
@@ -1042,7 +1095,7 @@ fn a_difference_away_from_an_excluded_name_is_not_explained_by_it() {
         assert!(
             classify(text, &found)
                 .iter()
-                .all(|class| *class == Some("V-8")),
+                .all(|class| *class == Some("V-5")),
             "{text:?}: {found:?}"
         );
     }
@@ -1569,7 +1622,7 @@ fn the_escaping_functions_agree_with_cssparsers_on_every_input() {
     // The two write the same text for every identifier and string of the
     // corpus except the code points that 4.2 excludes from the non-ASCII ident
     // code points: cssparser writes those raw, and the round-trip rule of
-    // section 9 escapes them. Those are the E rows, class V-8.
+    // section 9 escapes them. Those are the E rows, class V-5.
     check_listed("escaping", &escaping_differences());
 }
 
