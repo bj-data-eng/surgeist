@@ -3399,6 +3399,66 @@ mod tests {
         c.release_vector(values, ticket).unwrap();
     }
 
+    /// A forged plan stands in for an allocator that refuses the spare room. `try_reserve_exact`
+    /// refuses a request whose byte size exceeds `isize::MAX` as a capacity overflow, before any
+    /// allocator call, so asking for `usize::MAX - len` extra slots fails exactly as an
+    /// allocator refusal of a larger target would. The reservation must then ask for the one
+    /// slot that is needed, and account the capacity it actually reached.
+    #[test]
+    fn a_refused_larger_target_still_reserves_the_slot_that_is_needed() {
+        let mut c = control();
+        let mut values: Vec<u64> = vec![1, 2, 3];
+        values.resize(values.capacity(), 9);
+        let before = values.clone();
+        let len = values.len();
+        let old_bytes = (len * size_of::<u64>()) as u64;
+        let new_bytes = ((len + 1) * size_of::<u64>()) as u64;
+        c.set(HtmlParseResource::ManagedCapacityBytes, old_bytes);
+        // Without the fallback the larger request alone is refused.
+        assert!(values.clone().try_reserve_exact(usize::MAX - len).is_err());
+        let plan = ReservationPlan {
+            additional: usize::MAX - len,
+            needed: 1,
+            old_bytes,
+            new_bytes,
+        };
+        c.reserve(&mut values, plan).unwrap();
+        assert!(values.capacity() > len);
+        assert_eq!(values, before);
+        let actual = (values.capacity() * size_of::<u64>()) as u64;
+        assert_eq!(c.usage().actual_capacity_bytes, actual);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current,
+            actual
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::PeakTransientBytes)
+                .current,
+            actual
+        );
+        assert_eq!(c.stop(), None);
+
+        // A plan that needs no more than it asks for has no fallback: the refusal is final.
+        let mut c = control();
+        let mut values: Vec<u64> = vec![1, 2, 3];
+        values.resize(values.capacity(), 9);
+        c.set(HtmlParseResource::ManagedCapacityBytes, old_bytes);
+        let plan = ReservationPlan {
+            additional: usize::MAX - len,
+            needed: usize::MAX - len,
+            old_bytes,
+            new_bytes,
+        };
+        assert!(matches!(
+            c.reserve(&mut values, plan),
+            Err(HtmlParseStop::AllocationFailed { .. })
+        ));
+        assert_eq!(values.capacity(), len);
+    }
+
     #[test]
     fn sized_geometric_growth_doubles_whatever_the_limits_and_usage_hold() {
         // A bank described only by its element size: sixteen-byte elements. The plan depends on
