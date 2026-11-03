@@ -37,3 +37,6 @@ mod balance_provider;
 
 #[path = "block_tests/scroll_terminal_tests.rs"]
 mod scroll_terminal;
+
+#[path = "block_tests/final_auto_percentage_authority.rs"]
+mod final_auto_percentage_authority;
