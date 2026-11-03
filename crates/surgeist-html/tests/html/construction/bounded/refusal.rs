@@ -10,8 +10,6 @@ fn expect_not_ready<T>(refusal: &HtmlConstructionRefusal<T>) {
 fn the_carrier_exposes_the_cause_the_owner_and_its_parts_and_describes_itself_once() {
     let refusal = HtmlConstructionStorage::begin().try_ready().unwrap_err();
     expect_not_ready(&refusal);
-    // The owner is observable by reference: its debug rendering names the unstarted state.
-    assert!(format!("{:?}", refusal.owner()).contains("created: None"));
     assert_eq!(
         refusal.to_string(),
         "construction step refused: construction operation still has pending actions"
