@@ -113,3 +113,117 @@ fn data_grid_work_grows_about_four_times_per_four_times_the_cells() {
 fn header_row_and_column_grid_work_grows_about_four_times_per_four_times_the_cells() {
     assert_work_grows_about_four_times_per_four_times_the_cells(true);
 }
+
+/// The live tall cells of a table are not revisited once per row, and a cell
+/// placed beside them does not move them.
+///
+/// `tall` cells of `rows + 1` rows start the table in row 0. `rows` rows
+/// follow, each with one `td`. Placing the cells of a row needs only the live cells that sit at or
+/// after the new cell's column, and each tall cell is live for the same rows,
+/// so the work of the query is that of its input, `tall + rows` elements, not
+/// `tall * rows`.
+#[derive(Clone, Copy)]
+enum Later {
+    /// Every later row holds one `td`, which lands right of the tall cells.
+    RightOfTall,
+    /// Row 0 starts with one short `td`, every later row holds one `td` that
+    /// lands in column 0, left of every tall cell.
+    LeftOfTall,
+    /// As `RightOfTall`, but the tall cells have `rowspan="0"`: they grow
+    /// downward one row at a time to the end of the rows.
+    GrowingRightOfTall,
+}
+
+fn tall_and_later_rows(
+    tall: usize,
+    rows: usize,
+    later: Later,
+) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
+    let (mut b, d) = wide_builder_without_registries();
+    let table = element(&mut b, &d, "table", &[]);
+    let span = if matches!(later, Later::GrowingRightOfTall) {
+        "0".to_string()
+    } else {
+        (rows + 1).to_string()
+    };
+    let mut first = Vec::new();
+    if matches!(later, Later::LeftOfTall) {
+        first.push(cell(&mut b, &d, "td", &[]));
+    }
+    for _ in 0..tall {
+        first.push(cell(&mut b, &d, "td", &[("rowspan", &span)]));
+    }
+    let mut trs = Vec::new();
+    let row = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&row, &first).unwrap();
+    trs.push(row);
+    for _ in 0..rows {
+        let row = element(&mut b, &d, "tr", &[]);
+        let td = cell(&mut b, &d, "td", &[]);
+        b.establish_children(&row, &[td]).unwrap();
+        trs.push(row);
+    }
+    b.establish_children(&table, &trs).unwrap();
+    (b.finish().unwrap(), table)
+}
+
+/// Work of the query after checking the model's size and that it has no
+/// recovered errors: no cell overlaps and every row holds a cell of its own.
+fn tall_work(tall: usize, rows: usize, later: Later) -> usize {
+    let (capture, table) = tall_and_later_rows(tall, rows, later);
+    let report = query(&capture, &table, limits()).0.unwrap();
+    let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
+    else {
+        panic!("expected a complete table model");
+    };
+    let (width, cells) = match later {
+        Later::RightOfTall | Later::GrowingRightOfTall => (tall + 1, tall + rows),
+        Later::LeftOfTall => (tall + 1, 1 + tall + rows),
+    };
+    assert_eq!(
+        (model.width(), model.height(), model.cells().len()),
+        (width, rows + 1, cells)
+    );
+    assert!(model.errors().is_empty());
+    assert!(model.headers().is_empty());
+    // The tall cells reach the last row, either by their rowspan or by growing.
+    let tall_cells = if matches!(later, Later::LeftOfTall) {
+        &model.cells()[1..=tall]
+    } else {
+        &model.cells()[..tall]
+    };
+    assert!(tall_cells.iter().all(|cell| cell.height() == rows + 1));
+    report.usage().work()
+}
+
+fn assert_input_linear_work(later: Later) {
+    // Doubling `tall` and `rows` doubles the input: allow a little over two.
+    let sizes = [50, 100, 200, 400];
+    let measured: Vec<usize> = sizes.iter().map(|n| tall_work(*n, *n, later)).collect();
+    for (pair, sizes) in measured.windows(2).zip(sizes.windows(2)) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 26,
+            "{0} tall cells and {0} rows cost {1} but {2} for {3} of each \
+             (input x2 may cost at most x2.6)",
+            sizes[0],
+            pair[0],
+            pair[1],
+            sizes[1],
+        );
+    }
+}
+
+#[test]
+fn tall_cells_beside_rows_placed_to_their_right_cost_the_size_of_the_input() {
+    assert_input_linear_work(Later::RightOfTall);
+}
+
+#[test]
+fn tall_cells_beside_rows_placed_to_their_left_cost_the_size_of_the_input() {
+    assert_input_linear_work(Later::LeftOfTall);
+}
+
+#[test]
+fn growing_cells_beside_rows_cost_the_size_of_the_input() {
+    assert_input_linear_work(Later::GrowingRightOfTall);
+}
