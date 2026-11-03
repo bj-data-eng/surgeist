@@ -469,6 +469,24 @@ impl<'a> HtmlNameIndexTable<'a> {
 mod tests {
     use super::*;
 
+    /// Charge totals depend on probe counts, which depend on the hash key. A process uses one
+    /// key, so the same input charges the same work every time within it, and a caller that
+    /// measures a parse's usage can repeat that parse under exactly those limits.
+    #[test]
+    fn every_hasher_in_a_process_hashes_a_name_alike() {
+        let name: Vec<u16> = "data-name".encode_utf16().collect();
+        let first = HtmlNameIndexHasher::new().hash(&name);
+        for _ in 0..8 {
+            assert_eq!(HtmlNameIndexHasher::new().hash(&name), first);
+            assert_eq!(HtmlNameIndexHasher::default().hash(&name), first);
+        }
+        let from_another_thread =
+            std::thread::spawn(move || HtmlNameIndexHasher::new().hash(&name))
+                .join()
+                .ok();
+        assert_eq!(from_another_thread, Some(first));
+    }
+
     fn storage(slots: HtmlNameIndexSlots) -> Vec<HtmlNameIndexSlot> {
         (0..slots.get())
             .map(|_| HtmlNameIndexSlot::default())
