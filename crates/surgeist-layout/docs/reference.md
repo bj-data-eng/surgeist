@@ -1098,6 +1098,20 @@ scrollport and local containing-block limits for orthogonal fallback. Unknown
 authority is distinct from an authenticated unbounded limit; entering a nearer
 scrollport replaces the previous scrollport candidate.
 
+Flex separates intrinsic contributions from Normal contents sizing. After
+accepting an unrounded inline content extent, it resolves contents percentages
+against that extent and finishes an auto block size from actual child
+measurements. Definite or imposed block sizes retain their own authority.
+Contents cannot enlarge the accepted
+[cyclic inline extent](../../../references/css-sizing-3--WD-css-sizing-3-20260904--ca0f1db3d5ad.md#cyclic-percentage-contribution).
+Normal size queries use the same sizing rule without staging geometry;
+MinContent and MaxContent requests remain intrinsic operations.
+
+Cyclic Flex gap percentages
+[resolve against zero](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#gap-percent)
+in every phase, preserving a calculation's fixed term. A later contents size
+does not replace the gap's original qualified basis.
+
 Standalone roots explicitly declare their containing axes and percentage-parent
 bases. Flex-item roots additionally declare the actual host allocation. The
 bounded BlockFlow and PositionedAutoInsets root contexts carry their own

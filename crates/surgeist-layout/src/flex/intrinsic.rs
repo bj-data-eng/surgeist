@@ -67,21 +67,13 @@ pub(super) fn resolved_layout_constants<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let original_inner_size = constants.node_inner_size;
     let mut constants = *constants;
     determine_container_main_size(tree, node, input, &mut constants, items, lines)?;
     constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
-    let gap_basis = constants.axes.size_from_main_cross(
-        constants.axes.main_size(constants.node_inner_size),
-        constants
-            .axes
-            .cross_size(original_inner_size)
-            .and(constants.axes.cross_size(constants.node_inner_size)),
-    );
     constants.gap = constants
         .gap_input
-        .zip_map(gap_basis, |length, basis| {
-            resolve_length_or_zero(length, basis)
+        .zip_map(constants.gap_percentage_basis, |length, basis| {
+            resolve_length_or_zero(length, Some(basis.unwrap_or(Tree::Scalar::ZERO)))
         })
         .transpose_with_node(tree, node)?;
     Ok(constants)
