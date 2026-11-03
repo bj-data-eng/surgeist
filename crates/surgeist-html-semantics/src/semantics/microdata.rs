@@ -575,23 +575,46 @@ impl<'a> HtmlSemanticSession<'a> {
         if !refs.tokens().is_empty() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    for (i, t) in refs.tokens().iter().enumerate() {
-                        self.charge(1)?;
-                        let raw = refs.raw().expect("token raw");
-                        references = md_and(
-                            references,
-                            match self.md_find_id(&root, &raw.code_units()[t.start()..t.end()])? {
-                                HtmlSemanticValue::Known(Some(_)) => {
-                                    HtmlMicrodataCondition::Satisfied
-                                }
-                                HtmlSemanticValue::Known(None) => {
-                                    HtmlMicrodataCondition::Violated(i)
-                                }
-                                HtmlSemanticValue::Missing(m) => HtmlMicrodataCondition::Missing(m),
-                                _ => unreachable!("ID domain"),
-                            },
-                        );
-                    }
+                    // One pass over the tree's IDs answers every token, in
+                    // place of one scan of the tree per token.
+                    let index = self.md_id_index(&root)?;
+                    let checked = (|| {
+                        let mut references = references;
+                        for (i, t) in refs.tokens().iter().enumerate() {
+                            self.charge(1)?;
+                            // Tokens exist only in a present attribute; anything
+                            // else is an inconsistent internal report, refused
+                            // as an unavailable intrinsic result.
+                            let Some(raw) = refs.raw() else {
+                                return Err(
+                                    self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                );
+                            };
+                            let found =
+                                self.md_lookup_id(&index, &raw.code_units()[t.start()..t.end()])?;
+                            references = md_and(
+                                references,
+                                match found {
+                                    HtmlSemanticValue::Known(Some(_)) => {
+                                        HtmlMicrodataCondition::Satisfied
+                                    }
+                                    HtmlSemanticValue::Known(None) => {
+                                        HtmlMicrodataCondition::Violated(i)
+                                    }
+                                    HtmlSemanticValue::Missing(m) => {
+                                        HtmlMicrodataCondition::Missing(m)
+                                    }
+                                    _ => {
+                                        return Err(self
+                                            .stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                                    }
+                                },
+                            );
+                        }
+                        Ok(references)
+                    })();
+                    self.md_release_id_index(&index);
+                    references = checked?;
                 }
                 Err(m) => references = HtmlMicrodataCondition::Missing(m),
             }

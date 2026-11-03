@@ -545,6 +545,54 @@ fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
         HtmlSemanticFailureKind::Attribute(_)
     ));
 }
+#[test]
+fn author_itemref_check_stops_at_a_refused_id_only_when_its_scan_reaches_it() {
+    // HTML877d §5.2 resolves an itemref token to the first element in tree
+    // order with that ID: the scan for `a` ends at its match before the
+    // oversized ID, the scan for `b` reaches that ID first, and a token with
+    // no match reads every ID.
+    for (tokens, refused) in [("a", false), ("a b", true), ("b", true), ("a z", true)] {
+        let (mut b, d) = builder();
+        let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", tokens)]);
+        let first = el(&mut b, &d, "p", &[("id", "a")]);
+        let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+        let second = el(&mut b, &d, "p", &[("id", "b")]);
+        for leaf in [&owner, &first, &oversized, &second] {
+            cs(&mut b, leaf, &[]);
+        }
+        cs(&mut b, &d, &[owner.clone(), first, oversized, second]);
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        let mut s = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(5),
+            limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let request = HtmlSemanticRequest::new(
+            c.subject_id(&owner).unwrap(),
+            HtmlSemanticQuery::MicrodataAuthor,
+        );
+        let result = s.query(&[request]);
+        if refused {
+            assert!(
+                matches!(
+                    result.unwrap_err().kind(),
+                    HtmlSemanticFailureKind::Attribute(_)
+                ),
+                "{tokens}"
+            );
+        } else {
+            assert_eq!(
+                author(&result.unwrap()).references(),
+                &HtmlMicrodataCondition::Satisfied,
+                "{tokens}"
+            );
+        }
+    }
+}
 fn property_subjects(r: &HtmlSemanticReport) -> Vec<HtmlCaptureSubjectId> {
     known(item(r).properties())
         .iter()
