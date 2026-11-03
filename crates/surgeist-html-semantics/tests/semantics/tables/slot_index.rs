@@ -222,3 +222,31 @@ fn spanning_headers_reach_the_cells_below_and_beside_them_in_scan_order() {
         ]
     );
 }
+
+#[test]
+fn rows_without_a_cell_of_their_own_are_listed_where_the_first_such_row_stands() {
+    // Q (th, scope row) and P (td) span rows 0 to 2. Row 0 has S0 (th, scope
+    // row) before P, row 1 is empty, row 2 has S2 (th, scope row) before P.
+    // P scans row 0 leftward (S0 then Q, both row headers), row 1 (Q again) and
+    // row 2 (S2 then Q), and adds each header when it first meets it: S0, Q, S2.
+    // Row 1 has no cell of its own, so it shares its scan with no other row,
+    // and its place in the order is between rows 0 and 2.
+    let row_th = &[("scope", "row")];
+    let (capture, table, cells) = table(&[
+        &[
+            ("th", &[("scope", "row"), ("rowspan", "3")]),
+            ("th", row_th),
+            ("td", &[("rowspan", "3")]),
+        ],
+        &[],
+        &[("th", row_th)],
+    ]);
+    let model = model_of(&capture, &table);
+    let [q, s0, p, s2] = [0, 1, 2, 3];
+    let of_p: Vec<usize> = associations(&capture, &model, &cells)
+        .into_iter()
+        .filter(|(cell, _)| *cell == p)
+        .map(|(_, header)| header)
+        .collect();
+    assert_eq!(of_p, [s0, q, s2]);
+}
