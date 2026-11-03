@@ -6,6 +6,15 @@ mod ordinary;
 mod subgrid_intrinsic;
 mod validation;
 
+// Grid's phase/finishing owner chooses algorithmic free space independently
+// from the caller's physical space. Formal intrinsic requests have no finite
+// free space; an explicit maximum may bound finishing of retained phases.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::grid) struct GridTrackSizingConstraint<S: LayoutScalar> {
+    pub(in crate::grid) operation: SizingOperation,
+    pub(in crate::grid) available_extent: Option<S>,
+}
+
 pub(super) use flexible::*;
 pub(super) use intrinsic::*;
 pub(super) use ordinary::{

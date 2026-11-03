@@ -36,3 +36,6 @@ mod wrap_edges_tests;
 
 #[path = "flex_tests/maximum_cross_authority.rs"]
 mod maximum_cross_authority;
+
+#[path = "flex_tests/used_main_floor.rs"]
+mod used_main_floor;

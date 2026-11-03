@@ -1,17 +1,18 @@
 use super::{
-    AlignContent, AlignItems, AvailableOf, BaselinesOf, BoxSizing, Compute, ComputeInputOf,
-    ComputeOutputOf, DefaultScalar, Direction, Display, Edges, GridAutoFlow, GridPlacement,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
-    LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus, MaxTrackSizingOf,
-    MinSizeOf, MinTrackSizingOf, NodeOutputOf, Overflow, Point, Position, PreferredSizeOf,
-    RequestedAxis, RunMode, Scalar, Size, SizingAlgorithm, SizingMode, TrackComponentOf,
+    AlignContent, AlignItems, AvailableSpaceOf, AxisSizingRequestOf, BaselinesOf, BoxSizing,
+    Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Direction, Display, Edges,
+    GridAutoFlow, GridPlacement, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
+    LayoutInternalInvariant, LayoutOperation, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf,
+    LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf, NodeOutputOf,
+    OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis, RunMode,
+    Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
     TrackRepeat, TrackSizingOf, Traverse,
 };
 use crate::error::{layout_own_geometry_error, sizing_resolution_error};
 use crate::geometry::{LogicalAxis, LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
-    OptionalSizeExt, UncheckedOptionalSizeSubExt, resolution_optional, resolution_or_zero,
-    resolve_containing_padding_border,
+    OptionalSizeExt, UncheckedOptionalSizeSubExt, child_orthogonal_fallback, resolution_optional,
+    resolution_or_zero, resolve_containing_padding_border,
 };
 use crate::output::PhysicalBaseline;
 use crate::scroll::{
@@ -21,9 +22,9 @@ use crate::scroll::{
     canonical_scroll_geometry_from_source, measured_leaf_content_box_inset,
 };
 use crate::sizing::resolve::{
-    EdgesResultExt, ResolvedPreferredSize, SizeResultExt, SizingResolutionError,
-    resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
-    resolve_preferred_sizing,
+    EdgesResultExt, FixedFallbackSource, ResolvedPreferredSize, SizeResultExt,
+    SizingResolutionError, resolve_maximum_optional, resolve_minimum_optional,
+    resolve_preferred_optional, resolve_preferred_sizing,
 };
 
 mod alignment;
@@ -331,10 +332,10 @@ impl StandaloneIntrinsicMinimum {
         }
     }
 
-    const fn available<S: LayoutScalar>(self) -> AvailableOf<S> {
+    const fn operation(self) -> SizingOperation {
         match self {
-            Self::MinContent => AvailableOf::MIN_CONTENT,
-            Self::MaxContent => AvailableOf::MAX_CONTENT,
+            Self::MinContent => SizingOperation::MinContent,
+            Self::MaxContent => SizingOperation::MaxContent,
         }
     }
 }
@@ -381,9 +382,9 @@ fn intrinsic_container_available<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
     sizing_flow_axes: crate::geometry::FlowAxes,
     parent: Size<Option<S>>,
-    available: Size<AvailableOf<S>>,
+    available: Size<AxisSizingRequestOf<S>>,
     sizing_mode: SizingMode,
-) -> Result<LogicalSizeOf<AvailableOf<S>>, SizingResolutionError<S>> {
+) -> Result<LogicalSizeOf<AxisSizingRequestOf<S>>, SizingResolutionError<S>> {
     if sizing_mode == SizingMode::ContentSize {
         return Ok(sizing_flow_axes.logical_size(available));
     }
@@ -406,42 +407,51 @@ fn intrinsic_container_available<S: LayoutScalar>(
     ));
     let available = sizing_flow_axes.logical_size(available);
     Ok(LogicalSizeOf::new(
-        intrinsic_available_for_dimension(style_size.inline).unwrap_or(available.inline),
-        intrinsic_available_for_dimension(style_size.block).unwrap_or(available.block),
+        intrinsic_available_for_dimension(style_size.inline)
+            .map_or(available.inline, |operation| {
+                available.inline.with_operation(operation)
+            }),
+        intrinsic_available_for_dimension(style_size.block).map_or(available.block, |operation| {
+            available.block.with_operation(operation)
+        }),
     ))
 }
 
 fn intrinsic_available_for_dimension<S: LayoutScalar>(
     dimension: ResolvedPreferredSize<S>,
-) -> Option<AvailableOf<S>> {
+) -> Option<SizingOperation> {
     match dimension {
-        ResolvedPreferredSize::MinContent => Some(AvailableOf::MIN_CONTENT),
-        ResolvedPreferredSize::MaxContent => Some(AvailableOf::MAX_CONTENT),
+        ResolvedPreferredSize::MinContent => Some(SizingOperation::MinContent),
+        ResolvedPreferredSize::MaxContent => Some(SizingOperation::MaxContent),
         ResolvedPreferredSize::Auto | ResolvedPreferredSize::Definite(_) => None,
     }
 }
 
 fn intrinsic_available_size_for_axis<S: LayoutScalar>(
-    available: AvailableOf<S>,
+    available: AxisSizingRequestOf<S>,
     max_size: Option<S>,
 ) -> Option<S> {
-    match available {
-        AvailableOf::Definite(value) => Some(value),
-        AvailableOf::MaxContent => max_size,
-        AvailableOf::MinContent => None,
-    }
+    available
+        .space()
+        .definite_size()
+        .map(crate::NonNegativeFiniteOf::get)
+        .or_else(|| {
+            (available.operation() == SizingOperation::MaxContent)
+                .then_some(max_size)
+                .flatten()
+        })
 }
 
 fn intrinsic_max_available<S: LayoutScalar>(
     constants: &Constants<S>,
     sizing_flow_axes: crate::geometry::FlowAxes,
-    available: Size<AvailableOf<S>>,
+    available: Size<AxisSizingRequestOf<S>>,
 ) -> LogicalSizeOf<bool> {
     let available = sizing_flow_axes.logical_size(available);
     let max_size = sizing_flow_axes.logical_size(constants.node_max_size);
     LogicalSizeOf::new(
-        available.inline == AvailableOf::MaxContent && max_size.inline.is_some(),
-        available.block == AvailableOf::MaxContent && max_size.block.is_some(),
+        available.inline.operation() == SizingOperation::MaxContent && max_size.inline.is_some(),
+        available.block.operation() == SizingOperation::MaxContent && max_size.block.is_some(),
     )
 }
 
@@ -501,14 +511,24 @@ where
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let resolved_intrinsic_minimum = if intrinsic_axes.width || intrinsic_axes.height {
         let available = Size::new(
-            intrinsic_minimum.width.map_or(
-                input.available().width,
-                StandaloneIntrinsicMinimum::available,
-            ),
-            intrinsic_minimum.height.map_or(
-                input.available().height,
-                StandaloneIntrinsicMinimum::available,
-            ),
+            intrinsic_minimum
+                .width
+                .map_or(input.sizing_request().axes().width, |phase| {
+                    input
+                        .sizing_request()
+                        .axes()
+                        .width
+                        .with_operation(phase.operation())
+                }),
+            intrinsic_minimum
+                .height
+                .map_or(input.sizing_request().axes().height, |phase| {
+                    input
+                        .sizing_request()
+                        .axes()
+                        .height
+                        .with_operation(phase.operation())
+                }),
         );
         let known = Size::new(
             if intrinsic_axes.width {
@@ -529,7 +549,7 @@ where
             known,
             input.parent(),
             input.containing_layout_context(),
-            available,
+            input.sizing_request().with_axes(available),
         )
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
@@ -630,7 +650,7 @@ where
         &style,
         &constants,
         &parent_context,
-        input.available(),
+        input.sizing_request().axes(),
     )?;
     let InitializedGridTracks {
         column_tracks,
@@ -654,12 +674,12 @@ where
         &style,
         sizing_flow_axes,
         input.parent(),
-        input.available(),
+        input.sizing_request().axes(),
         input.sizing_mode(),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
     let track_intrinsic_max_available =
-        intrinsic_max_available(&constants, sizing_flow_axes, input.available());
+        intrinsic_max_available(&constants, sizing_flow_axes, input.sizing_request().axes());
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -680,8 +700,8 @@ where
         stage,
     };
     let prepared_available = LogicalSizeOf::new(
-        intrinsic_stage::axis_track_available(&track_input, GridAxisKind::Column),
-        intrinsic_stage::axis_track_available(&track_input, GridAxisKind::Row),
+        intrinsic_stage::axis_track_available(node, &track_input, GridAxisKind::Column)?,
+        intrinsic_stage::axis_track_available(node, &track_input, GridAxisKind::Row)?,
     );
     let track_resolution = resolve_grid_track_sizes(tree, node, track_input)?;
     let GridTrackResolution {
@@ -690,6 +710,7 @@ where
         rows,
         column_preparation,
         row_preparation,
+        source_frame,
     } = track_resolution;
     let track_content_size = LogicalSizeOf::new(
         track_sum_with_gutters(&columns, gap.inline, Some(&column_gutters)),
@@ -704,7 +725,7 @@ where
     let intrinsic_sizing_content_size = {
         LogicalSizeOf::new(
             intrinsic_sizing_axis_content_size(IntrinsicSizingAxisInput {
-                prepared_available: prepared_available.inline,
+                operation: prepared_available.inline.operation(),
                 run_mode: input.run_mode(),
                 style_size: logical_style_size.inline,
                 content_size: content_size.inline,
@@ -714,7 +735,7 @@ where
                 tracks: &column_tracks,
             }),
             intrinsic_sizing_axis_content_size(IntrinsicSizingAxisInput {
-                prepared_available: prepared_available.block,
+                operation: prepared_available.block.operation(),
                 run_mode: input.run_mode(),
                 style_size: logical_style_size.block,
                 content_size: content_size.block,
@@ -768,6 +789,7 @@ where
         let child_input = GridChildLayoutInput {
             execution_input: input,
             sizing_phases,
+            source_frame: &source_frame,
             style: &style,
             constants: &constants,
             column_tracks: &column_tracks,
@@ -781,8 +803,8 @@ where
             context,
             columns: &columns,
             rows: &rows,
-            column_preparation: column_preparation.as_ref(),
-            row_preparation: row_preparation.as_ref(),
+            column_preparation: column_preparation.as_deref(),
+            row_preparation: row_preparation.as_deref(),
             prepared_available,
             intrinsic_max_available: track_intrinsic_max_available,
             output_size,
@@ -869,8 +891,32 @@ fn layout_percent_track_floor<S: LayoutScalar>(
         .unwrap_or(S::ZERO)
 }
 
+// Initial imposed/authored fixed body authority can override a formal request;
+// an accepted Auto extent cannot. This is separate from internal intrinsic
+// phase selection and from physical available space.
+fn grid_requested_operations<S: LayoutScalar>(
+    flow: crate::geometry::FlowAxes,
+    constants: &Constants<S>,
+    input: ComputeInputOf<S>,
+) -> LogicalSizeOf<SizingOperation> {
+    let requested = flow.logical_size(input.sizing_request().axes());
+    let fixed = flow.logical_size(constants.explicit_definite_content_size);
+    LogicalSizeOf::new(
+        if fixed.inline.is_some() {
+            SizingOperation::Normal
+        } else {
+            requested.inline.operation()
+        },
+        if fixed.block.is_some() {
+            SizingOperation::Normal
+        } else {
+            requested.block.operation()
+        },
+    )
+}
+
 struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = Scalar> {
-    prepared_available: AvailableOf<S>,
+    operation: SizingOperation,
     run_mode: RunMode,
     style_size: &'a PreferredSizeOf<S>,
     content_size: S,
@@ -884,7 +930,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
     input: IntrinsicSizingAxisInput<'_, S>,
 ) -> S {
     let IntrinsicSizingAxisInput {
-        prepared_available,
+        operation,
         run_mode,
         style_size,
         content_size,
@@ -893,12 +939,12 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
         available_size,
         tracks,
     } = input;
-    // The prepared axis includes the actual preferred intrinsic operation
-    // and any genuine initial fixed-size override. External available space
-    // cannot turn that intrinsic operation into a normal percentage floor.
-    if run_mode == RunMode::ComputeSize
+    // Use the effective prepared phase operation here, including an authored
+    // intrinsic preference. The final receiver separately follows the original
+    // requested operation after this intrinsic container extent is accepted.
+    if operation != SizingOperation::Normal
+        || run_mode == RunMode::ComputeSize
         || style_size.is_auto()
-        || !matches!(prepared_available, AvailableOf::Definite(_))
     {
         return content_size;
     }
@@ -927,7 +973,7 @@ where
         &style,
         &constants,
         &parent_context,
-        input.available(),
+        input.sizing_request().axes(),
     )?;
     let InitializedGridTracks {
         column_tracks,
@@ -943,12 +989,12 @@ where
         &style,
         sizing_flow_axes,
         input.parent(),
-        input.available(),
+        input.sizing_request().axes(),
         input.sizing_mode(),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
     let track_intrinsic_max_available =
-        intrinsic_max_available(&constants, sizing_flow_axes, input.available());
+        intrinsic_max_available(&constants, sizing_flow_axes, input.sizing_request().axes());
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -969,8 +1015,8 @@ where
         stage,
     };
     let prepared_available = LogicalSizeOf::new(
-        intrinsic_stage::axis_track_available(&track_input, GridAxisKind::Column),
-        intrinsic_stage::axis_track_available(&track_input, GridAxisKind::Row),
+        intrinsic_stage::axis_track_available(node, &track_input, GridAxisKind::Column)?,
+        intrinsic_stage::axis_track_available(node, &track_input, GridAxisKind::Row)?,
     );
     let track_resolution = resolve_grid_track_sizes(tree, node, track_input)?;
     let GridTrackResolution {
@@ -979,6 +1025,7 @@ where
         rows,
         column_preparation,
         row_preparation,
+        source_frame,
     } = track_resolution;
     let mut logical_content_size = LogicalSizeOf::new(
         track_sum_with_gutters(&columns, gap.inline, Some(&context.column_gutters)),
@@ -1085,6 +1132,7 @@ where
             &GridChildLayoutInput {
                 execution_input: input,
                 sizing_phases,
+                source_frame: &source_frame,
                 style: &style,
                 constants: &constants,
                 column_tracks: &column_tracks,
@@ -1098,8 +1146,8 @@ where
                 context: context.clone(),
                 columns: &columns,
                 rows: &rows,
-                column_preparation: column_preparation.as_ref(),
-                row_preparation: row_preparation.as_ref(),
+                column_preparation: column_preparation.as_deref(),
+                row_preparation: row_preparation.as_deref(),
                 prepared_available,
                 intrinsic_max_available: track_intrinsic_max_available,
                 output_size,
@@ -1287,7 +1335,7 @@ struct InheritedGridOwnerBaselineTargets<Node, S: LayoutScalar = Scalar> {
     mapping: CheckedOwnerToCurrentPlacementMap<Node, S>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct GridContainerContext<S: LayoutScalar = Scalar> {
     topology: ExpandedGridTopology<S>,
     gap: LogicalSizeOf<S>,
@@ -1448,7 +1496,7 @@ fn initialize_grid_tracks<'input, Tree, M>(
     style: &GridContainerProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     parent_context: &GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-    _available: Size<AvailableOf<Tree::Scalar>>,
+    _available: Size<AxisSizingRequestOf<Tree::Scalar>>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     InitializedGridTracks<'input, <Tree as Traverse>::Node, Tree::Scalar>,
@@ -1972,7 +2020,7 @@ struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     context: GridContainerContext<S>,
     subgrid_report: &'a GridSubgridReport<Node>,
     sizing_flow_axes: crate::geometry::FlowAxes,
-    available: LogicalSizeOf<AvailableOf<S>>,
+    available: LogicalSizeOf<AxisSizingRequestOf<S>>,
     intrinsic_max_available: LogicalSizeOf<bool>,
     placements: &'a GridPlacementContext<'input, Node, S>,
     stage: GridSizingStage,
@@ -2021,28 +2069,33 @@ struct GridTrackSizingPhases {
     limit: GridSizingStage,
 }
 
-struct GridTrackResolution<S: LayoutScalar = Scalar> {
+struct GridTrackResolution<'input, 'source, 'prepared, Node, S: LayoutScalar = Scalar> {
     sizing_phases: GridTrackSizingPhases,
     columns: Vec<S>,
     rows: Vec<S>,
-    column_preparation: Option<intrinsic_stage::GridAxisTrackPreparation<S>>,
-    row_preparation: Option<intrinsic_stage::GridAxisTrackPreparation<S>>,
+    column_preparation: Option<intrinsic_stage::GridAxisPreparationOwner<'prepared, S>>,
+    row_preparation: Option<intrinsic_stage::GridAxisPreparationOwner<'prepared, S>>,
+    source_frame: intrinsic_stage::GridTrackExecutionFrame<'input, 'source, Node, S>,
 }
 
-fn resolve_grid_track_sizes<'input, Tree, M>(
+type GridTrackResolutionResult<'input, 'source, 'prepared, Node, S, M> =
+    LayoutResultOf<Node, GridTrackResolution<'input, 'source, 'prepared, Node, S>, S, M>;
+
+fn resolve_grid_track_sizes<'input, 'source, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: GridTrackResolutionInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, GridTrackResolution<Tree::Scalar>, Tree::Scalar, M>
+    input: GridTrackResolutionInput<'input, 'source, <Tree as Traverse>::Node, Tree::Scalar>,
+) -> GridTrackResolutionResult<'input, 'source, 'source, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    intrinsic_stage::resolve_tracks(tree, node, input)
+    intrinsic_stage::resolve_tracks(tree, node, input, intrinsic_stage::GridTrackRun::Intrinsic)
 }
 
 struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     execution_input: ComputeInputOf<S>,
     sizing_phases: GridTrackSizingPhases,
+    source_frame: &'a intrinsic_stage::GridTrackExecutionFrame<'input, 'a, Node, S>,
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     column_tracks: &'a [TrackSizingOf<S>],
@@ -2054,7 +2107,7 @@ struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     column_preparation: Option<&'a intrinsic_stage::GridAxisTrackPreparation<S>>,
     row_preparation: Option<&'a intrinsic_stage::GridAxisTrackPreparation<S>>,
     // Keep the original containing constraint separate from final stretch.
-    prepared_available: LogicalSizeOf<AvailableOf<S>>,
+    prepared_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
     intrinsic_max_available: LogicalSizeOf<bool>,
     output_size: Size<S>,
     subgrid_report: &'a GridSubgridReport<Node>,
@@ -2179,63 +2232,6 @@ struct FinalGridLayoutTracks<'a, S: LayoutScalar> {
     minimum_functions: GridMinimumParentFunctions<'a, S>,
 }
 
-struct FinalAxisTrackInput<'a, S: LayoutScalar> {
-    frame: intrinsic_stage::IntrinsicStageFrame<'a, S>,
-    preparation: &'a intrinsic_stage::GridAxisTrackPreparation<S>,
-    prepared_available: AvailableOf<S>,
-    recollect: bool,
-}
-
-fn finish_final_grid_axis<'input, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
-    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
-    final_input: FinalAxisTrackInput<'_, Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, Vec<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let FinalAxisTrackInput {
-        frame,
-        preparation,
-        prepared_available,
-        recollect,
-    } = final_input;
-    let available = match frame.axis {
-        GridAxisKind::Column => input.available.inline,
-        GridAxisKind::Row => input.available.block,
-    };
-    let AvailableOf::Definite(extent) = available else {
-        unreachable!("final Grid track space comes from the accepted content box");
-    };
-    let space = intrinsic_stage::GridAxisTrackSpace::FinalUsed(extent);
-    if recollect {
-        return intrinsic_stage::collect_axis_track_preparation(
-            tree, node, input, grid, frame, space,
-        )
-        .map(|(sizes, _)| sizes);
-    }
-    if available != prepared_available || available != preparation.available {
-        return intrinsic_stage::reduce_axis_track_inputs(
-            node,
-            input,
-            frame.axis,
-            &preparation.contributions,
-            available,
-            space,
-        )
-        .map(|reduction| reduction.sizes);
-    }
-    intrinsic_stage::finish_axis_track_preparation(
-        node,
-        input,
-        frame.axis,
-        preparation,
-        Some(extent),
-    )
-}
-
 fn final_grid_layout_tracks<'input, 'a, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -2249,15 +2245,9 @@ where
     let content_size =
         (input.output_size - input.constants.content_box_inset.sum_axes()).max(Size::ZERO);
     let logical_content_size = flow.logical_size(content_size);
-    let gap = resolved_logical_layout_gap(
-        tree,
-        node,
-        input.style,
-        input.constants,
-        flow,
-        logical_content_size,
-        context.gap,
-    )?;
+    let operations = grid_requested_operations(flow, input.constants, input.execution_input);
+    let normal_axes = operations.map(|operation| operation == SizingOperation::Normal);
+    let gap = resolved_logical_layout_gap(tree, node, input, logical_content_size, normal_axes)?;
     let column_gutters =
         (input.parent_context.columns.is_none() && gap.inline != context.gap.inline).then(|| {
             local_grid_axis_gutters(
@@ -2290,8 +2280,16 @@ where
     }
     // Only this completed owner has accepted the normal content extent.
     let percent_basis = LogicalSizeOf::new(
-        Some(logical_content_size.inline),
-        Some(logical_content_size.block),
+        if normal_axes.inline {
+            Some(logical_content_size.inline)
+        } else {
+            context.percent_basis.inline
+        },
+        if normal_axes.block {
+            Some(logical_content_size.block)
+        } else {
+            context.percent_basis.block
+        },
     );
     result.percent_basis = percent_basis;
     result.minimum_functions = input.minimum_functions.requalified(percent_basis);
@@ -2314,35 +2312,42 @@ where
         subgrid_report: input.subgrid_report,
         sizing_flow_axes: flow,
         available: LogicalSizeOf::new(
-            AvailableOf::Definite(logical_content_size.inline),
-            AvailableOf::Definite(logical_content_size.block),
+            if normal_axes.inline {
+                AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(logical_content_size.inline)
+                        .map_err(|_| {
+                            crate::error::value_resolution_error(
+                                node,
+                                LengthResolutionStatus::InvalidNumeric {
+                                    value: logical_content_size.inline,
+                                },
+                            )
+                        })?,
+                    SizingOperation::Normal,
+                )
+            } else {
+                input.prepared_available.inline
+            },
+            if normal_axes.block {
+                AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(logical_content_size.block)
+                        .map_err(|_| {
+                            crate::error::value_resolution_error(
+                                node,
+                                LengthResolutionStatus::InvalidNumeric {
+                                    value: logical_content_size.block,
+                                },
+                            )
+                        })?,
+                    SizingOperation::Normal,
+                )
+            } else {
+                input.prepared_available.block
+            },
         ),
         intrinsic_max_available: input.intrinsic_max_available,
         placements: input.placements,
         stage: input.sizing_phases.limit,
-    };
-    let grid = IntrinsicGrid {
-        style: input.style,
-        constants: input.constants,
-        sizing_flow_axes: flow,
-        minimum_functions: result.minimum_functions,
-        track_basis: final_input.context.percent_basis,
-        column_tracks: input.column_tracks,
-        row_tracks: input.row_tracks,
-        gap,
-        column_gutters: Some(&final_input.context.column_gutters),
-        row_gutters: Some(&final_input.context.row_gutters),
-        lines: context.lines,
-        named_columns: &context.topology.named_columns,
-        named_rows: &context.topology.named_rows,
-        area_facts: context.topology.area_facts.as_ref(),
-        subgrid_report: input.subgrid_report,
-        placements: input.placements,
-        query: IntrinsicGridQuery {
-            axis: Some(GridAxisKind::Column),
-            stage: input.sizing_phases.limit,
-            ..IntrinsicGridQuery::complete(GridContributionPurpose::Minimum)
-        },
     };
     let column_preparation = input
         .column_preparation
@@ -2350,44 +2355,32 @@ where
     let row_preparation = input
         .row_preparation
         .expect("a completed Grid row axis retains its issued preparation");
-    result.columns = finish_final_grid_axis(
+    let resolution = intrinsic_stage::resolve_tracks(
         tree,
         node,
-        &final_input,
-        grid,
-        FinalAxisTrackInput {
-            frame: intrinsic_stage::IntrinsicStageFrame {
-                axis: GridAxisKind::Column,
-                stage: input.sizing_phases.limit,
-                columns: Some(input.columns),
-                rows: Some(input.rows),
-                observed_axis: None,
-            },
-            preparation: column_preparation,
-            prepared_available: input.prepared_available.inline,
-            recollect: gap != context.gap || percent_basis != context.percent_basis,
+        final_input,
+        intrinsic_stage::GridTrackRun::AcceptedReceiver {
+            source: input.source_frame,
+            columns: core::mem::take(&mut result.columns),
+            rows: core::mem::take(&mut result.rows),
+            column_preparation,
+            row_preparation,
+            spaces: LogicalSizeOf::new(
+                if normal_axes.inline {
+                    intrinsic_stage::GridAxisTrackSpace::FinalUsed(logical_content_size.inline)
+                } else {
+                    intrinsic_stage::GridAxisTrackSpace::Intrinsic
+                },
+                if normal_axes.block {
+                    intrinsic_stage::GridAxisTrackSpace::FinalUsed(logical_content_size.block)
+                } else {
+                    intrinsic_stage::GridAxisTrackSpace::Intrinsic
+                },
+            ),
         },
     )?;
-    result.rows = finish_final_grid_axis(
-        tree,
-        node,
-        &final_input,
-        grid,
-        FinalAxisTrackInput {
-            frame: intrinsic_stage::IntrinsicStageFrame {
-                axis: GridAxisKind::Row,
-                stage: input.sizing_phases.limit,
-                columns: Some(&result.columns),
-                rows: Some(input.rows),
-                observed_axis: None,
-            },
-            preparation: row_preparation,
-            prepared_available: input.prepared_available.block,
-            recollect: gap != context.gap
-                || percent_basis != context.percent_basis
-                || result.columns != input.columns,
-        },
-    )?;
+    result.columns = resolution.columns;
+    result.rows = resolution.rows;
     Ok(result)
 }
 
@@ -2423,26 +2416,37 @@ struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
 fn resolved_logical_layout_gap<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
-    style: &GridContainerProjection<'_, Tree::Scalar>,
-    constants: &Constants<Tree::Scalar>,
-    sizing_flow_axes: crate::geometry::FlowAxes,
+    input: &GridChildLayoutInput<'input, '_, Tree::Node, Tree::Scalar>,
     content_box_size: LogicalSizeOf<Tree::Scalar>,
-    intrinsic_gap: LogicalSizeOf<Tree::Scalar>,
+    normal_axes: LogicalSizeOf<bool>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, LogicalSizeOf<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let style = input.style;
+    let constants = input.constants;
+    let sizing_flow_axes = constants.flow_axes;
+    let intrinsic_gap = input.context.gap;
     let physical_content_box_size = sizing_flow_axes.physical_size(content_box_size);
     let physical_intrinsic_gap = sizing_flow_axes.physical_size(intrinsic_gap);
+    let normal_axes = sizing_flow_axes.physical_size(normal_axes);
     let gap = Size::new(
-        constants.node_inner_size.width.map_or_else(
-            || resolve_length_or_zero(style.gap.width, Some(physical_content_box_size.width)),
-            |_| Ok(physical_intrinsic_gap.width),
-        ),
-        constants.node_inner_size.height.map_or_else(
-            || resolve_length_or_zero(style.gap.height, Some(physical_content_box_size.height)),
-            |_| Ok(physical_intrinsic_gap.height),
-        ),
+        if !normal_axes.width {
+            Ok(physical_intrinsic_gap.width)
+        } else {
+            constants.node_inner_size.width.map_or_else(
+                || resolve_length_or_zero(style.gap.width, Some(physical_content_box_size.width)),
+                |_| Ok(physical_intrinsic_gap.width),
+            )
+        },
+        if !normal_axes.height {
+            Ok(physical_intrinsic_gap.height)
+        } else {
+            constants.node_inner_size.height.map_or_else(
+                || resolve_length_or_zero(style.gap.height, Some(physical_content_box_size.height)),
+                |_| Ok(physical_intrinsic_gap.height),
+            )
+        },
     )
     .transpose_with_node(tree, node)?;
     Ok(sizing_flow_axes.logical_size(gap))
@@ -2466,9 +2470,55 @@ fn effective_content_box_left<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
+struct GridFixedFallback<S: LayoutScalar> {
+    descendants: OrthogonalFallbackOf<S>,
+    minimum_outer: Size<FixedFallbackSource<S>>,
+    maximum_outer: Size<FixedFallbackSource<S>>,
+}
+
+fn qualify_grid_fallback<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    style: &GridContainerProjection<'_, S>,
+    input: ComputeInputOf<S>,
+    source: MeasuredLeafContentBoxInsetSourceOf<S>,
+) -> LayoutResultOf<Node, GridFixedFallback<S>, S, M> {
+    let box_sizing_adjustment = if style.box_sizing == BoxSizing::ContentBox {
+        (source.padding + source.border).sum_axes()
+    } else {
+        Size::ZERO
+    };
+    let sources = crate::layout_math::qualify_fixed_fallback_sources(
+        input,
+        sizing_algorithm_for_grid_display(style.display),
+        &style.common,
+        input.known(),
+        box_sizing_adjustment,
+        crate::scroll::UsedOverflow::from_computed(style.overflow, style.item_is_replaced)
+            .is_scroll_container(),
+    )
+    .map_err(|error| sizing_resolution_error(node, error))?;
+    let descendants = child_orthogonal_fallback(
+        input.sizing_request().orthogonal_fallback(),
+        sources.definite_outer,
+        sources.minimum_outer,
+        sources.maximum_outer,
+        source,
+    )
+    .map_err(|status| crate::error::value_resolution_error(node, status))?;
+    Ok(GridFixedFallback {
+        descendants,
+        minimum_outer: sources.minimum_outer,
+        maximum_outer: sources.maximum_outer,
+    })
+}
+
+#[derive(Clone, Copy, PartialEq)]
 struct Constants<S: LayoutScalar = Scalar> {
     pub(super) flow_axes: crate::geometry::FlowAxes,
     explicit_definite_content_size: Size<Option<S>>,
+    child_orthogonal_fallback: OrthogonalFallbackOf<S>,
+    fallback_minimum_outer: Size<FixedFallbackSource<S>>,
+    fallback_maximum_outer: Size<FixedFallbackSource<S>>,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
     node_min_size: Size<Option<S>>,
@@ -2481,7 +2531,7 @@ struct Constants<S: LayoutScalar = Scalar> {
 }
 
 impl<S: LayoutScalar> Constants<S> {
-    fn for_used_scroll_box(self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
+    fn for_used_scroll_box(&self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
         let content_box_inset = scroll_box.content_box_inset();
         // Intrinsic sizing needs the requested inset, while placement uses the
         // final allocated box's saturated inset. Rebase the inner quantities
@@ -2495,7 +2545,7 @@ impl<S: LayoutScalar> Constants<S> {
             available_inner_size: self.available_inner_size.add_optional(inset_difference),
             content_box_inset,
             scrollbar_gutter: scroll_box.effective_gutter(),
-            ..self
+            ..*self
         }
     }
 
@@ -2616,6 +2666,16 @@ impl<S: LayoutScalar> Constants<S> {
         )
         .apply_aspect_ratio(*style.aspect_ratio)
         .add_optional(box_sizing_adjustment);
+        let fallback_source = MeasuredLeafContentBoxInsetSourceOf {
+            flow_axes,
+            computed_overflow: style.overflow,
+            item_is_replaced: style.item_is_replaced,
+            scrollbar_gutter: style.scrollbar_gutter,
+            scrollbar_width: style.scrollbar_width,
+            settled_auto_scrollbars: input.settled_auto_scrollbars(),
+            padding,
+            border,
+        };
         let scroll_box = {
             let provisional_outer_size = input
                 .known()
@@ -2625,17 +2685,7 @@ impl<S: LayoutScalar> Constants<S> {
             // border box. For an unknown axis, qualify the full requested inset
             // against exactly the extent it requires. This intermediate basis
             // is used only for insets; final geometry uses the resolved output.
-            let requested_inset =
-                measured_leaf_content_box_inset(MeasuredLeafContentBoxInsetSourceOf {
-                    flow_axes,
-                    computed_overflow: style.overflow,
-                    item_is_replaced: style.item_is_replaced,
-                    scrollbar_gutter: style.scrollbar_gutter,
-                    scrollbar_width: style.scrollbar_width,
-                    settled_auto_scrollbars: input.settled_auto_scrollbars(),
-                    padding,
-                    border,
-                });
+            let requested_inset = measured_leaf_content_box_inset(fallback_source);
             let scroll_box_size = provisional_outer_size
                 .unwrap_or(requested_inset.sum_axes())
                 .max(padding_border_size);
@@ -2657,13 +2707,19 @@ impl<S: LayoutScalar> Constants<S> {
         let explicit_definite_outer_size = input.known().or(style_size);
         let explicit_definite_content_size =
             explicit_definite_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
+        let GridFixedFallback {
+            descendants: child_orthogonal_fallback,
+            minimum_outer: fallback_minimum_outer,
+            maximum_outer: fallback_maximum_outer,
+        } = qualify_grid_fallback(node, style, input, fallback_source)?;
         let node_outer_size = input
             .known()
             .or(style_size.clamp_min_before_max_optional(min_size, max_size))
             .max_optional(padding_border_size.map(Some));
         let node_inner_size = node_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
         let available_size = input
-            .available()
+            .sizing_request()
+            .axes()
             .zip_map(max_size, intrinsic_available_size_for_axis)
             .clamp_min_before_max_optional(min_size, max_size)
             .max_optional(padding_border_size.map(Some));
@@ -2673,6 +2729,9 @@ impl<S: LayoutScalar> Constants<S> {
         Ok(Self {
             flow_axes,
             explicit_definite_content_size,
+            child_orthogonal_fallback,
+            fallback_minimum_outer,
+            fallback_maximum_outer,
             node_outer_size,
             node_inner_size,
             node_min_size: min_size,
@@ -2856,7 +2915,17 @@ mod fri06_c13_t06_characterization_tests {
                 containing_flow_axes,
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         )
     }
 

@@ -43,13 +43,35 @@ fn qualify_native_content<S: LayoutScalar>(overflow: Overflow) {
     assert!(tree.node_input(1).size.width.is_auto());
     assert!(!tree.has_leaf_measurement(1));
     assert!(!tree.has_leaf_measurement(3));
-    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
-        let batch = compute_layout(
-            &tree,
-            1,
-            LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::Definite(n(10.0))))
-                .unwrap(),
-        )
+    for available in [
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    ] {
+        let batch = compute_layout(&tree, 1, {
+            let axes = Size::new(
+                available,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(10.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            );
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        })
         .expect("the real native Flex intrinsic control completes");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
             assert_eq!(output(entries, 1).size, Size::new(n(120.0), n(10.0)));
@@ -150,13 +172,40 @@ fn assert_caps<S: LayoutScalar>(
         assert!(tree.node_input(1).size.height.is_auto());
         assert!(tree.node_input(2).size.width.is_auto());
         let available = match constraint {
-            Constraint::Definite => AvailableOf::Definite(n(100.0)),
-            Constraint::MinContent => AvailableOf::MIN_CONTENT,
+            Constraint::Definite => AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            Constraint::MinContent => {
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
+            }
         };
-        let request =
-            LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::Definite(n(20.0))))
-                .unwrap();
-        assert_eq!(request.available().width, available);
+        let request = {
+            let axes = Size::new(
+                available,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            );
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        };
+        assert_eq!(request.sizing_request().axes().width, available);
         let batch =
             compute_layout(&tree, 0, request).expect("the native capped-span grid completes");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {

@@ -97,15 +97,49 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(
-        &flow,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(10.0)),
-            AvailableOf::definite(S::from_f64(42.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout_with_flow(&flow, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(42.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap();
     let line = lines(&batch).remove(0);
     let selected = line.selected_line();

@@ -38,7 +38,7 @@ pub(super) struct GridChildrenLayout<Node, S: LayoutScalar = Scalar> {
 pub(super) type GridChildrenLayoutResult<Node, S, M> =
     LayoutResultOf<Node, GridChildrenLayout<Node, S>, S, M>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct GridLines {
     pub(super) column_explicit_start: usize,
     pub(super) column_explicit_count: usize,
@@ -343,7 +343,10 @@ where
             style,
             *subgrid_item,
             physical_area_size,
-            containing_auto_scrollbar_pass,
+            GridItemRequestContext {
+                containing_auto_scrollbar_pass,
+                orthogonal_fallback: constants.child_orthogonal_fallback,
+            },
         )?;
         let child_container_style = placements
             .nested_container_input(source_index)
@@ -554,6 +557,7 @@ where
             ancestor_baseline_groups: &ancestor_baseline_groups,
             executed_frame,
             original_executed: &executed_inventory,
+            orthogonal_fallback: constants.child_orthogonal_fallback,
             containing_auto_scrollbar_pass,
             sizing_stage,
         },
@@ -944,6 +948,12 @@ pub(super) struct FinalGridItemPreparation<S: LayoutScalar> {
     pub(super) content_box_size: Size<S>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct GridItemRequestContext<S: LayoutScalar> {
+    pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(super) orthogonal_fallback: OrthogonalFallbackOf<S>,
+}
+
 pub(super) fn prepare_final_grid_item<'input, Tree, M>(
     tree: &Tree,
     child: Tree::Node,
@@ -951,7 +961,7 @@ pub(super) fn prepare_final_grid_item<'input, Tree, M>(
     container_style: &GridContainerProjection<'_, Tree::Scalar>,
     subgrid_item: SubgridItemReport<Tree::Node>,
     physical_area_size: Size<Tree::Scalar>,
-    containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    request_context: GridItemRequestContext<Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, FinalGridItemPreparation<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -993,6 +1003,31 @@ where
     let content_box_size =
         (physical_area_size - margin.sum_axes() - padding.sum_axes() - border.sum_axes())
             .max(Size::ZERO);
+    let available = sizing.available.map(|value| value.max(Tree::Scalar::ZERO));
+    let available = Size::new(
+        AxisSizingRequestOf::new(
+            crate::layout_math::checked_available_space(available.width).map_err(|_| {
+                crate::error::value_resolution_error(
+                    child,
+                    LengthResolutionStatus::InvalidNumeric {
+                        value: available.width,
+                    },
+                )
+            })?,
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(
+            crate::layout_math::checked_available_space(available.height).map_err(|_| {
+                crate::error::value_resolution_error(
+                    child,
+                    LengthResolutionStatus::InvalidNumeric {
+                        value: available.height,
+                    },
+                )
+            })?,
+            SizingOperation::Normal,
+        ),
+    );
     let input = ComputeInputOf::for_child(
         RunMode::PerformLayout,
         SizingMode::InherentSize,
@@ -1000,11 +1035,9 @@ where
         sizing.known,
         area_parent,
         crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Grid),
-        sizing
-            .available
-            .map(|value| AvailableOf::Definite(value.max(Tree::Scalar::ZERO))),
+        SizingRequestOf::new(available, request_context.orthogonal_fallback),
     )
-    .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
+    .with_containing_auto_scrollbar_pass(request_context.containing_auto_scrollbar_pass);
     Ok(FinalGridItemPreparation {
         sizing,
         input,
@@ -1116,8 +1149,14 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     let logical_area_size = grid_flow_axes.logical_size(area_size);
     let logical_margin = grid_flow_axes.logical_edges(margin);
     let logical_available = LogicalSizeOf::new(
-        (logical_area_size.inline - logical_margin.inline_sum()).max(S::ZERO),
-        (logical_area_size.block - logical_margin.block_sum()).max(S::ZERO),
+        crate::layout_math::remaining_available_extent(
+            logical_area_size.inline,
+            logical_margin.inline_sum(),
+        )?,
+        crate::layout_math::remaining_available_extent(
+            logical_area_size.block,
+            logical_margin.block_sum(),
+        )?,
     );
     let available = grid_flow_axes.physical_size(logical_available);
     let GridItemBoxEdges {

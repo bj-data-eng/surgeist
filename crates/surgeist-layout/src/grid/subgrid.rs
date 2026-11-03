@@ -237,7 +237,7 @@ impl<S: LayoutScalar> SubgridLeafMinimumFrame<S> {
 
 /// Missing functions mean a geometry-only traversal, never a proof that a
 /// minimum contribution has no fixed maximum cap.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct GridMinimumParentFunctions<'a, S: LayoutScalar> {
     pub(super) columns: Option<GridMinimumTrackFunctions<'a, S>>,
     pub(super) rows: Option<GridMinimumTrackFunctions<'a, S>>,
@@ -1452,7 +1452,10 @@ where
                         grid.constants.flow_axes,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    input.query.available,
+                    SizingRequestOf::new(
+                        input.query.available,
+                        grid.constants.child_orthogonal_fallback,
+                    ),
                 ),
             },
         )?;
@@ -1972,7 +1975,7 @@ where
 
         query,
     } = request;
-    let available = prepared.available();
+    let available = prepared.sizing_request().axes();
     let container_style = nested_container.projection();
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(
         &container_style,
@@ -2037,7 +2040,7 @@ where
             &container_style,
             constants.flow_axes,
             prepared.parent(),
-            prepared.available(),
+            prepared.sizing_request().axes(),
             prepared.sizing_mode(),
         )
         .map_err(|error| sizing_resolution_error(node, error))?;
@@ -2062,7 +2065,7 @@ where
                 intrinsic_max_available: intrinsic_max_available(
                     &constants,
                     constants.flow_axes,
-                    prepared.available(),
+                    prepared.sizing_request().axes(),
                 ),
                 placements: &initialized.placements,
                 stage,
@@ -2161,7 +2164,7 @@ where
             } else {
                 None
             },
-            available: prepared.available(),
+            available: prepared.sizing_request().axes(),
             ..query
         };
         let minimum_source = SubgridParentTrackSource {
@@ -2221,7 +2224,7 @@ where
                     constants.flow_axes,
                     crate::ParentFormattingContext::Grid,
                 ),
-                child_query.available,
+                SizingRequestOf::new(child_query.available, constants.child_orthogonal_fallback),
             ),
         };
         let child_prepared = intrinsic_stage_child_input::<Tree, M>(child, &execution)?;
@@ -2878,7 +2881,17 @@ mod tests {
             Size::NONE,
             Size::new(Some(20.0), Some(20.0)),
             crate::ContainingLayoutContext::new(parent_axes, crate::ParentFormattingContext::Grid),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         let error = subgrid_traversal_children::<_, Infallible>(
             &mut tree.borrow_compute(),

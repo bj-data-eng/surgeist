@@ -55,13 +55,17 @@ impl<S: LayoutScalar> LayoutTree for DistinctLeaf<S> {
         // Finite availability permits wrapping between those extents. A known
         // constraint remains authoritative; this callback never fabricates a
         // Grid result, baseline, source occurrence or overflowing hidden box.
-        let width = known
-            .width
-            .unwrap_or_else(|| match input.available_content_size().width {
-                MeasurementAvailableOf::MinContent => forty,
-                MeasurementAvailableOf::MaxContent => eighty,
-                MeasurementAvailableOf::Definite(limit) => limit.get().max(forty).min(eighty),
-            });
+        let width = known.width.unwrap_or_else(|| {
+            let request = input.content_sizing_request().axes().width;
+            match request.operation() {
+                SizingOperation::MinContent => forty,
+                SizingOperation::MaxContent => eighty,
+                SizingOperation::Normal => request
+                    .space()
+                    .definite_size()
+                    .map_or(eighty, |limit| limit.get().max(forty).min(eighty)),
+            }
+        });
         Some(Ok(Size::new(
             width,
             known.height.unwrap_or(S::from_f64(10.0)),
@@ -127,8 +131,14 @@ fn source<S: LayoutScalar>(width: f64, cap: GrowthCap, overflow: Overflow) -> Di
 
 fn qualify_actual_native_queries<S: LayoutScalar>(tree: &DistinctLeaf<S>) {
     for (available, expected) in [
-        (AvailableOf::MIN_CONTENT, 40.0),
-        (AvailableOf::MAX_CONTENT, 80.0),
+        (
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            40.0,
+        ),
+        (
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            80.0,
+        ),
     ] {
         tree.observed.borrow_mut().clear();
         let input = ComputeInputOf::for_child(
@@ -141,7 +151,20 @@ fn qualify_actual_native_queries<S: LayoutScalar>(tree: &DistinctLeaf<S>) {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::Grid,
             ),
-            Size::new(available, AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    available,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         let leaf = crate::measurement::compute_tree_leaf(tree, 1, input, tree.node_input(1))
             .expect("actual native leaf algorithm accepts the query");
@@ -155,7 +178,8 @@ fn qualify_actual_native_queries<S: LayoutScalar>(tree: &DistinctLeaf<S>) {
         assert!(
             tree.observed.borrow().iter().any(|actual| {
                 actual.known_content_size().width.is_none()
-                    && actual.available_content_size().width.into_available() == available
+                    && actual.content_sizing_request().axes().width.operation()
+                        == available.operation()
             }),
             "real leaf callback must receive this intrinsic query"
         );
@@ -166,15 +190,35 @@ fn qualify_actual_native_queries<S: LayoutScalar>(tree: &DistinctLeaf<S>) {
 fn case<S: LayoutScalar>(width: f64, cap: GrowthCap, overflow: Overflow, track: f64) {
     let tree = source::<S>(width, cap, overflow);
     qualify_actual_native_queries(&tree);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(width)),
-            AvailableOf::definite(S::from_f64(10.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual ordinary Grid with responsive native content completes");
     let root = fri08_c01_placement_output(&batch, 0);
     let child = fri08_c01_placement_output(&batch, 1);
@@ -361,29 +405,58 @@ fn fit_case<S: LayoutScalar>(request: FitRequest, overflow: Overflow, expected_t
     let (root_width, available) = match request {
         FitRequest::MinContent => {
             root_style.size.width = PreferredSizeOf::AUTO;
-            (expected_track, AvailableOf::MIN_CONTENT)
+            (
+                expected_track,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            )
         }
         FitRequest::MaxContent => {
             root_style.size.width = PreferredSizeOf::AUTO;
-            (expected_track, AvailableOf::MAX_CONTENT)
+            (
+                expected_track,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            )
         }
         FitRequest::Definite(width) => {
             root_style.size.width = PreferredSizeOf::px(S::from_f64(width));
-            (width, AvailableOf::definite(S::from_f64(width)))
+            (
+                width,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+            )
         }
     };
     tree.source
         .insert_input(0, LayoutInputOf::box_input(root_style));
     qualify_actual_native_queries(&tree);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
             available,
-            AvailableOf::definite(S::from_f64(10.0)),
-        ))
-        .unwrap(),
-    )
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual Grid fit-content with responsive native content completes");
     let root = fri08_c01_placement_output(&batch, 0);
     let child = fri08_c01_placement_output(&batch, 1);
@@ -558,15 +631,30 @@ fn mixed_span_nonaffected_fixed_min_base<S: LayoutScalar>() {
     tree.source
         .insert_input(1, LayoutInputOf::box_input(child_style));
     qualify_actual_native_queries(&tree);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MIN_CONTENT,
-            AvailableOf::definite(S::from_f64(10.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("genuine spanning native Grid computes");
     let root = fri08_c01_placement_output(&batch, 0);
     let child = fri08_c01_placement_output(&batch, 1);
@@ -647,7 +735,23 @@ fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bo
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::Grid,
             ),
-            Size::new(AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
         tree.node_input(1),
     )
@@ -658,15 +762,30 @@ fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bo
     assert_eq!(zero.baselines(), BaselinesOf::NONE);
     assert_eq!(zero.named_baselines, NamedBaselinesOf::unknown());
 
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MIN_CONTENT,
-            AvailableOf::definite(S::from_f64(10.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual Visible spanning Grid computes without a clipping gate");
     let root = fri08_c01_placement_output(&batch, 0);
     let child = fri08_c01_placement_output(&batch, 1);

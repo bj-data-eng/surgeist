@@ -110,7 +110,7 @@ fn wrapped<S: l::LayoutScalar>(
 
 fn run<S: l::LayoutScalar>(
     scene: &Scene<S>,
-    space: l::Size<l::AvailableOf<S>>,
+    space: surgeist_layout::SizingRequestOf<S>,
     changed: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow = l::LayoutFlowInput::try_new(
@@ -124,7 +124,19 @@ fn run<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(space).unwrap(),
+        {
+            let sizing_request = space;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&scene.host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&scene.host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }
@@ -251,11 +263,19 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
 
     let empty = child_input::<S>();
     let boxes = Host::new(empty.clone());
-    let qualifier = l::compute_layout(
-        &boxes,
-        0,
-        l::LayoutRootRequestOf::viewport(available(6.0, 14.0)).unwrap(),
-    )
+    let qualifier = l::compute_layout(&boxes, 0, {
+        let sizing_request = available(6.0, 14.0);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&boxes, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&boxes, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .unwrap();
     let pair = node(qualifier.unrounded_entries(), 0)
         .named_baselines
@@ -401,8 +421,8 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             assert_eq!(last.feedback().advance, 4.0);
         }
         for (inline, width, height, columns) in [
-            (l::AvailableOf::MIN_CONTENT, 30.0, 14.0, 3),
-            (l::AvailableOf::MAX_CONTENT, 10.0, 22.0, 1),
+            (surgeist_layout::SizingOperation::MinContent, 30.0, 14.0, 3),
+            (surgeist_layout::SizingOperation::MaxContent, 10.0, 22.0, 1),
         ] {
             let mut scene =
                 make_scene::<S>(&parent, mode, (40.0, 22.0), child_input(), Some(&child));
@@ -411,7 +431,10 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             });
             let batch = run(
                 &scene,
-                l::Size::new(l::AvailableOf::MAX_CONTENT, inline),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                ),
                 &[],
             )
             .unwrap();
@@ -487,11 +510,19 @@ fn unknown_and_wrong_axis<S: l::LayoutScalar>() {
         if !unknown {
             qualifier.push(Some(0), l::LayoutInputOf::box_input(numeric_descendant()));
         }
-        let qualified = l::compute_layout(
-            &qualifier,
-            0,
-            l::LayoutRootRequestOf::viewport(available(6.0, 14.0)).unwrap(),
-        )
+        let qualified = l::compute_layout(&qualifier, 0, {
+            let sizing_request = available(6.0, 14.0);
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&qualifier, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&qualifier, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        })
         .unwrap();
         let pair = node(qualified.unrounded_entries(), 0)
             .named_baselines
@@ -816,11 +847,19 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
     let parent = super::parent(&font.bytes);
     let empty = child_input::<S>();
     let qualifier = Host::new(empty.clone());
-    let qualified = l::compute_layout(
-        &qualifier,
-        0,
-        l::LayoutRootRequestOf::viewport(available(6.0, 14.0)).unwrap(),
-    )
+    let qualified = l::compute_layout(&qualifier, 0, {
+        let sizing_request = available(6.0, 14.0);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&qualifier, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&qualifier, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .unwrap();
     let pair = node(qualified.unrounded_entries(), 0)
         .named_baselines

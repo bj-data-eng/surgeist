@@ -125,10 +125,7 @@ pub enum LayoutTextNumericError {
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InlineBaseline(crate::InlineBaselineError),
-    RootAvailability {
-        axis: PhysicalAxis,
-        error: NonNegativeFiniteScalarErrorOf<S>,
-    },
+    RootContext(crate::RootContextMismatch),
     MeasurementOutput(InvalidMeasurementOutputOf<S>),
     InvalidNumeric {
         value: S,

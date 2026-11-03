@@ -129,9 +129,26 @@ fn performed_leaf<S: LayoutScalar>(
                     FlowAxes::new(WritingMode::HorizontalTb, direction),
                     ParentFormattingContext::Grid,
                 ),
-                Size::new(
-                    AvailableOf::definite(s::<S>(20.0)),
-                    AvailableOf::definite(s::<S>(40.0)),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(s::<S>(20.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(s::<S>(40.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
                 ),
             ),
         )
@@ -148,7 +165,17 @@ fn root_query<S: LayoutScalar>(direction: Direction) -> ComputeInputOf<S> {
             FlowAxes::new(WritingMode::HorizontalTb, direction),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 fn qualify<S: LayoutScalar>(output: ComputeOutputOf<S>, port: LastPort, axes: FlowAxes) {

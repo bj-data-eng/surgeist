@@ -115,7 +115,10 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
     assert!(style.size.width.is_auto() && style.size.height.is_auto());
     assert!(tree.has_leaf_measurement(2));
     assert_eq!(tree.child_count(2), 0);
-    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+    for available in [
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    ] {
         let output = crate::measurement::compute_tree_leaf(
             tree,
             2,
@@ -129,7 +132,20 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::Grid,
                 ),
-                Size::new(available, AvailableOf::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        available,
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
             style,
         )
@@ -169,15 +185,25 @@ fn contributes<S: LayoutScalar>(form: Form, overflow: Overflow) {
     let tree = source::<S>(form, overflow);
     qualify_leaf(&tree);
     qualify_nested(&tree, form);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual flattened/native Lanes Grid completes");
     let root = fri08_c01_placement_output(&batch, 0);
     assert_eq!(

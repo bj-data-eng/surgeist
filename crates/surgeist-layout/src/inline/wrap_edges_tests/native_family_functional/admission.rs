@@ -36,7 +36,15 @@ fn refusal_preserves<S: LayoutScalar>(
     // Both controls use the real unchanged supplied tree, six actual ten-pixel
     // atomics, exact NativePair20/21 and canonical generated proof helpers.
     let ordinary = f.flow();
-    let old = compute_layout_with_flow(&ordinary, 0, request(n(100.0))).unwrap();
+    let old = compute_layout_with_flow(
+        &ordinary,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let old_positions = atom_positions(&old);
     assert_eq!(old.native_inline_box_families().count(), 0);
     assert_eq!(old.native_inline_box_pieces().count(), 0);
@@ -47,7 +55,15 @@ fn refusal_preserves<S: LayoutScalar>(
         valid.paragraphs().is_empty(),
         "Native family admission fabricates no PreparedText"
     );
-    let prior = compute_layout_with_flow(&valid, 0, request(n(100.0))).unwrap();
+    let prior = compute_layout_with_flow(
+        &valid,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let prior_positions = atom_positions(&prior);
     assert_eq!(prior.native_inline_box_families().count(), 1);
     let c = box_piece(&prior, 12).fragment();
@@ -70,7 +86,15 @@ fn refusal_preserves<S: LayoutScalar>(
         // admission, rather than accidentally reproduce a malformed-order error.
         let allowed =
             LayoutFlowInput::try_new(&other_tree, 0, vec![], no_demand, Vec::new()).unwrap();
-        let control = compute_layout_with_flow(&allowed, 0, request(n(100.0))).unwrap();
+        let control = compute_layout_with_flow(
+            &allowed,
+            0,
+            request(n(100.0), {
+                let root_input = crate::LayoutTree::node_input((allowed).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         assert_eq!(atom_positions(&control), old_positions);
         assert_eq!(control.native_inline_box_families().count(), 0);
         assert_eq!(control.native_inline_box_pieces().count(), 0);
@@ -80,7 +104,15 @@ fn refusal_preserves<S: LayoutScalar>(
     assert_eq!(atom_positions(&prior), prior_positions);
     assert_eq!(box_piece(&prior, 12).fragment(), c);
     assert_eq!(box_piece(&prior, 13).fragment(), a);
-    let retry = compute_layout_with_flow(&valid, 0, request(n(100.0))).unwrap();
+    let retry = compute_layout_with_flow(
+        &valid,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(atom_positions(&retry), prior_positions);
     assert_eq!(box_piece(&retry, 12).fragment(), c);
     assert_eq!(box_piece(&retry, 13).fragment(), a);

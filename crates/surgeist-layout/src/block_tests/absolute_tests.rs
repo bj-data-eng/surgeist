@@ -76,7 +76,20 @@ fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_d
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -164,7 +177,20 @@ fn block_absolute_child_without_insets_uses_static_position_after_flow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -228,7 +254,20 @@ fn block_absolute_child_auto_size_applies_aspect_ratio_to_max_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -285,7 +324,20 @@ fn block_absolute_child_auto_size_resolves_from_opposing_insets() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -347,7 +399,20 @@ fn block_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -410,7 +475,20 @@ fn block_absolute_child_expands_horizontal_auto_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -485,7 +563,20 @@ fn block_absolute_child_large_width_keeps_horizontal_auto_margins_zero() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -556,7 +647,20 @@ fn block_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();

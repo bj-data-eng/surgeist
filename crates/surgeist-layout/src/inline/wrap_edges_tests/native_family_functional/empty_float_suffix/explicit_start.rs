@@ -5,8 +5,15 @@ use crate::{InlineFormatterEdge, InlineGapAnchor, InlineGapGroupInput};
 fn explicit_start_remains_cut_local<S: LayoutScalar>() {
     let f = empty_float_fixture::<S>(false);
     let ordinary_flow = f.flow();
-    let prior = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0)))
-        .expect("the actual ordinary no-group Start/float/End control must complete first");
+    let prior = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect("the actual ordinary no-group Start/float/End control must complete first");
     ordinary_empty_float_geometry(&prior, false);
     assert_eq!(prior.native_inline_box_families().count(), 0);
     assert_eq!(prior.native_inline_box_pieces().count(), 0);
@@ -28,12 +35,27 @@ fn explicit_start_remains_cut_local<S: LayoutScalar>() {
     // succeed; whether the exact source edge is selected belongs to execution.
     let flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], demanded, Vec::new())
         .expect("the explicit FormatterStart attachment is valid for the real complete body");
-    let result = compute_layout_with_flow(&flow, 0, request(n(100.0)));
+    let result = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    );
     // The float separates raw runs0..1 and2..3. P.End is actual selected physical
     // authority in the second run, but does not replace the explicitly requested
     // FormatterStart at raw0 with a derived End or an unselected coordinate.
     ordinary_empty_float_geometry(&prior, false);
-    let retry = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0))).unwrap();
+    let retry = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     ordinary_empty_float_geometry(&retry, false);
     let Err(error) = result else {
         panic!("an explicit FormatterStart must not borrow a derived suffix on the End-only run");

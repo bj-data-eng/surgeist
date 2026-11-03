@@ -93,7 +93,7 @@ fn inventory(
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
     rtl: bool,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     limit: HyphenateLimitLines,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -122,11 +122,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -252,12 +280,33 @@ fn source_shy_mixed_break_all_owners_drive_plain_native_lines_both_directions_an
                 // remains admitted in Normal/BA, yet its20px ending cannot fit
                 // this10px line; its real None sibling remains selectable.
                 for limit in [HyphenateLimitLines::NoLimit, HyphenateLimitLines::Count(0)] {
-                    let batch =
-                        compute::<S>(&p, rtl, AvailableOf::definite(S::from_f64(10.0)), limit);
+                    let batch = compute::<S>(
+                        &p,
+                        rtl,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        limit,
+                    );
                     assert_plain(&batch, &p, &cut, split);
                     for (available, expected) in [
-                        (AvailableOf::MIN_CONTENT, if split { 10.0 } else { 20.0 }),
-                        (AvailableOf::MAX_CONTENT, 20.0),
+                        (
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MinContent,
+                            ),
+                            if split { 10.0 } else { 20.0 },
+                        ),
+                        (
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MaxContent,
+                            ),
+                            20.0,
+                        ),
                     ] {
                         let intrinsic = compute::<S>(&p, rtl, available, limit);
                         let root = intrinsic
@@ -291,11 +340,25 @@ fn normal_shy_keeps_manual_only_inventory_without_promoting_a_plain_cut() {
             let batch = compute::<S>(
                 &p,
                 rtl,
-                AvailableOf::definite(S::from_f64(20.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
                 HyphenateLimitLines::Count(0),
             );
             assert_plain(&batch, &p, &cut, false);
-            for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+            for available in [
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ] {
                 let intrinsic = compute::<S>(&p, rtl, available, HyphenateLimitLines::Count(0));
                 let root = intrinsic
                     .unrounded_entries()

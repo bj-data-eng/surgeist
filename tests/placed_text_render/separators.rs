@@ -8,7 +8,8 @@ fn capture(
     replacement: text::WordSpaceTransform,
     mode: text::WhiteSpace,
     full_width: bool,
-    available: layout::Available,
+    authored_width: Option<f32>,
+    request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
     text::PreparedOrigin,
@@ -77,11 +78,11 @@ fn capture(
             layout::LayoutInput::box_input(layout::NodeInput {
                 display: layout::Display::Block,
                 size: layout::Size::new(
-                    match available {
-                        layout::Available::Definite(width) => layout::PreferredSizeOf::value(
+                    match authored_width {
+                        Some(width) => layout::PreferredSizeOf::value(
                             layout::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        _ => layout::PreferredSizeOf::AUTO,
+                        None => layout::PreferredSizeOf::AUTO,
                     },
                     layout::PreferredSizeOf::AUTO,
                 ),
@@ -116,16 +117,7 @@ fn capture(
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(
-        &captured,
-        0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            available,
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
-    )
-    .unwrap();
+    let batch = layout::compute_layout_with_flow(&captured, 0, request).unwrap();
     (batch, origin, source)
 }
 
@@ -189,7 +181,15 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
             replacement,
             mode,
             width,
-            layout::Available::Definite(100.0),
+            Some(100.0),
+            NativeViewport::new(
+                layout::Size::new(Some(100.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.source(), &source);
@@ -349,7 +349,15 @@ fn separator_accessibility_keeps_original_zwsp_with_actual_replacement_geometry(
             replacement,
             text::WhiteSpace::Preserve,
             width,
-            layout::Available::Definite(100.0),
+            Some(100.0),
+            NativeViewport::new(
+                layout::Size::new(Some(100.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         let analyzed = placed.analyzed_source();
@@ -441,7 +449,15 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
             replacement,
             text::WhiteSpace::Discard,
             width,
-            layout::Available::Definite(10.0),
+            Some(10.0),
+            NativeViewport::new(
+                layout::Size::new(Some(10.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.source(), &source);
@@ -545,14 +561,25 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
         // LB7/LB21 prohibit breaking before the trailing SPACE/BA separator;
         // there is no earlier word or emergency opportunity in these inputs.
         // Min/max therefore each consume the entire ordinary15/30/40px line.
-        for purpose in [layout::Available::MinContent, layout::Available::MaxContent] {
+        for purpose in [
+            layout::SizingOperation::MinContent,
+            layout::SizingOperation::MaxContent,
+        ] {
             let (intrinsic, _, _) = capture(
                 &mut system,
                 value,
                 replacement,
                 text::WhiteSpace::Discard,
                 width,
-                purpose,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             let root = intrinsic
                 .final_entries()

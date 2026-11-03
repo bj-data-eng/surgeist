@@ -139,7 +139,18 @@ impl<S: l::LayoutScalar> Host<S> {
         mode: l::WritingMode,
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        l::compute_layout_invalidated(self, 0, request(mode), changed)
+        l::compute_layout_invalidated(
+            self,
+            0,
+            request(
+                mode,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+            ),
+            changed,
+        )
     }
 }
 fn n<S: l::LayoutScalar>(value: f64) -> S {
@@ -148,19 +159,37 @@ fn n<S: l::LayoutScalar>(value: f64) -> S {
 fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
     l::PreferredSizeOf::value(l::LengthPercentageOf::px(n(value)).unwrap())
 }
-fn request<S: l::LayoutScalar>(mode: l::WritingMode) -> l::LayoutRootRequestOf<S> {
+fn request<S: l::LayoutScalar>(
+    mode: l::WritingMode,
+    frame: l::FlowAxes,
+) -> l::LayoutRootRequestOf<S> {
     let available = if mode == l::WritingMode::HorizontalTb {
-        l::Size::new(
-            l::AvailableOf::definite(n(100.0)),
-            l::AvailableOf::MAX_CONTENT,
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(n(100.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
         )
     } else {
-        l::Size::new(
-            l::AvailableOf::MAX_CONTENT,
-            l::AvailableOf::definite(n(100.0)),
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(None, Some(n(100.0))),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
         )
     };
-    l::LayoutRootRequestOf::viewport(available).unwrap()
+    {
+        let sizing_request = available;
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            frame,
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 fn physical_size<S: l::LayoutScalar>(mode: l::WritingMode, inline: f64, cross: f64) -> l::Size<S> {
     if mode == l::WritingMode::HorizontalTb {
@@ -1223,7 +1252,18 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        l::compute_layout_with_flow(&flow, 0, request(l::WritingMode::HorizontalTb)).unwrap()
+        l::compute_layout_with_flow(
+            &flow,
+            0,
+            request(
+                l::WritingMode::HorizontalTb,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+                ),
+            ),
+        )
+        .unwrap()
     };
     assert_eq!(physical.placed_text().len(), 1);
     let text = physical.placed_text()[0].layout();
@@ -1264,7 +1304,13 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         missing(l::compute_layout_with_flow_invalidated(
             &flow,
             0,
-            request(l::WritingMode::HorizontalTb),
+            request(
+                l::WritingMode::HorizontalTb,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+                ),
+            ),
             &[0],
         ));
     }
@@ -2409,7 +2455,18 @@ fn packet_text_float<S: l::LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        l::compute_layout_with_flow_invalidated(&flow, 0, request(mode), changed)
+        l::compute_layout_with_flow_invalidated(
+            &flow,
+            0,
+            request(
+                mode,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+            ),
+            changed,
+        )
     };
     let cold = compute(&host, &[]).unwrap();
     assert_eq!(cold.placed_text().len(), 1);

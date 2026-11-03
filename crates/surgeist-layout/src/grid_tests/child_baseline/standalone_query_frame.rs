@@ -134,8 +134,25 @@ fn assert_same_used_border_preserves_last_baseline<S: LayoutScalar>(
     explicit
         .tree
         .insert_input(5, crate::LayoutInputOf::box_input(style));
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-        .expect("authentic baseline fixture viewport");
+    let request = {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     let auto_batch = compute_layout(&auto, 1, request).expect("Auto standalone computes");
     let explicit_batch =
         compute_layout(&explicit, 1, request).expect("equivalent definite standalone computes");

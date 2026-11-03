@@ -12,11 +12,27 @@ use crate::sizing::resolve::{
     resolve_minimum_optional, resolve_preferred_optional,
 };
 use crate::{
-    AlignItems, AvailableOf, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
+    AlignItems, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
     ContainingLayoutContext, Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, LengthAutoOf,
     NodeOutputOf, ParentFormattingContext, Point, Position, RequestedAxis, RunMode, Size,
     SizingMode, Traverse,
 };
+
+/// Genuine intrinsic basis provenance; final normal allocation is a separate phase.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum IntrinsicFlexBasis {
+    MinContent,
+    MaxContent,
+}
+
+impl IntrinsicFlexBasis {
+    fn operation(self) -> crate::SizingOperation {
+        match self {
+            Self::MinContent => crate::SizingOperation::MinContent,
+            Self::MaxContent => crate::SizingOperation::MaxContent,
+        }
+    }
+}
 
 /// The resolved border-box basis and its content contribution to shrink weighting.
 /// Margins remain separate; existing basis resolution owns the padding floor.
@@ -55,7 +71,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) flex_basis_is_definite: bool,
     pub(super) flex_basis_uses_content: bool,
-    pub(super) intrinsic_flex_basis: Option<AvailableOf<S>>,
+    pub(super) intrinsic_flex_basis: Option<IntrinsicFlexBasis>,
     pub(super) hypothetical_main_size: S,
     pub(super) max_content_main_size: S,
     pub(super) hypothetical_size: Size<S>,
@@ -84,7 +100,6 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) size: Size<Option<S>>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
-    pub(super) intrinsic_flex_basis: Option<AvailableOf<S>>,
     pub(super) hypothetical_main_size: S,
     pub(super) max_content_main_size: S,
     pub(super) target_size: Size<S>,
@@ -133,7 +148,6 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             size: item.size,
             initial_output: item.initial_output,
             flex_base: item.flex_base,
-            intrinsic_flex_basis: item.intrinsic_flex_basis,
             hypothetical_main_size: item.hypothetical_main_size,
             max_content_main_size: item.max_content_main_size,
             target_size: item.hypothetical_size,
@@ -276,14 +290,14 @@ where
             &style.common.size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_preferred_optional(
             &style.common.size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -293,7 +307,7 @@ where
     let flex_basis_resolution = resolve_flex_basis(
         style.flex_basis,
         constants.axes.main_physical_axis(),
-        constants.axes.main_size(constants.node_inner_size),
+        constants.axes.main_size(constants.percentage_parent_size),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
     let flex_basis_uses_content = match flex_basis_resolution {
@@ -304,8 +318,8 @@ where
         | ResolvedFlexBasis::Definite(_) => false,
     };
     let intrinsic_flex_basis = match flex_basis_resolution {
-        ResolvedFlexBasis::MinContent => Some(AvailableOf::MIN_CONTENT),
-        ResolvedFlexBasis::MaxContent => Some(AvailableOf::MAX_CONTENT),
+        ResolvedFlexBasis::MinContent => Some(IntrinsicFlexBasis::MinContent),
+        ResolvedFlexBasis::MaxContent => Some(IntrinsicFlexBasis::MaxContent),
         ResolvedFlexBasis::Auto | ResolvedFlexBasis::Content | ResolvedFlexBasis::Definite(_) => {
             None
         }
@@ -339,14 +353,14 @@ where
             &style.common.min_size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_minimum_optional(
             &style.common.min_size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -356,14 +370,14 @@ where
             &style.common.max_size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_maximum_optional(
             &style.common.max_size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -382,29 +396,34 @@ where
             &style.common.size.height,
         ))
         .is_auto();
-    let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
-    let available = Size::new(
-        constants
-            .node_inner_size
-            .width
-            .map(AvailableOf::definite)
-            .or_else(|| constants.max_inner_size.width.map(AvailableOf::definite))
-            .unwrap_or(constants.available.width),
-        constants
-            .node_inner_size
-            .height
-            .map(AvailableOf::definite)
-            .or_else(|| constants.max_inner_size.height.map(AvailableOf::definite))
-            .unwrap_or(constants.available.height),
-    );
-    let available = constants.axes.with_cross_size(
-        available,
-        clamp_available(
-            constants.axes.cross_size(available),
-            constants.axes.cross_size(min_size),
-            constants.axes.cross_size(max_size),
+    let percentage_parent_size = constants.percentage_parent_size;
+    let inherited_requests = constants.sizing_request.axes();
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        node,
+        Size::new(
+            crate::layout_math::with_available_extent(
+                inherited_requests.width,
+                constants
+                    .node_inner_size
+                    .width
+                    .or(constants.max_inner_size.width),
+            ),
+            crate::layout_math::with_available_extent(
+                inherited_requests.height,
+                constants
+                    .node_inner_size
+                    .height
+                    .or(constants.max_inner_size.height),
+            ),
         ),
-    );
+    )?;
+    let cross_available = crate::layout_math::clamp_axis_request_space(
+        constants.axes.cross_size(available),
+        constants.axes.cross_size(min_size),
+        constants.axes.cross_size(max_size),
+    )
+    .map_err(|error| sizing_resolution_error(node, error.into()))?;
+    let available = constants.axes.with_cross_size(available, cross_available);
     let use_content_sizing_for_base = intrinsic_flex_basis.is_some()
         || flex_basis_uses_content && style.display == crate::Display::Block;
     let mut child_known = size;
@@ -414,7 +433,7 @@ where
         && cross_size_is_auto
         && !constants.axes.cross_start_edge(margin_is_auto)
         && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross_size) = constants.axes.cross_size(available).into_option()
+        && let Some(cross_size) = constants.axes.cross_size(constants.percentage_parent_size)
     {
         child_known = constants.axes.with_cross_size(
             child_known,
@@ -423,7 +442,7 @@ where
     }
     let mut child_known_for_base = flex_base_known_size(
         constants.axes.with_main_size(size, None),
-        constants.axes.cross_size(available),
+        constants.axes.cross_size(constants.percentage_parent_size),
         style,
         constants,
         margin,
@@ -441,22 +460,24 @@ where
             .axes
             .with_main_size(child_known_for_base, Some(flex_basis));
     }
-    let child_available = if let Some(intrinsic_flex_basis) = intrinsic_flex_basis {
-        constants
-            .axes
-            .with_main_size(available, intrinsic_flex_basis)
-    } else if use_content_sizing_for_base {
-        constants.axes.with_main_size(
-            available,
-            if constants.available_main == AvailableOf::MIN_CONTENT {
-                AvailableOf::MIN_CONTENT
-            } else {
-                AvailableOf::MAX_CONTENT
-            },
-        )
-    } else {
-        available
-    };
+    let main_request = constants.axes.main_size(available);
+    let operation = intrinsic_flex_basis
+        .map(IntrinsicFlexBasis::operation)
+        .or_else(|| {
+            use_content_sizing_for_base.then_some(
+                if constants.available_main.operation() == crate::SizingOperation::MinContent {
+                    crate::SizingOperation::MinContent
+                } else {
+                    crate::SizingOperation::MaxContent
+                },
+            )
+        });
+    let child_available = constants.axes.with_main_size(
+        available,
+        operation.map_or(main_request, |operation| {
+            main_request.with_operation(operation)
+        }),
+    );
     let output = tree.compute_child(
         node,
         ComputeInputOf::for_child(
@@ -468,9 +489,9 @@ where
             },
             RequestedAxis::Both,
             child_known,
-            available_inner_size,
+            percentage_parent_size,
             ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-            child_available,
+            constants.sizing_request.with_axes(child_available),
         )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;
@@ -501,14 +522,20 @@ where
                     SizingMode::ContentSize,
                     constants.axes.main_requested_axis(),
                     child_known_for_base,
-                    constants.axes.with_main_size(available_inner_size, None),
+                    constants.axes.with_main_size(percentage_parent_size, None),
                     ContainingLayoutContext::new(
                         constants.flow_axes,
                         ParentFormattingContext::Flex,
                     ),
-                    constants
-                        .axes
-                        .with_main_size(child_available, AvailableOf::MAX_CONTENT),
+                    constants.sizing_request.with_axes(
+                        constants.axes.with_main_size(
+                            child_available,
+                            constants
+                                .axes
+                                .main_size(child_available)
+                                .with_operation(crate::SizingOperation::MaxContent),
+                        ),
+                    ),
                 )
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?
@@ -520,6 +547,7 @@ where
         automatic_min_main_size,
         constants.axes.main_size(min_size),
         constants.axes.main_size(max_size),
+        padding_border_main,
     );
     let authored_main_size = constants.axes.main_size(authored_size);
     let flex_basis_uses_padding_floor = resolved_flex_basis.is_some()
@@ -639,14 +667,14 @@ where
             &style.common.size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_preferred_optional(
             &style.common.size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -658,14 +686,14 @@ where
             &style.common.min_size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_minimum_optional(
             &style.common.min_size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -677,14 +705,14 @@ where
             &style.common.max_size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_maximum_optional(
             &style.common.max_size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )
@@ -709,17 +737,26 @@ where
         .transpose_with_node(tree, node)?;
     let padding_border = padding + border;
 
-    let available = constants.axes.size_from_main_cross(
-        AvailableOf::MIN_CONTENT,
-        clamp_available(
-            constants
-                .axes
-                .cross_size(constants.node_inner_size)
-                .map(AvailableOf::definite)
-                .unwrap_or(AvailableOf::MAX_CONTENT),
-            constants.axes.cross_size(min_size),
-            constants.axes.cross_size(resolved_max_size),
+    let cross = crate::layout_math::with_available_extent(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::Normal,
         ),
+        constants.axes.cross_size(constants.node_inner_size),
+    )
+    .map_err(|error| sizing_resolution_error(node, error.into()))?;
+    let cross = crate::layout_math::clamp_axis_request_space(
+        cross,
+        constants.axes.cross_size(min_size),
+        constants.axes.cross_size(resolved_max_size),
+    )
+    .map_err(|error| sizing_resolution_error(node, error.into()))?;
+    let available = constants.axes.size_from_main_cross(
+        constants
+            .axes
+            .main_size(constants.sizing_request.axes())
+            .with_operation(crate::SizingOperation::MinContent),
+        cross,
     );
     let output = tree.compute_child(
         node,
@@ -730,9 +767,9 @@ where
             child_known,
             constants
                 .axes
-                .with_main_size(constants.node_inner_size, None),
+                .with_main_size(constants.percentage_parent_size, None),
             ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-            available,
+            constants.sizing_request.with_axes(available),
         )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;
@@ -767,7 +804,7 @@ pub(super) fn flex_automatic_minimum_is_zero(overflow: ComputedOverflow) -> bool
 
 fn flex_base_known_size<S: LayoutScalar>(
     size: Size<Option<S>>,
-    cross_available: AvailableOf<S>,
+    allocated_cross_extent: Option<S>,
     style: &FlexItemProjection<'_, S>,
     constants: &Constants<S>,
     margin: Edges<S>,
@@ -786,7 +823,7 @@ fn flex_base_known_size<S: LayoutScalar>(
         && constants.axes.cross_size(known).is_none()
         && !constants.axes.cross_start_edge(margin_is_auto)
         && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross) = cross_available.into_option()
+        && let Some(cross) = allocated_cross_extent
     {
         known = constants.axes.with_cross_size(
             known,
@@ -794,20 +831,6 @@ fn flex_base_known_size<S: LayoutScalar>(
         );
     }
     known
-}
-
-pub(super) fn clamp_available<S: LayoutScalar>(
-    available: AvailableOf<S>,
-    min: Option<S>,
-    max: Option<S>,
-) -> AvailableOf<S> {
-    match available {
-        AvailableOf::Definite(value) => {
-            AvailableOf::Definite(value.clamp_max_before_min_optional(min, max))
-        }
-        AvailableOf::MinContent => min.map_or(AvailableOf::MinContent, AvailableOf::Definite),
-        AvailableOf::MaxContent => max.map_or(AvailableOf::MaxContent, AvailableOf::Definite),
-    }
 }
 
 #[expect(
@@ -842,6 +865,33 @@ where
         let (mut output, baseline) =
             with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
                 let known = final_item_size::<Tree, M>(tree, item, &style, constants)?;
+
+                let available = crate::layout_math::transpose_axis_requests_at_node(
+                    item.node,
+                    Size::new(
+                        crate::layout_math::with_available_extent(
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::Normal,
+                            ),
+                            constants.node_inner_size.width,
+                        ),
+                        crate::layout_math::with_available_extent(
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::Normal,
+                            ),
+                            constants.node_inner_size.height,
+                        ),
+                    ),
+                )?;
+                let available = crate::layout_math::transpose_axis_requests_at_node(
+                    item.node,
+                    Size::new(
+                        crate::layout_math::with_available_extent(available.width, known.width),
+                        crate::layout_math::with_available_extent(available.height, known.height),
+                    ),
+                )?;
                 let mut output = tree.compute_child(
                     item.node,
                     ComputeInputOf::for_child(
@@ -849,32 +899,19 @@ where
                         SizingMode::InherentSize,
                         RequestedAxis::Both,
                         known,
-                        constants.node_inner_size,
+                        constants.percentage_parent_size,
                         ContainingLayoutContext::new(
                             constants.flow_axes,
                             ParentFormattingContext::Flex,
                         ),
-                        constants.axes.size_from_main_cross(
-                            item.intrinsic_flex_basis.unwrap_or_else(|| {
-                                constants
-                                    .axes
-                                    .main_size(constants.node_inner_size)
-                                    .map(AvailableOf::definite)
-                                    .unwrap_or(AvailableOf::MAX_CONTENT)
-                            }),
-                            constants
-                                .axes
-                                .cross_size(constants.node_inner_size)
-                                .map(AvailableOf::definite)
-                                .unwrap_or(AvailableOf::MAX_CONTENT),
-                        ),
+                        constants.sizing_request.with_axes(available),
                     )
                     .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
                 )?;
                 let resolved_flex_basis = match resolve_flex_basis(
                     style.flex_basis,
                     constants.axes.main_physical_axis(),
-                    constants.axes.main_size(constants.node_inner_size),
+                    constants.axes.main_size(constants.percentage_parent_size),
                 )
                 .map_err(|error| sizing_resolution_error(item.node, error))?
                 {
@@ -1021,14 +1058,14 @@ where
             &style.common.size.width,
             SizingAlgorithm::Flex,
             PhysicalAxis::Horizontal,
-            constants.node_inner_size.width,
+            constants.percentage_parent_size.width,
             true,
         ),
         resolve_preferred_optional(
             &style.common.size.height,
             SizingAlgorithm::Flex,
             PhysicalAxis::Vertical,
-            constants.node_inner_size.height,
+            constants.percentage_parent_size.height,
             true,
         ),
     )

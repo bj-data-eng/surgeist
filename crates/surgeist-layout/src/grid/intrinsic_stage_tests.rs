@@ -1,8 +1,6 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::{
-    LayoutInputViewOf, LayoutTree, LeafMeasureInputOf, MeasurementAvailableOf, NodeInputOf,
-};
+use crate::{LayoutInputViewOf, LayoutTree, LeafMeasureInputOf, NodeInputOf};
 
 #[derive(Clone, Copy, Debug)]
 enum Measurement {
@@ -12,6 +10,7 @@ enum Measurement {
     LastRowsChange,
     HiddenMinimumChange,
     OppositeExtent,
+    FixedIntrinsicWidths,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -21,6 +20,7 @@ struct StageTree<S: LayoutScalar> {
     source: PublicLayoutTreeOf<S>,
     measurement: Measurement,
     leaf_start: u32,
+    refuse_formal_height_at_width: std::cell::Cell<Option<S>>,
     caches: Vec<crate::LayoutCacheStoreEntryOf<u32, S>>,
     hits: std::cell::Cell<usize>,
     requests: std::cell::RefCell<Vec<(u32, ComputeInputOf<S>)>>,
@@ -66,6 +66,7 @@ impl<S: LayoutScalar> StageTree<S> {
             source,
             measurement,
             leaf_start: 1,
+            refuse_formal_height_at_width: std::cell::Cell::new(None),
             caches: Vec::new(),
             hits: std::cell::Cell::new(0),
             requests: std::cell::RefCell::new(Vec::new()),
@@ -118,7 +119,17 @@ impl<S: LayoutScalar> StageTree<S> {
                 crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         match crate::engine::observe_grid_probe(
             self,
@@ -196,12 +207,20 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
         node: u32,
         input: LeafMeasureInputOf<S>,
     ) -> Option<Result<Size<S>, ResolvedWidth>> {
-        let available = input.available_content_size();
+        let available = input.content_sizing_request().axes();
         let width = available
             .width
-            .definite_value()
+            .space()
+            .definite_size()
             .map(crate::NonNegativeFiniteOf::get);
-        let rows_known = available.height.definite_value().is_some();
+        if width.is_some()
+            && width == self.refuse_formal_height_at_width.get()
+            && available.height.operation() == SizingOperation::MaxContent
+            && input.known_content_size().width.is_none()
+        {
+            return Some(Err(ResolvedWidth));
+        }
+        let rows_known = available.height.space().definite_size().is_some();
         // A used-minimum query can legitimately supply its selected width.
         // Refuse the later dependency on a finite width constraint while the
         // provider still has to determine that width itself.
@@ -211,11 +230,18 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
         {
             return Some(Err(ResolvedWidth));
         }
-        let minimum = available.width == MeasurementAvailableOf::MIN_CONTENT;
+        let minimum = available.width.operation() == SizingOperation::MinContent;
         // These are declared host measurements, dependent only on the actual
         // content-space request. They model the opposite-axis dependencies in
         // Grid 2's four sizing stages; no callback receives a phase label.
         let measured_width = match self.measurement {
+            Measurement::FixedIntrinsicWidths => {
+                if minimum {
+                    40.0
+                } else {
+                    80.0
+                }
+            }
             Measurement::OppositeExtent => {
                 if minimum {
                     10.0
@@ -223,7 +249,8 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
                     return Some(Ok(Size::new(
                         available
                             .height
-                            .definite_value()
+                            .space()
+                            .definite_size()
                             .map_or(S::from_f64(80.0), crate::NonNegativeFiniteOf::get),
                         S::from_f64(20.0),
                     )));
@@ -248,7 +275,8 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
             Measurement::LastRowsChange => match (
                 available
                     .height
-                    .definite_value()
+                    .space()
+                    .definite_size()
                     .map(crate::NonNegativeFiniteOf::get),
                 minimum,
             ) {
@@ -317,7 +345,13 @@ fn assert_grid_axis_prefix_requests<S: LayoutScalar>(tree: &StageTree<S>) {
         requests
             .iter()
             .all(|(_, input)| input.known().width.is_some()
-                || !matches!(input.available().width, AvailableOf::Definite(_))),
+                || !input
+                    .sizing_request()
+                    .axes()
+                    .width
+                    .space()
+                    .definite_size()
+                    .is_some()),
         "the grid-axis prefix must not borrow a later opposite width constraint"
     );
 }
@@ -326,7 +360,13 @@ fn assert_width_dependency<S: LayoutScalar>(tree: &StageTree<S>, start: usize) {
     assert!(
         tree.requests.borrow().iter().skip(start).any(|(_, input)| {
             input.known().width.is_none()
-                && matches!(input.available().width, AvailableOf::Definite(_))
+                && input
+                    .sizing_request()
+                    .axes()
+                    .width
+                    .space()
+                    .definite_size()
+                    .is_some()
         }),
         "the actual operation must reach its unresolved-width dependency"
     );
@@ -630,12 +670,35 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
         tree.requests
             .borrow()
             .iter()
-            .any(|(_, input)| input.available().width == AvailableOf::Definite(S::from_f64(40.0)))
+            .any(|(_, input)| input.sizing_request().axes().width
+                == AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                    ),
+                    SizingOperation::Normal
+                ))
     );
 
     let refusing = lanes_cutoff_tree::<S>(false);
-    let request =
-        crate::LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap();
+    let request = {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     let error = crate::compute_layout(&refusing, 0, request).expect_err(
         "public full layout must still propagate the actual stacking measurement refusal",
     );
@@ -685,11 +748,28 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                 },
             );
         assert!(!tree.has_leaf_measurement(0) && !tree.has_leaf_measurement(1));
-        let batch = crate::compute_layout(
-            &tree,
-            0,
-            crate::LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-        )
+        let batch = crate::compute_layout(&tree, 0, {
+            let axes = Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            ));
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        })
         .expect("finite max-size/scrollbar geometry completes");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
             let root = entries
@@ -721,7 +801,10 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
         SpanningTrackContext {
             tracks: &tracks,
             basis: None,
-            available: AvailableOf::Definite(S::ZERO),
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(S::ZERO),
+            },
             gap: S::ZERO,
             gutters: None,
             base_floors: &[],
@@ -735,7 +818,10 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                 tracks: &tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::Definite(value),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(value)
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -753,4 +839,439 @@ fn scrollbar_maximum_track_space_f32() {
 #[test]
 fn scrollbar_maximum_track_space_f64() {
     assert_scrollbar_maximum_track_space::<f64>();
+}
+
+fn mixed_root_request<S: LayoutScalar>(
+    width: SizingOperation,
+    height: SizingOperation,
+) -> crate::LayoutRootRequestOf<S> {
+    crate::LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, width),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, height),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    )
+}
+fn mixed_root_output<S: LayoutScalar>(
+    batch: &crate::CompletedLayoutBatchOf<u32, S>,
+) -> crate::NodeOutputOf<S> {
+    let mut entries = batch
+        .unrounded_entries()
+        .iter()
+        .filter(|entry| entry.node() == 0);
+    let result = entries.next().expect("actual root output").output();
+    assert!(entries.next().is_none());
+    result
+}
+
+fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
+    let n = S::from_f64;
+    let mut tree = StageTree::<S>::new(Measurement::HiddenMinimumChange);
+    let mut root = tree.source.node_input(0).clone();
+    root.max_size.width = crate::MaxSizeOf::px(n(20.0));
+    tree.source = tree.source.style(0, root);
+    for node in [1, 2] {
+        let mut child = tree.source.node_input(node).clone();
+        child.overflow =
+            crate::ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
+        tree.source = tree.source.style(node, child);
+    }
+    assert_eq!(
+        Traverse::children(&tree.source, 0).collect::<Vec<_>>(),
+        [1, 2]
+    );
+    assert!(tree.source.node_input(0).size.width.is_max_content());
+    assert_eq!(
+        tree.source.node_input(0).max_size.width,
+        crate::MaxSizeOf::px(n(20.0))
+    );
+    // This maintained host declares MIN/MAX widths40/50 for node1 and
+    //10/40 ->15/60 for node2 when actual row space becomes finite. Height30
+    // is constant. Hidden makes actual used minima0, while formal Auto
+    // minima retain the min-content floor40. The maximum clamps the box20.
+    let prior = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
+    )
+    .unwrap();
+    assert_eq!(mixed_root_output(&prior).size, Size::new(n(20.0), n(30.0)));
+    let prior_entries = prior.final_entries().to_vec();
+    let formal_row_at = |input: &ComputeInputOf<S>, width| {
+        let axes = input.sizing_request().axes();
+        input.known().width.is_none()
+            && axes.height.operation() == SizingOperation::MaxContent
+            && axes
+                .width
+                .space()
+                .definite_size()
+                .is_some_and(|value| value.get() == width)
+    };
+    assert!(
+        tree.requests
+            .borrow()
+            .iter()
+            .any(|(_, input)| formal_row_at(input, n(40.0)))
+    );
+    assert!(
+        !tree
+            .requests
+            .borrow()
+            .iter()
+            .any(|(_, input)| formal_row_at(input, n(20.0)))
+    );
+    tree.requests.borrow_mut().clear();
+    let mixed = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
+    )
+    .unwrap();
+    // Normal allocation rebuilds the column minimum0 at the accepted20;
+    // the formal Row operation must be collected again in that actual frame.
+    assert_eq!(mixed_root_output(&mixed).size, Size::new(n(20.0), n(30.0)));
+    assert!(
+        tree.requests
+            .borrow()
+            .iter()
+            .any(|(_, input)| formal_row_at(input, n(20.0)))
+    );
+    let accepted_entries = mixed.final_entries().to_vec();
+    // The host can refuse precisely this genuine new opposite-frame query;
+    // an unchanged old formal packet cannot silently bypass the dependency.
+    assert!(
+        tree.caches.is_empty(),
+        "no retained host receipt masks the real refusal"
+    );
+    tree.refuse_formal_height_at_width.set(Some(n(20.0)));
+    let error = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
+    )
+    .expect_err("the demanded formal height query at physical width20 refuses");
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::Measurement(ResolvedWidth)
+    ));
+    assert_eq!(mixed.final_entries(), accepted_entries.as_slice());
+    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    tree.refuse_formal_height_at_width.set(None);
+    let retry = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
+    )
+    .unwrap();
+    assert_eq!(retry.final_entries(), accepted_entries.as_slice());
+    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+}
+#[test]
+fn normal_columns_recollect_formal_rows_in_the_active_maximum_frame_f32() {
+    assert_normal_columns_recollect_formal_rows::<f32>();
+}
+#[test]
+fn normal_columns_recollect_formal_rows_in_the_active_maximum_frame_f64() {
+    assert_normal_columns_recollect_formal_rows::<f64>();
+}
+
+fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
+    let n = S::from_f64;
+    let mut tree = StageTree::<S>::new(Measurement::OppositeExtent);
+    let mut root = tree.source.node_input(0).clone();
+    root.max_size.height = crate::MaxSizeOf::px(n(10.0));
+    root.grid_template_rows = vec![TrackComponentOf::minmax(
+        MinTrackSizingOf::px(S::ZERO),
+        MaxTrackSizingOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+    )];
+    tree.source = tree.source.style(0, root);
+    assert!(tree.source.node_input(0).size.height.is_max_content());
+    assert_eq!(
+        tree.source.node_input(0).max_size.height,
+        crate::MaxSizeOf::px(n(10.0))
+    );
+    // The actual host's initial unbounded MAX width is80 and its ordinary
+    // height20. The one-fr row is bounded to10. Initial MIN width10 is
+    // unchanged, so the bounded intrinsic revisit deliberately keeps80.
+    let prior = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
+    )
+    .unwrap();
+    assert_eq!(mixed_root_output(&prior).size, Size::new(n(80.0), n(10.0)));
+    let prior_entries = prior.final_entries().to_vec();
+    let actual_placement_at = |input: &ComputeInputOf<S>, width| {
+        let axes = input.sizing_request().axes();
+        input.run_mode() == RunMode::PerformLayout
+            && input.known() == Size::NONE
+            && axes.width.operation() == SizingOperation::Normal
+            && axes.height.operation() == SizingOperation::Normal
+            && axes
+                .width
+                .space()
+                .definite_size()
+                .is_some_and(|value| value.get() == width)
+            && axes
+                .height
+                .space()
+                .definite_size()
+                .is_some_and(|value| value.get() == n(10.0))
+    };
+    assert!(
+        tree.requests
+            .borrow()
+            .iter()
+            .any(|(_, input)| actual_placement_at(input, n(80.0)))
+    );
+    tree.requests.borrow_mut().clear();
+    let mixed = crate::compute_layout(
+        &tree,
+        0,
+        mixed_root_request(SizingOperation::MaxContent, SizingOperation::Normal),
+    )
+    .unwrap();
+    // The receiver re-collects formal columns with the actual row10: the
+    // same host now declares MAX width10. The accepted container80 is frozen;
+    // its normal child therefore receives actual area10, not old area80.
+    assert_eq!(mixed_root_output(&mixed).size, Size::new(n(80.0), n(10.0)));
+    assert!(
+        tree.requests
+            .borrow()
+            .iter()
+            .any(|(_, input)| actual_placement_at(input, n(10.0)))
+    );
+    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+}
+#[test]
+fn formal_columns_recollect_in_the_normal_row_frame_without_resizing_the_container_f32() {
+    assert_formal_columns_use_normal_rows::<f32>();
+}
+#[test]
+fn formal_columns_recollect_in_the_normal_row_frame_without_resizing_the_container_f64() {
+    assert_formal_columns_use_normal_rows::<f64>();
+}
+
+fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
+    let n = S::from_f64;
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        let mut tree = StageTree::<S>::nested();
+        tree.measurement = Measurement::SmallerAfterRows;
+        let mut root = tree.source.node_input(0).clone();
+        root.max_size.width = crate::MaxSizeOf::px(n(5.0));
+        tree.source = tree.source.style(0, root);
+        for node in [1, 2, 3] {
+            let mut child = tree.source.node_input(node).clone();
+            child.overflow =
+                crate::ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
+            if node == 1 {
+                child.writing_mode = crate::WritingMode::VerticalRl;
+                child.direction = direction;
+            }
+            tree.source = tree.source.style(node, child);
+        }
+        assert_eq!(Traverse::children(&tree.source, 0).collect::<Vec<_>>(), [1]);
+        assert_eq!(Traverse::children(&tree.source, 1).collect::<Vec<_>>(), [2]);
+        assert_eq!(Traverse::children(&tree.source, 2).collect::<Vec<_>>(), [3]);
+        assert!(matches!(
+            tree.source.node_input(1).grid_template_columns.as_slice(),
+            [TrackComponentOf::Subgrid(_)]
+        ));
+        assert!(matches!(
+            tree.source.node_input(2).grid_template_rows.as_slice(),
+            [TrackComponentOf::Subgrid(_)]
+        ));
+        let root_projection = GridContainerProjection::from_node(tree.source.node_input(0));
+        let outer_projection = GridContainerProjection::from_node(tree.source.node_input(1));
+        let outer_item = GridItemProjection::from_node(tree.source.node_input(1));
+        let inner_item = GridItemProjection::from_node(tree.source.node_input(2));
+        let inherited_outer = map_grid_axis(GridAxisMappingInput {
+            queried_axis: GridAxisKind::Column,
+            parent_style: &root_projection,
+            child_style: &outer_item,
+        });
+        let inherited_inner = map_grid_axis(GridAxisMappingInput {
+            queried_axis: GridAxisKind::Row,
+            parent_style: &outer_projection,
+            child_style: &inner_item,
+        });
+        assert_eq!(inherited_outer.parent_axis, GridAxisKind::Row);
+        assert_eq!(inherited_inner.parent_axis, GridAxisKind::Column);
+        assert_eq!(inherited_outer.reversed, direction == Direction::Rtl);
+        assert_eq!(inherited_inner.reversed, direction == Direction::Rtl);
+        let parent_flow =
+            crate::FlowAxes::new(root_projection.writing_mode, root_projection.direction);
+        let outer_flow =
+            crate::FlowAxes::new(outer_projection.writing_mode, outer_projection.direction);
+        let inner_flow = crate::FlowAxes::new(inner_item.writing_mode, inner_item.direction);
+        let mapped = GridSizingStage::COMPLETE.mapped(parent_flow, outer_flow);
+        assert_eq!(mapped.first_axis, GridAxisKind::Row);
+        assert_eq!(
+            mapped.mapped(outer_flow, inner_flow).first_axis,
+            GridAxisKind::Column
+        );
+        // The maintained physical host has MIN20/MAX40 before rows, then
+        // MIN10/MAX30 after real finite row space; height30 is constant.
+        // Formal Auto floors therefore remain >=10 even under maximum5.
+        // Hidden makes Normal's used minimum0, allowing actual allocation5.
+        let prior = crate::compute_layout(
+            &tree,
+            0,
+            mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
+        )
+        .unwrap();
+        assert_eq!(mixed_root_output(&prior).size, Size::new(n(5.0), n(30.0)));
+        let prior_entries = prior.final_entries().to_vec();
+        let formal_row_at_five = |input: &ComputeInputOf<S>| {
+            let axes = input.sizing_request().axes();
+            input.known().width.is_none()
+                && axes.height.operation() == SizingOperation::MaxContent
+                && axes
+                    .width
+                    .space()
+                    .definite_size()
+                    .is_some_and(|value| value.get() == n(5.0))
+        };
+        assert!(
+            !tree
+                .requests
+                .borrow()
+                .iter()
+                .any(|(_, input)| formal_row_at_five(input))
+        );
+        tree.requests.borrow_mut().clear();
+        let mixed = crate::compute_layout(
+            &tree,
+            0,
+            mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
+        )
+        .unwrap();
+        assert_eq!(mixed_root_output(&mixed).size, Size::new(n(5.0), n(30.0)));
+        assert!(
+            tree.requests.borrow().iter().any(|(node, input)| {
+                *node == 3
+                    && input.containing_flow_axes() == inner_flow
+                    && formal_row_at_five(input)
+            }),
+            "the actual nested leaf receives the changed physical frame through both authentic inherited mappings"
+        );
+        assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    }
+}
+#[test]
+fn nested_row_first_and_reversed_mappings_keep_mixed_receiver_authority_f32() {
+    assert_nested_mapped_mixed_receiver::<f32>();
+}
+#[test]
+fn nested_row_first_and_reversed_mappings_keep_mixed_receiver_authority_f64() {
+    assert_nested_mapped_mixed_receiver::<f64>();
+}
+
+fn assert_preferred_operation_is_mode_owned<S: LayoutScalar>() {
+    let node = NodeInputOf::<S> {
+        size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::MIN_CONTENT),
+        ..NodeInputOf::default()
+    };
+    let style = GridContainerProjection::from_node(&node);
+    let flow = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
+    let finite =
+        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap());
+    let issued = Size::new(
+        AxisSizingRequestOf::new(finite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    );
+    let inherent =
+        intrinsic_container_available(&style, flow, Size::NONE, issued, SizingMode::InherentSize)
+            .unwrap();
+    assert_eq!(inherent.inline.operation(), SizingOperation::MaxContent);
+    assert_eq!(inherent.inline.space(), finite);
+    assert_eq!(inherent.block.operation(), SizingOperation::MinContent);
+    assert_eq!(inherent.block.space(), AvailableSpaceOf::Indefinite);
+    let content =
+        intrinsic_container_available(&style, flow, Size::NONE, issued, SizingMode::ContentSize)
+            .unwrap();
+    assert_eq!(content, flow.logical_size(issued));
+}
+#[test]
+fn preferred_intrinsic_operation_is_suppressed_only_for_content_size_f32() {
+    assert_preferred_operation_is_mode_owned::<f32>();
+}
+#[test]
+fn preferred_intrinsic_operation_is_suppressed_only_for_content_size_f64() {
+    assert_preferred_operation_is_mode_owned::<f64>();
+}
+
+fn assert_formal_percent_track_floor_preserves_operation<S: LayoutScalar>() {
+    let n = S::from_f64;
+    for (operation, preferred, expected) in [
+        (
+            SizingOperation::MinContent,
+            PreferredSizeOf::MIN_CONTENT,
+            n(40.0),
+        ),
+        (
+            SizingOperation::MaxContent,
+            PreferredSizeOf::MAX_CONTENT,
+            n(80.0),
+        ),
+    ] {
+        let mut tree = StageTree::<S>::new(Measurement::FixedIntrinsicWidths);
+        let mut root = tree.source.node_input(0).clone();
+        root.size.width = preferred;
+        root.grid_template_columns = vec![TrackComponentOf::percent(S::ONE)];
+        tree.source = tree.source.style(0, root);
+        let physical =
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap());
+        let request = crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(physical, operation),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+        );
+        assert!(
+            tree.source.node_input(0).size.width.is_min_content()
+                || tree.source.node_input(0).size.width.is_max_content()
+        );
+        // This real opaque host declares MIN40/MAX80 independently of its
+        // finite physical opportunity. The cyclic 100% track is Auto during
+        // intrinsic sizing; no definite percentage parent was supplied.
+        // A performed formal operation must not donate physical100 as a
+        // normal percentage floor after choosing its intrinsic extent.
+        let batch = crate::compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(mixed_root_output(&batch).size, Size::new(expected, n(30.0)));
+        assert!(tree.requests.borrow().iter().any(|(node, input)| {
+            *node == 1
+                && input.known().width.is_none()
+                && input.sizing_request().axes().width.operation() == operation
+        }));
+    }
+}
+#[test]
+fn formal_percent_track_floor_keeps_finite_physical_space_separate_f32() {
+    assert_formal_percent_track_floor_preserves_operation::<f32>();
+}
+#[test]
+fn formal_percent_track_floor_keeps_finite_physical_space_separate_f64() {
+    assert_formal_percent_track_floor_preserves_operation::<f64>();
 }

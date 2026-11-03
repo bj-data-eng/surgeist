@@ -7,24 +7,30 @@ fn assert_height_queries_with_opposite_width<S: LayoutScalar>(
     width: S,
     operation: &str,
 ) {
-    for height in [
-        MeasurementAvailableOf::MIN_CONTENT,
-        MeasurementAvailableOf::MAX_CONTENT,
-    ] {
-        assert!(inputs.iter().any(|input| {
-            let available = input.available_content_size();
-            input.known_content_size() == Size::new(Some(width), None)
-                && matches!(available.width, MeasurementAvailableOf::Definite(value) if value.get() == width)
-                && available.height == height
-        }), "{operation}: actual {height:?} height query keeps opposite width{width:?}; receipts={inputs:?}");
+    for height in [SizingOperation::MinContent, SizingOperation::MaxContent] {
+        assert!(
+            inputs.iter().any(|input| {
+                let available = input.content_sizing_request().axes();
+                input.known_content_size() == Size::new(Some(width), None)
+                    && available
+                        .width
+                        .space()
+                        .definite_size()
+                        .is_some_and(|value| value.get() == width)
+                    && available.height.operation() == height
+            }),
+            "{operation}: actual {height:?} height query keeps opposite width{width:?}; receipts={inputs:?}"
+        );
     }
 }
 
-fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: AvailableOf<S>) {
-    let operation = match width_operation {
-        AvailableOf::MinContent => "formal min-content operation",
-        AvailableOf::MaxContent => "formal max-content operation",
-        AvailableOf::Definite(_) => panic!("this fixture qualifies intrinsic width operations"),
+fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
+    width_operation: AxisSizingRequestOf<S>,
+) {
+    let operation = match width_operation.operation() {
+        SizingOperation::MinContent => "formal min-content operation",
+        SizingOperation::MaxContent => "formal max-content operation",
+        SizingOperation::Normal => panic!("this fixture qualifies intrinsic width operations"),
     };
     // Reuse the maintained native40/80 host; only its authored box inputs change.
     let mut tree = source::<S>(20.0, GrowthCap::MinContent, Overflow::Hidden);
@@ -69,7 +75,17 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
         Size::new(Some(S::ZERO), None),
         Size::NONE,
         ContainingLayoutContext::new(flow, ParentFormattingContext::Grid),
-        Size::new(AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let minimum_output =
         crate::measurement::compute_tree_leaf(&tree, 1, minimum, tree.node_input(1))
@@ -91,13 +107,26 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
         Size::NONE,
         Size::NONE,
         ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
-        Size::new(width_operation, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                width_operation,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     assert_eq!(input.known(), Size::NONE);
     assert_eq!(input.parent(), Size::NONE);
     assert_eq!(
-        input.available(),
-        Size::new(width_operation, AvailableOf::MAX_CONTENT)
+        input.sizing_request().axes(),
+        Size::new(
+            width_operation,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
+        )
     );
     assert_eq!(
         input.containing_layout_context(),
@@ -116,7 +145,8 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
     assert!(
         intrinsic_receipts.iter().any(|input| {
             input.known_content_size() == Size::NONE
-                && input.available_content_size().width.into_available() == width_operation
+                && input.content_sizing_request().axes().width.operation()
+                    == width_operation.operation()
         }),
         "{operation}: the actual responsive leaf receives this intrinsic width with unknown dimensions"
     );
@@ -131,15 +161,28 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
         Size::new(Some(S::from_f64(20.0)), None),
         Size::NONE,
         ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
-        Size::new(width_operation, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                width_operation,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     assert_eq!(
         known_input.known(),
         Size::new(Some(S::from_f64(20.0)), None)
     );
     assert_eq!(
-        known_input.available(),
-        Size::new(width_operation, AvailableOf::MAX_CONTENT)
+        known_input.sizing_request().axes(),
+        Size::new(
+            width_operation,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
+        )
     );
     let known_output = {
         let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
@@ -161,11 +204,30 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
     tree.observed.borrow_mut().clear();
 
     // A separate accepted normal width20 remains a real full-layout control.
-    let normal_request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::Definite(S::from_f64(20.0)),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let normal_request = {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     let normal = compute_layout(&tree, 0, normal_request)
         .expect("the genuine accepted-width normal Grid completes");
     let border_size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
@@ -291,21 +353,57 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(width_operation: 
 
 #[test]
 fn native_grid_max_content_keeps_content_opposite_width_under_maximum_f32() {
-    intrinsic_maximum_preserves_opposite_width::<f32>(AvailableOf::MAX_CONTENT);
+    intrinsic_maximum_preserves_opposite_width::<f32>(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MaxContent,
+    ));
 }
 #[test]
 fn native_grid_max_content_keeps_content_opposite_width_under_maximum_f64() {
-    intrinsic_maximum_preserves_opposite_width::<f64>(AvailableOf::MAX_CONTENT);
+    intrinsic_maximum_preserves_opposite_width::<f64>(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MaxContent,
+    ));
 }
 
 #[test]
 fn native_grid_min_content_keeps_content_opposite_width_under_maximum_f32() {
-    intrinsic_maximum_preserves_opposite_width::<f32>(AvailableOf::MIN_CONTENT);
+    intrinsic_maximum_preserves_opposite_width::<f32>(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MinContent,
+    ));
 }
 #[test]
 fn native_grid_min_content_keeps_content_opposite_width_under_maximum_f64() {
-    intrinsic_maximum_preserves_opposite_width::<f64>(AvailableOf::MIN_CONTENT);
+    intrinsic_maximum_preserves_opposite_width::<f64>(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MinContent,
+    ));
 }
 
 #[path = "native_maximum_bound_controls.rs"]
 mod controls;
+
+// A finite physical containing space does not replace a formal operation.
+fn finite_space_intrinsic_maximum<S: LayoutScalar>(operation: SizingOperation) {
+    intrinsic_maximum_preserves_opposite_width::<S>(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+        operation,
+    ));
+}
+#[test]
+fn finite_space_formal_minimum_f32() {
+    finite_space_intrinsic_maximum::<f32>(SizingOperation::MinContent);
+}
+#[test]
+fn finite_space_formal_minimum_f64() {
+    finite_space_intrinsic_maximum::<f64>(SizingOperation::MinContent);
+}
+#[test]
+fn finite_space_formal_maximum_f32() {
+    finite_space_intrinsic_maximum::<f32>(SizingOperation::MaxContent);
+}
+#[test]
+fn finite_space_formal_maximum_f64() {
+    finite_space_intrinsic_maximum::<f64>(SizingOperation::MaxContent);
+}

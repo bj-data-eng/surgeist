@@ -134,12 +134,29 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
     // its Grid minimum contribution and max-content contribution are both60
     // with zero margins. Real isolated MIN/MAX requests independently execute
     // this same native Flex box; no supplied measurement answers are involved.
-    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
-        let control = compute_layout(
-            &tree,
-            1,
-            LayoutRootRequestOf::viewport(Size::splat(available)).unwrap(),
-        )
+    for available in [
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    ] {
+        let control = compute_layout(&tree, 1, {
+            let axes = Size::splat(available);
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        })
         .expect("the real fixed60 native item completes both extremal controls");
         for entries in [control.unrounded_entries(), control.final_entries()] {
             assert_eq!(entries.len(), 1);
@@ -152,8 +169,34 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
             assert_eq!(actual.padding, Edges::ZERO);
         }
     }
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap();
-    assert_eq!(request.available(), Size::splat(AvailableOf::MAX_CONTENT));
+    // This is normal layout with genuinely unbounded physical space. Its
+    // initial intrinsic MAX sizing is followed by normal allocated tracks.
+    let request = {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
+    assert_eq!(
+        request.sizing_request().axes(),
+        Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal
+        ))
+    );
     let batch =
         compute_layout(&tree, 0, request).expect("the real three-track native grid completes");
     assert!(

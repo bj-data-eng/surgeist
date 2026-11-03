@@ -52,7 +52,7 @@ pub(in crate::grid) struct IntrinsicGridQuery<'a, S: LayoutScalar> {
     pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) axis: Option<GridAxisKind>,
     pub(in crate::grid) stage: GridSizingStage,
-    pub(in crate::grid) available: Size<AvailableOf<S>>,
+    pub(in crate::grid) available: Size<AxisSizingRequestOf<S>>,
     pub(in crate::grid) columns: Option<&'a [S]>,
     pub(in crate::grid) rows: Option<&'a [S]>,
     pub(in crate::grid) observe_auto: bool,
@@ -64,7 +64,10 @@ impl<S: LayoutScalar> IntrinsicGridQuery<'_, S> {
             purpose,
             axis: None,
             stage: GridSizingStage::COMPLETE,
-            available: Size::splat(AvailableOf::MAX_CONTENT),
+            available: Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
             columns: None,
             rows: None,
             observe_auto: false,
@@ -672,7 +675,7 @@ pub(in crate::grid) fn intrinsic_track_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     grid: IntrinsicGrid<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-    available: Size<AvailableOf<Tree::Scalar>>,
+    available: Size<AxisSizingRequestOf<Tree::Scalar>>,
     lower_bounds: IntrinsicGridLowerBounds<'_, Tree::Scalar>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
@@ -931,7 +934,7 @@ where
                         grid.constants.flow_axes,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    available,
+                    SizingRequestOf::new(available, constants.child_orthogonal_fallback),
                 ),
             },
         )?;

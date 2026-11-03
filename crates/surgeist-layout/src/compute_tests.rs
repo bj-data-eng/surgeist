@@ -1,7 +1,6 @@
 use crate::*;
 use crate::{
-    Available, ComputeInput, Edges, Length, LengthPercentageOf, NodeInput, PreferredSize,
-    RequestedAxis,
+    ComputeInput, Edges, Length, LengthPercentageOf, NodeInput, PreferredSize, RequestedAxis,
 };
 
 mod leaf_box_arithmetic {
@@ -20,7 +19,17 @@ mod leaf_box_arithmetic {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .unwrap()
     }
@@ -237,7 +246,26 @@ fn invalid_numeric_affine_input() -> ComputeInput {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 
@@ -259,7 +287,29 @@ fn completed_batch_exposes_read_only_layout_and_cache_entries() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(40.0), Available::definite(30.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(30.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("test availability is valid");
     let cache_context = CacheKeyContext::new();
@@ -459,18 +509,12 @@ fn layout_error_accessors_preserve_typed_site_operation_kind_and_source() {
     let scalar_error = LayoutError::<u32, ProviderSource>::new(
         LayoutErrorSite::Node(3),
         LayoutOperation::RootLayout,
-        LayoutErrorKind::InvalidInput(LayoutInvalidInput::RootAvailability {
-            axis: PhysicalAxis::Horizontal,
-            error: NonNegativeFiniteScalarErrorOf::Negative { value: -2.0 },
-        }),
+        LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric { value: -2.0 }),
     );
 
     crate::test_support::assert_error_kind(
         scalar_error.kind(),
-        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::RootAvailability {
-            axis: PhysicalAxis::Horizontal,
-            error: NonNegativeFiniteScalarErrorOf::Negative { value: -2.0 },
-        }),
+        &LayoutErrorKind::InvalidInput(LayoutInvalidInput::InvalidNumeric { value: -2.0 }),
     );
 }
 
@@ -501,8 +545,8 @@ type LeafInputConstructor<S> = fn(
     Size<Option<S>>,
     Size<Option<S>>,
     crate::ContainingLayoutContext,
-    Size<AvailableOf<S>>,
-) -> Result<ComputeInputOf<S>, RootAvailabilityErrorOf<S>>;
+    crate::SizingRequestOf<S>,
+) -> Result<ComputeInputOf<S>, crate::LayoutSizeInputErrorOf<S>>;
 
 fn invalid_leaf_input_scalar<S: LayoutScalar>(case: InvalidLeafInputScalar) -> S {
     match case {
@@ -517,6 +561,7 @@ fn assert_leaf_input_error<S: LayoutScalar>(
     constructor: LeafInputConstructor<S>,
     known: Size<Option<S>>,
     parent: Size<Option<S>>,
+    role: crate::LayoutSizeInput,
     axis: PhysicalAxis,
     case: InvalidLeafInputScalar,
 ) {
@@ -527,10 +572,27 @@ fn assert_leaf_input_error<S: LayoutScalar>(
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MinContent, AvailableOf::MaxContent),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .unwrap_err();
 
+    assert_eq!(error.input(), role);
     assert_eq!(error.axis(), axis);
     match (case, error.scalar()) {
         (InvalidLeafInputScalar::Negative, NonNegativeFiniteScalarErrorOf::Negative { value }) => {
@@ -558,7 +620,16 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
     ];
     let valid_known = Size::new(None, Some(S::ZERO));
     let valid_parent = Size::new(Some(S::ZERO), None);
-    let valid_available = Size::new(AvailableOf::MinContent, AvailableOf::MaxContent);
+    let valid_available = Size::new(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::Normal,
+        ),
+    );
     let containing_flow_axes =
         crate::geometry::FlowAxes::new(crate::WritingMode::VerticalRl, crate::Direction::Rtl);
     let containing_layout_context = crate::ContainingLayoutContext::new(
@@ -571,13 +642,20 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
             valid_known,
             valid_parent,
             containing_layout_context,
-            valid_available,
+            crate::SizingRequestOf::new(
+                valid_available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .expect("zero definite and indefinite leaf inputs are valid");
         assert_eq!(input.known(), valid_known);
         assert_eq!(input.parent(), valid_parent);
         assert_eq!(input.containing_flow_axes(), containing_flow_axes);
-        assert_eq!(input.available(), valid_available);
+        assert_eq!(input.sizing_request().axes(), valid_available);
 
         for case in [
             InvalidLeafInputScalar::Negative,
@@ -590,6 +668,7 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
                 constructor,
                 Size::new(Some(value), Some(S::ZERO)),
                 Size::new(Some(S::ZERO), Some(S::ZERO)),
+                crate::LayoutSizeInput::Known,
                 PhysicalAxis::Horizontal,
                 case,
             );
@@ -597,6 +676,7 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
                 constructor,
                 Size::new(Some(S::ZERO), Some(value)),
                 Size::new(Some(S::ZERO), Some(S::ZERO)),
+                crate::LayoutSizeInput::Known,
                 PhysicalAxis::Vertical,
                 case,
             );
@@ -604,6 +684,7 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
                 constructor,
                 Size::new(Some(S::ZERO), Some(S::ZERO)),
                 Size::new(Some(value), Some(S::ZERO)),
+                crate::LayoutSizeInput::PercentageParent,
                 PhysicalAxis::Horizontal,
                 case,
             );
@@ -611,6 +692,7 @@ fn assert_leaf_input_constructors_validate_all_scalars<S: LayoutScalar>() {
                 constructor,
                 Size::new(Some(S::ZERO), Some(S::ZERO)),
                 Size::new(Some(S::ZERO), Some(value)),
+                crate::LayoutSizeInput::PercentageParent,
                 PhysicalAxis::Vertical,
                 case,
             );
@@ -645,7 +727,26 @@ fn leaf_affine_width_resolves_against_parent_basis() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let output = compute_leaf(input, &style, |_input| Ok::<_, ()>(Size::new(12.0, 8.0))).unwrap();
@@ -670,7 +771,26 @@ fn public_leaf_affine_px_width_needs_no_resolver() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let output = compute_leaf(input, &style, |_input| Ok::<_, ()>(Size::new(12.0, 8.0))).unwrap();
@@ -743,7 +863,26 @@ fn public_f64_leaf_invalid_numeric_affine_width_returns_typed_error() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::definite(100.0), AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("finite leaf input is valid");
 
@@ -772,7 +911,23 @@ fn assert_public_leaf_missing_basis_returns_typed_error<S: LayoutScalar>() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("indefinite leaf input is valid");
 
@@ -811,17 +966,39 @@ fn assert_public_leaf_intrinsic_percent_padding_is_valid_without_basis<S: Layout
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("indefinite intrinsic leaf input is valid");
 
     let output = compute_leaf(input, &style, |measure_input| {
         assert_eq!(measure_input.known_content_size(), Size::NONE);
         assert_eq!(
-            measure_input.available_content_size(),
+            measure_input.content_sizing_request().axes(),
             Size::new(
-                MeasurementAvailableOf::MAX_CONTENT,
-                MeasurementAvailableOf::MAX_CONTENT,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent
+                ),
             )
         );
         Ok::<_, ()>(Size::new(S::from_f64(12.0), S::from_f64(8.0)))
@@ -856,16 +1033,41 @@ fn assert_public_leaf_basis_independent_width_is_valid<S: LayoutScalar>() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("indefinite leaf input is valid");
 
     let output = compute_leaf(input, &style, |measure_input| {
         assert_eq!(
-            measure_input.available_content_size(),
+            measure_input.content_sizing_request().axes(),
             Size::new(
-                MeasurementAvailableOf::definite(S::from_f64(10.0)).expect("finite width is valid"),
-                MeasurementAvailableOf::MAX_CONTENT,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0))
+                            .expect("fixture physical extent is finite and nonnegative")
+                    ),
+                    crate::SizingOperation::Normal
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal
+                ),
             )
         );
         Ok::<_, ()>(Size::new(S::from_f64(12.0), S::from_f64(8.0)))

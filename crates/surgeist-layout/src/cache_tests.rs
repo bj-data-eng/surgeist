@@ -12,7 +12,23 @@ fn cache_test_input() -> ComputeInput {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 
@@ -28,14 +44,24 @@ fn cache_misses_for_parent_formatting_context_only_in_both_scalar_lanes() {
             Size::NONE,
             Size::new(Some(scalar(300.0)), Some(scalar(200.0))),
             crate::ContainingLayoutContext::new(axes, crate::ParentFormattingContext::Flex),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .expect("valid cache input");
         let changed = ComputeInputOf::leaf_layout(
             Size::NONE,
             input.parent(),
             crate::ContainingLayoutContext::new(axes, crate::ParentFormattingContext::Grid),
-            input.available(),
+            input.sizing_request(),
         )
         .expect("valid cache input");
         let output = complete_compute_size_output();
@@ -72,7 +98,23 @@ fn cache_input_with_containing_flow(
             containing_flow_axes,
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("test cache input is valid")
 }
@@ -102,7 +144,23 @@ fn assert_cache_distinguishes_all_containing_flow_axes<S: LayoutScalar>() {
                 flow_axes,
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                ),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .expect("test cache input is valid");
         let output = ComputeOutputOf::from_outer_size(Size::new(scalar(20.0), scalar(10.0)));
@@ -120,7 +178,23 @@ fn assert_cache_distinguishes_all_containing_flow_axes<S: LayoutScalar>() {
                         distinct_flow_axes,
                         crate::ParentFormattingContext::NoParent,
                     ),
-                    Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+                    crate::SizingRequestOf::new(
+                        Size::new(
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MaxContent,
+                            ),
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MaxContent,
+                            ),
+                        ),
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Unknown,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        ),
+                    ),
                 )
                 .expect("test cache input is valid");
 
@@ -145,7 +219,23 @@ fn compute_size_cache_input<S: LayoutScalar>() -> ComputeInputOf<S> {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 
@@ -256,7 +346,23 @@ fn cache_reuses_measure_and_layout_results_for_matching_inputs() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let output = ComputeOutput::from_outer_size(Size::new(120.0, 40.0));
 
@@ -315,7 +421,7 @@ fn cache_miss_when_run_mode_changes() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        base.available(),
+        base.sizing_request(),
     );
 
     assert_eq!(
@@ -344,7 +450,7 @@ fn cache_miss_when_sizing_mode_changes() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        base.available(),
+        base.sizing_request(),
     );
 
     assert_eq!(
@@ -373,7 +479,7 @@ fn cache_miss_when_requested_axis_changes() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        base.available(),
+        base.sizing_request(),
     );
 
     assert_eq!(
@@ -402,7 +508,7 @@ fn cache_miss_when_parent_size_changes() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        base.available(),
+        base.sizing_request(),
     );
 
     assert_eq!(
@@ -428,7 +534,20 @@ fn cache_authority_new_known_width_does_not_reuse_intrinsic_result_f32() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MIN_CONTENT, base.available().height),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                base.sizing_request().axes().height,
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     assert_eq!(
@@ -490,7 +609,23 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let first = compute_cached(&mut probe, 7, input, |tree, _node, _input| {
@@ -530,9 +665,25 @@ fn f64_cache_key_distinguishes_available_values_that_collide_as_f32() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(
-            AvailableOf::definite(16_777_216.0),
-            AvailableOf::MAX_CONTENT,
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(16_777_216.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
         ),
     );
     let nearby = ComputeInputOf::for_child(
@@ -545,9 +696,25 @@ fn f64_cache_key_distinguishes_available_values_that_collide_as_f32() {
             base.containing_flow_axes(),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(
-            AvailableOf::definite(16_777_217.0),
-            AvailableOf::MAX_CONTENT,
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(16_777_217.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
         ),
     );
 
@@ -633,9 +800,10 @@ impl Fri05C03CacheLeafTree {
             .iter()
             .map(|input| {
                 assert_eq!(input.known_content_size(), Size::NONE);
-                input.available_content_size().map(|available| {
+                input.content_sizing_request().axes().map(|available| {
                     available
-                        .definite_value()
+                        .space()
+                        .definite_size()
                         .expect("FRI-05 cache measurement availability is definite")
                         .get()
                 })
@@ -656,8 +824,26 @@ fn fri05_c03_leaf_cache_tree_backed_stores_only_stable_ordinary_result() {
         cache: std::cell::RefCell::new(Cache::new()),
         measurement_inputs: std::cell::RefCell::new(Vec::new()),
     };
-    let available = Size::splat(Available::definite(100.0));
-    let request = LayoutRootRequest::viewport(available).unwrap();
+    let available = Size::splat(crate::AxisSizingRequest::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(100.0)
+                .expect("fixture physical extent is finite and nonnegative"),
+        ),
+        crate::SizingOperation::Normal,
+    ));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::splat(Some(
+            crate::NonNegativeFiniteOf::new(100.0)
+                .expect("declared fixture extent is finite and nonnegative"),
+        )),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(available);
 
     let cold = compute_layout(&tree, 0, request).expect("cold measured leaf layout succeeds");
     assert_eq!(
@@ -676,7 +862,14 @@ fn fri05_c03_leaf_cache_tree_backed_stores_only_stable_ordinary_result() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        available,
+        crate::SizingRequestOf::new(
+            available,
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     assert_eq!(cold.cache_store_entries()[0].input(), &ordinary_input);
     let cold_output = cold.unrounded_entries()[0].output();
@@ -743,7 +936,20 @@ fn fri05_c04_flex_auto_cache_partitions_known_geometry_by_containing_pass_bits()
         known,
         Size::splat(Some(100.0)),
         ContainingLayoutContext::new(axes, ParentFormattingContext::Flex),
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .with_containing_auto_scrollbar_pass(initial);
     let second = ComputeInput::for_child(
@@ -753,7 +959,29 @@ fn fri05_c04_flex_auto_cache_partitions_known_geometry_by_containing_pass_bits()
         known,
         Size::new(Some(100.0), Some(85.0)),
         ContainingLayoutContext::new(axes, ParentFormattingContext::Flex),
-        Size::new(Available::definite(100.0), Available::definite(85.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(85.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .with_containing_auto_scrollbar_pass(horizontal);
 
@@ -794,14 +1022,68 @@ fn fri05_c04_flex_auto_cache_partitions_known_geometry_by_containing_pass_bits()
 fn fri05_c04_flex_auto_input_constructors_default_both_private_states_to_initial() {
     let axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl);
     let context = ContainingLayoutContext::new(axes, ParentFormattingContext::Flex);
-    let available = Size::splat(Available::definite(100.0));
+    let available = Size::splat(crate::AxisSizingRequest::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(100.0)
+                .expect("fixture physical extent is finite and nonnegative"),
+        ),
+        crate::SizingOperation::Normal,
+    ));
     let inputs = [
-        ComputeInput::leaf_layout(Size::NONE, Size::splat(Some(100.0)), context, available)
-            .unwrap(),
-        ComputeInput::leaf_content_size(Size::NONE, Size::splat(Some(100.0)), context, available)
-            .unwrap(),
-        ComputeInput::root_layout(Size::NONE, Size::splat(Some(100.0)), context, available),
-        ComputeInput::flex_item_root(Size::NONE, Size::splat(Some(100.0)), context, available),
+        ComputeInput::leaf_layout(
+            Size::NONE,
+            Size::splat(Some(100.0)),
+            context,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
+        )
+        .unwrap(),
+        ComputeInput::leaf_content_size(
+            Size::NONE,
+            Size::splat(Some(100.0)),
+            context,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
+        )
+        .unwrap(),
+        ComputeInput::root_layout(
+            Size::NONE,
+            Size::splat(Some(100.0)),
+            context,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
+        ),
+        ComputeInput::root_layout(
+            Size::NONE,
+            Size::splat(Some(100.0)),
+            context,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
+        ),
         ComputeInput::for_child(
             RunMode::ComputeSize,
             SizingMode::ContentSize,
@@ -809,7 +1091,14 @@ fn fri05_c04_flex_auto_input_constructors_default_both_private_states_to_initial
             Size::NONE,
             Size::splat(Some(100.0)),
             context,
-            available,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
         ComputeInput::hidden(context),
     ];
@@ -838,7 +1127,20 @@ fn fri05_c05_grid_auto_cache_partitions_local_and_containing_pass_state() {
         Size::new(Some(95.0), Some(120.0)),
         Size::splat(Some(100.0)),
         context,
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let local = ordinary
         .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::new(true, false));
@@ -874,7 +1176,17 @@ fn cache_distinguishes_actual_anonymous_indent_policy_and_first_child_context() 
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::BlockFlow,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .unwrap();
         let context = crate::text_indent::BlockIndentContext {
@@ -920,7 +1232,7 @@ fn cache_distinguishes_actual_anonymous_indent_policy_and_first_child_context() 
 fn cache_authority_input<S: LayoutScalar>(
     run_mode: RunMode,
     known_width: Option<S>,
-    available_width: AvailableOf<S>,
+    available_width: crate::AxisSizingRequestOf<S>,
 ) -> ComputeInputOf<S> {
     ComputeInputOf::for_child(
         run_mode,
@@ -932,13 +1244,35 @@ fn cache_authority_input<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(available_width, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                available_width,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 
-fn assert_cache_rejects_new_known_authority<S: LayoutScalar>(available_width: AvailableOf<S>) {
+fn assert_cache_rejects_new_known_authority<S: LayoutScalar>(
+    available_width: crate::AxisSizingRequestOf<S>,
+) {
     for run_mode in [RunMode::PerformLayout, RunMode::ComputeSize] {
-        let stored = cache_authority_input::<S>(run_mode, None, AvailableOf::MAX_CONTENT);
+        let stored = cache_authority_input::<S>(
+            run_mode,
+            None,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
         let query = cache_authority_input(run_mode, Some(S::from_f64(20.0)), available_width);
         let output =
             ComputeOutputOf::from_outer_size(Size::new(S::from_f64(20.0), S::from_f64(10.0)));
@@ -965,8 +1299,8 @@ fn assert_cache_rejects_new_known_authority<S: LayoutScalar>(available_width: Av
 }
 
 fn assert_cache_reuses_same_known_authority<S: LayoutScalar>(
-    stored_width: AvailableOf<S>,
-    queried_width: AvailableOf<S>,
+    stored_width: crate::AxisSizingRequestOf<S>,
+    queried_width: crate::AxisSizingRequestOf<S>,
 ) {
     for run_mode in [RunMode::PerformLayout, RunMode::ComputeSize] {
         let known = Some(S::from_f64(20.0));
@@ -996,47 +1330,92 @@ fn assert_cache_reuses_same_known_authority<S: LayoutScalar>(
 
 #[test]
 fn cache_authority_new_known_width_does_not_reuse_intrinsic_result_f64() {
-    assert_cache_rejects_new_known_authority::<f64>(AvailableOf::MIN_CONTENT);
+    assert_cache_rejects_new_known_authority::<f64>(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MinContent,
+    ));
 }
 
 #[test]
 fn cache_authority_same_raw_max_new_known_width_requires_recompute_f32() {
-    assert_cache_rejects_new_known_authority::<f32>(AvailableOf::MAX_CONTENT);
+    assert_cache_rejects_new_known_authority::<f32>(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MaxContent,
+    ));
 }
 
 #[test]
 fn cache_authority_same_raw_max_new_known_width_requires_recompute_f64() {
-    assert_cache_rejects_new_known_authority::<f64>(AvailableOf::MAX_CONTENT);
+    assert_cache_rejects_new_known_authority::<f64>(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MaxContent,
+    ));
 }
 
 #[test]
 fn cache_authority_same_known_width_reuses_changed_physical_space_f32() {
     assert_cache_reuses_same_known_authority::<f32>(
-        AvailableOf::Definite(100.0),
-        AvailableOf::Definite(200.0),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(200.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
     );
 }
 
 #[test]
 fn cache_authority_same_known_width_reuses_changed_physical_space_f64() {
     assert_cache_reuses_same_known_authority::<f64>(
-        AvailableOf::Definite(100.0),
-        AvailableOf::Definite(200.0),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(200.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
     );
 }
 
 #[test]
 fn cache_authority_same_known_width_reuses_ineffective_intrinsic_operation_f32() {
     assert_cache_reuses_same_known_authority::<f32>(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MIN_CONTENT,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
     );
 }
 
 #[test]
 fn cache_authority_same_known_width_reuses_ineffective_intrinsic_operation_f64() {
     assert_cache_reuses_same_known_authority::<f64>(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MIN_CONTENT,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
     );
 }

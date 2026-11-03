@@ -89,27 +89,60 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
     let leaf_control = PublicLayoutTreeOf::<S>::new()
         .children(2, [])
         .style(2, tree.node_input(2).clone());
-    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
-        let control = compute_layout(
-            &leaf_control,
-            2,
-            LayoutRootRequestOf::viewport(Size::splat(available)).unwrap(),
-        )
+    for available in [
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    ] {
+        let control = compute_layout(&leaf_control, 2, {
+            let axes = Size::splat(available);
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        })
         .expect("the fixed native leaf has genuine intrinsic geometry");
         for entries in [control.unrounded_entries(), control.final_entries()] {
             assert_eq!(output(entries, 2).size, Size::new(n(40.0), n(10.0)));
         }
     }
 
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::Definite(n(100.0)),
-            AvailableOf::Definite(n(20.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("the real native cyclic-gap subgrid completes");
 
     // Align3 §8.3: intrinsic gap0 makes each interior half-gap (0-10)/2=-5.

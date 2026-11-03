@@ -393,7 +393,15 @@ fn assert_one_run<S: LayoutScalar>(shape: Shape) {
     let (tree, bindings) = bind::<S>(&fixture);
     assert_eq!(bindings[0].nodes, [A, C]);
     let flow = capture(&tree, bindings);
-    let batch = compute_layout_with_flow(&flow, ROOT, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        ROOT,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let output = &batch.placed_text()[0];
     assert_eq!(output.container(), ROOT);
@@ -479,7 +487,15 @@ fn assert_child<S: LayoutScalar>(joined: bool) {
         assert_eq!(bindings[1].nodes, [B]);
     }
     let flow = capture(&tree, bindings);
-    let batch = compute_layout_with_flow(&flow, ROOT, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        ROOT,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), ROOT);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), if joined { 2 } else { 3 });
     let mut all = batch
         .placed_text()

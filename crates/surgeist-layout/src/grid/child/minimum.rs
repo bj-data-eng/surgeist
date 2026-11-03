@@ -4,13 +4,13 @@ use crate::{ComputeInputOf, LengthResolutionStatus, SizingMode};
 
 /// Borrowed original sizing functions, before inherited geometry is lowered to
 /// fixed pixel tracks. Mapping changes only this view, never the source table.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct GridMinimumTrackFunctions<'a, S: LayoutScalar> {
     source: GridMinimumFunctionSource<'a, S>,
     reversed: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum GridMinimumFunctionSource<'a, S: LayoutScalar> {
     Original {
         tracks: &'a [TrackSizingOf<S>],
@@ -283,7 +283,9 @@ pub(in crate::grid) fn compute_grid_minimum_contribution<Node: Copy, S: LayoutSc
         known,
         prepared.parent(),
         prepared.containing_layout_context(),
-        prepared.available(),
+        prepared
+            .sizing_request()
+            .with_axes(prepared.sizing_request().axes()),
     )
     .with_named_baseline_demand(prepared.named_baseline_demand())
     .with_settled_auto_scrollbars(prepared.settled_auto_scrollbars())
@@ -343,7 +345,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     if let GridItemMinimum::StandaloneIntrinsic(minimum) = minimum {
         return Ok(GridMinimumPlan::ContentSuggestion(
             GridMinimumContentSuggestion {
-                query: content_query(context.prepared, physical, minimum.available()),
+                query: content_query(context.prepared, physical, minimum.operation()),
                 adjustment,
                 padding_border,
                 lower: None,
@@ -463,7 +465,7 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
     };
     Ok(GridMinimumPlan::ContentSuggestion(
         GridMinimumContentSuggestion {
-            query: content_query(context.prepared, physical, AvailableOf::MIN_CONTENT),
+            query: content_query(context.prepared, physical, SizingOperation::MinContent),
             adjustment,
             padding_border,
             lower,
@@ -504,18 +506,18 @@ fn replaced_cap<S: LayoutScalar>(
 fn content_query<S: LayoutScalar>(
     prepared: ComputeInputOf<S>,
     axis: PhysicalAxis,
-    intrinsic: AvailableOf<S>,
+    intrinsic: SizingOperation,
 ) -> ComputeInputOf<S> {
     let mut known = prepared.known();
-    let mut available = prepared.available();
+    let mut available = prepared.sizing_request().axes();
     match axis {
         PhysicalAxis::Horizontal => {
             known.width = None;
-            available.width = intrinsic;
+            available.width = available.width.with_operation(intrinsic);
         }
         PhysicalAxis::Vertical => {
             known.height = None;
-            available.height = intrinsic;
+            available.height = available.height.with_operation(intrinsic);
         }
     }
     let mut input = ComputeInputOf::for_child(
@@ -525,7 +527,7 @@ fn content_query<S: LayoutScalar>(
         known,
         prepared.parent(),
         prepared.containing_layout_context(),
-        available,
+        prepared.sizing_request().with_axes(available),
     )
     .with_settled_auto_scrollbars(prepared.settled_auto_scrollbars())
     .with_containing_auto_scrollbar_pass(prepared.containing_auto_scrollbar_pass());

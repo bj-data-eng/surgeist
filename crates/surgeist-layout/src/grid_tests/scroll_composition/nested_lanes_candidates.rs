@@ -154,11 +154,25 @@ fn nested_candidates_contribute<S: LayoutScalar>(overflow: Overflow) {
     // is a separate legitimate20px control, not a fabricated candidate list.
     let definite = two_column_lane_subgrid::<S>(overflow, false);
     qualify_two_column_source(&definite, false);
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     let prior = compute_layout(&definite, 0, request)
         .expect("real definite Lane-subgrid control completes");
     assert_candidate_geometry(&prior, overflow, false);

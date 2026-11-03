@@ -144,12 +144,13 @@ fn feasible_flex_fraction<S: LayoutScalar>(
 fn resolve_flex_fraction<S: LayoutScalar>(
     states: &mut [OrdinaryTrackState<'_, S>],
     items: &[GridIntrinsicContributionRow<S>],
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     gap: S,
     gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
 ) -> Result<S, SpanningContributionError<S>> {
     if !states.iter().any(|state| state.flex_factor.is_some())
-        || available == AvailableOf::MIN_CONTENT
+        || (available.operation == SizingOperation::MinContent
+            && available.available_extent.is_none())
     {
         return Ok(S::ZERO);
     }
@@ -159,7 +160,7 @@ fn resolve_flex_fraction<S: LayoutScalar>(
             |gutters| gutters.span_gap_total(start, end),
         )
     };
-    if let AvailableOf::Definite(budget) = available {
+    if let Some(budget) = available.available_extent {
         let gaps = flex_number(span_gap(0, states.len()))?;
         let occupied = flex_span_fold(states, S::ZERO, gaps)
             .ok_or(SpanningContributionError::InvalidNumeric { value: S::INFINITY })?;
@@ -244,7 +245,7 @@ pub(in crate::grid) fn resolved_track_stretch_size<S: LayoutScalar>(
     tracks: &[TrackSizingOf<S>],
     phases: &GridAxisTrackPhases<S>,
     definite_size: Option<S>,
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     alignment: AlignContent,
     enabled: bool,
 ) -> Result<Option<S>, SpanningContributionError<S>> {
@@ -254,7 +255,7 @@ pub(in crate::grid) fn resolved_track_stretch_size<S: LayoutScalar>(
     Ok(definite_size.or_else(|| {
         stretch_empty_auto_track_basis_by(
             tracks,
-            available.into_option(),
+            available.available_extent,
             alignment,
             enabled,
             |index| phases.growth_limits[index].unwrap_or(phases.base_sizes[index]) == S::ZERO,
@@ -264,27 +265,27 @@ pub(in crate::grid) fn resolved_track_stretch_size<S: LayoutScalar>(
 
 fn maximize_tracks<S: LayoutScalar>(
     states: &mut [OrdinaryTrackState<'_, S>],
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     gap_total: S,
 ) {
-    let mut remaining = match available {
-        AvailableOf::MinContent => return,
-        AvailableOf::MaxContent => {
-            for state in states {
-                if let Some(limit) = state.growth_limit {
-                    state.base_size = state.base_size.max(limit);
-                }
+    if available.operation == SizingOperation::MinContent && available.available_extent.is_none() {
+        return;
+    }
+    let Some(budget) = available.available_extent else {
+        for state in states {
+            if let Some(limit) = state.growth_limit {
+                state.base_size = state.base_size.max(limit);
             }
-            return;
         }
-        AvailableOf::Definite(available) => (available
-            - gap_total
-            - states
-                .iter()
-                .map(|state| state.base_size)
-                .fold(S::ZERO, |sum, size| sum + size))
-        .max(S::ZERO),
+        return;
     };
+    let mut remaining = (budget
+        - gap_total
+        - states
+            .iter()
+            .map(|state| state.base_size)
+            .fold(S::ZERO, |sum, size| sum + size))
+    .max(S::ZERO);
     while remaining > S::ZERO {
         let eligible = states
             .iter()
@@ -323,7 +324,7 @@ fn maximize_tracks<S: LayoutScalar>(
 fn finish_ordinary_track_phases<S: LayoutScalar>(
     mut states: Vec<OrdinaryTrackState<'_, S>>,
     items: &[GridIntrinsicContributionRow<S>],
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     stretch_size: Option<S>,
     gap: S,
     gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
@@ -472,7 +473,7 @@ pub(in crate::grid) struct ResolvedAxisTrackInput<'a, S: LayoutScalar> {
     pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) phases: &'a GridAxisTrackPhases<S>,
     pub(in crate::grid) items: &'a [GridIntrinsicContributionRow<S>],
-    pub(in crate::grid) available: AvailableOf<S>,
+    pub(in crate::grid) available: GridTrackSizingConstraint<S>,
     pub(in crate::grid) stretch_size: Option<S>,
     pub(in crate::grid) gap: S,
     pub(in crate::grid) alignment: AlignContent,
@@ -505,7 +506,7 @@ pub(in crate::grid) fn resolve_tracks_from_phases<S: LayoutScalar>(
     if !gap.is_finite() || gap < S::ZERO {
         return Err(SpanningContributionError::InvalidNumeric { value: gap });
     }
-    if let AvailableOf::Definite(value) = available
+    if let Some(value) = available.available_extent
         && (!value.is_finite() || value < S::ZERO)
     {
         return Err(SpanningContributionError::InvalidNumeric { value });
@@ -600,7 +601,10 @@ pub(in crate::grid) struct DefiniteAxisTrackEstimateInput<'a, S: LayoutScalar> {
 pub(in crate::grid) fn estimate_definite_axis_tracks<S: LayoutScalar>(
     input: DefiniteAxisTrackEstimateInput<'_, S>,
 ) -> Result<Vec<S>, SpanningContributionError<S>> {
-    let available = AvailableOf::Definite(input.available);
+    let available = GridTrackSizingConstraint {
+        operation: SizingOperation::Normal,
+        available_extent: Some(input.available),
+    };
     let phases = resolve_grid_contribution_rows(
         SpanningTrackContext {
             tracks: input.tracks,
@@ -654,7 +658,7 @@ mod flex_item_tests {
     fn solve<S: LayoutScalar>(
         tracks: &[TrackSizingOf<S>],
         items: &[GridIntrinsicContributionRow<S>],
-        available: AvailableOf<S>,
+        available: GridTrackSizingConstraint<S>,
         floors: &[S],
         gap: S,
         gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
@@ -697,14 +701,27 @@ mod flex_item_tests {
             ),
         ];
         let rows = [item(0, 2, n(60.0), n(60.0), n(60.0))];
-        let indefinite = solve(&tracks, &rows, AvailableOf::MAX_CONTENT, &[], S::ZERO, None);
+        let indefinite = solve(
+            &tracks,
+            &rows,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            &[],
+            S::ZERO,
+            None,
+        );
         assert_eq!(indefinite, [n(27.0), n(33.0)]);
         assert_eq!(track_sum_with_gutters(&indefinite, S::ZERO, None), n(60.0));
         // Below-one factors leave real host space; it is not track content.
         let definite = solve(
             &tracks,
             &rows,
-            AvailableOf::Definite(n(200.0)),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(n(200.0)),
+            },
             &[],
             S::ZERO,
             None,
@@ -719,11 +736,31 @@ mod flex_item_tests {
         let tracks = [flex(n(1.0)), flex(n(2.0))];
         let rows = [item(0, 2, S::ZERO, n(30.0), n(90.0))];
         assert_eq!(
-            solve(&tracks, &rows, AvailableOf::MAX_CONTENT, &[], S::ZERO, None),
+            solve(
+                &tracks,
+                &rows,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
+                &[],
+                S::ZERO,
+                None
+            ),
             [n(30.0), n(60.0)]
         );
         assert_eq!(
-            solve(&tracks, &rows, AvailableOf::MIN_CONTENT, &[], S::ZERO, None),
+            solve(
+                &tracks,
+                &rows,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None
+                },
+                &[],
+                S::ZERO,
+                None
+            ),
             [S::ZERO; 2]
         );
         // The same actual rows and immutable zero-minimum phases support a
@@ -732,7 +769,10 @@ mod flex_item_tests {
             SpanningTrackContext {
                 tracks: &tracks,
                 basis: None,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: &[],
@@ -741,9 +781,27 @@ mod flex_item_tests {
         )
         .unwrap();
         for (available, expected) in [
-            (AvailableOf::MAX_CONTENT, [n(30.0), n(60.0)]),
-            (AvailableOf::Definite(n(60.0)), [n(20.0), n(40.0)]),
-            (AvailableOf::MAX_CONTENT, [n(30.0), n(60.0)]),
+            (
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                [n(30.0), n(60.0)],
+            ),
+            (
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(60.0)),
+                },
+                [n(20.0), n(40.0)],
+            ),
+            (
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                [n(30.0), n(60.0)],
+            ),
         ] {
             assert_eq!(
                 resolve_tracks_from_phases(ResolvedAxisTrackInput {
@@ -764,7 +822,17 @@ mod flex_item_tests {
         // A different item's larger max-content candidate is not capped by90.
         let rows = [rows[0], item(0, 1, S::ZERO, S::ZERO, n(120.0))];
         assert_eq!(
-            solve(&tracks, &rows, AvailableOf::MAX_CONTENT, &[], S::ZERO, None),
+            solve(
+                &tracks,
+                &rows,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
+                &[],
+                S::ZERO,
+                None
+            ),
             [n(120.0), n(240.0)]
         );
 
@@ -774,7 +842,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::MAX_CONTENT,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 &[n(40.0), S::ZERO],
                 S::ZERO,
                 None
@@ -785,7 +856,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::Definite(n(60.0)),
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(60.0))
+                },
                 &[n(40.0), S::ZERO],
                 S::ZERO,
                 None
@@ -796,7 +870,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::Definite(n(20.0)),
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(20.0))
+                },
                 &[n(40.0), S::ZERO],
                 S::ZERO,
                 None
@@ -810,7 +887,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::MAX_CONTENT,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 &[n(40.0), S::ZERO],
                 S::ZERO,
                 None
@@ -821,7 +901,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &[rows[1], rows[0]],
-                AvailableOf::MAX_CONTENT,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 &[n(40.0), S::ZERO],
                 S::ZERO,
                 None
@@ -832,7 +915,17 @@ mod flex_item_tests {
         let tracks = [TrackSizingOf::px(n(20.0)), flex(S::ONE), flex(n(2.0))];
         let rows = [item(0, 3, S::ZERO, S::ZERO, n(120.0))];
         assert_eq!(
-            solve(&tracks, &rows, AvailableOf::MAX_CONTENT, &[], n(5.0), None),
+            solve(
+                &tracks,
+                &rows,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
+                &[],
+                n(5.0),
+                None
+            ),
             [n(20.0), n(30.0), n(60.0)]
         );
         let tracks = [flex(S::ONE), TrackSizingOf::px(n(80.0)), flex(n(2.0))];
@@ -841,7 +934,10 @@ mod flex_item_tests {
         let sizes = solve(
             &tracks,
             &rows,
-            AvailableOf::MAX_CONTENT,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
             &[],
             n(999.0),
             Some(&gutters),
@@ -858,7 +954,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::MAX_CONTENT,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 &[n(10.0), S::ZERO],
                 S::ZERO,
                 None
@@ -869,7 +968,10 @@ mod flex_item_tests {
             solve(
                 &tracks,
                 &rows,
-                AvailableOf::Definite(n(60.0)),
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(60.0))
+                },
                 &[n(10.0), S::ZERO],
                 S::ZERO,
                 None
@@ -883,7 +985,10 @@ mod flex_item_tests {
             SpanningTrackContext {
                 tracks: &tracks,
                 basis: None,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: &[],
@@ -897,7 +1002,10 @@ mod flex_item_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &bad,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -910,7 +1018,10 @@ mod flex_item_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -938,7 +1049,10 @@ mod flex_item_tests {
         let sizes = solve(
             &tracks,
             &rows,
-            AvailableOf::Definite(S::ONE),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(S::ONE),
+            },
             &[],
             S::ZERO,
             None,
@@ -968,7 +1082,10 @@ mod flex_item_tests {
         let sizes = solve(
             &tracks,
             &rows,
-            AvailableOf::Definite(budget),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(budget),
+            },
             &[],
             S::ZERO,
             None,
@@ -1000,7 +1117,10 @@ mod flex_item_tests {
         let sizes = solve(
             &tracks,
             &rows,
-            AvailableOf::Definite(budget),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(budget),
+            },
             &[],
             S::ZERO,
             None,
@@ -1035,9 +1155,18 @@ mod flex_item_tests {
             TrackSizingOf::MAX_CONTENT,
         ] {
             for available in [
-                AvailableOf::MIN_CONTENT,
-                AvailableOf::MAX_CONTENT,
-                AvailableOf::Definite(n(100.0)),
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(100.0)),
+                },
             ] {
                 assert_eq!(
                     solve(
@@ -1053,9 +1182,18 @@ mod flex_item_tests {
             }
         }
         for available in [
-            AvailableOf::MIN_CONTENT,
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::Definite(n(100.0)),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MinContent,
+                available_extent: None,
+            },
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(n(100.0)),
+            },
         ] {
             assert_eq!(
                 solve(
@@ -1072,14 +1210,27 @@ mod flex_item_tests {
         let tracks = [TrackSizingOf::px(n(20.0)), flex(S::ONE)];
         let span = [item(0, 2, negative, negative, negative)];
         assert_eq!(
-            solve(&tracks, &span, AvailableOf::MAX_CONTENT, &[], S::ZERO, None),
+            solve(
+                &tracks,
+                &span,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
+                &[],
+                S::ZERO,
+                None
+            ),
             [n(20.0), S::ZERO]
         );
         assert_eq!(
             solve(
                 &tracks,
                 &span,
-                AvailableOf::Definite(n(100.0)),
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(n(100.0))
+                },
                 &[],
                 S::ZERO,
                 None
@@ -1091,7 +1242,10 @@ mod flex_item_tests {
             solve(
                 &[flex(S::ONE)],
                 &mixed,
-                AvailableOf::MAX_CONTENT,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None
+                },
                 &[],
                 S::ZERO,
                 None
@@ -1111,7 +1265,11 @@ mod flex_item_tests {
         assert_signed_outer_contributions::<f64>();
     }
 
-    fn assert_no_free_space_preserves_represented_bases<S: LayoutScalar>(count: usize, a: S, b: S) {
+    fn assert_no_available_extent_preserves_represented_bases<S: LayoutScalar>(
+        count: usize,
+        a: S,
+        b: S,
+    ) {
         assert!(a > b && b > S::ZERO);
         let mut minima = vec![a; count];
         minima[count - 1] = b;
@@ -1144,7 +1302,10 @@ mod flex_item_tests {
             SpanningTrackContext {
                 tracks: &tracks,
                 basis: None,
-                available: AvailableOf::Definite(S::ONE),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(S::ONE),
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: &[],
@@ -1157,7 +1318,10 @@ mod flex_item_tests {
             tracks: &tracks,
             phases: &phases,
             items: &rows,
-            available: AvailableOf::Definite(S::ONE),
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(S::ONE),
+            },
             stretch_size: None,
             gap: S::ZERO,
             alignment: AlignContent::Start,
@@ -1178,7 +1342,10 @@ mod flex_item_tests {
         let sizes = solve(
             &tracks,
             &rows,
-            AvailableOf::Definite(S::ONE),
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(S::ONE),
+            },
             &[half, half],
             S::ZERO,
             Some(&gutters),
@@ -1190,18 +1357,18 @@ mod flex_item_tests {
         );
     }
     #[test]
-    fn flex_no_free_space_preserves_bases_f32() {
-        assert_no_free_space_preserves_represented_bases::<f32>(
+    fn flex_no_available_extent_preserves_bases_f32() {
+        assert_no_available_extent_preserves_represented_bases::<f32>(
             10,
             f32::from_bits(0x3dcc_cccd),
             f32::from_bits(0x3dcc_cccc),
         );
     }
     #[test]
-    fn flex_no_free_space_preserves_bases_f64() {
+    fn flex_no_available_extent_preserves_bases_f64() {
         // Eight1/9 bases plus its immediately lower neighbor still left-fold
         // above1; the ninth value must not grow to the old quotient1/9.
-        assert_no_free_space_preserves_represented_bases::<f64>(
+        assert_no_available_extent_preserves_represented_bases::<f64>(
             9,
             f64::from_bits(0x3fbc_71c7_1c71_c71c),
             f64::from_bits(0x3fbc_71c7_1c71_c71b),

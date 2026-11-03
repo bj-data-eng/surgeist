@@ -186,9 +186,39 @@ fn characterize<S: LayoutScalar>() {
         assert!(!native.has_leaf_measurement(node));
     }
     let parent = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
-    let viewport = Size::splat(AvailableOf::Definite(n(400.0)));
-    let context = FlexItemRootContextOf::under_viewport(viewport, parent).unwrap();
-    assert_eq!(context.viewport_available(), viewport);
+    let fallback = crate::OrthogonalFallbackOf::new(
+        Size::splat(Some(
+            crate::NonNegativeFiniteOf::new(n(400.0))
+                .expect("declared native initial containing block"),
+        )),
+        crate::NearestScrollportOf::Absent,
+        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+    );
+    let context = FlexItemRootContextOf::new(
+        parent,
+        Size::splat(Some(
+            crate::NonNegativeFiniteOf::new(n(400.0))
+                .expect("declared fixture extent is finite and nonnegative"),
+        )),
+        Size::new(
+            None,
+            Some(
+                crate::NonNegativeFiniteOf::new(n(20.0))
+                    .expect("declared parent-inline host allocation"),
+            ),
+        ),
+    );
+    assert_eq!(
+        context.percentage_parent(),
+        Size::splat(Some(crate::NonNegativeFiniteOf::new(n(400.0)).unwrap()))
+    );
+    assert_eq!(
+        context.allocated_size(),
+        Size::new(
+            None,
+            Some(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap())
+        )
+    );
     assert_eq!(context.parent_flow_axes(), parent);
     let host = NativeCache {
         native,
@@ -198,17 +228,32 @@ fn characterize<S: LayoutScalar>() {
     };
     for minimum in [true, false, true] {
         let width = if minimum {
-            AvailableOf::MIN_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            )
         } else {
-            AvailableOf::MAX_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            )
         };
-        let available = Size::new(width, AvailableOf::Definite(n(20.0)));
-        let request = LayoutRootRequestOf::flex_item_under_viewport(available, context).unwrap();
-        assert_eq!(request.available(), available);
-        assert_eq!(
-            request.context(),
-            LayoutRootContextOf::FlexItemUnderViewport(context)
+        let available = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(20.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         );
+        let request = LayoutRootRequestOf::flex_item(
+            crate::SizingRequestOf::new(available, fallback),
+            context,
+        );
+        assert_eq!(request.sizing_request().axes(), available);
+        assert_eq!(request.context(), LayoutRootContextOf::FlexItem(context));
         // Parent-inline is physical height. The still-unknown physical width
         // retains its intrinsic tag: wrapping MIN uses20, MAX uses40.
         let cold = compute_layout(&host.native, 0, request)

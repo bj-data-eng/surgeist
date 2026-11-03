@@ -30,7 +30,12 @@ pub(super) fn replace_boundary<S: LayoutScalar>(
         InlineFlowOf::new(
             boundary.writing_mode(),
             boundary.direction(),
-            AvailableOf::definite(f.width),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         ),
         boundary.metrics(),
         InlineControlAlignment::Baseline,
@@ -268,8 +273,15 @@ fn unresolved_directional_gap<S: LayoutScalar>() {
     // The adjacent source operands delimit two different physical gaps after
     // L2. Neither the source cut nor positive BP chooses one of them.
     let error = match LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone(), Vec::new()) {
-        Ok(flow) => compute_layout_with_flow(&flow, 0, request(f.width))
-            .expect_err("an unresolved directional gap must refuse"),
+        Ok(flow) => compute_layout_with_flow(
+            &flow,
+            0,
+            request(f.width, {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .expect_err("an unresolved directional gap must refuse"),
         Err(error) => error,
     };
     assert!(
@@ -458,7 +470,12 @@ fn empty_terminal_body<S: LayoutScalar>() -> Fixture<S> {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     Direction::Ltr,
-                    AvailableOf::definite(f.width),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
                 ),
                 metrics(),
                 InlineControlAlignment::Baseline,
@@ -715,8 +732,15 @@ fn gap_outside_forced_selection<S: LayoutScalar>() {
     // clamping or moving the pair through the forced cut is permitted.
     edges.after = WrapEdge::Line;
     let flow = f.flow();
-    let error = compute_layout_with_flow(&flow, 0, request(f.width))
-        .expect_err("body membership alone cannot authenticate the selected gap");
+    let error = compute_layout_with_flow(
+        &flow,
+        0,
+        request(f.width, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect_err("body membership alone cannot authenticate the selected gap");
     assert!(
         matches!(
             error.kind(),

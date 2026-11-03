@@ -151,11 +151,35 @@ pub(super) fn subgrid_child_parent_context_with_geometry<
 }
 
 pub(super) fn fri08_c01_placement_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::Definite(S::from_f64(240.0)),
-        AvailableOf::Definite(S::from_f64(240.0)),
-    ))
-    .expect("finite placement viewport")
+    {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(240.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    }
 }
 
 pub(super) fn fri08_c01_placement_output<S: LayoutScalar>(
@@ -235,8 +259,30 @@ impl<S: LayoutScalar> Fri08C06RAtomicTree<S> {
     }
 
     pub(super) fn request() -> LayoutRootRequestOf<S> {
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(200.0))))
-            .expect("finite inherited-placement viewport")
+        {
+            let axes = Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            ));
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        }
     }
 }
 
@@ -415,15 +461,25 @@ pub(super) fn fri08_c03_containing_block_percentage_child<S: LayoutScalar>(
             },
         )
         .measure(2, Size::ZERO);
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .expect("max-content lanes viewport is valid"),
-    );
+    let batch = compute_layout(&tree, 1, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    });
     assert!(
         batch.is_ok(),
         "hybrid lanes containing block must resolve percentage child sizing: {batch:?}"
@@ -459,15 +515,25 @@ pub(super) fn fri08_c03_containing_block_rows_child<S: LayoutScalar>(
         )
         .style(2, child_style)
         .measure(2, measured_size);
-    compute_layout(
-        &tree,
-        1,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .expect("max-content lanes viewport is valid"),
-    )
+    compute_layout(&tree, 1, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("hybrid containing-block control layout succeeds")
 }
 
@@ -666,12 +732,27 @@ pub(super) fn fri08_c03_auto_fit_batch<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
     viewport: Size<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
-    compute_layout(
-        tree,
-        1,
-        LayoutRootRequestOf::viewport(viewport.map(AvailableOf::definite))
-            .expect("finite lanes auto-fit viewport"),
-    )
+    compute_layout(tree, 1, {
+        let axes = viewport.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        });
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("valid lanes auto-fit layout")
 }
 
@@ -808,12 +889,16 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04StandaloneIntrinsicMinimumTree<S> {
         if !matches!(node, 4 | 5) {
             return None;
         }
-        let width = match input.available_content_size().width {
-            MeasurementAvailableOf::MinContent => Self::Scalar::from_f64(20.0),
-            MeasurementAvailableOf::MaxContent => Self::Scalar::from_f64(80.0),
-            MeasurementAvailableOf::Definite(value) => {
-                value.get().min(Self::Scalar::from_f64(80.0))
-            }
+        let request = input.content_sizing_request().axes().width;
+        let width = match request.operation() {
+            SizingOperation::MinContent => Self::Scalar::from_f64(20.0),
+            SizingOperation::MaxContent => Self::Scalar::from_f64(80.0),
+            SizingOperation::Normal => request
+                .space()
+                .definite_size()
+                .map_or(Self::Scalar::from_f64(80.0), |value| {
+                    value.get().min(Self::Scalar::from_f64(80.0))
+                }),
         };
         Some(Ok(Size::new(width, Self::Scalar::from_f64(50.0))))
     }
@@ -823,12 +908,25 @@ pub(super) fn fri08_c04_standalone_intrinsic_minimum_width<S: LayoutScalar>(
     minimum: MinSizeOf<S>,
 ) -> S {
     let tree = Fri08C04StandaloneIntrinsicMinimumTree::new(minimum);
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MIN_CONTENT))
-            .expect("min-content standalone viewport"),
-    )
+    let batch = compute_layout(&tree, 1, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MinContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("one-axis subgrid intrinsic minimum layout succeeds");
     fri08_c01_placement_output(&batch, 1).size.width
 }
@@ -970,16 +1068,40 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
                         inherit_other_axis,
                     );
                     for available in [
-                        AvailableOf::MIN_CONTENT,
-                        AvailableOf::MAX_CONTENT,
-                        AvailableOf::Definite(scalar(240.0)),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MinContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(scalar(240.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
                     ] {
-                        let batch = compute_layout(
-                            &tree,
-                            1,
-                            LayoutRootRequestOf::viewport(Size::splat(available))
-                                .expect("finite standalone viewport"),
-                        )
+                        let batch = compute_layout(&tree, 1, {
+                            let axes = Size::splat(available);
+                            let definite = axes.map(|axis| axis.space().definite_size());
+                            crate::LayoutRootRequestOf::standalone(
+                                SizingRequestOf::new(
+                                    axes,
+                                    OrthogonalFallbackOf::new(
+                                        definite,
+                                        crate::NearestScrollportOf::Absent,
+                                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                                    ),
+                                ),
+                                crate::geometry::FlowAxes::new(
+                                    crate::WritingMode::HorizontalTb,
+                                    crate::Direction::Ltr,
+                                ),
+                                definite,
+                            )
+                        })
                         .expect("nested standalone boundary is supported");
                         let root = fri08_c01_placement_output(&batch, 1);
                         let logical =
@@ -1320,8 +1442,28 @@ impl<S: LayoutScalar> Fri08C03NestedAtomicTree<S> {
     }
 
     pub(super) fn request() -> LayoutRootRequestOf<S> {
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-            .expect("nested atomic max-content viewport")
+        {
+            let axes = Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            ));
+            let definite = axes.map(|axis| axis.space().definite_size());
+            crate::LayoutRootRequestOf::standalone(
+                SizingRequestOf::new(
+                    axes,
+                    OrthogonalFallbackOf::new(
+                        definite,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::geometry::FlowAxes::new(
+                    crate::WritingMode::HorizontalTb,
+                    crate::Direction::Ltr,
+                ),
+                definite,
+            )
+        }
     }
 }
 
@@ -1953,8 +2095,25 @@ pub(super) fn assert_fri08_c04_baseline_area_topology_controls<S: LayoutScalar>(
         child_writing_mode: WritingMode::HorizontalTb,
         child_direction: Direction::Rtl,
     };
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-        .expect("baseline topology-control viewport");
+    let request = {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     for alignment in [AlignItems::Baseline, AlignItems::LastBaseline] {
         for (reference, area_topology) in [
             (
@@ -2115,12 +2274,27 @@ pub(super) fn fri08_c02_track_sizes<S: LayoutScalar>(
     axis: Fri08C02TrackAxis,
     count: usize,
 ) -> Vec<S> {
-    let batch = compute_layout(
-        tree,
-        1,
-        LayoutRootRequestOf::viewport(viewport.map(AvailableOf::definite))
-            .expect("finite track sizing viewport"),
-    )
+    let batch = compute_layout(tree, 1, {
+        let axes = viewport.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        });
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("valid public grid track sizing");
     (0..count)
         .map(|index| {
@@ -2306,12 +2480,27 @@ pub(super) fn fri08_c02_auto_fit_output<S: LayoutScalar>(
     viewport: Size<S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    let batch = compute_layout(
-        tree,
-        1,
-        LayoutRootRequestOf::viewport(viewport.map(AvailableOf::definite))
-            .expect("finite auto-fit viewport"),
-    )
+    let batch = compute_layout(tree, 1, {
+        let axes = viewport.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        });
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("valid auto-fit grid layout");
     fri08_c01_placement_output(&batch, node)
 }
@@ -2353,7 +2542,17 @@ pub(super) fn fri06_mr02_geometry_error_input<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(AvailableOf::definite(largest)),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(largest).unwrap()),
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 
@@ -2424,7 +2623,29 @@ pub(super) fn fri05_c05_grid_sizing_input(size: Size<Option<Scalar>>) -> Compute
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        size.map(|value| value.map_or(Available::MAX_CONTENT, Available::Definite)),
+        SizingRequestOf::new(
+            size.map(|value| {
+                value.map_or(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    |value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(value).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        )
+                    },
+                )
+            }),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 
@@ -2443,13 +2664,42 @@ pub(super) fn fri04_c04_grid_dispatch_input(parent: Size<Option<f32>>) -> Comput
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(
-            parent
-                .width
-                .map_or(Available::MAX_CONTENT, Available::Definite),
-            parent
-                .height
-                .map_or(Available::MAX_CONTENT, Available::Definite),
+        SizingRequestOf::new(
+            Size::new(
+                parent.width.map_or(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    |value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(value).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        )
+                    },
+                ),
+                parent.height.map_or(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    |value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(value).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        )
+                    },
+                ),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
         ),
     )
 }
@@ -2645,11 +2895,34 @@ pub(super) fn vertical_baseline_measure(
 }
 
 pub(super) fn compute_oracle_grid(tree: &mut OracleTree) {
-    compute_root(
-        &mut tree.borrow_compute(),
-        1,
-        Size::new(Available::Definite(120.0), Available::Definite(120.0)),
-    )
+    {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        let style = tree.node_input(1);
+        let flow = FlowAxes::new(style.writing_mode, style.direction);
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            flow,
+            definite,
+        );
+        compute_root(&mut tree.borrow_compute(), 1, request)
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 }
@@ -2671,7 +2944,23 @@ pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::Definite(120.0), Available::Definite(120.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap()

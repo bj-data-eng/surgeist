@@ -97,11 +97,25 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
     }
     // Empty native children have no text, font, measurement or descendant
     // demand. Explicit zero track minima and zero gutters leave all1 for fr.
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::Definite(one))).unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(one).unwrap()),
+            SizingOperation::Normal,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("the genuine finite native grid completes");
     let root = budget_box(batch.unrounded_entries(), 0);
     assert_eq!(root.location, Point::ZERO);

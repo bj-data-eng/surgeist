@@ -44,7 +44,7 @@ fn paragraph(source: &str, style: text::Style, rtl: bool, font: &[u8]) -> Prepar
 
 fn compute<S: LayoutScalar>(
     p: &PreparedParagraph,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let binding = p.binding(0);
@@ -74,11 +74,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -224,7 +252,7 @@ fn line(start: usize, end: usize, raw: f64, ending: Ending) -> Fact {
 
 fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
@@ -353,7 +381,16 @@ fn real_whole_phrase_overflow_restores_normal_before_arbitrary_and_requeries_rem
                     ],
                 ),
             ] {
-                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(width)), rtl);
+                let actual = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 assert_eq!(facts(&actual, &p, "日本へ", PHRASE_FONT), (width, expected));
             }
         }
@@ -393,7 +430,16 @@ fn earlier_fitting_prefix_wraps_a_phrase_intact_instead_of_relaxing_into_the_suf
                 },
                 PHRASE_FONT,
             );
-            let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(40.0)), rtl);
+            let actual = compute::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                rtl,
+            );
             assert_eq!(
                 facts(&actual, &p, "AA 日本へ", PHRASE_FONT),
                 (
@@ -441,8 +487,24 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                         p.prepared.phrases().count(),
                         usize::from(source == "日本へ")
                     );
-                    let before = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
-                    let minimum = compute::<S>(&p, AvailableOf::MIN_CONTENT, rtl);
+                    let before = compute::<S>(
+                        &p,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        rtl,
+                    );
+                    let minimum = compute::<S>(
+                        &p,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MinContent,
+                        ),
+                        rtl,
+                    );
                     let minimum = facts(&minimum, &p, source, font);
                     assert_eq!(
                         minimum.0,
@@ -453,7 +515,14 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                         }
                     );
                     if overflow == text::OverflowWrap::Anywhere {
-                        let measured = intrinsic::<S>(&p, AvailableOf::MIN_CONTENT, rtl);
+                        let measured = intrinsic::<S>(
+                            &p,
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::MinContent,
+                            ),
+                            rtl,
+                        );
                         assert_eq!(measured.report.inline_extent, S::from_f64(10.0));
                         for row in measured
                             .paragraph
@@ -483,7 +552,14 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                             )]
                         );
                     }
-                    let maximum = compute::<S>(&p, AvailableOf::MAX_CONTENT, rtl);
+                    let maximum = compute::<S>(
+                        &p,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
+                        rtl,
+                    );
                     assert_eq!(
                         facts(&maximum, &p, source, font),
                         (
@@ -496,7 +572,16 @@ fn intrinsic_anywhere_is_independent_of_finite_phrase_restoration_and_query_orde
                             )]
                         )
                     );
-                    let after = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+                    let after = compute::<S>(
+                        &p,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        rtl,
+                    );
                     assert_eq!(
                         facts(&after, &p, source, font),
                         facts(&before, &p, source, font)
@@ -529,7 +614,16 @@ fn unsupported_phrase_language_restores_real_owner_automatic_hyphen_before_arbit
                 let p = paragraph(source, style.clone(), rtl, AHEM);
                 assert_eq!(p.prepared.phrases().count(), 0);
                 assert_eq!(p.prepared.alternative_views().count(), 0);
-                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(width)), rtl);
+                let actual = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 assert_eq!(
                     facts(&actual, &p, source, AHEM),
                     (
@@ -630,7 +724,16 @@ fn restored_after_and_both_indications_keep_receiving_authority_across_finite_fr
                     ],
                 ),
             ] {
-                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(width)), false);
+                let actual = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    false,
+                );
                 assert_eq!(facts(&actual, &p, "AB\u{ad}CDE", AHEM), (width, expected));
                 let lines = finalized(&actual, &p);
                 let continuation = lines[0]
@@ -823,15 +926,47 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                 Vec::new(),
             )
             .unwrap();
-            compute_layout_with_flow(
-                &capture,
-                0,
-                LayoutRootRequestOf::viewport(Size::new(
-                    AvailableOf::definite(S::from_f64(40.0)),
-                    AvailableOf::MAX_CONTENT,
-                ))
-                .unwrap(),
-            )
+            compute_layout_with_flow(&capture, 0, {
+                let containing_flow_axes = {
+                    let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                };
+                let requested_axes = Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                );
+                let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+                // These fixtures perform ordinary block-size layout independently of
+                // the explicitly requested inline contribution operation.
+                logical_requests.block = logical_requests
+                    .block
+                    .with_operation(crate::SizingOperation::Normal);
+                logical_requests.inline = logical_requests
+                    .inline
+                    .with_operation(crate::SizingOperation::Normal);
+                let axes = containing_flow_axes.physical_size(logical_requests);
+                // The old Native NoParent fixture explicitly supplied these percentage
+                // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+                let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+                let fallback = crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                );
+                crate::LayoutRootRequestOf::standalone(
+                    crate::SizingRequestOf::new(axes, fallback),
+                    containing_flow_axes,
+                    percentage_parent,
+                )
+            })
             .unwrap()
         };
         let cold = run(&tree);

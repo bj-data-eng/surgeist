@@ -100,7 +100,10 @@ fn preserve_row_margins<S: LayoutScalar>() {
                     },
                 )
                 .measure(2, flow.physical_size(LogicalSizeOf::new(n(90.0), n(80.0))));
-            for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+            for available in [
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ] {
                 let output = crate::measurement::compute_tree_leaf(
                     &tree,
                     2,
@@ -111,10 +114,22 @@ fn preserve_row_margins<S: LayoutScalar>() {
                         Size::NONE,
                         Size::NONE,
                         ContainingLayoutContext::new(flow, ParentFormattingContext::Grid),
-                        flow.physical_size(LogicalSizeOf::new(
-                            AvailableOf::Definite(n(30.0)),
-                            available,
-                        )),
+                        SizingRequestOf::new(
+                            flow.physical_size(LogicalSizeOf::new(
+                                AxisSizingRequestOf::new(
+                                    AvailableSpaceOf::Definite(
+                                        crate::NonNegativeFiniteOf::new(n(30.0)).unwrap(),
+                                    ),
+                                    SizingOperation::Normal,
+                                ),
+                                available,
+                            )),
+                            OrthogonalFallbackOf::new(
+                                Size::NONE,
+                                crate::NearestScrollportOf::Absent,
+                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                     ),
                     tree.node_input(2),
                 )
@@ -124,11 +139,28 @@ fn preserve_row_margins<S: LayoutScalar>() {
                     "real leaf normal box {writing_mode:?}/{overflow:?}"
                 );
             }
-            let batch = compute_layout(
-                &tree,
-                0,
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-            )
+            let batch = compute_layout(&tree, 0, {
+                let axes = Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                ));
+                let definite = axes.map(|axis| axis.space().definite_size());
+                crate::LayoutRootRequestOf::standalone(
+                    SizingRequestOf::new(
+                        axes,
+                        OrthogonalFallbackOf::new(
+                            definite,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    crate::geometry::FlowAxes::new(
+                        crate::WritingMode::HorizontalTb,
+                        crate::Direction::Ltr,
+                    ),
+                    definite,
+                )
+            })
             .unwrap();
             assert_eq!(
                 fri08_c01_placement_output(&batch, 0).size,

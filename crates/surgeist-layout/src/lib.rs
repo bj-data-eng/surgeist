@@ -57,7 +57,8 @@
 //! [`LayoutUnsupportedCapability::SizingBehavior`] with an exact
 //! [`UnsupportedSizingBehavior`] property, behavior, algorithm, and axis.
 //!
-//! [`LayoutRootRequestOf`] validates root input for [`compute_layout`], which
+//! [`LayoutRootRequestOf`] carries validated dimensions and explicit root context
+//! for [`compute_layout`], which
 //! returns either a complete [`CompletedLayoutBatchOf`] or a typed
 //! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
 //! internal.
@@ -126,9 +127,11 @@
 //!
 //! [`ContainingLayoutContext`] and [`ParentFormattingContext`] form the complete
 //! containing context and cache identity, including explicit containing flow and
-//! parent role. Flex-item roots require explicit parent flow axes and keep host
-//! allocation in the root request separate from the viewport percentage context
-//! in [`FlexItemRootContext`].
+//! parent role. [`SizingRequestOf`] independently carries physical available space,
+//! per-axis sizing operations, and independent ICB, nearest-scrollport and local
+//! containing-bound authority for orthogonal fallback.
+//! [`FlexItemRootContext`] keeps actual parent flow axes, imposed host allocation,
+//! and percentage bases separate from those request dimensions and operations.
 //!
 //! Browser-parity generation is crate-local tooling. `generate` is the
 //! managed-pinned mode and may use the configured fetcher for the exact manifest
@@ -317,8 +320,7 @@ pub use grid::{
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};
 pub use measurement::{
-    LeafMeasureError, LeafMeasureErrorOf, LeafMeasureInput, LeafMeasureInputOf,
-    MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
+    LeafMeasureError, LeafMeasureErrorOf, LeafMeasureInput, LeafMeasureInputOf, compute_leaf,
 };
 pub use node_input::{
     AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
@@ -342,16 +344,18 @@ pub use node_input::{
 };
 pub use output::{
     BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,
-    CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch, CompletedLayoutBatchOf,
-    ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf, ContainingLayoutContext,
-    FlexItemRootContext, FlexItemRootContextOf, InlineFragmentOutput, InlineFragmentOutputEntry,
-    InlineFragmentOutputEntryOf, InlineFragmentOutputOf, InlineFragmentOwner,
-    LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf, LayoutOutputEntry,
-    LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
-    LayoutRootRequestOf, LayoutRoundingMode, NamedBaselinesOf, NodeOutput, NodeOutputOf,
-    ParentFormattingContext, PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf,
-    PlacedInlineBoxFragments, PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf,
-    SourceIndex,
+    BlockFlowRootContext, BlockFlowRootContextOf, CollapsibleMargin, CollapsibleMarginOf,
+    CompletedLayoutBatch, CompletedLayoutBatchOf, ComputeInput, ComputeInputOf, ComputeOutput,
+    ComputeOutputOf, ContainingLayoutContext, FlexItemRootContext, FlexItemRootContextOf,
+    InlineFragmentOutput, InlineFragmentOutputEntry, InlineFragmentOutputEntryOf,
+    InlineFragmentOutputOf, InlineFragmentOwner, LayoutCacheClearEntry, LayoutCacheStoreEntry,
+    LayoutCacheStoreEntryOf, LayoutOutputEntry, LayoutOutputEntryOf, LayoutRootContext,
+    LayoutRootContextOf, LayoutRootRequest, LayoutRootRequestOf, LayoutRoundingMode,
+    LayoutSizeInput, LayoutSizeInputError, LayoutSizeInputErrorOf, NamedBaselinesOf, NodeOutput,
+    NodeOutputOf, ParentFormattingContext, PhysicalBlockMarginCollapse,
+    PhysicalBlockMarginCollapseOf, PlacedInlineBoxFragments, PlacedTextOutput,
+    PositionedRootContext, PositionedRootContextOf, RootContextMismatch,
+    RootLocalPositionedContext, RootLocalPositionedContextOf, SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 /// Supported scalar contract for generic layout APIs.
@@ -376,11 +380,15 @@ pub use sizing::{
 pub use surgeist_text::FontBaseline as BaselineName;
 pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
 pub use value::{
-    AspectRatio, AspectRatioOf, Available, AvailableOf, FiniteScalarErrorOf, Length, LengthAuto,
-    LengthAutoOf, LengthOf, LengthPercentageErrorOf, LengthPercentageOf, LengthResolution,
-    LengthResolutionOf, LengthResolutionStatus, NonNegativeFiniteOf,
-    NonNegativeFiniteScalarErrorOf, NumericResolutionOf, PercentageBasisOf, ResolvedLengthAuto,
-    ResolvedLengthAutoOf, UnresolvedLengthReason,
+    AspectRatio, AspectRatioOf, AvailableSpace, AvailableSpaceOf, AxisSizingRequest,
+    AxisSizingRequestOf, ContentSizingRequest, ContentSizingRequestOf, FiniteScalarErrorOf, Length,
+    LengthAuto, LengthAutoOf, LengthOf, LengthPercentageErrorOf, LengthPercentageOf,
+    LengthResolution, LengthResolutionOf, LengthResolutionStatus, NearestScrollport,
+    NearestScrollportOf, NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf, NumericResolutionOf,
+    OrthogonalFallback, OrthogonalFallbackError, OrthogonalFallbackErrorOf,
+    OrthogonalFallbackLimit, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, PercentageBasisOf,
+    ResolvedLengthAuto, ResolvedLengthAutoOf, ScrollportFallbackChange, ScrollportFallbackChangeOf,
+    SizingOperation, SizingRequest, SizingRequestOf, UnresolvedLengthReason,
 };
 pub use value::{
     GridLine, GridSpan, GridTemplateAreaRow, GridTemplateAreas, MaxTrackSizing, MaxTrackSizingOf,

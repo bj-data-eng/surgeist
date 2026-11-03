@@ -18,7 +18,7 @@ fn content_subject<S: LayoutScalar>(preferred: PreferredSizeOf<S>) -> DistinctLe
 fn query_content_subject<S: LayoutScalar>(
     tree: &DistinctLeaf<S>,
     mode: SizingMode,
-    width: AvailableOf<S>,
+    width: AxisSizingRequestOf<S>,
 ) -> ComputeOutputOf<S> {
     let input = ComputeInputOf::for_child(
         RunMode::ComputeSize,
@@ -30,7 +30,17 @@ fn query_content_subject<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(width, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                width,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     assert_eq!(input.known(), Size::NONE);
     assert_eq!(input.parent(), Size::NONE);
@@ -42,7 +52,7 @@ fn query_content_subject<S: LayoutScalar>(
 
 fn content_operation<S: LayoutScalar>(
     preferred: PreferredSizeOf<S>,
-    operation: AvailableOf<S>,
+    operation: AxisSizingRequestOf<S>,
     authored_width: f64,
     issued_width: f64,
 ) {
@@ -58,7 +68,17 @@ fn content_operation<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::Grid,
         ),
-        Size::new(AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let zero =
         crate::measurement::compute_tree_leaf(&tree, 1, minimum, tree.node_input(1)).unwrap();
@@ -97,7 +117,7 @@ fn content_operation<S: LayoutScalar>(
 fn grid_content_size_max_ignores_authored_min_preference_f32() {
     content_operation::<f32>(
         PreferredSizeOf::MIN_CONTENT,
-        AvailableOf::MAX_CONTENT,
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         40.0,
         80.0,
     );
@@ -106,7 +126,7 @@ fn grid_content_size_max_ignores_authored_min_preference_f32() {
 fn grid_content_size_max_ignores_authored_min_preference_f64() {
     content_operation::<f64>(
         PreferredSizeOf::MIN_CONTENT,
-        AvailableOf::MAX_CONTENT,
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
         40.0,
         80.0,
     );
@@ -115,7 +135,7 @@ fn grid_content_size_max_ignores_authored_min_preference_f64() {
 fn grid_content_size_min_ignores_authored_max_preference_f32() {
     content_operation::<f32>(
         PreferredSizeOf::MAX_CONTENT,
-        AvailableOf::MIN_CONTENT,
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         80.0,
         40.0,
     );
@@ -124,7 +144,7 @@ fn grid_content_size_min_ignores_authored_max_preference_f32() {
 fn grid_content_size_min_ignores_authored_max_preference_f64() {
     content_operation::<f64>(
         PreferredSizeOf::MAX_CONTENT,
-        AvailableOf::MIN_CONTENT,
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
         80.0,
         40.0,
     );

@@ -19,8 +19,8 @@ fn prepared_words() -> PreparedParagraph {
 
 fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
     for (operation, expected) in [
-        (AvailableOf::MIN_CONTENT, 30.0),
-        (AvailableOf::MAX_CONTENT, 70.0),
+        (SizingOperation::MinContent, 30.0),
+        (SizingOperation::MaxContent, 70.0),
     ] {
         let tree = paragraph.flat_text_tree::<S>(
             1,
@@ -40,7 +40,19 @@ fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
         let batch = compute_layout_with_flow(
             &flow,
             1,
-            LayoutRootRequestOf::viewport(Size::new(operation, AvailableOf::MAX_CONTENT)).unwrap(),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                Size::NONE,
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .unwrap();
         for (phase, entries) in [
@@ -102,11 +114,22 @@ fn compute<S: LayoutScalar>(
     compute_layout_with_flow(
         &flow,
         0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::Definite(n(available)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(NonNegativeFiniteOf::new(n(available)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::new(Some(NonNegativeFiniteOf::new(n(available)).unwrap()), None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(available)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        )),
     )
     .unwrap()
 }

@@ -72,7 +72,7 @@ impl<'a, S: LayoutScalar> OrdinaryTrackState<'a, S> {
     pub(super) fn apply_intrinsic_contributions(
         &mut self,
         basis: Option<S>,
-        available: AvailableOf<S>,
+        available: GridTrackSizingConstraint<S>,
         contributions: GridTrackContributions<S>,
     ) {
         self.infinitely_growable = false;
@@ -167,7 +167,7 @@ pub(in crate::grid) fn apply_ordinary_intrinsic_contribution<S: LayoutScalar>(
 pub(in crate::grid) fn track_min_size_for_intrinsics<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
     basis: Option<S>,
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     contributions: GridTrackContributions<S>,
 ) -> S {
     let GridTrackContributions {
@@ -181,9 +181,9 @@ pub(in crate::grid) fn track_min_size_for_intrinsics<S: LayoutScalar>(
         {
             resolution_or_zero(resolve_track_calculation(calculation, basis))
         }
-        MinTrackSizingOf::Calculation(_) | MinTrackSizingOf::Auto => match available {
-            AvailableOf::Definite(_) => minimum,
-            AvailableOf::MinContent | AvailableOf::MaxContent => {
+        MinTrackSizingOf::Calculation(_) | MinTrackSizingOf::Auto => match available.operation {
+            SizingOperation::Normal => minimum,
+            SizingOperation::MinContent | SizingOperation::MaxContent => {
                 let limited = match &track.max {
                     MaxTrackSizingOf::Calculation(limit) | MaxTrackSizingOf::FitContent(limit) => {
                         resolution_optional(resolve_track_calculation(limit, basis))
@@ -204,7 +204,7 @@ pub(in crate::grid) fn track_min_size_for_intrinsics<S: LayoutScalar>(
 pub(in crate::grid) fn track_base_size_for_intrinsics<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
     basis: Option<S>,
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     contributions: GridTrackContributions<S>,
 ) -> S {
     let min = track_min_size_for_intrinsics(track, basis, available, contributions);
@@ -279,7 +279,7 @@ fn track_min_size<S: LayoutScalar>(
 pub(in crate::grid) fn track_growth_limit<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
     basis: Option<S>,
-    available: AvailableOf<S>,
+    available: GridTrackSizingConstraint<S>,
     contributions: GridTrackContributions<S>,
 ) -> Option<S> {
     let mut state = OrdinaryTrackState::new(track, false, false);
@@ -291,7 +291,7 @@ pub(in crate::grid) fn track_growth_limit<S: LayoutScalar>(
 pub(in crate::grid) struct SpanningTrackContext<'a, S: LayoutScalar> {
     pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) basis: Option<S>,
-    pub(in crate::grid) available: AvailableOf<S>,
+    pub(in crate::grid) available: GridTrackSizingConstraint<S>,
     pub(in crate::grid) gap: S,
     pub(in crate::grid) gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(in crate::grid) base_floors: &'a [S],
@@ -452,7 +452,7 @@ pub(in crate::grid) fn resolve_grid_contribution_rows<S: LayoutScalar>(
     if let Some(basis) = context.basis {
         phase_number(basis)?;
     }
-    if let AvailableOf::Definite(value) = context.available {
+    if let Some(value) = context.available.available_extent {
         phase_number(value)?;
     }
     for track in context.tracks {
@@ -674,7 +674,9 @@ fn run_spanning_group<'tracks, S: LayoutScalar>(
         SpanPhase::ContentGrowth,
         SpanPhase::MaximumGrowth,
     ] {
-        if phase == SpanPhase::LimitedMaximum && context.available != AvailableOf::MAX_CONTENT {
+        if phase == SpanPhase::LimitedMaximum
+            && context.available.operation != SizingOperation::MaxContent
+        {
             continue;
         }
         if phase == SpanPhase::ContentGrowth {
@@ -702,7 +704,7 @@ fn item_target<S: LayoutScalar>(
     let target = |value: S| phase_number::<S>(value - gap).map(|value| value.max(S::ZERO));
     let minimum = target(item.facts.minimum)?;
     let content = match phase {
-        SpanPhase::Minimum if matches!(context.available, AvailableOf::Definite(_)) => {
+        SpanPhase::Minimum if context.available.operation == SizingOperation::Normal => {
             return Ok(minimum);
         }
         SpanPhase::Minimum | SpanPhase::ContentMinimum | SpanPhase::ContentGrowth => {
@@ -1171,7 +1173,7 @@ mod spanning_phases_tests {
     }
     fn context(
         tracks: &[TrackSizingOf<f64>],
-        available: AvailableOf<f64>,
+        available: GridTrackSizingConstraint<f64>,
     ) -> SpanningTrackContext<'_, f64> {
         SpanningTrackContext {
             tracks,
@@ -1190,9 +1192,17 @@ mod spanning_phases_tests {
             TrackSizingOf::minmax(MinTrackSizingOf::px(0.0), MaxTrackSizingOf::MAX_CONTENT),
         ];
         let facts = input(2, &[(0, 2, 0.0, 40.0, 80.0)]);
-        let phases =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts)
-                .unwrap();
+        let phases = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &facts,
+        )
+        .unwrap();
         assert_eq!(phases.base_sizes, vec![10.0, 30.0]);
         assert_eq!(phases.growth_limits, vec![Some(10.0), Some(70.0)]);
         let result = super::super::flexible::resolve_tracks_from_phases(
@@ -1200,7 +1210,10 @@ mod spanning_phases_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &grid_contribution_rows(&facts).unwrap(),
-                available: AvailableOf::MIN_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Start,
@@ -1218,9 +1231,17 @@ mod spanning_phases_tests {
             TrackSizingOf::minmax(MinTrackSizingOf::MIN_CONTENT, MaxTrackSizingOf::MAX_CONTENT);
         let tracks = [track.clone(), track];
         let facts = input(2, &[(0, 1, 10.0, 10.0, 10.0), (0, 2, 0.0, 30.0, 100.0)]);
-        let phases =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts)
-                .unwrap();
+        let phases = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &facts,
+        )
+        .unwrap();
         assert_eq!(phases.base_sizes, vec![10.0, 20.0]);
         assert_eq!(phases.growth_limits, vec![Some(10.0), Some(90.0)]);
     }
@@ -1230,12 +1251,28 @@ mod spanning_phases_tests {
         let tracks = [TrackSizingOf::<f64>::AUTO; 3];
         let one = input(3, &[(0, 2, 0.0, 40.0, 80.0), (1, 3, 0.0, 40.0, 80.0)]);
         let two = input(3, &[(1, 3, 0.0, 40.0, 80.0), (0, 2, 0.0, 40.0, 80.0)]);
-        let first =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &one)
-                .unwrap();
-        let second =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &two)
-                .unwrap();
+        let first = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &one,
+        )
+        .unwrap();
+        let second = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &two,
+        )
+        .unwrap();
         // Each span independently incurs20 per base, then planned maxima merge.
         assert_eq!(first.base_sizes, vec![20.0, 20.0, 20.0]);
         assert_eq!(first, second);
@@ -1249,7 +1286,13 @@ mod spanning_phases_tests {
         ];
         let facts = input(2, &[(0, 2, 0.0, 45.0, 85.0)]);
         let gutters = OrdinaryGridAxisGuttersOf::new(2, &[], 5.0);
-        let mut ctx = context(&tracks, AvailableOf::MIN_CONTENT);
+        let mut ctx = context(
+            &tracks,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MinContent,
+                available_extent: None,
+            },
+        );
         ctx.gap = 100.0; // Real gutter custody, not this unused fallback, applies.
         ctx.gutters = Some(&gutters);
         let phases = resolve_spanning_contributions(ctx, &facts).unwrap();
@@ -1264,9 +1307,17 @@ mod spanning_phases_tests {
         ));
         let tracks = [fit.clone(), fit];
         let facts = input(2, &[(0, 2, 0.0, 80.0, 100.0)]);
-        let phases =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts)
-                .unwrap();
+        let phases = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &facts,
+        )
+        .unwrap();
         assert_eq!(phases.base_sizes, vec![30.0, 30.0]);
         assert_eq!(phases.growth_limits, vec![Some(30.0), Some(30.0)]);
     }
@@ -1277,7 +1328,16 @@ mod spanning_phases_tests {
         let mut facts = input(2, &[(0, 2, 0.0, 40.0, 80.0)]);
         facts.minimum.receipts.clear();
         assert_eq!(
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts),
+            resolve_spanning_contributions(
+                context(
+                    &tracks,
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::MinContent,
+                        available_extent: None
+                    }
+                ),
+                &facts
+            ),
             Err(SpanningContributionError::MissingContribution {
                 purpose: GridContributionPurpose::Minimum
             })
@@ -1290,7 +1350,16 @@ mod spanning_phases_tests {
         let mut facts = input(2, &[(0, 2, 0.0, 40.0, 80.0)]);
         facts.minimum.receipts.push(facts.minimum.receipts[0]);
         assert_eq!(
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts),
+            resolve_spanning_contributions(
+                context(
+                    &tracks,
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::MinContent,
+                        available_extent: None
+                    }
+                ),
+                &facts
+            ),
             Err(SpanningContributionError::DuplicateContribution {
                 purpose: GridContributionPurpose::Minimum
             })
@@ -1303,9 +1372,17 @@ mod spanning_phases_tests {
             TrackSizingOf::minmax(MinTrackSizingOf::px(0.0), MaxTrackSizingOf::MAX_CONTENT),
         ];
         let facts = input(2, &[(0, 2, 0.0, 40.0, 80.0), (1, 2, 0.0, 0.0, 0.0)]);
-        let phases =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MIN_CONTENT), &facts)
-                .unwrap();
+        let phases = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MinContent,
+                    available_extent: None,
+                },
+            ),
+            &facts,
+        )
+        .unwrap();
         // B now really starts at finite growth0. It cannot absorb base space
         // before beyond-limits expansion of affected A. A zero marker is not
         // interchangeable with there being no item in B.
@@ -1324,9 +1401,17 @@ mod spanning_phases_tests {
                 max_content: 20.0,
             },
         }];
-        let phases =
-            resolve_grid_contribution_rows(context(&tracks, AvailableOf::definite(100.0)), &rows)
-                .unwrap();
+        let phases = resolve_grid_contribution_rows(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(100.0),
+                },
+            ),
+            &rows,
+        )
+        .unwrap();
         assert_eq!(phases.base_sizes, vec![0.0]);
         assert_eq!(phases.growth_limits, vec![Some(20.0)]);
         let sizes = super::super::flexible::resolve_tracks_from_phases(
@@ -1334,7 +1419,10 @@ mod spanning_phases_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::definite(100.0),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(100.0),
+                },
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Start,
@@ -1360,7 +1448,13 @@ mod spanning_phases_tests {
             },
         }];
         let floors = [5.0, 0.0];
-        let mut ctx = context(&tracks, AvailableOf::MIN_CONTENT);
+        let mut ctx = context(
+            &tracks,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MinContent,
+                available_extent: None,
+            },
+        );
         ctx.base_floors = &floors;
         let phases = resolve_grid_contribution_rows(ctx, &rows).unwrap();
         // A's real edge floor5 is part of its base occupancy, not added again
@@ -1373,7 +1467,13 @@ mod spanning_phases_tests {
     fn empty_subgrid_real_edge_floor_survives_without_item_receipts() {
         let tracks = [TrackSizingOf::<f64>::AUTO];
         let floors = [20.0];
-        let mut ctx = context(&tracks, AvailableOf::definite(100.0));
+        let mut ctx = context(
+            &tracks,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(100.0),
+            },
+        );
         ctx.base_floors = &floors;
         let phases = resolve_grid_contribution_rows(ctx, &[]).unwrap();
         assert_eq!(phases.base_sizes, vec![20.0]);
@@ -1384,15 +1484,26 @@ mod spanning_phases_tests {
     fn finite_phase_consumer_rejects_nonfinite_total_before_container_clamp() {
         let tracks = [TrackSizingOf::px(f64::MAX), TrackSizingOf::px(f64::MAX)];
         let facts = input(2, &[]);
-        let phases =
-            resolve_spanning_contributions(context(&tracks, AvailableOf::MAX_CONTENT), &facts)
-                .unwrap();
+        let phases = resolve_spanning_contributions(
+            context(
+                &tracks,
+                GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+            ),
+            &facts,
+        )
+        .unwrap();
         let result = super::super::flexible::resolve_tracks_from_phases(
             super::super::flexible::ResolvedAxisTrackInput {
                 tracks: &tracks,
                 phases: &phases,
                 items: &grid_contribution_rows(&facts).unwrap(),
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Start,
@@ -1434,7 +1545,10 @@ mod spanning_phases_tests {
         let context = SpanningTrackContext {
             tracks: &tracks,
             basis: None,
-            available: AvailableOf::MIN_CONTENT,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MinContent,
+                available_extent: None,
+            },
             gap: S::ZERO,
             gutters: None,
             base_floors: &[],
@@ -1502,7 +1616,10 @@ mod spanning_phases_tests {
                 SpanningTrackContext {
                     tracks: &tracks,
                     basis: None,
-                    available: AvailableOf::MAX_CONTENT,
+                    available: GridTrackSizingConstraint {
+                        operation: SizingOperation::MaxContent,
+                        available_extent: None,
+                    },
                     gap: S::ZERO,
                     gutters: None,
                     base_floors: &[],
@@ -1582,7 +1699,10 @@ mod spanning_phases_tests {
             SpanningTrackContext {
                 tracks: &tracks,
                 basis: None,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: &[],
@@ -1617,7 +1737,10 @@ mod spanning_phases_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1662,7 +1785,10 @@ mod spanning_phases_tests {
             SpanningTrackContext {
                 tracks: &tracks,
                 basis: None,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: &floors,
@@ -1675,7 +1801,10 @@ mod spanning_phases_tests {
                 tracks: &tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1724,7 +1853,10 @@ mod spanning_phases_tests {
             SpanningTrackContext {
                 tracks,
                 basis: None,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 gap: S::ZERO,
                 gutters: None,
                 base_floors: floors,
@@ -1737,7 +1869,10 @@ mod spanning_phases_tests {
                 tracks,
                 phases: &phases,
                 items: &rows,
-                available: AvailableOf::MAX_CONTENT,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1877,10 +2012,38 @@ mod spanning_phases_tests {
                 Some(n(110.0))
             );
             for (available, minimum, expected_second) in [
-                (AvailableOf::MIN_CONTENT, S::ZERO, n(10.0)),
-                (AvailableOf::MAX_CONTENT, S::ZERO, n(10.0)),
-                (AvailableOf::Definite(n(100.0)), n(110.0), n(10.0)),
-                (AvailableOf::Definite(n(100.0)), S::ZERO, S::ZERO),
+                (
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::MinContent,
+                        available_extent: None,
+                    },
+                    S::ZERO,
+                    n(10.0),
+                ),
+                (
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::MaxContent,
+                        available_extent: None,
+                    },
+                    S::ZERO,
+                    n(10.0),
+                ),
+                (
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::Normal,
+                        available_extent: Some(n(100.0)),
+                    },
+                    n(110.0),
+                    n(10.0),
+                ),
+                (
+                    GridTrackSizingConstraint {
+                        operation: SizingOperation::Normal,
+                        available_extent: Some(n(100.0)),
+                    },
+                    S::ZERO,
+                    S::ZERO,
+                ),
             ] {
                 let rows = [
                     GridIntrinsicContributionRow {

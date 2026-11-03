@@ -1110,7 +1110,8 @@ where
     Tree: Compute<'input, M>,
 {
     let mut collect = |purpose| {
-        let grid = intrinsic_role_grid(input.grid, input.frame, purpose);
+        let grid = intrinsic_role_grid(input.grid, input.frame, purpose)
+            .map_err(|error| grid_track_sizing_error(node, error))?;
         collect_lane_intrinsic_purpose(
             tree,
             node,
@@ -1353,7 +1354,7 @@ where
                         constants.flow_axes,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    grid.query.available,
+                    SizingRequestOf::new(grid.query.available, constants.child_orthogonal_fallback),
                 ),
             )
             .map_err(|error| sizing_resolution_error(child, error))?;
@@ -1438,7 +1439,7 @@ where
                     constants.flow_axes,
                     crate::ParentFormattingContext::Grid,
                 ),
-                grid.query.available,
+                SizingRequestOf::new(grid.query.available, constants.child_orthogonal_fallback),
             ),
         )
         .map_err(|error| sizing_resolution_error(child, error))?;
@@ -1859,7 +1860,7 @@ pub(in crate::grid) fn prepare_grid_lanes_intrinsic_child_input<S: LayoutScalar>
     incoming: ComputeInputOf<S>,
 ) -> Result<ComputeInputOf<S>, SizingResolutionError<S>> {
     let preferred = grid_lanes_child_sizing_preflight(item, incoming.parent())?;
-    let requested = flow_axes.logical_size(incoming.available());
+    let requested = flow_axes.logical_size(incoming.sizing_request().axes());
     let queried_available = match axis {
         GridAxisKind::Column => requested.inline,
         GridAxisKind::Row => requested.block,
@@ -1901,7 +1902,7 @@ pub(in crate::grid) fn prepare_grid_lanes_intrinsic_child_input<S: LayoutScalar>
         incoming.known(),
         incoming.parent(),
         incoming.containing_layout_context(),
-        available,
+        incoming.sizing_request().with_axes(available),
     )
     .with_named_baseline_demand(incoming.named_baseline_demand())
     .with_settled_auto_scrollbars(incoming.settled_auto_scrollbars())
@@ -1918,12 +1919,12 @@ fn lane_intrinsic_query_for_role<S: LayoutScalar>(
     prepared: ComputeInputOf<S>,
     flow_axes: crate::geometry::FlowAxes,
     axis: GridAxisKind,
-    role: AvailableOf<S>,
+    role: SizingOperation,
 ) -> ComputeInputOf<S> {
-    let mut available = flow_axes.logical_size(prepared.available());
+    let mut available = flow_axes.logical_size(prepared.sizing_request().axes());
     match axis {
-        GridAxisKind::Column => available.inline = role,
-        GridAxisKind::Row => available.block = role,
+        GridAxisKind::Column => available.inline = available.inline.with_operation(role),
+        GridAxisKind::Row => available.block = available.block.with_operation(role),
     }
     let mut input = ComputeInputOf::for_child(
         prepared.run_mode(),
@@ -1932,7 +1933,9 @@ fn lane_intrinsic_query_for_role<S: LayoutScalar>(
         prepared.known(),
         prepared.parent(),
         prepared.containing_layout_context(),
-        flow_axes.physical_size(available),
+        prepared
+            .sizing_request()
+            .with_axes(flow_axes.physical_size(available)),
     )
     .with_named_baseline_demand(prepared.named_baseline_demand())
     .with_settled_auto_scrollbars(prepared.settled_auto_scrollbars())
@@ -1962,9 +1965,9 @@ where
     let axis = minimum.axis;
     let role = match purpose {
         GridContributionPurpose::Minimum | GridContributionPurpose::MinContent => {
-            AvailableOf::MIN_CONTENT
+            SizingOperation::MinContent
         }
-        GridContributionPurpose::MaxContent => AvailableOf::MAX_CONTENT,
+        GridContributionPurpose::MaxContent => SizingOperation::MaxContent,
     };
     minimum.prepared = lane_intrinsic_query_for_role(minimum.prepared, flow_axes, axis, role);
     let prepared = minimum.prepared;
@@ -2408,6 +2411,31 @@ where
         };
         let child_flow_axes =
             crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
+        let available = item.available.map(|value| value.max(Tree::Scalar::ZERO));
+        let available = Size::new(
+            AxisSizingRequestOf::new(
+                crate::layout_math::checked_available_space(available.width).map_err(|_| {
+                    crate::error::value_resolution_error(
+                        child,
+                        LengthResolutionStatus::InvalidNumeric {
+                            value: available.width,
+                        },
+                    )
+                })?,
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                crate::layout_math::checked_available_space(available.height).map_err(|_| {
+                    crate::error::value_resolution_error(
+                        child,
+                        LengthResolutionStatus::InvalidNumeric {
+                            value: available.height,
+                        },
+                    )
+                })?,
+                SizingOperation::Normal,
+            ),
+        );
         let child_input = ComputeInputOf::for_child(
             RunMode::PerformLayout,
             SizingMode::InherentSize,
@@ -2418,8 +2446,7 @@ where
                 constants.flow_axes,
                 crate::ParentFormattingContext::Grid,
             ),
-            item.available
-                .map(|value| AvailableOf::Definite(value.max(Tree::Scalar::ZERO))),
+            SizingRequestOf::new(available, constants.child_orthogonal_fallback),
         )
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
         let (mut output, executed_baselines) = if child_context_input.item.column.can_inherit()
@@ -2839,8 +2866,10 @@ where
             flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
         let mut logical_known = LogicalSizeOf::new(None, None);
         let logical_parent = containing_block.logical_size();
-        let mut logical_available =
-            LogicalSizeOf::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT);
+        let mut logical_available = LogicalSizeOf::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
         match lane_axis.logical_axis() {
             LogicalAxis::Inline => {
                 logical_available.inline = lane_axis_intrinsic_available(
@@ -2860,8 +2889,11 @@ where
                 let grid_axis_size = logical_parent
                     .inline
                     .expect("grid-lanes grid-axis containing extent is definite");
-                let available_inline =
-                    (grid_axis_size - logical_margin.inline_sum()).max(Tree::Scalar::ZERO);
+                let available_inline = crate::layout_math::remaining_available_extent(
+                    grid_axis_size,
+                    logical_margin.inline_sum(),
+                )
+                .map_err(|status| crate::error::value_resolution_error(child, status))?;
                 let justify_self = resolve_grid_item_normal_alignment(
                     child_style.justify_self,
                     container_style.justify_items,
@@ -2871,14 +2903,29 @@ where
                 );
                 logical_known.inline = definite_preferred_size(logical_preferred_size.inline)
                     .or_else(|| (justify_self == AlignItems::Stretch).then_some(available_inline));
-                logical_available.inline = AvailableOf::Definite(available_inline);
+                logical_available.inline = AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(available_inline).map_err(
+                        |_| {
+                            crate::error::value_resolution_error(
+                                child,
+                                LengthResolutionStatus::InvalidNumeric {
+                                    value: available_inline,
+                                },
+                            )
+                        },
+                    )?,
+                    SizingOperation::Normal,
+                );
             }
             LogicalAxis::Block => {
                 let grid_axis_size = logical_parent
                     .block
                     .expect("grid-lanes grid-axis containing extent is definite");
-                let available_block =
-                    (grid_axis_size - logical_margin.block_sum()).max(Tree::Scalar::ZERO);
+                let available_block = crate::layout_math::remaining_available_extent(
+                    grid_axis_size,
+                    logical_margin.block_sum(),
+                )
+                .map_err(|status| crate::error::value_resolution_error(child, status))?;
                 let align_self = resolve_grid_item_normal_alignment(
                     child_style.align_self,
                     container_style.align_items,
@@ -2891,7 +2938,17 @@ where
                         (align_self == AlignItems::Stretch && child_style.aspect_ratio.is_none())
                             .then_some(available_block)
                     });
-                logical_available.block = AvailableOf::Definite(available_block);
+                logical_available.block = AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(available_block).map_err(|_| {
+                        crate::error::value_resolution_error(
+                            child,
+                            LengthResolutionStatus::InvalidNumeric {
+                                value: available_block,
+                            },
+                        )
+                    })?,
+                    SizingOperation::Normal,
+                );
             }
         }
         (
@@ -2910,7 +2967,7 @@ where
             known,
             parent,
             crate::ContainingLayoutContext::new(flow_axes, crate::ParentFormattingContext::Grid),
-            available,
+            SizingRequestOf::new(available, constants.child_orthogonal_fallback),
         ),
     )?;
     Ok(
@@ -2922,9 +2979,9 @@ where
 fn lane_axis_intrinsic_available<S: LayoutScalar>(
     child: ResolvedPreferredSize<S>,
     container: &crate::PreferredSizeOf<S>,
-) -> AvailableOf<S> {
+) -> AxisSizingRequestOf<S> {
     if matches!(child, ResolvedPreferredSize::Auto) && container.is_min_content() {
-        AvailableOf::MIN_CONTENT
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
     } else {
         intrinsic_available_for_dimension(child)
     }
@@ -2934,8 +2991,8 @@ fn lane_child_intrinsic_available<S: LayoutScalar>(
     flow_axes: crate::geometry::FlowAxes,
     grid_axis: GridAxisKind,
     preferred_size: Size<ResolvedPreferredSize<S>>,
-    grid_axis_available: AvailableOf<S>,
-) -> Size<AvailableOf<S>> {
+    grid_axis_available: AxisSizingRequestOf<S>,
+) -> Size<AxisSizingRequestOf<S>> {
     let logical_size = flow_axes.logical_size(preferred_size);
     let logical_available = match grid_axis.logical_axis() {
         LogicalAxis::Inline => LogicalSizeOf::new(
@@ -2952,12 +3009,16 @@ fn lane_child_intrinsic_available<S: LayoutScalar>(
 
 fn intrinsic_available_for_dimension<S: LayoutScalar>(
     dimension: ResolvedPreferredSize<S>,
-) -> AvailableOf<S> {
+) -> AxisSizingRequestOf<S> {
     match dimension {
-        ResolvedPreferredSize::MinContent => AvailableOf::MIN_CONTENT,
+        ResolvedPreferredSize::MinContent => {
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
+        }
         ResolvedPreferredSize::MaxContent
         | ResolvedPreferredSize::Auto
-        | ResolvedPreferredSize::Definite(_) => AvailableOf::MAX_CONTENT,
+        | ResolvedPreferredSize::Definite(_) => {
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
+        }
     }
 }
 

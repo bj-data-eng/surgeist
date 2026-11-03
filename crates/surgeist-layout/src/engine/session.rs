@@ -1608,9 +1608,24 @@ mod tests {
                     crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
                     crate::ParentFormattingContext::BlockFlow,
                 ),
-                Size::new(
-                    crate::AvailableOf::definite(S::from_f64(100.0)),
-                    crate::AvailableOf::MAX_CONTENT,
+                crate::SizingRequestOf::new(
+                    Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Unknown,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
                 ),
             )
             .unwrap();
@@ -1677,7 +1692,17 @@ mod tests {
                             ),
                             crate::ParentFormattingContext::BlockFlow,
                         ),
-                        Size::splat(crate::AvailableOf::MAX_CONTENT),
+                        crate::SizingRequestOf::new(
+                            Size::splat(crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::Normal,
+                            )),
+                            crate::OrthogonalFallbackOf::new(
+                                crate::Size::NONE,
+                                crate::NearestScrollportOf::Unknown,
+                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                            ),
+                        ),
                     ),
                 )
                 .unwrap();
@@ -2025,11 +2050,32 @@ mod grid_overflow_observation_tests {
         }
 
         fn request(width: f64) -> LayoutRootRequestOf<S> {
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::Definite(S::from_f64(width)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap()
+            {
+                let width = crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap();
+                // This fixture's real root is Htb/LTR. Its declared percentage
+                // parent width is independent of unavailable ICB dimensions.
+                crate::LayoutRootRequestOf::standalone(
+                    crate::SizingRequestOf::new(
+                        Size::new(
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Definite(width),
+                                crate::SizingOperation::Normal,
+                            ),
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::Normal,
+                            ),
+                        ),
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+                    Size::new(Some(width), None),
+                )
+            }
         }
     }
 
@@ -2072,9 +2118,11 @@ mod grid_overflow_observation_tests {
             if self.fail_at_width.get().is_some()
                 && self.fail_at_width.get()
                     == input
-                        .available_content_size()
+                        .content_sizing_request()
+                        .axes()
                         .width
-                        .definite_value()
+                        .space()
+                        .definite_size()
                         .map(NonNegativeFiniteOf::get)
             {
                 Some(Err(GridGutterInlineMeasureError::Injected))
@@ -2217,7 +2265,23 @@ mod grid_overflow_observation_tests {
                             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                             ParentFormattingContext::NoParent,
                         ),
-                        Size::splat(AvailableOf::MAX_CONTENT),
+                        crate::SizingRequestOf::new(
+                            Size::new(
+                                crate::AxisSizingRequestOf::new(
+                                    crate::AvailableSpaceOf::Indefinite,
+                                    crate::SizingOperation::MaxContent,
+                                ),
+                                crate::AxisSizingRequestOf::new(
+                                    crate::AvailableSpaceOf::Indefinite,
+                                    crate::SizingOperation::Normal,
+                                ),
+                            ),
+                            crate::OrthogonalFallbackOf::new(
+                                crate::Size::NONE,
+                                crate::NearestScrollportOf::Absent,
+                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                     ),
                 )
                 .unwrap();
@@ -2283,7 +2347,23 @@ mod grid_overflow_observation_tests {
                             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                             ParentFormattingContext::NoParent,
                         ),
-                        Size::splat(AvailableOf::MAX_CONTENT),
+                        crate::SizingRequestOf::new(
+                            Size::new(
+                                crate::AxisSizingRequestOf::new(
+                                    crate::AvailableSpaceOf::Indefinite,
+                                    crate::SizingOperation::MaxContent,
+                                ),
+                                crate::AxisSizingRequestOf::new(
+                                    crate::AvailableSpaceOf::Indefinite,
+                                    crate::SizingOperation::Normal,
+                                ),
+                            ),
+                            crate::OrthogonalFallbackOf::new(
+                                crate::Size::NONE,
+                                crate::NearestScrollportOf::Absent,
+                                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                     ),
                 )
                 .unwrap_err();
@@ -2296,9 +2376,11 @@ mod grid_overflow_observation_tests {
                 assert_eq!(tree.measurement_reads.borrow().len(), 1);
                 assert_eq!(
                     tree.measurement_reads.borrow()[0]
-                        .available_content_size()
+                        .content_sizing_request()
+                        .axes()
                         .width
-                        .definite_value()
+                        .space()
+                        .definite_size()
                         .map(NonNegativeFiniteOf::get),
                     Some(S::from_f64(45.0))
                 );
@@ -2382,8 +2464,24 @@ mod grid_overflow_observation_tests {
         )
         .unwrap();
         let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
-        let available = Size::splat(AvailableOf::MAX_CONTENT);
-        super::super::root::compute_root(&mut session, 0, available).unwrap();
+        // Both real Flex dimensions are authored100x20. This is a normal
+        // publication/replay request, not a formal intrinsic query.
+        let request = crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            Size::NONE,
+        );
+        super::super::root::compute_root(&mut session, 0, request).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
         let surgeist_text::PlacementEntry::Formatted(initial) =
             session.text.as_ref().unwrap().pending[0].entries[0].clone()
@@ -2401,7 +2499,7 @@ mod grid_overflow_observation_tests {
             25.0
         );
         session.begin_text_pass(frames);
-        super::super::root::compute_root(&mut session, 0, available).unwrap();
+        super::super::root::compute_root(&mut session, 0, request).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
         let surgeist_text::PlacementEntry::Formatted(canonical) =
             &session.text.as_ref().unwrap().pending[0].entries[0]

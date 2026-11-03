@@ -506,7 +506,12 @@ mod tests {
                 prepared: &paragraph.prepared,
                 segment: paragraph.prepared.source_segments().next().unwrap(),
                 scope_alignments: &scope_alignments,
-                available: Available::Definite(60.0),
+                available: crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(60.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 block_direction: ParagraphBaseDirection::LeftToRight,
                 alignment: TextAlign::Start,

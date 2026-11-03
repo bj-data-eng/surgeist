@@ -179,7 +179,8 @@ fn capture(
     source: &text::Source,
     origins: Vec<text::ParagraphOrigin>,
     style: text::Style,
-    available: layout::Available,
+    authored_width: Option<f32>,
+    request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
     Vec<text::PreparedOrigin>,
@@ -238,11 +239,11 @@ fn capture(
     let mut inputs = vec![layout::LayoutInput::box_input(layout::NodeInput {
         display: layout::Display::Block,
         size: layout::Size::new(
-            match available {
-                layout::Available::Definite(width) => {
+            match authored_width {
+                Some(width) => {
                     layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(width).unwrap())
                 }
-                _ => layout::PreferredSizeOf::AUTO,
+                None => layout::PreferredSizeOf::AUTO,
             },
             layout::PreferredSizeOf::AUTO,
         ),
@@ -284,16 +285,7 @@ fn capture(
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(
-        &capture,
-        0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            available,
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
-    )
-    .unwrap();
+    let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     (batch, origins)
 }
 
@@ -363,7 +355,18 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                     text::Range::new(0, 1),
                 )],
                 style(math, text::WhiteSpace::Preserve, text::WordBreak::Normal),
-                layout::Available::Definite(40.0),
+                Some(40.0),
+                NativeViewport::new(
+                    layout::Size::new(Some(40.0), None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(
+                    layout::SizingOperation::Normal,
+                    layout::SizingOperation::Normal,
+                )),
             );
             let placed = batch.placed_text()[0].layout();
             let advance = if math { advance } else { 10.0 };
@@ -523,7 +526,15 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
             &source,
             make_origins(),
             style(true, text::WhiteSpace::Preserve, text::WordBreak::BreakAll),
-            layout::Available::Definite(25.0),
+            Some(25.0),
+            NativeViewport::new(
+                layout::Size::new(Some(25.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(
@@ -590,11 +601,11 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
         }
         for (purpose, expected) in [
             (
-                layout::Available::MinContent,
+                layout::SizingOperation::MinContent,
                 if separate_nodes { 15.0 } else { 10.0 },
             ),
             (
-                layout::Available::MaxContent,
+                layout::SizingOperation::MaxContent,
                 if separate_nodes { 30.0 } else { 20.0 },
             ),
         ] {
@@ -603,7 +614,15 @@ fn complete_node_cardinality_survives_origin_splitting_and_changes_real_fit() {
                 &source,
                 make_origins(),
                 style(true, text::WhiteSpace::Preserve, text::WordBreak::BreakAll),
-                purpose,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -625,7 +644,15 @@ fn discard_cannot_turn_complete_space_c_space_into_eligible_single_character_nod
             &source,
             vec![origin(&source, whole, value, whole)],
             style(true, text::WhiteSpace::Discard, text::WordBreak::Normal),
-            layout::Available::Definite(40.0),
+            Some(40.0),
+            NativeViewport::new(
+                layout::Size::new(Some(40.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(
@@ -679,7 +706,15 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
             &source,
             make_origins(),
             style(true, text::WhiteSpace::Preserve, word_break),
-            layout::Available::Definite(25.0),
+            Some(25.0),
+            NativeViewport::new(
+                layout::Size::new(Some(25.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(glyphs(placed, &bytes), [(36, 20.0), (82, 15.0)]);
@@ -693,21 +728,29 @@ fn normal_math_letter_word_stays_unbroken_while_break_all_uses_actual_mapped_adv
         );
         for (purpose, expected) in [
             (
-                layout::Available::MinContent,
+                layout::SizingOperation::MinContent,
                 if word_break == text::WordBreak::Normal {
                     35.0
                 } else {
                     20.0
                 },
             ),
-            (layout::Available::MaxContent, 35.0),
+            (layout::SizingOperation::MaxContent, 35.0),
         ] {
             let (intrinsic, _) = capture(
                 &mut system,
                 &source,
                 make_origins(),
                 style(true, text::WhiteSpace::Preserve, word_break),
-                purpose,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -730,7 +773,15 @@ fn math_accessibility_keeps_original_c_with_fifteen_pixel_source_geometry() {
             text::Range::new(0, 1),
         )],
         style(true, text::WhiteSpace::Preserve, text::WordBreak::Normal),
-        layout::Available::Definite(40.0),
+        Some(40.0),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     );
     let placed = batch.placed_text()[0].layout();
     drop(system);

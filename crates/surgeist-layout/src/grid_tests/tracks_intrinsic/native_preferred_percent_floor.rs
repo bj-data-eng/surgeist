@@ -23,8 +23,13 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
     let tree = percent_subject::<S>(preferred);
     qualify_actual_native_queries(&tree);
     let available = Size::new(
-        AvailableOf::definite(S::from_f64(100.0)),
-        AvailableOf::MAX_CONTENT,
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
     );
     let input = ComputeInputOf::for_child(
         RunMode::ComputeSize,
@@ -36,10 +41,17 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        available,
+        SizingRequestOf::new(
+            available,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     assert_eq!(input.known(), Size::NONE);
-    assert_eq!(input.available(), available);
+    assert_eq!(input.sizing_request().axes(), available);
     let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
     let intrinsic = session
         .compute_child(0, input)
@@ -54,8 +66,23 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
     // Grid 2 sections 7.2 and 12: treat the cyclic100% track as Auto to size the
     // container, then resolve it against that resulting40/80 container size.
     // The external100 host is not the percentage track's containing grid.
-    let batch = compute_layout(&tree, 0, LayoutRootRequestOf::viewport(available).unwrap())
-        .expect("normal layout of the intrinsically preferred InlineGrid is admitted");
+    let batch = compute_layout(&tree, 0, {
+        let axes = available;
+        let definite = axes.map(|axis| axis.space().definite_size());
+        LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            definite,
+        )
+    })
+    .expect("normal layout of the intrinsically preferred InlineGrid is admitted");
     for (phase, entries) in [
         ("unrounded", batch.unrounded_entries()),
         ("final", batch.final_entries()),

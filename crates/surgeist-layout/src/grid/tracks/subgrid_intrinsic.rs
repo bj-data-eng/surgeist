@@ -206,7 +206,8 @@ where
         physical_area_size.map(Some),
         grid.sizing_flow_axes,
     )?;
-    let input = intrinsic_subgrid_child_input(input, sizing, [column_constraint, row_constraint]);
+    let input = intrinsic_subgrid_child_input(input, sizing, [column_constraint, row_constraint])
+        .map_err(|error| sizing_resolution_error(child, error))?;
     if !matches!(
         child_style.display.inner_display(),
         Display::Grid | Display::GridLanes
@@ -376,7 +377,7 @@ where
     let flow = grid.sizing_flow_axes;
     let mut known = flow.logical_size(args.input.known());
     let mut parent = flow.logical_size(args.input.parent());
-    let mut available = flow.logical_size(args.input.available());
+    let mut available = flow.logical_size(args.input.sizing_request().axes());
     let resolved_known = flow.logical_size(sizing.known);
     let resolved_available = flow.logical_size(sizing.available);
     let parent_area = flow.logical_size(area);
@@ -384,12 +385,36 @@ where
         GridAxisKind::Column => {
             known.inline = resolved_known.inline;
             parent.inline = Some(parent_area.inline);
-            available.inline = AvailableOf::Definite(resolved_available.inline);
+            available.inline = AxisSizingRequestOf::new(
+                crate::layout_math::checked_available_space(resolved_available.inline).map_err(
+                    |_| {
+                        crate::error::value_resolution_error(
+                            child,
+                            LengthResolutionStatus::InvalidNumeric {
+                                value: resolved_available.inline,
+                            },
+                        )
+                    },
+                )?,
+                SizingOperation::Normal,
+            );
         }
         GridAxisKind::Row => {
             known.block = resolved_known.block;
             parent.block = Some(parent_area.block);
-            available.block = AvailableOf::Definite(resolved_available.block);
+            available.block = AxisSizingRequestOf::new(
+                crate::layout_math::checked_available_space(resolved_available.block).map_err(
+                    |_| {
+                        crate::error::value_resolution_error(
+                            child,
+                            LengthResolutionStatus::InvalidNumeric {
+                                value: resolved_available.block,
+                            },
+                        )
+                    },
+                )?,
+                SizingOperation::Normal,
+            );
         }
     }
     Ok(ComputeInputOf::for_child(
@@ -399,7 +424,9 @@ where
         flow.physical_size(known),
         flow.physical_size(parent),
         args.input.containing_layout_context(),
-        flow.physical_size(available),
+        args.input
+            .sizing_request()
+            .with_axes(flow.physical_size(available)),
     )
     .with_named_baseline_demand(args.input.named_baseline_demand()))
 }
@@ -543,10 +570,10 @@ fn intrinsic_subgrid_child_input<S: LayoutScalar>(
     input: ComputeInputOf<S>,
     sizing: GridItemSizing<S>,
     constraints: [Option<IntrinsicSubgridAxisConstraint<S>>; 2],
-) -> ComputeInputOf<S> {
+) -> Result<ComputeInputOf<S>, SizingResolutionError<S>> {
     let mut known = input.known();
     let mut parent = input.parent();
-    let mut available = input.available();
+    let mut available = input.sizing_request().axes();
     for constraint in constraints.into_iter().flatten() {
         let Some(raw_area_extent) = constraint.authority.extent() else {
             continue;
@@ -557,25 +584,43 @@ fn intrinsic_subgrid_child_input<S: LayoutScalar>(
             crate::geometry::PhysicalAxis::Horizontal => {
                 known.width = Some(border_box_extent);
                 parent.width = Some(raw_area_extent);
-                available.width = AvailableOf::Definite(border_box_extent);
+                available.width = AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(border_box_extent).map_err(
+                        |_| {
+                            SizingResolutionError::Status(LengthResolutionStatus::InvalidNumeric {
+                                value: border_box_extent,
+                            })
+                        },
+                    )?,
+                    SizingOperation::Normal,
+                );
             }
             crate::geometry::PhysicalAxis::Vertical => {
                 known.height = Some(border_box_extent);
                 parent.height = Some(raw_area_extent);
-                available.height = AvailableOf::Definite(border_box_extent);
+                available.height = AxisSizingRequestOf::new(
+                    crate::layout_math::checked_available_space(border_box_extent).map_err(
+                        |_| {
+                            SizingResolutionError::Status(LengthResolutionStatus::InvalidNumeric {
+                                value: border_box_extent,
+                            })
+                        },
+                    )?,
+                    SizingOperation::Normal,
+                );
             }
         }
     }
-    ComputeInputOf::for_child(
+    Ok(ComputeInputOf::for_child(
         input.run_mode(),
         input.sizing_mode(),
         input.requested_axis(),
         known,
         parent,
         input.containing_layout_context(),
-        available,
+        input.sizing_request().with_axes(available),
     )
-    .with_named_baseline_demand(input.named_baseline_demand())
+    .with_named_baseline_demand(input.named_baseline_demand()))
 }
 
 fn intrinsic_subgrid_border_box_extent<S: LayoutScalar>(
@@ -621,7 +666,7 @@ pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutS
     pub(super) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(super) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(super) container_gap: LogicalSizeOf<S>,
-    pub(super) available: Size<AvailableOf<S>>,
+    pub(super) available: Size<AxisSizingRequestOf<S>>,
     pub(super) children: &'a [Node],
     pub(super) placed_areas: &'a [Option<GridArea<S>>],
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
@@ -939,7 +984,10 @@ where
                             input.constants.flow_axes,
                             crate::ParentFormattingContext::Grid,
                         ),
-                        input.available,
+                        SizingRequestOf::new(
+                            input.available,
+                            input.constants.child_orthogonal_fallback,
+                        ),
                     ),
                 },
             )?;
@@ -1280,7 +1328,23 @@ mod tests {
                         horizontal,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MIN_CONTENT),
+                    SizingRequestOf::new(
+                        Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MaxContent,
+                            ),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::MinContent,
+                            ),
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                 ),
                 GridItemSizing {
                     known: Size::new(Some(S::from_f64(31.0)), Some(S::from_f64(37.0))),
@@ -1291,10 +1355,14 @@ mod tests {
                     standalone_intrinsic_minimum: Size::NONE,
                 },
                 [Some(outer_constraint), None],
-            );
+            )
+            .unwrap();
             assert_eq!(outer.known().width, None);
             assert_eq!(outer.parent().width, None);
-            assert_eq!(outer.available().width, AvailableOf::MAX_CONTENT);
+            assert_eq!(
+                outer.sizing_request().axes().width,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
+            );
 
             let inner_constraint = IntrinsicSubgridAxisConstraint {
                 physical_axis: inherited_subgrid_physical_axis(
@@ -1316,10 +1384,14 @@ mod tests {
                     standalone_intrinsic_minimum: Size::NONE,
                 },
                 [Some(inner_constraint), None],
-            );
+            )
+            .unwrap();
             assert_eq!(inner.known().width, None);
             assert_eq!(inner.parent().width, None);
-            assert_eq!(inner.available().width, AvailableOf::MAX_CONTENT);
+            assert_eq!(
+                inner.sizing_request().axes().width,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent)
+            );
         }
 
         assert_lanes::<f32>();
@@ -1348,6 +1420,11 @@ mod tests {
             .children(2, [])
             .style(2, child_style.clone());
         let constants = Constants {
+            child_orthogonal_fallback: OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
             flow_axes: crate::geometry::FlowAxes::new(
                 parent_style.writing_mode,
                 parent_style.direction,
@@ -1356,6 +1433,8 @@ mod tests {
             node_outer_size: Size::new(Some(100.0), Some(200.0)),
             node_inner_size: Size::new(Some(100.0), Some(200.0)),
             node_min_size: Size::NONE,
+            fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+            fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
             node_max_size: Size::NONE,
             available_inner_size: Size::new(Some(100.0), Some(200.0)),
             content_box_inset: Edges::ZERO,
@@ -1430,7 +1509,27 @@ mod tests {
                         constants.flow_axes,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    Size::new(AvailableOf::definite(100.0), AvailableOf::definite(200.0)),
+                    SizingRequestOf::new(
+                        Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(200.0).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                 ),
             },
         )
@@ -1469,6 +1568,11 @@ mod tests {
             .style(3, NodeInput::default())
             .style(4, NodeInput::default());
         let constants = Constants {
+            child_orthogonal_fallback: OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
             flow_axes: crate::geometry::FlowAxes::new(
                 parent_style.writing_mode,
                 parent_style.direction,
@@ -1477,6 +1581,8 @@ mod tests {
             node_outer_size: Size::new(Some(100.0), Some(200.0)),
             node_inner_size: Size::new(Some(100.0), Some(200.0)),
             node_min_size: Size::NONE,
+            fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+            fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
             node_max_size: Size::NONE,
             available_inner_size: Size::new(Some(100.0), Some(200.0)),
             content_box_inset: Edges::ZERO,
@@ -1551,7 +1657,27 @@ mod tests {
                         constants.flow_axes,
                         crate::ParentFormattingContext::Grid,
                     ),
-                    Size::new(AvailableOf::definite(100.0), AvailableOf::definite(200.0)),
+                    SizingRequestOf::new(
+                        Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(200.0).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                 ),
             },
         )

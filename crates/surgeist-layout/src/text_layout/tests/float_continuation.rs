@@ -126,7 +126,15 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
     .unwrap_or_else(|error| {
         panic!("one prepared paragraph must remain admissible across an ignored float: {error:?}")
     });
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 10, 88]);
@@ -216,7 +224,15 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 2);
     let first_layout = batch.placed_text()[0].layout();
     let second_layout = batch.placed_text()[1].layout();

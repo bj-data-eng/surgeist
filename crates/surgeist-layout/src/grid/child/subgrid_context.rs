@@ -663,6 +663,7 @@ pub(super) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
     pub(super) ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
     pub(super) executed_frame: ExecutedBaselineFrame<'a, S>,
+    pub(super) orthogonal_fallback: OrthogonalFallbackOf<S>,
     pub(super) original_executed: &'a ExecutedBaselineInventory<Node, S>,
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
     pub(super) sizing_stage: GridSizingStage,
@@ -710,7 +711,10 @@ where
             input.container_style,
             subgrid_item,
             physical_area_size,
-            input.containing_auto_scrollbar_pass,
+            GridItemRequestContext {
+                containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
+                orthogonal_fallback: input.orthogonal_fallback,
+            },
         )?;
         let child_container_style = item
             .nested_container

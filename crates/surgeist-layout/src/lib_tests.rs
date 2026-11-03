@@ -1,12 +1,13 @@
+use crate::{AvailableSpace, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation};
 use crate::{
-    Available, Baselines, CollapsibleMarginOf, ComputeOutput, Direction, Display, Edges,
-    FlexItemCollapse, FloatExclusionInterval, FloatExclusionIntervalError,
-    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
-    FloatExclusionQueryOf, FlowAxes, LayoutOperation, LayoutScalar, Length, LengthAuto,
-    LengthPercentageOf, LengthResolutionStatus, MaxTrackSizing, MinTrackSizing, PhysicalAxis,
-    PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf, PhysicalSide, Point, PreferredSize,
-    Scalar, Size, SizingCalculation, TrackComponent, TrackComponentList, TrackFlexFactor,
-    TrackRepeatCount, TrackSizing, WritingMode,
+    Baselines, CollapsibleMarginOf, ComputeOutput, Direction, Display, Edges, FlexItemCollapse,
+    FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
+    FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, FlowAxes,
+    LayoutOperation, LayoutScalar, Length, LengthAuto, LengthPercentageOf, LengthResolutionStatus,
+    MaxTrackSizing, MinTrackSizing, PhysicalAxis, PhysicalBlockMarginCollapse,
+    PhysicalBlockMarginCollapseOf, PhysicalSide, Point, PreferredSize, Scalar, Size,
+    SizingCalculation, TrackComponent, TrackComponentList, TrackFlexFactor, TrackRepeatCount,
+    TrackSizing, WritingMode,
 };
 
 #[test]
@@ -59,8 +60,8 @@ fn fri07_c02_model_all_node_input_construction_paths_are_normal() {
 fn fri07_c02_model_collapsed_is_inert_outside_in_flow_flex_participation() {
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
     use crate::{
-        AvailableOf, CompletedLayoutBatchOf, GridPlacement, LayoutRootRequestOf, NodeInputOf,
-        NodeOutputOf, Position, PreferredSizeOf, SubgridTrack, TrackComponentOf, compute_layout,
+        CompletedLayoutBatchOf, GridPlacement, NodeInputOf, NodeOutputOf, Position,
+        PreferredSizeOf, SubgridTrack, TrackComponentOf, compute_layout,
     };
 
     fn sized<S: LayoutScalar>(display: Display, width: f64, height: f64) -> NodeInputOf<S> {
@@ -164,10 +165,40 @@ fn fri07_c02_model_collapsed_is_inert_outside_in_flow_flex_participation() {
         Build: Fn(FlexItemCollapse) -> PublicLayoutTreeOf<S>,
     {
         let available = Size::new(
-            AvailableOf::definite(S::from_f64(180.0)),
-            AvailableOf::definite(S::from_f64(120.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(120.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         );
-        let request = LayoutRootRequestOf::viewport(available).expect("finite viewport");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                Some(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(120.0))
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(available);
         let normal = compute_layout(&build(FlexItemCollapse::Normal), 0, request)
             .expect("normal inert-context layout succeeds");
         let collapsed = compute_layout(&build(FlexItemCollapse::Collapsed), 0, request)
@@ -944,10 +975,19 @@ fn edge_axis_sums_match_layout_axis_expectations() {
 }
 
 #[test]
-fn available_space_only_exposes_definite_values() {
-    assert_eq!(Available::definite(12.0).into_option(), Some(12.0));
-    assert_eq!(Available::MIN_CONTENT.into_option(), None);
-    assert_eq!(Available::MAX_CONTENT.into_option(), None);
+fn physical_space_does_not_encode_intrinsic_operation() {
+    let extent = NonNegativeFiniteOf::new(12_f32).unwrap();
+    let space = AvailableSpace::Definite(extent);
+    for operation in [
+        SizingOperation::Normal,
+        SizingOperation::MinContent,
+        SizingOperation::MaxContent,
+    ] {
+        let axis = AxisSizingRequest::new(space, operation);
+        assert_eq!(axis.space().definite_size(), Some(extent));
+        assert_eq!(axis.operation(), operation);
+    }
+    assert_eq!(AvailableSpace::Indefinite.definite_size(), None);
 }
 
 #[test]

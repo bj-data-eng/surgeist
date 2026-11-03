@@ -117,7 +117,12 @@ impl<S: LayoutScalar> Fixture<S> {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     self.direction,
-                    AvailableOf::definite(self.width),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(self.width).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
                 ),
                 metrics(),
                 InlineControlAlignment::Baseline,
@@ -157,7 +162,12 @@ impl<S: LayoutScalar> Fixture<S> {
             ),
             observe_tail: true,
             wrapping: Some(projection),
-            available_inline_extent: AvailableOf::definite(self.width),
+            available_inline_extent: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(self.width).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, self.direction),
             text_align: TextAlign::Start,
             text_align_last: crate::TextAlignLast::Auto,
@@ -167,15 +177,56 @@ impl<S: LayoutScalar> Fixture<S> {
         }
     }
     fn compute(&self) -> CompletedLayoutBatchOf<u32, S> {
-        compute_layout_with_flow(&self.flow(), 0, request(self.width)).unwrap()
+        compute_layout_with_flow(
+            &self.flow(),
+            0,
+            request(
+                self.width,
+                crate::FlowAxes::new(crate::WritingMode::HorizontalTb, self.direction),
+            ),
+        )
+        .unwrap()
     }
 }
-fn request<S: LayoutScalar>(width: S) -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(width),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap()
+fn request<S: LayoutScalar>(
+    width: S,
+    containing_flow_axes: crate::FlowAxes,
+) -> LayoutRootRequestOf<S> {
+    {
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(width).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    }
 }
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
     batch
@@ -853,7 +904,15 @@ fn warm_force<S: LayoutScalar>() {
             let flow =
                 LayoutFlowInput::try_new(host, 100, vec![], WrappingInput::default(), Vec::new())
                     .unwrap();
-            compute_layout_with_flow(&flow, 100, request(n(100.0))).unwrap()
+            compute_layout_with_flow(
+                &flow,
+                100,
+                request(n(100.0), {
+                    let root_input = crate::LayoutTree::node_input((flow).tree(), 100);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                }),
+            )
+            .unwrap()
         };
         let mut warm = Cached::new(tree.clone());
         let old = run(&warm);
@@ -1206,7 +1265,15 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     },
                 );
             }
-            let batch = crate::compute_layout(&tree, 0, request(n(100.0))).unwrap();
+            let batch = crate::compute_layout(
+                &tree,
+                0,
+                request(n(100.0), {
+                    let root_input = crate::LayoutTree::node_input(&tree, 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                }),
+            )
+            .unwrap();
             // Equal geometry after phantom suppression cannot by itself prove
             // locality. Observe each actual run through its own host-derived
             // projection: an after force must end only that owner's atomic.
@@ -1247,7 +1314,12 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                         ),
                         observe_tail: false,
                         wrapping: Some(projection),
-                        available_inline_extent: AvailableOf::definite(n(100.0)),
+                        available_inline_extent: crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
                         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
                         text_align: TextAlign::Start,
                         text_align_last: crate::TextAlignLast::Auto,

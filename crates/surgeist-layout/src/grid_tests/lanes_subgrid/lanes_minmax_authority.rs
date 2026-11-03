@@ -53,10 +53,16 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
             let min_available = physical_pair(
                 mode,
                 axis,
-                AvailableOf::<S>::MIN_CONTENT,
-                AvailableOf::MAX_CONTENT,
+                AxisSizingRequestOf::<S>::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             );
-            let max_available = Size::splat(AvailableOf::<S>::MAX_CONTENT);
+            let max_available = Size::splat(AxisSizingRequestOf::<S>::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            ));
             let minimum_known = physical_pair(mode, axis, Some(S::ZERO), None);
             let minimum_response = response::<S>(mode, axis, 0.0, 80.0);
             let min_response = response::<S>(mode, axis, 20.0, 80.0);
@@ -121,7 +127,10 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         .run_mode(RunMode::ComputeSize)
                         .known(minimum_known)
                         .parent(Size::NONE)
-                        .available(min_available),
+                        .operations((min_available).map(|axis| Some(axis.operation())))
+                        .spaces((min_available).map(|axis| {
+                            (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                        })),
                 )
                 .measure_when(
                     1,
@@ -129,7 +138,10 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         .run_mode(RunMode::ComputeSize)
                         .known(Size::NONE)
                         .parent(Size::NONE)
-                        .available(min_available),
+                        .operations((min_available).map(|axis| Some(axis.operation())))
+                        .spaces((min_available).map(|axis| {
+                            (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                        })),
                 )
                 .measure_when(
                     1,
@@ -137,7 +149,10 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         .run_mode(RunMode::ComputeSize)
                         .known(Size::NONE)
                         .parent(Size::NONE)
-                        .available(max_available),
+                        .operations((max_available).map(|axis| Some(axis.operation())))
+                        .spaces((max_available).map(|axis| {
+                            (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                        })),
                 );
             assert!(tree.node_input(1).size.width.is_auto());
             assert!(tree.node_input(1).size.height.is_auto());
@@ -160,11 +175,18 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                 )
                 .with_order_modified_indexes(vec![SourceIndex::new(0)]);
                 let constants = Constants {
+                    child_orthogonal_fallback: OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
                     flow_axes: FlowAxes::new(mode, direction),
                     explicit_definite_content_size: Size::NONE,
                     node_outer_size: Size::NONE,
                     node_inner_size: Size::NONE,
                     node_min_size: Size::NONE,
+                    fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+                    fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
                     node_max_size: Size::NONE,
                     available_inner_size: Size::NONE,
                     content_box_inset: Edges::ZERO,
@@ -256,7 +278,10 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                     SpanningTrackContext {
                         tracks,
                         basis: None,
-                        available: AvailableOf::MIN_CONTENT,
+                        available: GridTrackSizingConstraint {
+                            operation: SizingOperation::MinContent,
+                            available_extent: None,
+                        },
                         gap: S::ZERO,
                         gutters: None,
                         base_floors: &[],
@@ -271,19 +296,21 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
             assert!(
                 requests
                     .iter()
-                    .any(|input| input.available() == min_available && input.known() == Size::NONE),
+                    .any(|input| input.sizing_request().axes() == min_available
+                        && input.known() == Size::NONE),
                 "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MIN_CONTENT query must reach the provider"
             );
             assert!(
                 requests
                     .iter()
-                    .any(|input| input.available() == max_available && input.known() == Size::NONE),
+                    .any(|input| input.sizing_request().axes() == max_available
+                        && input.known() == Size::NONE),
                 "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MAX_CONTENT query must reach the provider"
             );
             assert!(
                 requests
                     .iter()
-                    .any(|input| input.available() == min_available
+                    .any(|input| input.sizing_request().axes() == min_available
                         && input.known() == minimum_known),
                 "the real Minimum query retains its resolved zero border"
             );
@@ -293,10 +320,13 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                 assert_eq!(input.requested_axis(), RequestedAxis::Both);
                 assert!(input.known() == Size::NONE || input.known() == minimum_known);
                 if input.known() == minimum_known {
-                    assert_eq!(input.available(), min_available);
+                    assert_eq!(input.sizing_request().axes(), min_available);
                 }
                 assert_eq!(input.parent(), Size::NONE);
-                assert!(input.available() == min_available || input.available() == max_available);
+                assert!(
+                    input.sizing_request().axes() == min_available
+                        || input.sizing_request().axes() == max_available
+                );
             }
             // A sole min-content track uses queried border20. A sole
             // max-content track uses queried border30. Independent visible

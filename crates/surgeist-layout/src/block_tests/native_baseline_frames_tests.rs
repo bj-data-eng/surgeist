@@ -204,9 +204,21 @@ fn measured<S: LayoutScalar>(
         Size::new(None, known_cross.map(n))
     };
     let available = if vertical(mode) {
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::definite(n(100.0)))
+        Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        )
     } else {
-        Size::new(AvailableOf::definite(n(100.0)), AvailableOf::MAX_CONTENT)
+        Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        )
     };
     let mut request = ComputeInputOf::for_child(
         RunMode::ComputeSize,
@@ -218,7 +230,14 @@ fn measured<S: LayoutScalar>(
             FlowAxes::new(mode, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        available,
+        SizingRequestOf::new(
+            available,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     if demand {
         request = request.with_named_baseline_demand(crate::output::NamedBaselineDemand::Fact {
@@ -395,7 +414,20 @@ fn scene_request<S: LayoutScalar>(known: Size<Option<S>>, inline: f64) -> Comput
             FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::definite(n(inline))),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(inline)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 
@@ -446,7 +478,7 @@ fn mixed_numeric_and_native<S: LayoutScalar>() {
             ordinary.size.width = px(4.0);
             // This ordinary child really lays out its normalized line break.
             // Its declared Central2/extent4 metrics qualify its numeric line;
-            // no Available baseline output is supplied by this fixture.
+            // no AxisSizingRequest baseline output is supplied by this fixture.
             let metrics = InlineMetricsOf::try_new(
                 InlineBaselineContext::Named(BaselineName::Central),
                 n(2.0),
@@ -719,11 +751,10 @@ impl<S: LayoutScalar> MemoTree<S> {
             !observed.is_empty(),
             "this plain Flow profile must reach its admitted host lookup"
         );
-        assert!(
-            observed
-                .iter()
-                .all(|(actual, found)| *actual == request && *found == hit)
-        );
+        for (actual, found) in observed.iter() {
+            assert_eq!(*actual, request, "host lookup must retain the full request");
+            assert_eq!(*found, hit, "unexpected cache result for {request:?}");
+        }
         assert!(owner.unrounded(0).is_err());
         assert!(owner.unrounded(1).is_err());
         output
@@ -745,16 +776,14 @@ fn cache_frames<S: LayoutScalar>() {
     tree.retain(auto, cold);
     let warm = tree.compute(&paragraph, auto, true);
     assert_facts::<S>(warm, mode, 10.0, 5.0, 5.0);
-    // The existing cache explicitly permits known==cached returned size.
-    // This must reuse a resolved local5, never a provisional-frame value-5.
+    // A newly imposed width is different authority even when it coincides with
+    // the previous Auto result. Recompute, then reuse that actual known request.
     let equal_size = scene_request(Size::new(Some(n(10.0)), None), 100.0);
-    assert_facts::<S>(
-        tree.compute(&paragraph, equal_size, true),
-        mode,
-        10.0,
-        5.0,
-        5.0,
-    );
+    let equal_cold = tree.compute(&paragraph, equal_size, false);
+    assert_facts::<S>(equal_cold, mode, 10.0, 5.0, 5.0);
+    tree.retain(equal_size, equal_cold);
+    let equal_warm = tree.compute(&paragraph, equal_size, true);
+    assert_facts::<S>(equal_warm, mode, 10.0, 5.0, 5.0);
     let wider = scene_request(Size::new(Some(n(20.0)), None), 100.0);
     assert_facts::<S>(
         tree.compute(&paragraph, wider, false),

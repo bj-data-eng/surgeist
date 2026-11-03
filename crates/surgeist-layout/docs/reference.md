@@ -926,7 +926,8 @@ Sources: [sizing](../src/sizing.rs) and [values](../src/value.rs).
 
 - Property domains: `PreferredSizeOf`, `MinSizeOf`, `MaxSizeOf`, and `FlexBasisOf`.
 - Validated calculations: `SizingCalculationOf` and `CalcSizeCalculationOf`.
-- Finite values and resolution: `LengthPercentageOf`, `PercentageBasisOf`, `LengthOf`, `LengthAutoOf`, and `AvailableOf`.
+- Finite values and resolution: `LengthPercentageOf`, `PercentageBasisOf`, `LengthOf`, and `LengthAutoOf`.
+- Sizing requests: `AvailableSpaceOf`, `SizingOperation`, `AxisSizingRequestOf`, `SizingRequestOf`, and `OrthogonalFallbackOf`.
 
 ### Geometry and scroll
 
@@ -1054,13 +1055,31 @@ working state or a measured speed improvement.
 a `LayoutErrorOf<Node, S, M>` returns no partial public result. Recursive
 algorithm modes remain internal.
 
+Each `AxisSizingRequestOf` carries physical `AvailableSpaceOf` independently
+from its `SizingOperation`: Normal, MinContent or MaxContent. Finite space does
+not turn an intrinsic contribution into normal layout. Genuine imposed sizes,
+percentage-parent bases and the containing flow axes remain separate inputs.
+`SizingRequestOf` also retains qualified initial-containing-block, nearest
+scrollport and local containing-block limits for orthogonal fallback. Unknown
+authority is distinct from an authenticated unbounded limit; entering a nearer
+scrollport replaces the previous scrollport candidate.
+
+Standalone roots explicitly declare their containing axes and percentage-parent
+bases. Flex-item roots additionally declare the actual host allocation. The
+bounded BlockFlow and PositionedAutoInsets root contexts carry their own
+admission conditions; source/capture adapters establish those facts before
+constructing a request. Measured leaf providers receive `ContentSizingRequestOf`
+after Layout's property and box-edge lowering, together with the node's flow
+axes and actual containing context.
+
 `compute_leaf` is the direct, fallible leaf-measurement boundary. Its provider
 receives non-negative content-space constraints, and invalid provider output or a
 provider error becomes a typed layout error. Resolved padding and border must be
 non-negative and finite, including their combined axis sums. Overflow in
 layout-owned box arithmetic returns `LayoutInvalidInputOf::InvalidNumeric`;
 invalid provider dimensions retain the distinct `MeasurementOutput` diagnostic.
-Valid fully known sizing requests can complete without calling the provider.
+Valid fully known size-only requests can complete without calling the provider.
+Performed leaf layout still measures the actual content and scroll facts.
 
 Visible inline boundaries and line breaks must match their containing block's
 `FlowAxes`. A mismatch returns `LayoutInvalidInputOf::InlineFlowMismatch` with
@@ -1090,8 +1109,8 @@ content, not absence.
 `ContainingLayoutContext` keeps the containing flow axes and
 `ParentFormattingContext` role together as the complete containing context and
 cache identity. Flex-item roots require explicit parent flow axes and keep the
-host allocation in the root request separate from the viewport percentage
-context in `FlexItemRootContext`.
+host allocation in the root request separate from the percentage
+parent in `FlexItemRootContext`.
 
 ## Inline metrics
 

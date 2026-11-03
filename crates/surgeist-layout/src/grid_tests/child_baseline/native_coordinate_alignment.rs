@@ -248,11 +248,25 @@ fn absolute_origin<S: LayoutScalar>(
 fn assert_native_shared_physical_baselines<S: LayoutScalar>(mode: WritingMode) {
     let tree = native_tree::<S>(mode);
     let axes = FlowAxes::new(mode, Direction::Ltr);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("genuine native nested subgrids complete");
     assert_eq!(
         normal_box(&batch, 0).size,
@@ -486,11 +500,25 @@ fn configured_tree<S: LayoutScalar>(
 }
 
 fn completed<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatchOf<u32, S> {
-    compute_layout(
-        tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout(tree, 0, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("real native intrinsic-root subgrids complete")
 }
 
@@ -983,7 +1011,19 @@ fn qualified_fixed_composites<S: LayoutScalar>(
                 FlowAxes::new(parent_input.writing_mode, parent_input.direction),
                 ParentFormattingContext::Grid,
             ),
-            expected_body.map(AvailableOf::definite),
+            SizingRequestOf::new(
+                expected_body.map(|value| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         );
         let mut native = crate::engine::ComputeSession::new(&tree, Vec::new());
         let actual = crate::engine::contracts::Compute::compute_child(&mut native, actor, request)

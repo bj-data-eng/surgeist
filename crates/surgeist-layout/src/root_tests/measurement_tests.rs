@@ -169,8 +169,17 @@ fn replaced_viewport_and_flex_item_roots_keep_measured_auto_inline_size_in_both_
     fn assert_lane<S: LayoutScalar>() {
         let scalar = scalar::<S>;
         let available = Size::new(
-            AvailableOf::definite(scalar(200.0)),
-            AvailableOf::MAX_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(scalar(200.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
         );
         let parent_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl);
 
@@ -185,7 +194,22 @@ fn replaced_viewport_and_flex_item_roots_keep_measured_auto_inline_size_in_both_
             let viewport = compute_layout(
                 &viewport_tree,
                 0,
-                LayoutRootRequestOf::viewport(available).expect("finite viewport request"),
+                crate::test_support::requests::NativeRootFrameOf::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Size::new(
+                        Some(
+                            crate::NonNegativeFiniteOf::new(scalar(200.0))
+                                .expect("declared fixture extent is finite and nonnegative"),
+                        ),
+                        None,
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Unknown,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                )
+                .request(available),
             )
             .expect("measured viewport root lays out");
             assert_eq!(
@@ -198,12 +222,33 @@ fn replaced_viewport_and_flex_item_roots_keep_measured_auto_inline_size_in_both_
             let flex = compute_layout(
                 &flex_tree,
                 0,
-                LayoutRootRequestOf::flex_item_under_viewport(
-                    available,
-                    FlexItemRootContextOf::under_viewport(available, parent_axes)
-                        .expect("finite flex-item context"),
-                )
-                .expect("finite flex-item request"),
+                LayoutRootRequestOf::flex_item(
+                    crate::SizingRequestOf::new(
+                        available,
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Unknown,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        ),
+                    ),
+                    FlexItemRootContextOf::new(
+                        parent_axes,
+                        Size::new(
+                            Some(
+                                crate::NonNegativeFiniteOf::new(scalar(200.0))
+                                    .expect("declared fixture extent is finite and nonnegative"),
+                            ),
+                            None,
+                        ),
+                        Size::new(
+                            (!replaced).then(|| {
+                                crate::NonNegativeFiniteOf::new(scalar(200.0))
+                                    .expect("declared host allocation is finite and nonnegative")
+                            }),
+                            None,
+                        ),
+                    ),
+                ),
             )
             .expect("measured flex-item root lays out");
             assert_eq!(
@@ -280,8 +325,25 @@ fn assert_tree_leaf_constraint_overflow<S: LayoutScalar>(largest_finite: S) {
         },
         measure_calls: Cell::new(0),
     };
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(largest_finite)))
-        .expect("largest finite root availability is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::splat(Some(
+            crate::NonNegativeFiniteOf::new(largest_finite)
+                .expect("declared fixture extent is finite and nonnegative"),
+        )),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::splat(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(largest_finite)
+                .expect("fixture physical extent is finite and nonnegative"),
+        ),
+        crate::SizingOperation::Normal,
+    )));
 
     let error = compute_layout(&tree, 0, request)
         .expect_err("overflowing resolved padding must return no completed batch");
@@ -314,11 +376,40 @@ fn compute_layout_provider_error_returns_no_completed_batch() {
         .style(0, NodeInput::default())
         .style(1, NodeInput::default())
         .measure(1, Err("measure failed"));
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(100.0),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -338,11 +429,40 @@ fn compute_layout_rejects_claimed_leaf_without_provider() {
         .style(0, NodeInput::default())
         .style(1, NodeInput::default())
         .leaf_without_provider(1);
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(100.0),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -365,11 +485,40 @@ fn compute_layout_rejects_invalid_provider_output_without_batch() {
         .style(0, NodeInput::default())
         .style(1, NodeInput::default())
         .measure(1, Ok(Size::new(f32::NAN, 10.0)));
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(100.0),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let result = compute_layout(&tree, 0, request);
     let error = match result {
@@ -413,11 +562,40 @@ fn compute_layout_rejects_measured_child_invalid_affine_width_without_batch() {
         )
         .measure(1, Ok(Size::new(12.0, 8.0)));
     let before = tree.caches.borrow().clone();
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(f32::MAX),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -452,11 +630,40 @@ fn compute_layout_rejects_measured_child_invalid_affine_padding_without_batch() 
         )
         .measure(1, Ok(Size::new(12.0, 8.0)));
     let before = tree.caches.borrow().clone();
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(f32::MAX),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -487,11 +694,40 @@ fn compute_layout_rejects_root_measured_leaf_invalid_affine_width_without_batch(
         )
         .measure(0, Ok(Size::new(12.0, 8.0)));
     let before = tree.caches.borrow().clone();
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(f32::MAX),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -522,11 +758,40 @@ fn compute_layout_rejects_root_measured_leaf_invalid_affine_padding_without_batc
         )
         .measure(0, Ok(Size::new(12.0, 8.0)));
     let before = tree.caches.borrow().clone();
-    let request = LayoutRootRequest::viewport(Size::new(
-        Available::definite(f32::MAX),
-        Available::definite(80.0),
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(f32::MAX)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(80.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+    ));
 
     let error = compute_layout(&tree, 0, request).unwrap_err();
 
@@ -588,11 +853,40 @@ fn fri04_c03_leaf_root_root_front_door_consumes_leaf_and_inner_display_calculati
     }
 
     let request = || {
-        LayoutRootRequest::viewport(Size::new(
-            Available::definite(100.0),
-            Available::definite(80.0),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                Some(
+                    crate::NonNegativeFiniteOf::new(80.0)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(Size::new(
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(80.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         ))
-        .expect("valid root request")
     };
     let leaf: RootSessionTree = RootSessionTree::default()
         .children(0, [])
@@ -622,8 +916,25 @@ fn fri04_c04_leaf_block_positioned_root_reports_actual_leaf_or_block_algorithm()
         ..NodeInput::default()
     };
     let request = || {
-        LayoutRootRequest::viewport(Size::splat(Available::definite(100.0)))
-            .expect("valid viewport")
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(Size::splat(crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(100.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        )))
     };
     let cases: [(RootSessionTree<&'static str>, SizingAlgorithm); 2] = [
         (
@@ -675,11 +986,40 @@ fn fri04_c04_leaf_block_positioned_root_leaf_and_block_supported_geometry() {
         )
     };
     let request = || {
-        LayoutRootRequest::viewport(Size::new(
-            Available::definite(200.0),
-            Available::definite(160.0),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(200.0)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                Some(
+                    crate::NonNegativeFiniteOf::new(160.0)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(Size::new(
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(200.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(160.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         ))
-        .expect("valid viewport")
     };
     let leaf: RootSessionTree<&'static str> = RootSessionTree::default()
         .children(0, [])
@@ -721,7 +1061,29 @@ fn fri05_c03_tree_leaf_auto_case(
     expected_content_box: Size<f32>,
     expected_scrollbar_size: Size<f32>,
 ) {
-    let (output, inputs) = fri05_c03_tree_leaf_layout(style, measured, Size::new(100.0, 100.0));
+    let (output, inputs) = fri05_c03_tree_leaf_layout(
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(style.writing_mode, style.direction),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("declared native percentage-parent extent"),
+                ),
+                Some(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("declared native percentage-parent extent"),
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
+        style,
+        measured,
+        Size::new(100.0, 100.0),
+    );
     assert_eq!(inputs, expected_inputs);
     let geometry = output
         .scroll_geometry
@@ -854,7 +1216,17 @@ fn assert_fri08_c07_t03_optional_math_leaf_results<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .unwrap_or_else(|_| panic!("finite leaf layout input must be valid"));
     let output = compute_leaf(input, &style, |_measurement| {
@@ -878,7 +1250,26 @@ fn assert_fri08_c07_t03_optional_math_leaf_results<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::definite(largest), AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(largest)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .unwrap_or_else(|_| panic!("finite leaf layout input must be valid"));
     let error = compute_leaf(failing_input, &failing_style, |_measurement| {

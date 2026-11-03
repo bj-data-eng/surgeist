@@ -93,9 +93,32 @@ fn compute<S: LayoutScalar>(width: Option<f64>) -> CompletedLayoutBatchOf<u32, S
         tree.node_input(1).grid_column,
         GridPlacement::try_lines(1, 3).unwrap()
     );
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-        .expect("explicit native max-content viewport");
-    assert_eq!(request.available(), Size::splat(AvailableOf::MAX_CONTENT));
+    let request = {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
+    assert_eq!(
+        request.sizing_request().axes(),
+        Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent
+        ))
+    );
     let batch =
         compute_layout(&tree, 0, request).expect("real native flex-spanning grid completes");
     for entries in [batch.unrounded_entries(), batch.final_entries()] {

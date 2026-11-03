@@ -35,29 +35,44 @@ fn layout<S: LayoutScalar>(
     } else {
         PreferredSizeOf::AUTO
     };
-    let (root_size, child_size, available) = match mode {
+    let (root_size, child_size) = match mode {
         WritingMode::HorizontalTb => (
             Size::new(inline, block),
             Size::new(child_inline, child_block),
-            Size::new(
-                parent_inline.map_or(AvailableOf::MAX_CONTENT, |value| {
-                    AvailableOf::definite(scalar(value))
-                }),
-                AvailableOf::MAX_CONTENT,
-            ),
         ),
         WritingMode::VerticalRl | WritingMode::VerticalLr => (
             Size::new(block, inline),
             Size::new(child_block, child_inline),
-            Size::new(
-                AvailableOf::MAX_CONTENT,
-                parent_inline.map_or(AvailableOf::MAX_CONTENT, |value| {
-                    AvailableOf::definite(scalar(value))
-                }),
-            ),
         ),
         _ => unreachable!("the fixture authors only horizontal and upright vertical flow"),
     };
+    let host_inline = parent_inline.map(|value| NonNegativeFiniteOf::new(scalar(value)).unwrap());
+    let inline_request = AxisSizingRequestOf::new(
+        host_inline.map_or(AvailableSpaceOf::Indefinite, AvailableSpaceOf::Definite),
+        SizingOperation::Normal,
+    );
+    let block_request =
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal);
+    let (requests, percentage_parent) = match mode {
+        WritingMode::HorizontalTb => (
+            Size::new(inline_request, block_request),
+            Size::new(host_inline, None),
+        ),
+        WritingMode::VerticalRl | WritingMode::VerticalLr => (
+            Size::new(block_request, inline_request),
+            Size::new(None, host_inline),
+        ),
+        _ => unreachable!("the fixture authors only horizontal and upright vertical flow"),
+    };
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(mode, Direction::Ltr),
+        percentage_parent,
+        OrthogonalFallbackOf::new(
+            percentage_parent,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
     let root = NodeInputOf {
         display: Display::Block,
         writing_mode: mode,
@@ -95,7 +110,7 @@ fn layout<S: LayoutScalar>(
         .style(1, child)
         .style(2, leaf)
         .measure(2, physical(mode, 20.0, 10.0));
-    compute_layout(&tree, 0, LayoutRootRequestOf::viewport(available).unwrap())
+    compute_layout(&tree, 0, frame.request(requests))
         .unwrap_or_else(|error| panic!(
             "ordinary Block percentage owner: {mode:?}, parent inline{parent_inline:?} block{parent_block:?}, percentage{percentage_child}: {error:?}"
         ))

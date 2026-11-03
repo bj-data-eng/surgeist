@@ -134,7 +134,23 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, case: Case) {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::Grid,
             ),
-            Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
         style,
     )
@@ -154,15 +170,31 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, case: Case) {
 fn minimum_survives<S: LayoutScalar>(case: Case, overflow: Overflow) {
     let tree = source::<S>(case, overflow);
     qualify_leaf(&tree, case);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(s(5.0)),
-            AvailableOf::definite(s(30.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(5.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(30.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual shortage Grid completes without erasing the native contribution");
     let root = fri08_c01_placement_output(&batch, 0);
     let marker = fri08_c01_placement_output(&batch, 2);
@@ -352,7 +384,23 @@ fn qualify_row_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::Grid,
             ),
-            Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
         style,
     )
@@ -367,15 +415,31 @@ fn qualify_row_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) {
 fn row_minimum_survives<S: LayoutScalar>(overflow: Overflow) {
     let tree = row_source::<S>(overflow);
     qualify_row_leaf(&tree);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(s(30.0)),
-            AvailableOf::definite(s(5.0)),
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(30.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(s(5.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual row-shortage Grid completes");
     let root = fri08_c01_placement_output(&batch, 0);
     let marker = fri08_c01_placement_output(&batch, 2);

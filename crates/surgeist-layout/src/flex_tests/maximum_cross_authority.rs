@@ -45,31 +45,58 @@ fn maximum_cross_source<S: LayoutScalar>(
 }
 
 fn unbounded_normal_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    let available = Size::new(AvailableOf::Definite(n(200.0)), AvailableOf::MAX_CONTENT);
-    let request = LayoutRootRequestOf::viewport(available).unwrap();
-    assert_eq!(request.available(), available);
-    assert_eq!(request.context(), LayoutRootContextOf::Viewport);
+    let width = NonNegativeFiniteOf::new(n(200.0)).unwrap();
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::new(Some(width), None),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let axes = Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    );
+    let request = frame.request(axes);
+    assert_eq!(request.sizing_request(), frame.sizing_request(axes));
+    assert_eq!(
+        request.context(),
+        LayoutRootContextOf::Standalone {
+            containing_flow_axes: frame.containing_flow_axes(),
+            percentage_parent: frame.percentage_parent(),
+        }
+    );
     request
 }
 
 fn imposed_height_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    // The external parent's inline axis is physical height. This contextual
-    // request supplies an actual100 allocation independently of any maximum.
+    // The external parent's inline axis is physical height. Its own allocation,
+    // percentage parent and ICB authority are supplied independently.
     let parent = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
-    let viewport = Size::splat(AvailableOf::Definite(n(400.0)));
-    let context = FlexItemRootContextOf::under_viewport(viewport, parent).unwrap();
-    let available = Size::new(
-        AvailableOf::Definite(n(200.0)),
-        AvailableOf::Definite(n(100.0)),
+    let width = NonNegativeFiniteOf::new(n(200.0)).unwrap();
+    let height = NonNegativeFiniteOf::new(n(100.0)).unwrap();
+    let viewport = Size::splat(Some(NonNegativeFiniteOf::new(n(400.0)).unwrap()));
+    let allocated = Size::new(None, Some(height));
+    let context = FlexItemRootContextOf::new(parent, viewport, allocated);
+    let sizing_request = SizingRequestOf::new(
+        Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(height), SizingOperation::Normal),
+        ),
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
     );
-    let request = LayoutRootRequestOf::flex_item_under_viewport(available, context).unwrap();
-    assert_eq!(context.viewport_available(), viewport);
+    let request = LayoutRootRequestOf::flex_item(sizing_request, context);
+    assert_eq!(context.percentage_parent(), viewport);
+    assert_eq!(context.allocated_size(), allocated);
     assert_eq!(context.parent_flow_axes(), parent);
-    assert_eq!(request.available(), available);
-    assert_eq!(
-        request.context(),
-        LayoutRootContextOf::FlexItemUnderViewport(context)
-    );
+    assert_eq!(request.sizing_request(), sizing_request);
+    assert_eq!(request.context(), LayoutRootContextOf::FlexItem(context));
     request
 }
 

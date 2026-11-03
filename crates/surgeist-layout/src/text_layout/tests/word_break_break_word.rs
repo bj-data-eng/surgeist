@@ -61,7 +61,7 @@ fn paragraph(
 
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -89,11 +89,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -213,10 +241,42 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
                     opportunity.kind() == text::PreparedBreakKind::ParagraphEnd
                 }));
                 for (available, width, lines) in [
-                    (AvailableOf::definite(S::from_f64(20.0)), 20.0, &twenty[..]),
-                    (AvailableOf::definite(S::from_f64(40.0)), 40.0, &forty[..]),
-                    (AvailableOf::MIN_CONTENT, 10.0, &minimum[..]),
-                    (AvailableOf::MAX_CONTENT, 40.0, &forty[..]),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        20.0,
+                        &twenty[..],
+                    ),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        40.0,
+                        &forty[..],
+                    ),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MinContent,
+                        ),
+                        10.0,
+                        &minimum[..],
+                    ),
+                    (
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
+                        40.0,
+                        &forty[..],
+                    ),
                 ] {
                     let actual = compute::<S>(&p, available, rtl);
                     assert_output(&actual, &p, "AAAA", width, lines);
@@ -232,7 +292,14 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
                 Wrap::Word,
                 rtl,
             );
-            let minimum = compute::<S>(&overflow_only, AvailableOf::MIN_CONTENT, rtl);
+            let minimum = compute::<S>(
+                &overflow_only,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                ),
+                rtl,
+            );
             assert_output(&minimum, &overflow_only, "AAAA", 40.0, &forty);
             let normal = paragraph(
                 "AAAA",
@@ -241,7 +308,16 @@ fn break_word_uses_conditional_finite_and_min_content_cuts_for_every_declared_ov
                 Wrap::Word,
                 rtl,
             );
-            let narrow = compute::<S>(&normal, AvailableOf::definite(S::from_f64(20.0)), rtl);
+            let narrow = compute::<S>(
+                &normal,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                rtl,
+            );
             assert_output(&narrow, &normal, "AAAA", 20.0, &forty);
         }
     }
@@ -261,7 +337,16 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                     Wrap::Word,
                     rtl,
                 );
-                let narrow = compute::<S>(&p, AvailableOf::definite(S::from_f64(40.0)), rtl);
+                let narrow = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 assert_output(
                     &narrow,
                     &p,
@@ -273,7 +358,16 @@ fn break_word_chooses_the_fitting_ordinary_space_before_emergency_interiors() {
                         (text::Range::new(3, 5), 20.0, 20.0, Ending::Paragraph),
                     ],
                 );
-                let wide = compute::<S>(&p, AvailableOf::definite(S::from_f64(50.0)), rtl);
+                let wide = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 assert_output(
                     &wide,
                     &p,
@@ -299,7 +393,16 @@ fn break_word_child_respects_ancestor_nowrap_and_preserves_forced_breaks() {
                 Wrap::None,
                 rtl,
             );
-            let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+            let actual = compute::<S>(
+                &p,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                rtl,
+            );
             assert_output(
                 &actual,
                 &p,

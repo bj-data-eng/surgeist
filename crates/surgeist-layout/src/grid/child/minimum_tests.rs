@@ -16,7 +16,17 @@ fn prepared<S: LayoutScalar>(known: Size<Option<S>>, parent: Size<Option<S>>) ->
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             crate::ParentFormattingContext::Grid,
         ),
-        Size::splat(AvailableOf::MIN_CONTENT),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MinContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 

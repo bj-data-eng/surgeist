@@ -56,7 +56,7 @@ fn paragraph(
 
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = PublicLayoutTreeOf::<S>::new()
@@ -84,11 +84,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -248,9 +276,25 @@ fn manual_preserves_declared_overflow_for_real_finite_and_intrinsic_layout() {
                     .map(|offer| offer.boundary().view().source_after().get())
                     .collect::<Vec<_>>();
                 assert_eq!(cuts, if word == Normal { vec![1] } else { vec![] });
-                let finite_batch = compute::<S>(&p, AvailableOf::definite(S::from_f64(10.0)), rtl);
+                let finite_batch = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    rtl,
+                );
                 assert_eq!(observe(&finite_batch, &p), (10.0, finite.clone()));
-                let minimum_batch = compute::<S>(&p, AvailableOf::MIN_CONTENT, rtl);
+                let minimum_batch = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MinContent,
+                    ),
+                    rtl,
+                );
                 assert_eq!(
                     observe(&minimum_batch, &p),
                     (
@@ -262,7 +306,14 @@ fn manual_preserves_declared_overflow_for_real_finite_and_intrinsic_layout() {
                         }
                     )
                 );
-                let maximum_batch = compute::<S>(&p, AvailableOf::MAX_CONTENT, rtl);
+                let maximum_batch = compute::<S>(
+                    &p,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                    rtl,
+                );
                 assert_eq!(observe(&maximum_batch, &p), (20.0, whole.clone()));
             }
         }

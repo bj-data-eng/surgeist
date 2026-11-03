@@ -28,7 +28,17 @@ fn formal_input<S: LayoutScalar>(known_width: Option<S>) -> ComputeInputOf<S> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 
@@ -88,15 +98,28 @@ fn exhausted_scrollbar_budget<S: LayoutScalar>() {
 
     // A separate real normal allocation20 has effective20px total gutters
     // and zero content width. These are the actual canonical scroll views.
-    let normal = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::Definite(n(20.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    let normal = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(20.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("the genuine saturated normal Grid completes");
     for entries in [normal.unrounded_entries(), normal.final_entries()] {
         let output = entries

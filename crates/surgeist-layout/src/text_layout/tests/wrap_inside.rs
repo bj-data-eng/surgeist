@@ -339,8 +339,39 @@ fn text_tree<S: LayoutScalar>(
     tree
 }
 
-fn request_at<S: LayoutScalar>(width: AvailableOf<S>) -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap()
+fn request_at<S: LayoutScalar>(
+    width: crate::AxisSizingRequestOf<S>,
+    containing_flow_axes: crate::FlowAxes,
+) -> LayoutRootRequestOf<S> {
+    {
+        let requested_axes = Size::new(
+            width,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    }
 }
 
 fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput<u32>> {
@@ -373,7 +404,7 @@ fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput
 fn compute<S: LayoutScalar>(
     fixture: &Captured,
     values: &[WrapInside],
-    width: AvailableOf<S>,
+    width: crate::AxisSizingRequestOf<S>,
     rtl: bool,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let tree = text_tree(&fixture.binding, rtl);
@@ -390,7 +421,15 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(&input, 0, request_at(width)).unwrap()
+    compute_layout_with_flow(
+        &input,
+        0,
+        request_at(width, {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 
 fn cuts<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<usize> {
@@ -458,13 +497,23 @@ fn outside_and_nested<S: LayoutScalar>() {
         let auto = compute::<S>(
             &f,
             &[WrapInside::Auto],
-            AvailableOf::definite(S::from_f64(40.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             rtl,
         );
         let avoid = compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            AvailableOf::definite(S::from_f64(40.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             rtl,
         );
         assert_eq!(cuts(&auto), [4, 8]);
@@ -499,7 +548,18 @@ fn outside_and_nested<S: LayoutScalar>() {
         let matched = compute_layout_with_flow(
             &flow,
             0,
-            request_at(AvailableOf::definite(S::from_f64(40.0))),
+            request_at(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                {
+                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                },
+            ),
         )
         .unwrap();
         assert_eq!(cuts(&matched), [2, 6, 8]);
@@ -521,7 +581,12 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &nested,
                 &[WrapInside::Avoid; 2],
-                AvailableOf::definite(S::from_f64(40.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                    ),
+                    crate::SizingOperation::Normal
+                ),
                 rtl
             )),
             [2, 6]
@@ -531,7 +596,12 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &nested,
                 &[WrapInside::Avoid, WrapInside::Auto],
-                AvailableOf::definite(S::from_f64(40.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                    ),
+                    crate::SizingOperation::Normal
+                ),
                 rtl
             )),
             [4, 6]
@@ -549,7 +619,12 @@ fn outside_and_nested<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &noninherited,
                 &[WrapInside::Avoid, WrapInside::Auto],
-                AvailableOf::definite(S::from_f64(40.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap()
+                    ),
+                    crate::SizingOperation::Normal
+                ),
                 rtl
             )),
             [2, 6, 8],
@@ -577,14 +652,31 @@ fn necessary_and_intrinsic<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            AvailableOf::definite(S::from_f64(20.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
+                ),
+                crate::SizingOperation::Normal
+            ),
             false
         )),
         [2, 4, 6]
     );
     for (available, expected) in [
-        (AvailableOf::MIN_CONTENT, 10.0),
-        (AvailableOf::MAX_CONTENT, 60.0),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+            10.0,
+        ),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            60.0,
+        ),
     ] {
         for policy in [WrapInside::Auto, WrapInside::Avoid] {
             let batch = compute::<S>(&f, &[policy], available, false);
@@ -636,7 +728,12 @@ fn incomparable<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid; 3],
-            AvailableOf::definite(S::from_f64(50.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(50.0)).unwrap()
+                ),
+                crate::SizingOperation::Normal
+            ),
             false
         )),
         [5, 6]
@@ -667,7 +764,12 @@ fn restrictions<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            AvailableOf::definite(S::from_f64(20.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
+                ),
+                crate::SizingOperation::Normal
+            ),
             false
         )),
         [6]
@@ -684,7 +786,12 @@ fn restrictions<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(100.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&batch), [3, 5]);
@@ -708,7 +815,12 @@ fn restrictions<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            AvailableOf::definite(S::from_f64(20.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()
+                ),
+                crate::SizingOperation::Normal
+            ),
             false
         )),
         [5]
@@ -727,7 +839,12 @@ fn restrictions<S: LayoutScalar>() {
             cuts(&compute::<S>(
                 &f,
                 &[WrapInside::Avoid],
-                AvailableOf::definite(S::from_f64(10.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap()
+                    ),
+                    crate::SizingOperation::Normal
+                ),
                 false
             )),
             [3]
@@ -746,7 +863,12 @@ fn restrictions<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(10.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&batch), [2, 3, 4]);
@@ -878,7 +1000,18 @@ fn numeric<S: LayoutScalar>() {
             let batch = compute_layout_with_flow(
                 &flow,
                 0,
-                request_at(AvailableOf::definite(S::from_f64(25.0))),
+                request_at(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    {
+                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    },
+                ),
             )
             .unwrap();
             assert!(batch.placed_text().is_empty());
@@ -1286,7 +1419,18 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
         let batch = compute_layout_with_flow(
             &input,
             0,
-            request_at(AvailableOf::definite(S::from_f64(10.0))),
+            request_at(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                {
+                    let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                },
+            ),
         )
         .unwrap();
         assert_eq!(cuts(&batch), [2, 3]);
@@ -1348,7 +1492,12 @@ fn phrase<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(20.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&batch), [1, 3, 5, 7]);
@@ -1391,13 +1540,23 @@ fn hanging<S: LayoutScalar>() {
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        AvailableOf::definite(S::from_f64(30.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(30.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&auto), [3, 6, 7]);
@@ -1433,13 +1592,23 @@ fn spacing<S: LayoutScalar>() {
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        AvailableOf::definite(S::from_f64(40.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(40.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&auto), [3, 6]);
@@ -1550,7 +1719,18 @@ fn receiving<S: LayoutScalar>() {
         let batch = compute_layout_with_flow(
             &flow,
             0,
-            request_at(AvailableOf::definite(S::from_f64(40.0))),
+            request_at(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                {
+                    let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                },
+            ),
         )
         .unwrap();
         assert_eq!(cuts(&batch), [3, 6]);
@@ -1663,7 +1843,18 @@ fn receiving<S: LayoutScalar>() {
             let batch = compute_layout_with_flow(
                 &flow,
                 0,
-                request_at(AvailableOf::definite(S::from_f64(width))),
+                request_at(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    {
+                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    },
+                ),
             )
             .unwrap();
             let rows = finalized(&batch);
@@ -1753,7 +1944,18 @@ fn replacement_and_terminal<S: LayoutScalar>() {
     let batch = compute_layout_with_flow(
         &flow,
         0,
-        request_at(AvailableOf::definite(S::from_f64(30.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(cuts(&batch), [3, 6]);
@@ -1788,7 +1990,12 @@ fn replacement_and_terminal<S: LayoutScalar>() {
     let batch = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(100.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         false,
     );
     assert_eq!(cuts(&batch), [3]);
@@ -1885,7 +2092,18 @@ fn atomic_and_float<S: LayoutScalar>() {
     let batch = compute_layout_with_flow(
         &flow,
         0,
-        request_at(AvailableOf::definite(S::from_f64(20.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(cuts(&batch), [2, 3]);
@@ -1948,7 +2166,18 @@ fn atomic_and_float<S: LayoutScalar>() {
     let batch = compute_layout_with_flow(
         &flow,
         0,
-        request_at(AvailableOf::definite(S::from_f64(60.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     // The actual first band is40: outside AB wins over inside ABCD. Below
@@ -1984,7 +2213,12 @@ fn collapsed_and_explicit<S: LayoutScalar>() {
         let batch = compute::<S>(
             &f,
             &[policy],
-            AvailableOf::definite(S::from_f64(40.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             false,
         );
         assert_eq!(cuts(&batch), [4, 8]);
@@ -2007,7 +2241,12 @@ fn collapsed_and_explicit<S: LayoutScalar>() {
         cuts(&compute::<S>(
             &f,
             &[WrapInside::Avoid],
-            AvailableOf::definite(S::from_f64(30.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()
+                ),
+                crate::SizingOperation::Normal
+            ),
             false
         )),
         [3, 6]
@@ -2172,7 +2411,18 @@ fn warm_policy<S: LayoutScalar>() {
         compute_layout_with_flow(
             &flow,
             100,
-            request_at(AvailableOf::definite(S::from_f64(40.0))),
+            request_at(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                {
+                    let root_input = crate::LayoutTree::node_input((flow).tree(), 100);
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                },
+            ),
         )
         .unwrap()
     };
@@ -2419,7 +2669,18 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
             let batch = compute_layout_with_flow(
                 &flow,
                 0,
-                request_at(AvailableOf::definite(S::from_f64(40.0))),
+                request_at(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    {
+                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    },
+                ),
             )
             .unwrap();
             assert_mixed_geometry(&batch, &f, &expected);
@@ -2458,7 +2719,18 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
             match compute_layout_with_flow(
                 &flow,
                 0,
-                request_at(AvailableOf::definite(S::from_f64(40.0))),
+                request_at(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    {
+                        let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    },
+                ),
             ) {
                 Ok(batch) => {
                     assert_mixed_geometry(&batch, &f, &[2, 6, 8]);

@@ -6,6 +6,10 @@ use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
 use surgeist_layout::{ComputeInput, ComputeOutput, GridSpan, LayoutTree as _};
+#[path = "root_context.rs"]
+mod root_context;
+pub use root_context::RootContext;
+use root_context::parse_root_context;
 
 type Scalar = layout::Scalar;
 
@@ -54,10 +58,17 @@ impl Golden {
         if test
             .descendants()
             .any(|node| node.has_tag_name("prepared-paragraph"))
-            && test.attribute("measurement-version") != Some("2")
+            && !matches!(test.attribute("measurement-version"), Some("2" | "3"))
         {
             return Err(Error::new(
-                "native source capture requires measurement-version=2",
+                "native source capture requires measurement-version=2 or 3",
+            ));
+        }
+        if test.attribute("measurement-version") == Some("3")
+            && test.attribute("observation-frame") != Some("root-border")
+        {
+            return Err(Error::new(
+                "measurement version 3 requires observation-frame=root-border",
             ));
         }
         let name = required_attr(test, "name")?.to_string();
@@ -69,9 +80,7 @@ impl Golden {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
             viewport: Viewport {
-                width: parse_available(required_attr(viewport, "width")?)?,
-                height: parse_available(required_attr(viewport, "height")?)?,
-                root_context: parse_root_context(viewport)?,
+                root_context: parse_root_context(viewport, test.attribute("measurement-version"))?,
             },
             root,
             expectations,
@@ -119,18 +128,67 @@ pub fn assert_surgeist_matches(golden: &Golden) -> Result<(), Error> {
 pub fn assert_surgeist_matches_with_endpoint_accounting(
     golden: &Golden,
 ) -> Result<ComparisonResult, Error> {
-    let mut tree = TestTree::from_golden(&golden.root)?;
-    let available = layout::Size::new(
-        to_layout_available(golden.viewport.width),
-        to_layout_available(golden.viewport.height),
-    );
+    let request = root_request(&golden.viewport.root_context)?;
+    let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
+    validate_capture_analytic_profile(&tree, &golden.viewport.root_context)?;
+    let batch = compute_actual_batch(&tree, &golden.name, request)?;
+    tree.apply_completed_batch(&batch);
+    let normal_root = tree.nodes[0].unrounded;
+    golden
+        .viewport
+        .root_context
+        .validate_native_origin(normal_root.location, normal_root.size)?;
 
-    let request = root_request(available, golden.viewport.root_context)?;
-    let batch = if tree.paragraphs.is_empty() {
-        layout::compute_layout(&tree, 0, request)
+    compare_expectation_with_endpoint_accounting(
+        &tree,
+        0,
+        &golden.expectations,
+        &golden.name,
+        golden.use_rounding,
+        FragmentCursors::new(
+            batch.unrounded_inline_fragments(),
+            batch.final_inline_fragments(),
+        ),
+        ComparisonFrame::RootBorder,
+    )
+}
+
+/// Explicit authored Native input test; historical capture metadata grants no
+/// sizing or containing-frame authority. Browser comparisons use the strict
+/// captured entry point above instead.
+#[cfg(test)]
+pub(super) fn assert_native_input_matches(
+    golden: &Golden,
+    request: layout::LayoutRootRequest,
+) -> Result<(), Error> {
+    let mut tree = TestTree::from_golden(&golden.root, None)?;
+    let batch = compute_actual_batch(&tree, &golden.name, request)?;
+    tree.apply_completed_batch(&batch);
+    compare_expectation_with_endpoint_accounting(
+        &tree,
+        0,
+        &golden.expectations,
+        &golden.name,
+        golden.use_rounding,
+        FragmentCursors::new(
+            batch.unrounded_inline_fragments(),
+            batch.final_inline_fragments(),
+        ),
+        ComparisonFrame::ParentLocal,
+    )
+    .map(|_| ())
+}
+
+fn compute_actual_batch(
+    tree: &TestTree,
+    name: &str,
+    request: layout::LayoutRootRequest,
+) -> Result<layout::CompletedLayoutBatch<usize>, Error> {
+    if tree.paragraphs.is_empty() {
+        layout::compute_layout(tree, 0, request)
     } else {
         let capture = layout::LayoutFlowInput::try_new(
-            &tree,
+            tree,
             0,
             tree.paragraphs.clone(),
             surgeist_layout::WrappingInput {
@@ -141,72 +199,75 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
             },
             Vec::new(),
         )
-        .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", golden.name)))?;
+        .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", name)))?;
         layout::compute_layout_with_flow(&capture, 0, request)
     }
-    .map_err(|error| Error::new(format!("{}: layout failed: {error:?}", golden.name)))?;
-    tree.apply_completed_batch(&batch);
-
-    compare_expectation_with_endpoint_accounting(
-        &tree,
-        0,
-        &golden.expectations,
-        &golden.name,
-        golden.use_rounding,
-        batch.unrounded_inline_fragments(),
-        batch.final_inline_fragments(),
-    )
+    .map_err(|error| Error::new(format!("{}: layout failed: {error:?}", name)))
 }
 
-fn root_request(
-    available: layout::Size<layout::Available>,
-    root_context: RootContext,
-) -> Result<layout::LayoutRootRequest, Error> {
-    match root_context {
-        RootContext::Root => layout::LayoutRootRequest::viewport(available),
-        RootContext::FlexItem {
-            parent_axes,
-            host_inline_size,
-        } => {
-            let context = layout::FlexItemRootContext::under_viewport(available, parent_axes)
-                .map_err(|error| Error::new(format!("invalid flex viewport: {error:?}")))?;
-            let host_available = match parent_axes.inline_axis() {
-                layout::PhysicalAxis::Horizontal => layout::Size::new(
-                    layout::Available::Definite(host_inline_size),
-                    layout::Available::MaxContent,
-                ),
-                layout::PhysicalAxis::Vertical => layout::Size::new(
-                    layout::Available::MaxContent,
-                    layout::Available::Definite(host_inline_size),
-                ),
-            };
-            layout::LayoutRootRequest::flex_item_under_viewport(host_available, context)
+fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> Result<(), Error> {
+    let parent_axes = match context {
+        RootContext::Qualified(root_context::QualifiedRootContext::BlockFlowAuto {
+            parent_direction,
+            ..
+        }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *parent_direction),
+        RootContext::Qualified(root_context::QualifiedRootContext::PositionedAutoInsets {
+            containing_direction,
+            ..
+        }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *containing_direction),
+        RootContext::UnqualifiedCapture { .. } => {
+            return Err(Error::new("MissingRootContextAuthority"));
+        }
+    };
+    // One temporary byte per actual Native row. Prepared origin associations
+    // borrow the real binding inventory; they are not opaque analytic text.
+    let mut flags = Vec::<u8>::new();
+    flags
+        .try_reserve_exact(tree.nodes.len())
+        .map_err(|_| Error::new("unable to allocate capture text-profile validation"))?;
+    flags.resize(tree.nodes.len(), 0);
+    for binding in &tree.paragraphs {
+        for origin in &binding.origins {
+            let slot = flags
+                .get_mut(origin.node)
+                .ok_or_else(|| Error::new("foreign captured Text origin node"))?;
+            *slot |= 1;
         }
     }
-    .map_err(|error| Error::new(format!("invalid layout root request: {error:?}")))
+    for (node, row) in tree.nodes.iter().enumerate() {
+        let (containing_axes, inherited) = match row.parent {
+            Some(parent) if parent < node => {
+                let input = tree.box_node_input(parent);
+                (
+                    layout::FlowAxes::new(input.writing_mode, input.direction),
+                    flags[parent] & 2 != 0,
+                )
+            }
+            None if node == 0 => (parent_axes, false),
+            _ => return Err(Error::new("inconsistent capture parent chronology")),
+        };
+        let own_axes = match row.layout_input.as_box() {
+            Some(input) => layout::FlowAxes::new(input.writing_mode, input.direction),
+            None => containing_axes,
+        };
+        let orthogonal = inherited || own_axes.inline_axis() != containing_axes.inline_axis();
+        if orthogonal {
+            flags[node] |= 2;
+            if flags[node] & 1 == 0 && tree.has_leaf_measurement(node) {
+                return Err(Error::new("UnsupportedAnalyticOrthogonalTextProfile"));
+            }
+        }
+    }
+    Ok(())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Available {
-    Definite(Scalar),
-    MinContent,
-    MaxContent,
+fn root_request(root_context: &RootContext) -> Result<layout::LayoutRootRequest, Error> {
+    root_context.request()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Viewport {
-    pub width: Available,
-    pub height: Available,
     pub root_context: RootContext,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RootContext {
-    Root,
-    FlexItem {
-        parent_axes: layout::FlowAxes,
-        host_inline_size: Scalar,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1807,61 +1868,6 @@ fn parse_fragment_number(
     Ok(value)
 }
 
-fn parse_available(raw: &str) -> Result<Available, Error> {
-    match raw {
-        "min-content" => Ok(Available::MinContent),
-        "max-content" => Ok(Available::MaxContent),
-        value => {
-            let value = value.strip_suffix("px").unwrap_or(value);
-            Ok(Available::Definite(parse_number(value)?))
-        }
-    }
-}
-
-fn parse_root_context(viewport: roxmltree::Node<'_, '_>) -> Result<RootContext, Error> {
-    let raw = viewport.attribute("root-context").unwrap_or("root");
-    let parent_writing_mode = viewport.attribute("parent-writing-mode");
-    let parent_direction = viewport.attribute("parent-direction");
-    let host_inline_size = viewport.attribute("host-inline-size");
-
-    match raw {
-        "root" => {
-            if parent_writing_mode.is_some()
-                || parent_direction.is_some()
-                || host_inline_size.is_some()
-            {
-                return Err(Error::new(
-                    "root viewport must not specify flex-item metadata",
-                ));
-            }
-            Ok(RootContext::Root)
-        }
-        "flex-item" => {
-            let writing_mode =
-                parse_writing_mode(Some(required_attr(viewport, "parent-writing-mode")?))?;
-            let direction = parse_direction(required_attr(viewport, "parent-direction")?)?;
-            let host_inline_size =
-                parse_host_inline_size(required_attr(viewport, "host-inline-size")?)?;
-            Ok(RootContext::FlexItem {
-                parent_axes: layout::FlowAxes::new(writing_mode, direction),
-                host_inline_size,
-            })
-        }
-        _ => Err(Error::new(format!("unsupported root context `{raw}`"))),
-    }
-}
-
-fn parse_host_inline_size(raw: &str) -> Result<Scalar, Error> {
-    let value = raw
-        .strip_suffix("px")
-        .ok_or_else(|| Error::new(format!("invalid host inline size `{raw}`")))
-        .and_then(parse_number)?;
-    if !value.is_finite() || value < 0.0 {
-        return Err(Error::new(format!("invalid host inline size `{raw}`")));
-    }
-    Ok(value)
-}
-
 fn parse_item_order(raw: &str) -> Result<layout::ItemOrder, Error> {
     let bytes = raw.as_bytes();
     let digits = match bytes {
@@ -2001,7 +2007,38 @@ impl TestTree {
         self.nodes[node].unrounded_inline_fragments.as_deref()
     }
 
-    fn from_golden(root: &Node) -> Result<Self, Error> {
+    fn from_golden(root: &Node, context: Option<&RootContext>) -> Result<Self, Error> {
+        // Only the qualified all-Auto root may lower actual CSS static to the
+        // Native in-flow role. Keep the original style in Golden/provenance.
+        let normalized_static = if root.style.get("position") == Some("static") {
+            if !matches!(
+                context,
+                Some(RootContext::Qualified(
+                    root_context::QualifiedRootContext::BlockFlowAuto { .. }
+                ))
+            ) || [
+                "left",
+                "right",
+                "top",
+                "bottom",
+                "inset-inline-start",
+                "inset-inline-end",
+                "inset-block-start",
+                "inset-block-end",
+            ]
+            .iter()
+            .any(|name| root.style.get(name).is_some_and(|value| value != "auto"))
+            {
+                return Err(Error::new("UnsupportedStaticRootContext"));
+            }
+            let mut style = root.style.clone();
+            style
+                .attrs
+                .insert("position".to_string(), "relative".to_string());
+            Some(style)
+        } else {
+            None
+        };
         let mut tree = Self::default();
         tree.push_node(
             root,
@@ -2015,11 +2052,17 @@ impl TestTree {
                 parent: None,
                 range_root: None,
             },
+            normalized_static.as_ref(),
         )?;
         Ok(tree)
     }
 
-    fn push_node(&mut self, node: &Node, inherited: InheritedTextContext) -> Result<usize, Error> {
+    fn push_node(
+        &mut self,
+        node: &Node,
+        inherited: InheritedTextContext,
+        root_style: Option<&StyleAttrs>,
+    ) -> Result<usize, Error> {
         let id = self.nodes.len();
         let range_root = if node.layout_ready_inline_root {
             Some(id)
@@ -2094,7 +2137,10 @@ impl TestTree {
                         "historical measured-width text has no original source/font capture; it cannot enter production Text",
                     ));
                 }
-                (None, None) => to_layout_input_in_flow(&node.style, inherited.containing_flow)?,
+                (None, None) => to_layout_input_in_flow(
+                    root_style.unwrap_or(&node.style),
+                    inherited.containing_flow,
+                )?,
                 (Some(_), Some(_)) => {
                     return Err(Error::new(
                         "fixture node cannot be both inline text and an inline boundary",
@@ -2197,6 +2243,7 @@ impl TestTree {
                         parent: Some(id),
                         range_root,
                     },
+                    None,
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -2338,11 +2385,27 @@ impl TestTree {
         Ok(id)
     }
 
-    fn measure(&self, node: usize, input: layout::LeafMeasureInput, text: &str) -> layout::Size {
+    fn measure(
+        &self,
+        node: usize,
+        input: layout::LeafMeasureInput,
+        text: &str,
+    ) -> Result<layout::Size, Error> {
         let known = input.known_content_size();
-        let available = input
-            .available_content_size()
-            .map(layout::MeasurementAvailable::into_available);
+        let requests = input.content_sizing_request().axes();
+        let flow = input.flow_axes();
+        let containing = input.containing_layout_context().flow_axes();
+        let (inline_known, inline_request) = match flow.inline_axis() {
+            layout::PhysicalAxis::Horizontal => (known.width, requests.width),
+            layout::PhysicalAxis::Vertical => (known.height, requests.height),
+        };
+        if inline_known.is_none()
+            && inline_request.operation() == layout::SizingOperation::Normal
+            && inline_request.space() == layout::AvailableSpace::Indefinite
+            && flow.inline_axis() != containing.inline_axis()
+        {
+            return Err(Error::new("UnsupportedAnalyticOrthogonalTextProfile"));
+        }
         let text = TextMeasure::new(
             text,
             self.nodes[node].font_family,
@@ -2352,25 +2415,40 @@ impl TestTree {
             self.nodes[node].use_tighter_monospace_wrap,
         );
         if self.box_node_input(node).writing_mode.is_vertical() {
-            let height = known.height.unwrap_or_else(|| match available.height {
-                layout::Available::Definite(height) => height,
-                layout::Available::MinContent => text.min_content_width(),
-                layout::Available::MaxContent => text.max_content_width(),
-            });
+            let height = known
+                .height
+                .unwrap_or_else(|| match requests.height.operation() {
+                    layout::SizingOperation::MinContent => text.min_content_width(),
+                    layout::SizingOperation::MaxContent => text.max_content_width(),
+                    layout::SizingOperation::Normal => {
+                        requests.height.space().definite_size().map_or_else(
+                            || text.max_content_width(),
+                            layout::NonNegativeFiniteOf::get,
+                        )
+                    }
+                });
             let width = known.width.unwrap_or_else(|| text.width_for_height(height));
-            return layout::Size::new(width, height);
+            return Ok(layout::Size::new(width, height));
         }
 
-        let width = known.width.unwrap_or_else(|| match available.width {
-            layout::Available::Definite(width) => text
-                .max_content_width()
-                .min(width)
-                .max(text.min_content_width()),
-            layout::Available::MinContent => text.min_content_width(),
-            layout::Available::MaxContent => text.max_content_width(),
-        });
+        let width = known
+            .width
+            .unwrap_or_else(|| match requests.width.operation() {
+                layout::SizingOperation::MinContent => text.min_content_width(),
+                layout::SizingOperation::MaxContent => text.max_content_width(),
+                layout::SizingOperation::Normal => {
+                    requests.width.space().definite_size().map_or_else(
+                        || text.max_content_width(),
+                        |width| {
+                            text.max_content_width()
+                                .min(width.get())
+                                .max(text.min_content_width())
+                        },
+                    )
+                }
+            });
         let height = known.height.unwrap_or_else(|| text.height_for_width(width));
-        layout::Size::new(width, height)
+        Ok(layout::Size::new(width, height))
     }
 
     fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
@@ -2703,7 +2781,7 @@ impl layout::LayoutTree for TestTree {
             return None;
         }
         let text = self.nodes[node].text.as_deref()?;
-        Some(Ok(self.measure(node, input, text)))
+        Some(self.measure(node, input, text))
     }
 }
 
@@ -2793,8 +2871,8 @@ fn compare_expectation(
         expected,
         path,
         use_rounding,
-        unrounded_inline_fragments,
-        final_inline_fragments,
+        FragmentCursors::new(unrounded_inline_fragments, final_inline_fragments),
+        ComparisonFrame::ParentLocal,
     )
     .map(|_| ())
 }
@@ -2805,20 +2883,23 @@ fn compare_expectation_with_endpoint_accounting(
     expected: &Expectation,
     path: &str,
     use_rounding: bool,
-    unrounded_inline_fragments: &[layout::InlineFragmentOutputEntry<usize>],
-    final_inline_fragments: &[layout::InlineFragmentOutputEntry<usize>],
+    fragment_cursors: FragmentCursors<'_>,
+    frame: ComparisonFrame,
 ) -> Result<ComparisonResult, Error> {
+    let root_border_origin = match frame {
+        ComparisonFrame::ParentLocal => None,
+        ComparisonFrame::RootBorder => Some((
+            node,
+            if use_rounding {
+                tree.nodes[node].final_layout.location
+            } else {
+                tree.nodes[node].unrounded.location
+            },
+        )),
+    };
     let mut comparison_state = ComparisonState {
-        fragment_cursors: FragmentCursors {
-            unrounded: FragmentCursor {
-                entries: unrounded_inline_fragments,
-                next: 0,
-            },
-            final_output: FragmentCursor {
-                entries: final_inline_fragments,
-                next: 0,
-            },
-        },
+        root_border_origin,
+        fragment_cursors,
         strict_geometry_nodes: BTreeSet::new(),
         pending_browser_controls: Vec::new(),
     };
@@ -2897,7 +2978,32 @@ struct FragmentCursors<'a> {
     final_output: FragmentCursor<'a>,
 }
 
+impl<'a> FragmentCursors<'a> {
+    fn new(
+        unrounded: &'a [layout::InlineFragmentOutputEntry<usize>],
+        final_output: &'a [layout::InlineFragmentOutputEntry<usize>],
+    ) -> Self {
+        Self {
+            unrounded: FragmentCursor {
+                entries: unrounded,
+                next: 0,
+            },
+            final_output: FragmentCursor {
+                entries: final_output,
+                next: 0,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ComparisonFrame {
+    ParentLocal,
+    RootBorder,
+}
+
 struct ComparisonState<'a> {
+    root_border_origin: Option<(usize, layout::Point)>,
     fragment_cursors: FragmentCursors<'a>,
     strict_geometry_nodes: BTreeSet<usize>,
     pending_browser_controls: Vec<PendingBrowserControl>,
@@ -2987,8 +3093,14 @@ fn compare_expectation_in_source_order(
     } else {
         tree.nodes[node].unrounded
     };
-    compare_optional_number(path, "x", actual.location.x, expected.x)?;
-    compare_optional_number(path, "y", actual.location.y, expected.y)?;
+    let observation_location = match comparison_state.root_border_origin {
+        Some((root, origin)) if node == root => {
+            layout::Point::new(actual.location.x - origin.x, actual.location.y - origin.y)
+        }
+        _ => actual.location,
+    };
+    compare_optional_number(path, "x", observation_location.x, expected.x)?;
+    compare_optional_number(path, "y", observation_location.y, expected.y)?;
     compare_optional_number(path, "width", actual.size.width, expected.width)?;
     compare_optional_number(path, "height", actual.size.height, expected.height)?;
     if expected.x.is_some()
@@ -4682,14 +4794,6 @@ fn parse_custom_ident(raw: &str) -> Result<&str, Error> {
     Ok(raw)
 }
 
-fn to_layout_available(value: Available) -> layout::Available {
-    match value {
-        Available::Definite(value) => layout::Available::definite(value),
-        Available::MinContent => layout::Available::MIN_CONTENT,
-        Available::MaxContent => layout::Available::MAX_CONTENT,
-    }
-}
-
 fn parse_display(raw: &str) -> Result<layout::Display, Error> {
     match raw {
         "block" => Ok(layout::Display::Block),
@@ -6213,7 +6317,7 @@ mod tests {
                 .to_string(),
             "native inline boundary has no captured control occurrence"
         );
-        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         assert!(batch.unrounded_inline_fragments().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
@@ -6256,16 +6360,85 @@ mod tests {
         .unwrap()
     }
 
-    fn generated_native_batch(golden: &Golden) -> (TestTree, layout::CompletedLayoutBatch<usize>) {
-        let tree = TestTree::from_golden(&golden.root).unwrap();
-        let request = root_request(
-            layout::Size::new(
-                to_layout_available(golden.viewport.width),
-                to_layout_available(golden.viewport.height),
+    // These are explicitly authored Native operations. Historical source IR and
+    // observations supply no root-context authority and are never converted here.
+    fn formal_max_content_native_request() -> layout::LayoutRootRequest {
+        let axis = layout::AxisSizingRequest::new(
+            layout::AvailableSpace::Indefinite,
+            layout::SizingOperation::MaxContent,
+        );
+        layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::splat(axis),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::splat(None),
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
             ),
-            golden.viewport.root_context,
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::splat(None),
         )
-        .unwrap();
+    }
+
+    fn normal_inline_intrinsic_block_native_request(width: Scalar) -> layout::LayoutRootRequest {
+        let width = layout::NonNegativeFiniteOf::new(width).unwrap();
+        layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(width),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Indefinite,
+                        layout::SizingOperation::MaxContent,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::splat(None),
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(Some(width), None),
+        )
+    }
+
+    fn assert_native_test_matches(
+        golden: &Golden,
+        request: layout::LayoutRootRequest,
+    ) -> Result<(), Error> {
+        assert_native_test_matches_with_endpoint_accounting(golden, request).map(|_| ())
+    }
+
+    fn assert_native_test_matches_with_endpoint_accounting(
+        golden: &Golden,
+        request: layout::LayoutRootRequest,
+    ) -> Result<ComparisonResult, Error> {
+        let mut tree = TestTree::from_golden(&golden.root, None)?;
+        let batch = compute_actual_batch(&tree, &golden.name, request)?;
+        tree.apply_completed_batch(&batch);
+        compare_expectation_with_endpoint_accounting(
+            &tree,
+            0,
+            &golden.expectations,
+            &golden.name,
+            golden.use_rounding,
+            FragmentCursors::new(
+                batch.unrounded_inline_fragments(),
+                batch.final_inline_fragments(),
+            ),
+            ComparisonFrame::ParentLocal,
+        )
+    }
+
+    fn generated_native_batch(
+        golden: &Golden,
+        request: layout::LayoutRootRequest,
+    ) -> (TestTree, layout::CompletedLayoutBatch<usize>) {
+        let tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, request);
         (tree, batch)
     }
@@ -6273,7 +6446,7 @@ mod tests {
     #[test]
     fn native_browser_boundaries_keep_control_custody_without_observed_children() {
         let golden = generated_native_golden("prepared_text_continuity_bidi__border_box_ltr");
-        let (tree, batch) = generated_native_batch(&golden);
+        let (tree, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let controls = tree
             .paragraphs
             .iter()
@@ -6310,7 +6483,7 @@ mod tests {
         }
         // Chrome observes the three source occurrences, not rectangles for the
         // two metricless boundary controls. Their custody was checked above.
-        assert_surgeist_matches(&golden).unwrap();
+        assert_native_test_matches(&golden, formal_max_content_native_request()).unwrap();
     }
 
     #[test]
@@ -6319,7 +6492,8 @@ mod tests {
         // helper captures original X, pinned Ahem10, LH10.5, no tracking/word spacing,
         // no controls/atomics, one genuine source origin and an ordinary inline root.
         let golden = native_test_golden(&[("X", 10.0, 0.0)], false);
-        let (tree, batch) = generated_native_batch(&golden);
+        let (tree, batch) =
+            generated_native_batch(&golden, normal_inline_intrinsic_block_native_request(100.0));
         let [binding] = tree.paragraphs.as_slice() else {
             panic!("one actual prepared paragraph")
         };
@@ -6457,7 +6631,7 @@ mod tests {
     fn native_range_observation_rejects_foreign_placement_and_omitted_lines() {
         let name = "prepared_text_fractional_fit__border_box_ltr";
         let golden = generated_native_golden(name);
-        let (tree, batch) = generated_native_batch(&golden);
+        let (tree, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
         let actual = batch
             .unrounded_inline_fragments()
@@ -6478,14 +6652,7 @@ mod tests {
 
         // Equal captured preparation and input values do not authorize a fresh
         // finalized-line owner to lend geometry to this batch's source rows.
-        let request = root_request(
-            layout::Size::new(
-                to_layout_available(golden.viewport.width),
-                to_layout_available(golden.viewport.height),
-            ),
-            golden.viewport.root_context,
-        )
-        .unwrap();
+        let request = normal_inline_intrinsic_block_native_request(100.0);
         let fresh = native_tree_compute(&tree, request);
         assert_eq!(
             placed.analyzed_source().identity(),
@@ -6503,7 +6670,7 @@ mod tests {
         // origin. A failed canonical query must propagate, never become a
         // successful geometry fallback based on source/font value equality.
         let other_golden = generated_native_golden(name);
-        let (_, other) = generated_native_batch(&other_golden);
+        let (_, other) = generated_native_batch(&other_golden, formal_max_content_native_request());
         assert!(
             native_range_rectangles(
                 "foreign-preparation",
@@ -6541,7 +6708,7 @@ mod tests {
     #[test]
     fn native_browser_range_rectangles_cover_actual_origin_intersections() {
         let golden = generated_native_golden("fri06_inline_mixed_text_atomic_wrap__border_box_ltr");
-        let (_, batch) = generated_native_batch(&golden);
+        let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
         let mut covered = Vec::new();
         let mut line = None;
@@ -6574,13 +6741,13 @@ mod tests {
         assert_eq!(end, 4);
         // One browser Range rectangle may cover several contiguous, genuinely
         // associated Text intersections on the same finalized line.
-        assert_surgeist_matches(&golden).unwrap();
+        assert_native_test_matches(&golden, formal_max_content_native_request()).unwrap();
     }
 
     #[test]
     fn native_browser_range_normalization_rejects_wrong_owner_extent_and_source_gaps() {
         let golden = generated_native_golden("fri06_inline_mixed_text_atomic_wrap__border_box_ltr");
-        let (_, batch) = generated_native_batch(&golden);
+        let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
         let actual = batch
             .unrounded_inline_fragments()
@@ -6686,7 +6853,7 @@ mod tests {
     #[test]
     fn native_browser_range_normalization_keeps_actual_lines_and_zero_width_controls() {
         let golden = generated_native_golden("prepared_text_fractional_fit__border_box_ltr");
-        let (_, batch) = generated_native_batch(&golden);
+        let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
         let actual = batch
             .unrounded_inline_fragments()
@@ -6726,7 +6893,7 @@ mod tests {
         );
 
         let golden = generated_native_golden("prepared_text_continuity_bidi__border_box_ltr");
-        let (_, batch) = generated_native_batch(&golden);
+        let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
         let origin = golden.root.children[2].prepared_origin.as_ref().unwrap();
         let actual = batch
             .unrounded_inline_fragments()
@@ -6776,7 +6943,8 @@ mod tests {
         // that cell, while Preserve still emits the actual space glyph. A lone
         // unit has no character boundary on which tracking could cancel it.
         let golden = native_test_golden_with_word_spacing(&[(" ", 16.0, 0.0)], false, -16.0);
-        let (_, batch) = generated_native_batch(&golden);
+        let (_, batch) =
+            generated_native_batch(&golden, normal_inline_intrinsic_block_native_request(100.0));
         let actual = batch.unrounded_inline_fragments();
         assert_eq!(actual.len(), 1);
         let issued = actual[0].fragment().finalized_fragment();
@@ -6810,7 +6978,7 @@ mod tests {
         for variant in ["border_box_rtl", "content_box_rtl"] {
             let name = format!("prepared_text_continuity_bidi__{variant}");
             let golden = generated_native_golden(&name);
-            let (_, batch) = generated_native_batch(&golden);
+            let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
             let origin = golden.root.children[2].prepared_origin.as_ref().unwrap();
             assert_eq!(
                 origin.view().source().text().code_units(),
@@ -6882,7 +7050,7 @@ mod tests {
                 retained.position_geometry(&position).unwrap(),
                 placed.position_geometry(&position).unwrap()
             );
-            let (_, other) = generated_native_batch(&golden);
+            let (_, other) = generated_native_batch(&golden, formal_max_content_native_request());
             assert!(
                 other.placed_text()[0]
                     .layout()
@@ -6938,7 +7106,8 @@ mod tests {
                 ),
                 (1, 0, 72.0, 0.0)
             );
-            let error = assert_surgeist_matches(&golden).unwrap_err();
+            let error = assert_native_test_matches(&golden, formal_max_content_native_request())
+                .unwrap_err();
             assert!(error.to_string().contains(
                 "Range rectangle[2] physical flow-inline start mismatch, expected 72, got 24"
             ));
@@ -7009,7 +7178,7 @@ mod tests {
             value
         );
         let golden = Golden::parse(&raw)?;
-        let tree = TestTree::from_golden(&golden.root)?;
+        let tree = TestTree::from_golden(&golden.root, None)?;
         Ok(tree.box_node_input(0).overflow_clip_margin)
     }
 
@@ -7134,7 +7303,7 @@ mod tests {
                 name, width
             );
             let golden = Golden::parse(&raw).expect("collapse fixture should parse");
-            TestTree::from_golden(&golden.root)
+            TestTree::from_golden(&golden.root, None)
                 .expect("fixture should lower")
                 .box_node_input(0)
                 .clone()
@@ -7361,8 +7530,11 @@ mod tests {
 
     #[test]
     fn fri05_c06_comparator_signed_range_uses_span_instead_of_maximum_endpoint() {
-        assert_surgeist_matches(&fri05_c06_scroll_expectation(65.0, 65.0))
-            .expect("canonical signed range span should match");
+        assert_native_test_matches(
+            &fri05_c06_scroll_expectation(65.0, 65.0),
+            formal_max_content_native_request(),
+        )
+        .expect("canonical signed range span should match");
     }
 
     #[test]
@@ -7383,13 +7555,17 @@ mod tests {
         )
         .expect("zero scroll expectation fixture should parse");
 
-        assert_surgeist_matches(&golden).expect("explicit zero range spans should match");
+        assert_native_test_matches(&golden, formal_max_content_native_request())
+            .expect("explicit zero range spans should match");
     }
 
     #[test]
     fn fri05_c06_comparator_wrong_x_range_span_names_scroll_width_mismatch() {
-        let error = assert_surgeist_matches(&fri05_c06_scroll_expectation(64.0, 65.0))
-            .expect_err("wrong x range span should fail");
+        let error = assert_native_test_matches(
+            &fri05_c06_scroll_expectation(64.0, 65.0),
+            formal_max_content_native_request(),
+        )
+        .expect_err("wrong x range span should fail");
 
         assert_eq!(
             error.to_string(),
@@ -7399,8 +7575,11 @@ mod tests {
 
     #[test]
     fn fri05_c06_comparator_wrong_y_range_span_names_scroll_height_mismatch() {
-        let error = assert_surgeist_matches(&fri05_c06_scroll_expectation(65.0, 64.0))
-            .expect_err("wrong y range span should fail");
+        let error = assert_native_test_matches(
+            &fri05_c06_scroll_expectation(65.0, 64.0),
+            formal_max_content_native_request(),
+        )
+        .expect_err("wrong y range span should fail");
 
         assert_eq!(
             error.to_string(),
@@ -7413,7 +7592,7 @@ mod tests {
         let mut golden = fri05_c06_scroll_expectation(64.0, 65.0);
         golden.expectations.children[0].x = Some(-64.0);
 
-        let error = assert_surgeist_matches(&golden)
+        let error = assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect_err("wrong root scroll span should fail before the invalid child");
 
         assert_eq!(
@@ -7438,7 +7617,7 @@ mod tests {
             "#,
         )
         .expect("missing geometry fixture should parse");
-        let error = assert_surgeist_matches(&golden)
+        let error = assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect_err("missing canonical scroll geometry should fail");
 
         assert_eq!(
@@ -7699,7 +7878,7 @@ mod tests {
     fn fri06_c08_range_rectangle_parser_and_comparator_ignore_browser_block_ink_geometry() {
         let golden = fri06_c08_range_rectangle_golden();
 
-        assert_surgeist_matches(&golden).expect(
+        assert_native_test_matches(&golden, normal_inline_intrinsic_block_native_request(100.0)).expect(
             "Range rectangle should compare source/line/visual and flow-inline facts without browser block ink geometry",
         );
     }
@@ -7729,7 +7908,7 @@ mod tests {
             children: Vec::new(),
         }];
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, normal_inline_intrinsic_block_native_request(100.0))
             .expect("browser Range advance must compare with the unrounded model fragment");
     }
 
@@ -7757,8 +7936,11 @@ mod tests {
         let mut golden = fri06_c08_range_rectangle_golden();
         golden.expectations.children[0].range_rectangles = Some(Vec::new());
 
-        let error = assert_surgeist_matches(&golden)
-            .expect_err("explicit empty Range evidence must enforce zero model fragments");
+        let error = assert_native_test_matches(
+            &golden,
+            normal_inline_intrinsic_block_native_request(100.0),
+        )
+        .expect_err("explicit empty Range evidence must enforce zero model fragments");
         assert_eq!(
             error.to_string(),
             "fri06-c08-range-ink/0: Range rectangle count mismatch, expected 0, got 1"
@@ -7768,7 +7950,7 @@ mod tests {
     #[test]
     fn fri06_c08_r0_range_observation_order_does_not_supply_model_visual_order() {
         let golden = native_test_golden(&[("X", 10.0, 0.0), ("X", 5.0, 0.0)], false);
-        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         let actual = batch
             .unrounded_inline_fragments()
@@ -7859,7 +8041,7 @@ mod tests {
     #[test]
     fn fri06_c08_r0_nonwrapping_flex_control_uses_source_and_line_membership_without_geometry() {
         let golden = fri06_c08_r0_flex_control_golden("nowrap");
-        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
 
         compare_expectation(
             &tree,
@@ -7917,7 +8099,7 @@ mod tests {
     #[test]
     fn fri06_c08_r0_wrapped_flex_control_is_rejected() {
         let golden = fri06_c08_r0_flex_control_golden("wrap");
-        let tree = TestTree::from_golden(&golden.root).unwrap();
+        let tree = TestTree::from_golden(&golden.root, None).unwrap();
 
         let error = compare_expectation(
             &tree,
@@ -8027,7 +8209,7 @@ mod tests {
         )
         .expect("browser controls should parse as a distinct observation category");
 
-        assert_surgeist_matches(&golden).expect(
+        assert_native_test_matches(&golden, formal_max_content_native_request()).expect(
             "browser BR observations should compare source, terminal slot, and neighbor-line effects without comparing the BR ink rectangle",
         );
 
@@ -8055,7 +8237,7 @@ mod tests {
                 "next line" => control.next_line = BrowserNeighborLine::Same,
                 _ => unreachable!(),
             }
-            let error = assert_surgeist_matches(&changed)
+            let error = assert_native_test_matches(&changed, formal_max_content_native_request())
                 .expect_err("wrong browser control observation should fail");
             assert!(
                 error.to_string().contains(diagnostic),
@@ -8135,8 +8317,8 @@ mod tests {
             &expected,
             "fri06-c12-t07-endpoint",
             true,
-            &[],
-            &[],
+            FragmentCursors::new(&[], &[]),
+            ComparisonFrame::ParentLocal,
         )
         .expect("an exact shared endpoint should be typed as endpoint-unobservable");
         assert_eq!(result.endpoint_unobservable_fields().len(), 1);
@@ -8155,8 +8337,8 @@ mod tests {
             &expected,
             "fri06-c12-t07-endpoint",
             true,
-            &[],
-            &[],
+            FragmentCursors::new(&[], &[]),
+            ComparisonFrame::ParentLocal,
         )
         .expect_err("neighbors without one exact shared endpoint must remain strict");
         assert!(
@@ -8175,8 +8357,8 @@ mod tests {
                 &expected,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("a hidden break must not qualify")
             .to_string()
@@ -8193,8 +8375,8 @@ mod tests {
                 &expected,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("a nonzero control must not qualify")
             .to_string()
@@ -8210,8 +8392,8 @@ mod tests {
                 &expected,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("missing unrounded neighbor geometry must fail")
             .to_string()
@@ -8227,8 +8409,8 @@ mod tests {
                 &incomplete_neighbor,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("incomplete strict neighbor comparison must not qualify")
             .to_string()
@@ -8244,8 +8426,8 @@ mod tests {
                 &expected,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("wrong ordinary neighbor geometry must fail first")
             .to_string()
@@ -8265,8 +8447,8 @@ mod tests {
                 &widened_field,
                 "fri06-c12-t07-endpoint",
                 true,
-                &[],
-                &[],
+                FragmentCursors::new(&[], &[],),
+                ComparisonFrame::ParentLocal,
             )
             .expect_err("only next_line may be typed endpoint-unobservable")
             .to_string()
@@ -8307,8 +8489,11 @@ mod tests {
                 _ => unreachable!(),
             }
 
-            let error = assert_surgeist_matches(&golden)
-                .expect_err("wrong Range-rectangle identity or inline interval should fail");
+            let error = assert_native_test_matches(
+                &golden,
+                normal_inline_intrinsic_block_native_request(100.0),
+            )
+            .expect_err("wrong Range-rectangle identity or inline interval should fail");
             assert!(
                 error.to_string().contains(expected_diagnostic),
                 "unexpected {field} diagnostic: {error}"
@@ -8445,7 +8630,7 @@ mod tests {
                 _ => unreachable!(),
             }
 
-            let error = assert_surgeist_matches(&golden)
+            let error = assert_native_test_matches(&golden, formal_max_content_native_request())
                 .expect_err("mixed Range-rectangle comparator state should fail closed");
             assert!(
                 error.to_string().contains(diagnostic),
@@ -8570,7 +8755,7 @@ mod tests {
     fn fri06_c06_fragment_observation()
     -> (TestTree, layout::CompletedLayoutBatch<usize>, Expectation) {
         let golden = native_test_golden(&[("X", 10.0, 0.25), ("X", 5.0, 0.0)], true);
-        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let batch = native_tree_compute(&tree, fri06_c06_inline_request());
         tree.apply_completed_batch(&batch);
         fn expected_for(
@@ -8891,7 +9076,38 @@ mod tests {
         )
         .expect("legacy XML should parse");
 
-        assert_surgeist_matches(&golden).expect("legacy XML meaning should remain unchanged");
+        assert_native_test_matches(
+            &golden,
+            layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(
+                    Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+                ),
+            ),
+        )
+        .expect("legacy XML meaning should remain unchanged");
     }
 
     #[test]
@@ -8911,18 +9127,6 @@ mod tests {
         let tree = line_break_tree(layout::LineBreakInput::new());
 
         assert_eq!(tree.node_input(0), &layout::NodeInput::non_box());
-    }
-
-    #[test]
-    fn parse_available_accepts_css_pixel_viewport_values() {
-        assert_eq!(
-            parse_available("400px").expect("px viewport should parse"),
-            Available::Definite(400.0)
-        );
-        assert_eq!(
-            parse_available("max-content").expect("keyword viewport should parse"),
-            Available::MaxContent
-        );
     }
 
     #[test]
@@ -8959,7 +9163,7 @@ mod tests {
                 </test>
                 "#
             ))?;
-            let tree = TestTree::from_golden(&golden.root)?;
+            let tree = TestTree::from_golden(&golden.root, None)?;
             Ok(tree.box_node_input(0).item_order)
         }
 
@@ -8999,190 +9203,135 @@ mod tests {
     }
 
     #[test]
-    fn viewport_parent_axes_schema_is_strict() -> Result<(), Error> {
-        fn parse_viewport(attrs: &str, root_attrs: &str) -> Result<RootContext, Error> {
-            Golden::parse(&format!(
-                r#"
-                <test name="viewport-parent-axes" use-rounding="true">
-                    <viewport width="100px" height="100px" {attrs} />
-                    <input>
-                        <div {root_attrs} />
-                    </input>
-                    <expectations>
-                        <node x="0" y="0" width="0" height="0" />
-                    </expectations>
-                </test>
-                "#
-            ))
-            .map(|golden| golden.viewport.root_context)
-        }
-
-        assert_eq!(parse_viewport("", "")?, RootContext::Root);
-        for attrs in [
-            r#"host-inline-size="100px""#,
-            r#"parent-writing-mode="horizontal-tb""#,
-            r#"parent-direction="ltr""#,
-            r#"parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="100px""#,
-        ] {
-            assert!(
-                parse_viewport(attrs, "").is_err(),
-                "root viewport metadata `{attrs}` should be rejected"
-            );
-        }
-
-        let vertical_rtl = parse_viewport(
-            r#"root-context="flex-item" parent-writing-mode="vertical-rl" parent-direction="rtl" host-inline-size="37.5px""#,
-            r#"writing-mode="horizontal-tb" direction="ltr""#,
-        )?;
-        let horizontal_ltr = parse_viewport(
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="0px""#,
-            r#"writing-mode="vertical-lr" direction="rtl""#,
-        )?;
-        assert_ne!(
-            vertical_rtl, horizontal_ltr,
-            "fixture root context should retain the parsed parent axes"
+    fn historical_root_metadata_does_not_gain_an_operation() {
+        let raw = r#"<test name="historical" measurement-version="2"><viewport width="max-content" height="max-content" root-context="flex-item" parent-writing-mode="vertical-rl" parent-direction="rtl" host-inline-size="20px"/><input><div display="grid"/></input><expectations><node/></expectations></test>"#;
+        let golden = Golden::parse(raw).unwrap();
+        let RootContext::UnqualifiedCapture {
+            measurement_version,
+            raw_viewport,
+        } = &golden.viewport.root_context
+        else {
+            panic!("historical root facts were relabeled");
+        };
+        assert_eq!(measurement_version.as_deref(), Some("2"));
+        assert!(raw_viewport.contains(r#"parent-writing-mode="vertical-rl""#));
+        assert!(raw_viewport.contains(r#"host-inline-size="20px""#));
+        assert!(
+            root_request(&golden.viewport.root_context)
+                .unwrap_err()
+                .to_string()
+                .contains("MissingRootContextAuthority")
         );
-
-        for attrs in [
-            r#"root-context="flex-item""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb""#,
-            r#"root-context="flex-item" parent-direction="ltr""#,
-            r#"root-context="flex-item" host-inline-size="100px""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" host-inline-size="100px""#,
-            r#"root-context="flex-item" parent-direction="ltr" host-inline-size="100px""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal" parent-direction="ltr""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="left-to-right""#,
-            r#"root-context="flex-item" parent-writing-mode=" horizontal-tb" parent-direction="ltr""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr ""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="100""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="max-content""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="NaNpx""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="infpx""#,
-            r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="-0.5px""#,
-        ] {
-            assert!(
-                parse_viewport(attrs, r#"writing-mode="vertical-lr" direction="rtl""#).is_err(),
-                "invalid flex-item viewport metadata `{attrs}` should be rejected"
-            );
-        }
-
-        Ok::<(), Error>(())
     }
 
     #[test]
-    fn flex_item_root_separates_host_inline_allocation_from_viewport_context() -> Result<(), Error>
-    {
-        fn request(attrs: &str) -> Result<layout::LayoutRootRequest, Error> {
-            let golden = Golden::parse(&format!(
-                r#"
-                <test name="flex-host-allocation" use-rounding="true">
-                    <viewport width="400px" height="60px" {attrs} />
-                    <input><div display="grid" /></input>
-                    <expectations><node x="0" y="0" width="0" height="0" /></expectations>
-                </test>
-                "#
-            ))?;
-            let viewport_available = layout::Size::new(
-                to_layout_available(golden.viewport.width),
-                to_layout_available(golden.viewport.height),
-            );
-            root_request(viewport_available, golden.viewport.root_context)
-        }
-
-        for (attrs, expected_available) in [
+    fn native_flex_allocation_remains_separate_from_percentage_parent() {
+        let parent = layout::Size::new(
+            Some(layout::NonNegativeFiniteOf::new(400.0).unwrap()),
+            Some(layout::NonNegativeFiniteOf::new(60.0).unwrap()),
+        );
+        for (axes, allocated) in [
             (
-                r#"root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="160px""#,
-                layout::Size::new(
-                    layout::Available::Definite(160.0),
-                    layout::Available::MaxContent,
-                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(Some(layout::NonNegativeFiniteOf::new(160.0).unwrap()), None),
             ),
             (
-                r#"root-context="flex-item" parent-writing-mode="vertical-rl" parent-direction="rtl" host-inline-size="80.5px""#,
-                layout::Size::new(
-                    layout::Available::MaxContent,
-                    layout::Available::Definite(80.5),
-                ),
+                layout::FlowAxes::new(layout::WritingMode::VerticalRl, layout::Direction::Rtl),
+                layout::Size::new(None, Some(layout::NonNegativeFiniteOf::new(80.5).unwrap())),
             ),
         ] {
-            let request = request(attrs)?;
-            assert_eq!(request.available(), expected_available);
-            let layout::LayoutRootContext::FlexItemUnderViewport(context) = request.context()
-            else {
-                panic!("expected flex-item root context");
+            let sizing = layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(parent.width.unwrap()),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(parent.height.unwrap()),
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            );
+            let request = layout::LayoutRootRequest::flex_item(
+                sizing,
+                layout::FlexItemRootContext::new(axes, parent, allocated),
+            );
+            let layout::LayoutRootContext::FlexItem(context) = request.context() else {
+                panic!("wrong Native root");
             };
+            assert_eq!(context.parent_flow_axes(), axes);
+            assert_eq!(context.percentage_parent(), parent);
+            assert_eq!(context.allocated_size(), allocated);
             assert_eq!(
-                context.viewport_available(),
-                layout::Size::new(
-                    layout::Available::Definite(400.0),
-                    layout::Available::Definite(60.0),
-                )
+                request
+                    .sizing_request()
+                    .axes()
+                    .width
+                    .space()
+                    .definite_size(),
+                parent.width
+            );
+            assert_eq!(
+                request.sizing_request().axes().height.operation(),
+                layout::SizingOperation::Normal
             );
         }
-
-        Ok(())
     }
 
     #[test]
-    fn parses_viewport_root_context_metadata() {
+    fn native_flex_percentage_root_uses_the_public_compute_request() {
+        // These are authored Native containing facts. Historical browser
+        // metadata is intentionally not the authority for this request.
         let golden = Golden::parse(
-            r#"
-            <test name="viewport-flex-item" use-rounding="true">
-                <viewport width="400px" height="max-content" root-context="flex-item" parent-writing-mode="vertical-rl" parent-direction="rtl" host-inline-size="20px" />
-                <input>
-                    <div display="grid" />
-                </input>
-                <expectations>
-                    <node x="0" y="0" width="0" height="0" />
-                </expectations>
-            </test>
-            "#,
-        )
-        .expect("viewport root context should parse");
-
-        assert_eq!(
-            golden.viewport.root_context,
-            RootContext::FlexItem {
-                parent_axes: layout::FlowAxes::new(
-                    layout::WritingMode::VerticalRl,
-                    layout::Direction::Rtl,
-                ),
-                host_inline_size: 20.0,
-            }
+            r#"<test name="native-flex-item"><viewport width="400px" height="80px"/><input><div display="flex" width="50%" height="20px"/></input><expectations><node x="0" y="0" width="200" height="20"/></expectations></test>"#,
+        ).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
+        let parent = layout::Size::new(
+            Some(layout::NonNegativeFiniteOf::new(400.0).unwrap()),
+            Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
         );
-    }
-
-    #[test]
-    fn flex_item_root_uses_the_public_compute_request() {
-        let golden = Golden::parse(
-            r#"
-            <test name="viewport-flex-item" use-rounding="true">
-                <viewport width="400px" height="80px" root-context="flex-item" parent-writing-mode="horizontal-tb" parent-direction="ltr" host-inline-size="400px" />
-                <input>
-                    <div display="flex" width="50%" height="20px" />
-                </input>
-                <expectations>
-                    <node x="0" y="0" width="200" height="20" />
-                </expectations>
-            </test>
-            "#,
-        )
-        .expect("flex-item root fixture should parse");
-
-        assert_eq!(
-            golden.viewport.root_context,
-            RootContext::FlexItem {
-                parent_axes: layout::FlowAxes::new(
-                    layout::WritingMode::HorizontalTb,
-                    layout::Direction::Ltr,
+        let sizing = layout::SizingRequest::new(
+            layout::Size::new(
+                layout::AxisSizingRequest::new(
+                    layout::AvailableSpace::Definite(parent.width.unwrap()),
+                    layout::SizingOperation::Normal,
                 ),
-                host_inline_size: 400.0,
-            }
+                layout::AxisSizingRequest::new(
+                    layout::AvailableSpace::Definite(parent.height.unwrap()),
+                    layout::SizingOperation::Normal,
+                ),
+            ),
+            layout::OrthogonalFallbackOf::new(
+                layout::Size::NONE,
+                layout::NearestScrollportOf::Absent,
+                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+            ),
         );
-
-        assert_surgeist_matches(&golden)
-            .expect("flex-item root should be computed through the public request");
+        let request = layout::LayoutRootRequest::flex_item(
+            sizing,
+            layout::FlexItemRootContext::new(
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                parent,
+                layout::Size::NONE,
+            ),
+        );
+        let batch = layout::compute_layout(&tree, 0, request).unwrap();
+        tree.apply_completed_batch(&batch);
+        compare_expectation(
+            &tree,
+            0,
+            &golden.expectations,
+            &golden.name,
+            golden.use_rounding,
+            batch.unrounded_inline_fragments(),
+            batch.final_inline_fragments(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -9201,13 +9350,35 @@ mod tests {
             "#,
         )
         .expect("batch fixture should parse");
-        let mut tree = TestTree::from_golden(&golden.root).expect("test tree should build");
-        let available = layout::Size::new(
-            to_layout_available(golden.viewport.width),
-            to_layout_available(golden.viewport.height),
+        let mut tree = TestTree::from_golden(&golden.root, None).expect("test tree should build");
+        let request = layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(
+                Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
+                Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+            ),
         );
-        let request = root_request(available, golden.viewport.root_context)
-            .expect("root request should be valid");
         let batch = layout::compute_layout(&tree, 0, request)
             .expect("layout should produce a completed batch");
 
@@ -9228,15 +9399,72 @@ mod tests {
         assert_eq!(cached_batch.unrounded_entries().len(), 1);
         assert_eq!(cached_batch.final_entries().len(), 1);
         assert!(cached_batch.cache_store_entries().is_empty());
-        assert_surgeist_matches(&golden).expect("unrounded expectations should remain observable");
+        assert_native_test_matches(
+            &golden,
+            layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(
+                    Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+                ),
+            ),
+        )
+        .expect("unrounded expectations should remain observable");
 
         let hidden_input = layout::NodeInput {
             display: layout::Display::None,
             ..layout::NodeInput::default()
         };
         tree.nodes[0].layout_input = layout::LayoutInput::box_input(hidden_input);
-        let hidden_request = root_request(available, RootContext::Root)
-            .expect("hidden root request should be valid");
+        let hidden_request = layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(80.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(
+                Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()),
+                Some(layout::NonNegativeFiniteOf::new(80.0).unwrap()),
+            ),
+        );
         let hidden_batch = layout::compute_layout(&tree, 0, hidden_request)
             .expect("hidden root should produce a completed batch");
 
@@ -9967,7 +10195,7 @@ mod tests {
         )
         .expect("calc margin XML should parse");
 
-        let tree = TestTree::from_golden(&golden.root).expect("calc margin should lower");
+        let tree = TestTree::from_golden(&golden.root, None).expect("calc margin should lower");
 
         let layout::LengthAuto::Value(value) = tree.box_node_input(0).margin.left else {
             panic!(
@@ -10003,7 +10231,7 @@ mod tests {
         )
         .expect("calc grid track XML should parse");
 
-        let tree = TestTree::from_golden(&golden.root).expect("calc grid track should lower");
+        let tree = TestTree::from_golden(&golden.root, None).expect("calc grid track should lower");
 
         let [layout::TrackComponent::Track(track)] =
             tree.box_node_input(0).grid_template_columns.as_slice()
@@ -10216,7 +10444,7 @@ mod tests {
         )
         .expect("fixture should parse");
 
-        let tree = TestTree::from_golden(&golden.root).expect("test tree should build");
+        let tree = TestTree::from_golden(&golden.root, None).expect("test tree should build");
         let layout::LayoutInput::LineBreak(input) = tree.nodes[1].layout_input else {
             panic!("br should lower to line break");
         };
@@ -10444,11 +10672,27 @@ mod tests {
             }],
         };
 
-        let request = root_request(
-            layout::Size::splat(layout::Available::MaxContent),
-            RootContext::Root,
-        )
-        .expect("root request should be valid");
+        let request = layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Indefinite,
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Indefinite,
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(None, None),
+        );
         let batch =
             layout::compute_layout(&tree, 0, request).expect("inline grid layout should complete");
         tree.apply_completed_batch(&batch);
@@ -10476,7 +10720,7 @@ mod tests {
         )
         .expect("inline-grid parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("empty inline-grid should size from its grid tracks");
     }
 
@@ -10501,7 +10745,7 @@ mod tests {
         )
         .expect("grid text fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("grid container text should contribute through anonymous text child");
     }
 
@@ -10522,7 +10766,7 @@ mod tests {
         )
         .expect("inline-grid text parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("text inline-grid should use fixture text measurement");
     }
 
@@ -10543,7 +10787,8 @@ mod tests {
         )
         .expect("font-size parity fixture should parse");
 
-        assert_surgeist_matches(&golden).expect("font-size should scale fixture text measurement");
+        assert_native_test_matches(&golden, formal_max_content_native_request())
+            .expect("font-size should scale fixture text measurement");
     }
 
     #[test]
@@ -10602,7 +10847,7 @@ mod tests {
         )
         .expect("inherited font-size parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("font-size should inherit to fixture text descendants");
     }
 
@@ -10625,7 +10870,7 @@ mod tests {
         )
         .expect("line-height parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("line-height should affect fixture text measurement");
     }
 
@@ -10650,7 +10895,7 @@ mod tests {
         )
         .expect("monospace font-family parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("font-family should select fixture text measurement");
     }
 
@@ -10687,7 +10932,7 @@ mod tests {
         )
         .expect("orthogonal nested subgrid text fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("text leaf should preserve its lowered physical size and writing mode");
     }
 
@@ -10708,7 +10953,7 @@ mod tests {
         )
         .expect("inline-grid-lanes parity fixture should parse");
 
-        assert_surgeist_matches(&golden)
+        assert_native_test_matches(&golden, formal_max_content_native_request())
             .expect("empty inline-grid-lanes should size from its grid-lanes tracks");
     }
 
@@ -11014,7 +11259,7 @@ mod tests {
 
     fn fri06_c06_lower(input: &str) -> Result<TestTree, Error> {
         let golden = Golden::parse(&fri06_c06_inline_input_xml(input))?;
-        TestTree::from_golden(&golden.root)
+        TestTree::from_golden(&golden.root, None)
     }
 
     fn fri06_c06_valid_segment() -> String {
@@ -11076,7 +11321,7 @@ mod tests {
         )))
         .unwrap();
         let input = golden.root.children[0].inline_text.as_ref().unwrap();
-        let error = TestTree::from_golden(&golden.root).unwrap_err();
+        let error = TestTree::from_golden(&golden.root, None).unwrap_err();
         assert!(error.to_string().contains("historical measured-width text"));
         let segments = &input.segments;
         assert_eq!(segments.len(), 4);
@@ -11184,7 +11429,7 @@ mod tests {
                 .get(),
             126
         );
-        assert!(TestTree::from_golden(&golden.root).is_err());
+        assert!(TestTree::from_golden(&golden.root, None).is_err());
     }
 
     #[test]
@@ -11361,11 +11606,29 @@ mod tests {
     }
 
     fn fri06_c06_inline_request() -> layout::LayoutRootRequest {
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::definite(100.0),
-            layout::Available::MaxContent,
-        ))
-        .expect("valid inline fixture request")
+        layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Indefinite,
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+        )
     }
 
     fn assert_native_cached_source_geometry(
@@ -11420,7 +11683,7 @@ mod tests {
         // Two raw10px glyphs and one real internal gap(-9.75) produce10.25px.
         // The same font/LH preserves the fractional vertical cache rectangle.
         let golden = native_test_golden(&[("XX", 10.0, -9.75)], false);
-        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let request = fri06_c06_inline_request();
         let cold = native_tree_compute(&tree, request);
         let origin = tree.paragraphs[0].origins[0].origin.clone();
@@ -11507,7 +11770,7 @@ mod tests {
     #[test]
     fn native_empty_origin_cache_preserves_real_occurrence_instead_of_fabricating_absence() {
         let golden = native_test_golden(&[("", 10.0, 0.0)], false);
-        let mut tree = TestTree::from_golden(&golden.root).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let origin = tree.paragraphs[0].origins[0].origin.clone();
         let snapshot = |batch: &layout::CompletedLayoutBatch<usize>| {
             assert!(batch.unrounded_inline_fragments().is_empty());
@@ -11577,7 +11840,7 @@ mod tests {
 
     fn fri06_c06_shape_input_lower(float_attrs: &str, provider: &str) -> Result<TestTree, Error> {
         let golden = Golden::parse(&fri06_c06_shape_input_xml(float_attrs, provider))?;
-        TestTree::from_golden(&golden.root)
+        TestTree::from_golden(&golden.root, None)
     }
 
     fn fri06_c06_shape_input_query(
@@ -11595,11 +11858,29 @@ mod tests {
     }
 
     fn fri06_c06_shape_input_request() -> layout::LayoutRootRequest {
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::definite(100.0),
-            layout::Available::MaxContent,
-        ))
-        .expect("finite shape fixture request")
+        layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Indefinite,
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+        )
     }
 
     #[test]
@@ -11893,7 +12174,39 @@ mod tests {
     #[test]
     fn authentic_structural_br_band_is_an_unsupported_observation_after_real_layout() {
         let golden = Golden::parse(r#"<test name="structural-br-band" use-rounding="false"><viewport width="120px" height="120px"/><input><div display="block" width="120px"><div source-tag="br" display="inline"/></div></input><expectations><node><node><browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="absent"/><browser-br-font-band x="0" y="0" width="0" height="16"/></node></node></expectations></test>"#).unwrap();
-        let error = assert_surgeist_matches(&golden).unwrap_err().to_string();
+        let error = assert_native_test_matches(
+            &golden,
+            layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                ),
+            ),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             error.contains("unsupported browser BR font-band observation"),
             "{error}"
@@ -11901,6 +12214,154 @@ mod tests {
         assert!(error.contains("x=0, y=0, width=0, height=16"));
         let mut relations = golden.clone();
         relations.expectations.children[0].browser_br_font_band = None;
-        assert_surgeist_matches(&relations).unwrap();
+        assert_native_test_matches(
+            &relations,
+            layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                ),
+            ),
+        )
+        .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod source_root_frame_tests {
+    use super::*;
+
+    #[test]
+    fn rtl_body_root_placement_and_root_border_observation_are_independent() {
+        // Authored Native context/geometry, not a browser-capture claim.
+        // Parent RTL owns the root origin; the root's own LTR flow owns children.
+        let golden = Golden::parse(r#"<test name="rtl-body-frame" measurement-version="3" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input><expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations></test>"#).unwrap();
+        let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
+        let request = root_request(&golden.viewport.root_context).unwrap();
+        let batch = layout::compute_layout(&tree, 0, request).unwrap();
+        tree.apply_completed_batch(&batch);
+        assert_eq!(
+            tree.nodes[0].unrounded.location,
+            layout::Point::new(800.0 - 100.0, 0.0)
+        );
+        assert_eq!(tree.nodes[1].unrounded.location, layout::Point::ZERO);
+        golden
+            .viewport
+            .root_context
+            .validate_native_origin(
+                tree.nodes[0].unrounded.location,
+                tree.nodes[0].unrounded.size,
+            )
+            .unwrap();
+        compare_expectation_with_endpoint_accounting(
+            &tree,
+            0,
+            &golden.expectations,
+            &golden.name,
+            false,
+            FragmentCursors::new(
+                batch.unrounded_inline_fragments(),
+                batch.final_inline_fragments(),
+            ),
+            ComparisonFrame::RootBorder,
+        )
+        .unwrap();
+        // The same assertions in the parent frame must expose the 700px offset.
+        assert!(
+            compare_expectation_with_endpoint_accounting(
+                &tree,
+                0,
+                &golden.expectations,
+                &golden.name,
+                false,
+                FragmentCursors::new(
+                    batch.unrounded_inline_fragments(),
+                    batch.final_inline_fragments(),
+                ),
+                ComparisonFrame::ParentLocal,
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn analytic_capture_profile_refuses_inherited_orthogonal_text_without_a_fallback_guess() {
+        // Authored Native inputs qualify the closed adapter policy, not browser
+        // capture, a font metric, or an inferred original source occurrence.
+        let context = r#"<viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>"#;
+        for (children, refused) in [
+            (
+                r#"<text display="block" writing-mode="horizontal-tb">X</text>"#,
+                false,
+            ),
+            (
+                r#"<text display="block" writing-mode="vertical-rl">X</text>"#,
+                true,
+            ),
+            (
+                r#"<div display="block" writing-mode="vertical-rl"><text display="block" writing-mode="horizontal-tb">X</text></div>"#,
+                true,
+            ),
+            (
+                r#"<div display="inline-block" writing-mode="vertical-rl" width="10px" height="20px"/>"#,
+                false,
+            ),
+        ] {
+            let xml = format!(
+                r#"<test name="authored-profile" measurement-version="3" observation-frame="root-border" use-rounding="false">{context}<input><div display="grid" position="relative">{children}</div></input><expectations><node/></expectations></test>"#
+            );
+            let golden = Golden::parse(&xml).unwrap();
+            let tree = TestTree::from_golden(&golden.root, None).unwrap();
+            let result = validate_capture_analytic_profile(&tree, &golden.viewport.root_context);
+            if refused {
+                assert_eq!(
+                    result.unwrap_err().to_string(),
+                    "UnsupportedAnalyticOrthogonalTextProfile"
+                );
+            } else {
+                result.unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn only_qualified_static_auto_root_lowers_to_the_native_in_flow_role() {
+        let xml = r#"<test name="authored-static" measurement-version="3" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="grid" position="static" width="100px" height="20px"/></input><expectations><node/></expectations></test>"#;
+        let golden = Golden::parse(xml).unwrap();
+        let tree =
+            TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context)).unwrap();
+        assert_eq!(golden.root.style.get("position"), Some("static"));
+        assert_eq!(tree.box_node_input(0).position, layout::Position::Relative);
+        assert!(TestTree::from_golden(&golden.root, None).is_err());
+        let displaced =
+            Golden::parse(&xml.replace(r#"position="static""#, r#"position="static" top="1px""#))
+                .unwrap();
+        assert_eq!(
+            TestTree::from_golden(&displaced.root, Some(&displaced.viewport.root_context))
+                .unwrap_err()
+                .to_string(),
+            "UnsupportedStaticRootContext"
+        );
     }
 }

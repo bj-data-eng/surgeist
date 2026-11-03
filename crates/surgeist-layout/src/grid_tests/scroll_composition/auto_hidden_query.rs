@@ -85,7 +85,17 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, preferred: Prefer
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::Grid,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     // Actual leaf algorithm and SAME host provider, not an authored Grid or
     // ComputeOutput response. AUTO does not take the definite-size shortcut.
@@ -97,15 +107,25 @@ fn qualify_leaf<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, preferred: Prefer
     assert_eq!(output.named_baselines, NamedBaselinesOf::unknown());
 }
 fn completed<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatchOf<u32, S> {
-    compute_layout(
-        tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    compute_layout(tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("actual ordinary Grid completes")
 }
 fn geometry<S: LayoutScalar>(

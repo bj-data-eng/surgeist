@@ -8,7 +8,7 @@ use super::inline::{
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
-    AvailableOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
+    BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
     ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf, InlineFragmentOutputOf,
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
     LayoutResultOf, LayoutScalar, LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow,
@@ -240,14 +240,90 @@ where
         });
     }
     let logical_inner_size = constants.logical_node_inner_size();
+    let inherited_inline_request = constants
+        .flow_axes
+        .logical_size(constants.sizing_request.axes())
+        .inline;
+    // Intrinsic components produce only demand. The accepted Normal flow
+    // subsequently owns TAB execution, Shape bands, height and publication.
+    let accepted_inline_outer = if let Some(inner) = logical_inner_size.inline {
+        inner + constants.logical_content_box_inset().inline_sum()
+    } else {
+        let inline_preferred = match constants.flow_axes.inline_axis() {
+            crate::PhysicalAxis::Horizontal => &style.common.size.width,
+            crate::PhysicalAxis::Vertical => &style.common.size.height,
+        };
+        let normal_block_fill = input.sizing_mode() == SizingMode::InherentSize
+            && !style.display.is_inline_level()
+            && !style.common.item_is_replaced
+            && !style.common.item_is_table
+            && tree.node_input(node).float.is_none()
+            && style.common.position != Position::Absolute
+            && inline_preferred.is_auto()
+            && matches!(
+                input.parent_formatting_context(),
+                ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
+            );
+        let mut component = |operation| -> LayoutResultOf<Tree::Node, S, S, M> {
+            let measured = layout_in_flow_children(
+                tree,
+                node,
+                &children,
+                &constants,
+                input,
+                InFlowPassContext {
+                    inline_operation: operation,
+                    inner_inline: None,
+                    set_layout: false,
+                    inherited,
+                },
+            )?;
+            Ok(measured.intrinsic_inline_demand)
+        };
+        let content = match inherited_inline_request.operation() {
+            crate::SizingOperation::MinContent => component(crate::SizingOperation::MinContent)?,
+            crate::SizingOperation::MaxContent => component(crate::SizingOperation::MaxContent)?,
+            crate::SizingOperation::Normal => {
+                if normal_block_fill
+                    && let Some(available) = inherited_inline_request.space().definite_size()
+                {
+                    available.get()
+                } else {
+                    let maximum = component(crate::SizingOperation::MaxContent)?;
+                    if let Some(available) = inherited_inline_request.space().definite_size() {
+                        let minimum = component(crate::SizingOperation::MinContent)?;
+                        // CSS shrink-to-fit: a bound is not an imposed width,
+                        // and the largest wrapped line is not the used width.
+                        maximum.min(minimum.max(available.get()))
+                    } else {
+                        maximum
+                    }
+                }
+            }
+        };
+        (content + constants.logical_content_box_inset().inline_sum())
+            .clamp_max_before_min_optional(
+                constants.logical_node_min_size().inline,
+                constants.logical_node_max_size().inline,
+            )
+            .max(constants.logical_padding_border_size().inline)
+    };
+    let remaining_inline =
+        accepted_inline_outer - constants.logical_content_box_inset().inline_sum();
+    if !remaining_inline.is_finite() {
+        return Err(crate::error::sizing_resolution_error(
+            node,
+            crate::LengthResolutionStatus::InvalidNumeric {
+                value: remaining_inline,
+            }
+            .into(),
+        ));
+    }
+    let accepted_inline_inner = remaining_inline.max(S::ZERO);
     let sizes_float_context = float_context::sizes_float_context(
         float_role,
         input,
-        logical_inner_size.inline.or(constants
-            .flow_axes
-            .logical_size(constants.available_content)
-            .inline
-            .into_option()),
+        Some(accepted_inline_inner),
         inherited.is_some(),
         tree.block_float_work(node),
     );
@@ -258,27 +334,33 @@ where
                 .logical_axis_progression(crate::LogicalAxis::Block)
                 .is_decreasing()
                 && logical_inner_size.block.is_none());
-    // A provisional rectangular preview cannot lock the final measured basis
-    // of an actual percentage operand. Use the existing performed normal path,
-    // including Shape queries/encounter acceptance, before selecting that size.
+    crate::layout_math::checked_available_space(accepted_inline_inner)
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+    let normal_constants = constants.with_logical_node_inner_size(LogicalSizeOf::new(
+        Some(accepted_inline_inner),
+        logical_inner_size.block,
+    ));
+    // Actual Normal traversal owns height, Shape encounters and normal facts
+    // at the accepted width. RunMode does not turn a size query intrinsic.
     let measured_inset_demand = input.run_mode().is_perform_layout()
         && relative::has_pending_children::<Tree, M>(tree, &children);
-    let intrinsic_pass = layout_in_flow_children(
+    let normal_pass = layout_in_flow_children(
         tree,
         node,
         &children,
-        &constants,
+        &normal_constants,
         input,
         InFlowPassContext {
-            inner_inline: logical_inner_size.inline,
+            inline_operation: crate::SizingOperation::Normal,
+            inner_inline: Some(accepted_inline_inner),
             set_layout: input.run_mode().is_perform_layout()
                 && (!needs_final_pass || measured_inset_demand),
             inherited,
         },
     )?;
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
-        intrinsic_pass.intrinsic_inline_demand + constants.logical_content_box_inset().inline_sum(),
-        intrinsic_pass.auto_block(&constants, float_role),
+        accepted_inline_outer,
+        normal_pass.auto_block(&normal_constants, float_role),
     );
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
         logical_intrinsic_outer_size
@@ -326,6 +408,7 @@ where
             &final_constants,
             input,
             InFlowPassContext {
+                inline_operation: crate::SizingOperation::Normal,
                 inner_inline: logical_inner_size.inline,
                 set_layout: input.run_mode().is_perform_layout(),
                 inherited,
@@ -333,7 +416,7 @@ where
         )?;
         (final_constants, final_pass)
     } else {
-        (constants, intrinsic_pass)
+        (normal_constants, normal_pass)
     };
     if let Some(text) = tree.text_computation() {
         text.formatted_record_flow(final_pass.formatted.clone());
@@ -480,14 +563,6 @@ enum ChildContainingBlockExtent<S: LayoutScalar> {
     FinalAutoDerived(S),
 }
 
-impl<S: LayoutScalar> ChildContainingBlockExtent<S> {
-    fn value(self) -> S {
-        match self {
-            Self::Definite(value) | Self::FinalAutoDerived(value) => value,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 struct Constants<S: LayoutScalar> {
     flow_axes: crate::geometry::FlowAxes,
@@ -514,7 +589,8 @@ struct Constants<S: LayoutScalar> {
     padding_border_size: Size<S>,
     scrollbar_gutter: Edges<S>,
     content_box_inset: Edges<S>,
-    available_content: Size<AvailableOf<S>>,
+    sizing_request: crate::SizingRequestOf<S>,
+    positioned_fallback_limits: Size<crate::OrthogonalFallbackLimitOf<S>>,
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
     own_top_margin: CollapsibleMarginOf<S>,
     own_bottom_margin: CollapsibleMarginOf<S>,
@@ -571,9 +647,13 @@ impl<S: LayoutScalar> Constants<S> {
             }
             Some(ChildContainingBlockExtent::FinalAutoDerived(_)) | None => None,
         };
-        let child_block_extent = child_logical_extent
-            .block
-            .map(ChildContainingBlockExtent::value);
+        // A content-derived final block extent remains indefinite for an
+        // ordinary child's size percentages. Its measured numeric extent is
+        // retained separately for normal placement and relative insets.
+        let child_block_extent = match child_logical_extent.block {
+            Some(ChildContainingBlockExtent::Definite(value)) => Some(value),
+            Some(ChildContainingBlockExtent::FinalAutoDerived(_)) | None => None,
+        };
         child_flow_axes.physical_size(LogicalSizeOf::new(child_inline_extent, child_block_extent))
     }
 
@@ -717,7 +797,12 @@ impl<S: LayoutScalar> Constants<S> {
         let unconstrained_scroll_box_size = padding_border_size
             + Size::splat(style.scrollbar_width.get() + style.scrollbar_width.get());
         let scroll_box_size = node_outer_size
-            .or(input.available().map(AvailableOf::into_option))
+            .or(input.sizing_request().axes().map(|request| {
+                request
+                    .space()
+                    .definite_size()
+                    .map(crate::NonNegativeFiniteOf::get)
+            }))
             .or(max_size)
             .unwrap_or(unconstrained_scroll_box_size)
             .zip_map(padding_border_size, |size, minimum| size.max(minimum));
@@ -739,16 +824,65 @@ impl<S: LayoutScalar> Constants<S> {
             effective_border + scrollbar_gutter + scroll_box.effective_padding();
         let content_box_inset_size = content_box_inset.sum_axes();
         let node_inner_size = node_outer_size.sub_optional_clamped_to_zero(content_box_inset_size);
-        let available_content =
-            input
-                .available()
-                .zip_map(content_box_inset_size, |available, inset| match available {
-                    AvailableOf::Definite(value) => {
-                        AvailableOf::Definite((value - inset).max(S::ZERO))
-                    }
-                    AvailableOf::MinContent => AvailableOf::MinContent,
-                    AvailableOf::MaxContent => AvailableOf::MaxContent,
-                });
+        let content_axes = crate::layout_math::transpose_axis_requests_at_node(
+            node,
+            input.sizing_request().axes().zip_map(
+                content_box_inset_size,
+                crate::layout_math::inset_axis_request,
+            ),
+        )?;
+        let fallback_source = crate::scroll::MeasuredLeafContentBoxInsetSourceOf {
+            flow_axes,
+            computed_overflow: style.common.overflow,
+            item_is_replaced: style.common.item_is_replaced,
+            scrollbar_gutter: style.scrollbar_gutter,
+            scrollbar_width: style.scrollbar_width,
+            settled_auto_scrollbars: input.settled_auto_scrollbars(),
+            padding,
+            border,
+        };
+        let fixed_outer = if input.sizing_mode() == SizingMode::InherentSize {
+            node_outer_size
+        } else {
+            input.known()
+        };
+        let fallback_sources = crate::layout_math::qualify_fixed_fallback_sources(
+            input,
+            SizingAlgorithm::Block,
+            &style.common,
+            fixed_outer,
+            box_sizing_adjustment,
+            crate::scroll::UsedOverflow::from_computed(
+                style.common.overflow,
+                style.common.item_is_replaced,
+            )
+            .is_scroll_container(),
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error))?;
+        let fallback = crate::layout_math::child_orthogonal_fallback(
+            input.sizing_request().orthogonal_fallback(),
+            fallback_sources.definite_outer,
+            fallback_sources.minimum_outer,
+            fallback_sources.maximum_outer,
+            fallback_source,
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+        let positioned_fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
+            fallback_sources.minimum_outer,
+            fallback_sources.maximum_outer,
+            crate::scroll::measured_leaf_content_box_inset(
+                crate::scroll::MeasuredLeafContentBoxInsetSourceOf {
+                    padding: Edges::ZERO,
+                    ..fallback_source
+                },
+            )
+            .sum_axes(),
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?;
+        let sizing_request = input
+            .sizing_request()
+            .with_axes(content_axes)
+            .with_orthogonal_fallback(fallback);
         let logical_padding = flow_axes.logical_edges(padding);
         let logical_border = flow_axes.logical_edges(border);
         let logical_style_size = flow_axes.logical_size(style_size);
@@ -804,7 +938,8 @@ impl<S: LayoutScalar> Constants<S> {
             padding_border_size,
             scrollbar_gutter,
             content_box_inset,
-            available_content,
+            sizing_request,
+            positioned_fallback_limits,
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             own_top_margin: CollapsibleMarginOf::<S>::from_margin(
                 logical_margin.block_start.unwrap_or(S::ZERO),
@@ -922,7 +1057,17 @@ mod fri06_c13_t06_characterization_tests {
             Size::NONE,
             parent,
             ContainingLayoutContext::new(containing_flow_axes, ParentFormattingContext::NoParent),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         )
     }
 

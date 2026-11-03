@@ -71,7 +71,12 @@ pub(in super::super) fn fit_with_allocation(
             prepared: &paragraph.prepared,
             segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: Available::Definite(available),
+            available: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(available).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
             alignment: TextAlign::Start,
@@ -515,14 +520,33 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
             )
             .unwrap();
             let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
-            crate::engine::compute_root(
-                &mut session,
-                0,
-                crate::Size::new(
-                    crate::AvailableOf::Definite(S::from_f64(60.0)),
-                    crate::AvailableOf::MAX_CONTENT,
-                ),
-            )
+            crate::engine::compute_root(&mut session, 0, {
+                let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
+                let root_input = crate::LayoutTree::node_input(&tree, 0);
+                // This is the actual fixture's Native NoParent frame. Its
+                // declared percentage width supplies no independent ICB size.
+                crate::LayoutRootRequestOf::standalone(
+                    crate::SizingRequestOf::new(
+                        crate::Size::new(
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Definite(width),
+                                crate::SizingOperation::Normal,
+                            ),
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                crate::SizingOperation::Normal,
+                            ),
+                        ),
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Absent,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    crate::FlowAxes::new(root_input.writing_mode, root_input.direction),
+                    crate::Size::new(Some(width), None),
+                )
+            })
             .unwrap();
             let state = session.text_computation().unwrap();
             assert_eq!(state.pending.len(), 1);
