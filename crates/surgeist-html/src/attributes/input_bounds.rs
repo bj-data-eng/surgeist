@@ -711,7 +711,7 @@ impl HtmlInputNumericStep {
         Self::ANY_KEYWORD
             .as_bytes()
             .get(index)
-            .is_some_and(|&byte| ascii_keyword_unit(unit, byte))
+            .is_some_and(|&byte| ascii_case_insensitive_unit(unit, byte))
     }
 }
 impl HtmlInputNumericAttributeReport {

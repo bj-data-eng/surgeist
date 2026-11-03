@@ -530,8 +530,7 @@ impl<'a> IconSizeCursor<'a> {
                     self.index = 0;
                 } else if self.index == 3 {
                     self.result = Some(Ok(IconSizeShape::Scalable));
-                } else if crate::rel::fold(self.units[self.index]) == u16::from(b"any"[self.index])
-                {
+                } else if ascii_case_insensitive_unit(self.units[self.index], b"any"[self.index]) {
                     self.index += 1;
                 } else {
                     self.stage = IconSizeStage::Separator {

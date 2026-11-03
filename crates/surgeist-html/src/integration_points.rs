@@ -89,16 +89,11 @@ fn borrowed_comparison(
             .code_units()
             .iter()
             .zip(literal.bytes())
-            .all(|(&unit, byte)| {
-                let unit = match comparison {
-                    HtmlIntegrationPointComparison::AsciiCaseInsensitive
-                        if (65..=90).contains(&unit) =>
-                    {
-                        unit + 32
-                    }
-                    _ => unit,
-                };
-                unit == u16::from(byte)
+            .all(|(&unit, byte)| match comparison {
+                HtmlIntegrationPointComparison::AsciiCaseInsensitive => {
+                    crate::tokens::ascii_case_insensitive_unit(unit, byte)
+                }
+                HtmlIntegrationPointComparison::Exact => unit == u16::from(byte),
             }))
 }
 

@@ -3,6 +3,7 @@
 //! second real buffer for ASCII strip/collapse; both capacities are cumulative.
 
 use super::*;
+use crate::bounded::is_ascii_whitespace;
 
 /// Normalized document title and the actual selected title element.
 ///
@@ -149,7 +150,7 @@ impl<'a> HtmlSemanticSession<'a> {
         for unit in raw.code_units() {
             self.charge(1)?;
             let unit = *unit;
-            if matches!(unit, 9 | 10 | 12 | 13 | 32) {
+            if is_ascii_whitespace(unit) {
                 pending_space = !units.is_empty();
             } else {
                 if pending_space {

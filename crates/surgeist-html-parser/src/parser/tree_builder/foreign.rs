@@ -34,30 +34,6 @@ const HTML: &str = "http://www.w3.org/1999/xhtml";
 const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
 const SVG: &str = "http://www.w3.org/2000/svg";
 
-pub(super) fn insensitive(
-    value: &DocumentString,
-    literal: &'static str,
-    c: &mut ParseControl,
-) -> Result<bool, HeadError> {
-    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    if value.len() != literal.len() {
-        return Ok(false);
-    }
-    // The lengths are equal, so the pairs are exactly the literal's indices.
-    for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
-        c.charge_unit_literal_comparison()?;
-        let lower = if (65..=90).contains(&unit) {
-            unit | 0x20
-        } else {
-            unit
-        };
-        if lower != u16::from(byte) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
 fn integration_comparison(
     value: &DocumentString,
     literal: &'static str,
@@ -66,7 +42,9 @@ fn integration_comparison(
 ) -> Result<bool, HeadError> {
     match comparison {
         HtmlIntegrationPointComparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
-        HtmlIntegrationPointComparison::AsciiCaseInsensitive => insensitive(value, literal, c),
+        HtmlIntegrationPointComparison::AsciiCaseInsensitive => {
+            Ok(c.ascii_case_insensitive_literal_matches(value, literal)?)
+        }
     }
 }
 
@@ -727,12 +705,7 @@ impl HeadState<'_> {
         // The lengths are equal, so the pairs are exactly the shared indices.
         for (&unit, &expected) in name.code_units().iter().zip(token.code_units()) {
             c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
-            let lower = if (65..=90).contains(&unit) {
-                unit | 0x20
-            } else {
-                unit
-            };
-            if lower != expected {
+            if surgeist_html::bounded::ascii_lowercase(unit) != expected {
                 return Ok(false);
             }
         }

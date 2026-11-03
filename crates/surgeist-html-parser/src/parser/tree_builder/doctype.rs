@@ -16,6 +16,7 @@ use crate::parser::{
     control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl},
     tokenizer::token::{Doctype, Text},
 };
+use surgeist_html::bounded::ascii_case_insensitive_unit;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DoctypeDecision {
@@ -121,16 +122,12 @@ fn matches(
     for (&unit, byte) in units.iter().zip(literal.bytes()) {
         c.charge(HtmlParseWorkCategory::StateStep, 1)?;
         c.charge_unit_literal_comparison()?;
-        let mut unit = unit;
-        if insensitive && (65..=90).contains(&unit) {
-            unit |= 0x20;
-        }
-        let byte = if insensitive {
-            byte.to_ascii_lowercase()
+        let equal = if insensitive {
+            ascii_case_insensitive_unit(unit, byte)
         } else {
-            byte
+            unit == u16::from(byte)
         };
-        if unit != u16::from(byte) {
+        if !equal {
             return Ok(false);
         }
     }

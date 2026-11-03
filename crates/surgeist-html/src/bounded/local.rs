@@ -24,7 +24,7 @@ pub use crate::template_markers::{
 };
 pub use crate::tokens::{
     SpaceTokenCursor as HtmlSpaceTokenCursor, SpaceTokenStep as HtmlSpaceTokenStep,
-    ascii_whitespace as is_ascii_whitespace,
+    ascii_case_insensitive_unit, ascii_lowercase, ascii_whitespace as is_ascii_whitespace,
 };
 
 pub use crate::script_type::{HtmlScriptTypeCursor, HtmlScriptTypeWork};

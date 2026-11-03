@@ -960,7 +960,7 @@ impl<'a> HtmlInputTypeCursor<'a> {
                 }
             }
             TypeStep::Unit(value, keyword, state, position) => {
-                if !crate::attributes::ascii_keyword_unit(
+                if !crate::tokens::ascii_case_insensitive_unit(
                     value.code_units()[position],
                     keyword.as_bytes()[position],
                 ) {
@@ -1053,7 +1053,7 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
                 }
             }
             ColorSpaceStep::Unit(value, keyword, state, position) => {
-                if !crate::attributes::ascii_keyword_unit(
+                if !crate::tokens::ascii_case_insensitive_unit(
                     value.code_units()[position],
                     keyword.as_bytes()[position],
                 ) {

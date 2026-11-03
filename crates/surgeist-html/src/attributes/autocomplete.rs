@@ -3,6 +3,7 @@
 //! separate contextual/effect owners. WHATWG attribution is in the crate notice.
 
 use super::*;
+use crate::tokens::ascii_lowercase;
 use crate::{HtmlSpaceSeparatedTokens, HtmlSpaceToken, HtmlTokenError};
 use std::{error::Error, fmt};
 
@@ -411,8 +412,8 @@ impl Materialization {
         let mut output = Vec::new();
         self.reserve(&mut output, units.len(), StoragePurpose::Output)?;
         output.extend(units.iter().map(|&unit| {
-            if lowercase && (0x41..=0x5a).contains(&unit) {
-                unit + 0x20
+            if lowercase {
+                ascii_lowercase(unit)
             } else {
                 unit
             }
@@ -798,9 +799,10 @@ impl Error for HtmlAutocompleteSectionError {
 
 fn section_prefix(value: &DocumentString) -> bool {
     value.code_units().get(..8).is_some_and(|units| {
-        units.iter().zip(b"section-").all(|(&unit, byte)| {
-            u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(byte))
-        })
+        units
+            .iter()
+            .zip(b"section-")
+            .all(|(&unit, &byte)| ascii_case_insensitive_unit(unit, byte))
     })
 }
 

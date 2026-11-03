@@ -1,7 +1,7 @@
 //! HTML 877d #pragma-directives: non-executing static content observations.
 //! No insertion history, encoding, URL resolution, stylesheet mutation, CSP or navigation.
 use super::*;
-use crate::bounded::is_ascii_whitespace as ascii_whitespace;
+use crate::bounded::{ascii_case_insensitive_unit, is_ascii_whitespace as ascii_whitespace};
 use crate::{HtmlAttributeReport, HtmlMetaPragmaState, HtmlNonNegativeInteger};
 
 /// An exact range in retained content, produced at checked source cursor boundaries.
@@ -297,7 +297,7 @@ impl<'a> HtmlSemanticSession<'a> {
             let Some(unit) = self.pragma_unit(units, pos + offset)? else {
                 return Ok(false);
             };
-            if !u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(byte)) {
+            if !ascii_case_insensitive_unit(unit, *byte) {
                 return Ok(false);
             }
         }
