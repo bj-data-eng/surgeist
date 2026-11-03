@@ -11,7 +11,9 @@ use surgeist_html::{
 };
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-    HtmlHostFactsRevision, HtmlScriptingStatus,
+    HtmlControlFactsError, HtmlElementReferenceFactsError, HtmlGlobalInheritanceError,
+    HtmlHostFactsRevision, HtmlInertFactError, HtmlLanguageDirectionError, HtmlOutputDefaultError,
+    HtmlScriptingStatus, HtmlSemanticContextError,
 };
 
 /// Four sizes, so three doublings. Large enough that a quadratic planner is far
@@ -33,6 +35,14 @@ enum Shape {
     WideParentLast,
     /// `n` elements that no parent holds.
     Detached,
+    /// `n` inputs owned by one form.
+    ControlOwners,
+    /// `n` buttons whose `commandfor` names one element.
+    CommandTargets,
+    /// `n` templates, each with its contents fragment.
+    Templates,
+    /// `n` hosts, each with a shadow root.
+    ShadowRoots,
 }
 
 fn document(shape: Shape, n: usize) -> (DomSnapshot, DocumentId) {
@@ -59,6 +69,43 @@ fn document(shape: Shape, n: usize) -> (DomSnapshot, DocumentId) {
         Shape::Detached => {
             for _ in 0..n {
                 batch.create_element_ns(&document, Namespace::html(), "div");
+            }
+        }
+        Shape::ControlOwners | Shape::CommandTargets | Shape::Templates | Shape::ShadowRoots => {
+            let top = batch.create_element_ns(&document, Namespace::html(), "div");
+            batch.insert_before(&top, &document, None);
+            let owner = match shape {
+                Shape::ControlOwners => {
+                    let form = batch.create_element_ns(&document, Namespace::html(), "form");
+                    batch.insert_before(&form, &top, None);
+                    form
+                }
+                _ => top.clone(),
+            };
+            let target = batch.create_element_ns(&document, Namespace::html(), "span");
+            batch.insert_before(&target, &top, None);
+            for _ in 0..n {
+                let node = match shape {
+                    Shape::ControlOwners => {
+                        batch.create_element_ns(&document, Namespace::html(), "input")
+                    }
+                    Shape::CommandTargets => {
+                        let button =
+                            batch.create_element_ns(&document, Namespace::html(), "button");
+                        batch.set_command_for_element(&button, Some((&target).into()));
+                        button
+                    }
+                    Shape::Templates => {
+                        batch.create_element_ns(&document, Namespace::html(), "template")
+                    }
+                    _ => {
+                        let host = batch.create_element_ns(&document, Namespace::html(), "div");
+                        batch
+                            .attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+                        host
+                    }
+                };
+                batch.insert_before(&node, &owner, None);
             }
         }
         Shape::WideParentFirst | Shape::WideParentLast => {
@@ -91,7 +138,7 @@ fn captures_within(snapshot: &DomSnapshot, document: DocumentId, n: usize, work:
         HtmlCaptureLimits::new(
             4 * n + 16,
             16 * n + 64,
-            0,
+            4 * n + 16,
             100 * n + 100,
             4 * n + 16,
             0,
@@ -107,6 +154,32 @@ fn captures_within(snapshot: &DomSnapshot, document: DocumentId, n: usize, work:
             resource: DomHtmlCaptureResource::Work,
             limit,
         }) => {
+            assert_eq!(limit, work);
+            false
+        }
+        // Each producer validates its facts under the same work bound, and
+        // reports its own refusal when that bound runs out first.
+        Err(
+            DomHtmlCaptureError::Language(HtmlLanguageDirectionError::ValidationWork {
+                limit, ..
+            })
+            | DomHtmlCaptureError::Inert(HtmlInertFactError::ValidationWork { limit, .. })
+            | DomHtmlCaptureError::GlobalInheritance(HtmlGlobalInheritanceError::ValidationWork {
+                limit,
+                ..
+            })
+            | DomHtmlCaptureError::Controls(HtmlControlFactsError::ValidationWork { limit, .. })
+            | DomHtmlCaptureError::OutputDefaults(HtmlOutputDefaultError::ValidationWork {
+                limit,
+                ..
+            })
+            | DomHtmlCaptureError::Context(HtmlSemanticContextError::ControlsFacts(
+                HtmlControlFactsError::ValidationWork { limit, .. },
+            ))
+            | DomHtmlCaptureError::ElementReferences(
+                HtmlElementReferenceFactsError::ValidationWork { limit, .. },
+            ),
+        ) => {
             assert_eq!(limit, work);
             false
         }
@@ -167,6 +240,26 @@ fn wide_capture_charges_work_linear_in_nodes_when_the_parent_is_created_first() 
 #[test]
 fn wide_capture_charges_work_linear_in_nodes_when_the_parent_is_created_last() {
     assert_linear(Shape::WideParentLast);
+}
+
+#[test]
+fn control_capture_charges_work_linear_in_nodes_when_one_form_owns_every_input() {
+    assert_linear(Shape::ControlOwners);
+}
+
+#[test]
+fn command_target_capture_charges_work_linear_in_nodes_when_every_button_names_one_target() {
+    assert_linear(Shape::CommandTargets);
+}
+
+#[test]
+fn template_capture_charges_work_linear_in_nodes_when_every_template_has_contents() {
+    assert_linear(Shape::Templates);
+}
+
+#[test]
+fn shadow_capture_charges_work_linear_in_nodes_when_every_host_has_a_root() {
+    assert_linear(Shape::ShadowRoots);
 }
 
 /// The steps the capture builder reports when it establishes the children of
