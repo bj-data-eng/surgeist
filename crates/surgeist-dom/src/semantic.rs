@@ -4,6 +4,7 @@ mod base;
 mod control;
 mod inheritance;
 mod modal;
+mod plan;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
 
@@ -22,11 +23,11 @@ use surgeist_html::{
 use surgeist_html_semantics::HtmlScriptingStatus;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderRegistry, HtmlCaptureBuilderSubject,
-    HtmlCaptureDefinitionInput, HtmlCaptureElementError, HtmlCaptureError, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCaptureTemplateCacheInput,
-    HtmlCapturedCustomElementState, HtmlCapturedDefinitions, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision, HtmlRegistryScope,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlCaptureDefinitionInput, HtmlCaptureEdgeError, HtmlCaptureElementError, HtmlCaptureError,
+    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
+    HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState, HtmlCapturedDefinitions,
+    HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision,
+    HtmlRegistryScope, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits, HtmlSemanticReport,
     HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
 };
@@ -42,7 +43,13 @@ use crate::{
 /// `subjects` entries. Nullable reference facts have at most twice `subjects`
 /// entries (two per Button, one per Input), with their validation independently bounded by
 /// `work`. Actual HTML/null-definition classifications also use subjects, with
-/// their context qualification/duplicate comparisons charged to adapter work.
+/// their context qualification and duplicate checks charged to adapter work.
+/// Planning keeps one index entry per planned node, at most `subjects` of them,
+/// admitted and charged before it allocates. Planned-node membership, subject
+/// and parent lookups, and the search for the next node to expand, each cost a
+/// constant number of charged steps. The producer's edge operations take their
+/// own steps from the same `work` bound and cancellation. A vector grows by
+/// doubling, never beyond `subjects` entries.
 /// Document design-mode rows use at most `subjects` records. The same finite
 /// `work` bound independently limits GlobalInheritance producer validation per
 /// formation, including Slot context reconstruction; it is not a cumulative
@@ -193,24 +200,21 @@ fn element_capture_error(
     }
 }
 
+fn edge_capture_error(error: HtmlCaptureEdgeError<DomHtmlCaptureError>) -> DomHtmlCaptureError {
+    match error {
+        HtmlCaptureEdgeError::Capture(error) => DomHtmlCaptureError::Capture(error),
+        HtmlCaptureEdgeError::Interrupted(error) => error,
+    }
+}
+
 #[derive(Debug)]
 struct Entry {
     node: NodeId,
     subject: HtmlCaptureSubjectId,
 }
-struct StagedEntry {
-    node: NodeId,
-    subject: HtmlCaptureBuilderSubject,
-}
 struct StagedRegistry {
     canonical: DomRegistryId,
     captured: HtmlCaptureBuilderRegistry,
-}
-#[derive(Clone, Copy)]
-struct PlannedEntry {
-    node: NodeId,
-    complete_children: bool,
-    expanded: bool,
 }
 
 /// One exact canonical document, its optional host capture, and HTML's immutable
@@ -338,50 +342,26 @@ impl Control<'_> {
                 limit: extent,
             });
         }
-        count
-            .checked_mul(std::mem::size_of::<T>())
-            .filter(|bytes| *bytes <= isize::MAX as usize)
-            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        let fits = |entries: usize| {
+            entries
+                .checked_mul(std::mem::size_of::<T>())
+                .filter(|bytes| *bytes <= isize::MAX as usize)
+        };
+        fits(count).ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        if count <= values.capacity() {
+            return Ok(());
+        }
+        // Growing by doubling, never beyond the extent, keeps the moves of
+        // pushing one entry at a time linear. The extent was admitted above.
+        let target = values.capacity().saturating_mul(2).max(count).min(extent);
+        let target = if fits(target).is_some() {
+            target
+        } else {
+            count
+        };
         values
-            .try_reserve_exact(additional)
+            .try_reserve_exact(target - values.len())
             .map_err(|_| DomHtmlCaptureError::AllocationFailed)
-    }
-    fn subject(
-        &mut self,
-        entries: &[StagedEntry],
-        node: NodeId,
-    ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
-        for entry in entries {
-            self.charge(1)?;
-            if entry.node == node {
-                return Ok(entry.subject.clone());
-            }
-        }
-        Err(DomHtmlCaptureError::UnmappedSubject)
-    }
-    fn include(
-        &mut self,
-        entries: &mut Vec<PlannedEntry>,
-        node: NodeId,
-        complete_children: bool,
-    ) -> Result<(), DomHtmlCaptureError> {
-        for entry in entries.iter_mut() {
-            self.charge(1)?;
-            if entry.node == node {
-                if complete_children && !entry.complete_children {
-                    entry.complete_children = true;
-                    entry.expanded = false;
-                }
-                return Ok(());
-            }
-        }
-        self.reserve(entries, 1)?;
-        entries.push(PlannedEntry {
-            node,
-            complete_children,
-            expanded: false,
-        });
-        Ok(())
     }
 }
 
@@ -498,7 +478,7 @@ impl DomSnapshot {
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(capture_limits, revision.clone());
         let mut registries = Vec::new();
-        let mut planned = Vec::new();
+        let mut planned = plan::Planned::new();
         // Charge every arena slot, including destroyed/retired entries which
         // the public live-node iterator skips. Sparse snapshots still require
         // bounded scanning and cancellation polling.
@@ -513,44 +493,33 @@ impl DomSnapshot {
                 generation: slot.generation,
             };
             if value.document() == document {
-                control.include(&mut planned, node, true)?;
+                planned.include(&mut control, node, true)?;
             }
         }
         // Close actual associations without expanding every supplemental
         // document's ordinary tree. Hosts/ancestors may be partial containers;
         // associated shadow subtrees have complete ordinary child lists.
-        loop {
-            let mut next = None;
-            for (index, entry) in planned.iter().enumerate() {
-                control.charge(1)?;
-                if !entry.expanded {
-                    next = Some(index);
-                    break;
-                }
-            }
-            let Some(index) = next else { break };
-            let entry = planned[index];
-            planned[index].expanded = true;
-            let node = self.node(entry.node)?;
-            control.include(&mut planned, node.node.document().node(), false)?;
+        while let Some((expanding, complete_children)) = planned.next(&mut control)? {
+            let node = self.node(expanding)?;
+            planned.include(&mut control, node.node.document().node(), false)?;
             if let Some(parent) = node.parent() {
-                control.include(&mut planned, parent, false)?;
+                planned.include(&mut control, parent, false)?;
             }
             if let Some(host) = node.fragment_host() {
-                control.include(&mut planned, host, false)?;
+                planned.include(&mut control, host, false)?;
             }
             if let Some(contents) = node.node.template_contents() {
-                control.include(&mut planned, contents, true)?;
+                planned.include(&mut control, contents, true)?;
             }
             if let Some(inert) = node
                 .node
                 .template_document()
                 .and_then(|state| state.inert())
             {
-                control.include(&mut planned, inert, false)?;
+                planned.include(&mut control, inert, false)?;
             }
             if let Some(root) = node.hosted_shadow_root() {
-                control.include(&mut planned, root, true)?;
+                planned.include(&mut control, root, true)?;
             }
             if let Some(targets) = node.node.reflected_targets() {
                 for key in [
@@ -561,14 +530,14 @@ impl DomSnapshot {
                         continue;
                     };
                     control.charge(1)?;
-                    control.include(&mut planned, target, false)?;
+                    planned.include(&mut control, target, false)?;
                 }
             }
             if let Some(owner) = node.node.control_owner() {
-                control.include(&mut planned, owner, false)?;
+                planned.include(&mut control, owner, false)?;
             }
             if let Some(parsed) = node.node.hyperlink().and_then(|h| h.parsed.as_ref()) {
-                control.include(&mut planned, parsed.document, false)?;
+                planned.include(&mut control, parsed.document, false)?;
             }
             if let Some(script) = node.node.script() {
                 for document in [script.parser_document, script.preparation_document]
@@ -576,13 +545,13 @@ impl DomSnapshot {
                     .flatten()
                 {
                     control.charge(1)?;
-                    control.include(&mut planned, document, false)?;
+                    planned.include(&mut control, document, false)?;
                 }
             }
             if let Some(map) = node.node.form_past_names() {
                 for entry in map.entries().iter() {
                     control.charge(1)?;
-                    control.include(&mut planned, entry.target, false)?;
+                    planned.include(&mut control, entry.target, false)?;
                 }
             }
             // Directionality consumes stored history, including references
@@ -590,39 +559,40 @@ impl DomSnapshot {
             if let Some(slot) = node.as_slot() {
                 for assigned in slot.assigned_nodes() {
                     control.charge(1)?;
-                    control.include(&mut planned, *assigned, true)?;
+                    planned.include(&mut control, *assigned, true)?;
                 }
             }
-            if entry.complete_children {
+            if complete_children {
                 for child in node.children() {
-                    control.include(&mut planned, *child, true)?;
+                    planned.include(&mut control, *child, true)?;
                 }
             }
         }
-        let mut staged = Vec::new();
+        // The planned positions in the order their subjects were staged.
+        let mut staged: Vec<usize> = Vec::new();
         // Explicit document records precede their actual member nodes.
-        for entry in &planned {
+        for position in planned.positions() {
             control.charge(1)?;
-            if matches!(self.node(entry.node)?.kind(), DomNodeKind::Document(_)) {
+            let entry = planned.node(position);
+            if matches!(self.node(entry)?.kind(), DomNodeKind::Document(_)) {
                 control.reserve(&mut staged, 1)?;
-                staged.push(StagedEntry {
-                    node: entry.node,
-                    subject: add_document(
-                        &mut builder,
-                        self,
-                        DocumentId(entry.node),
-                        &mut registries,
-                        &mut control,
-                    )?,
-                });
+                let subject = add_document(
+                    &mut builder,
+                    self,
+                    DocumentId(entry),
+                    &mut registries,
+                    &mut control,
+                )?;
+                planned.stage(position, subject);
+                staged.push(position);
             }
         }
         // All subjects exist before cache links, and inert roles precede their
         // referring ordinary Documents regardless of arena creation order.
         for inert_pass in [true, false] {
-            for entry in &planned {
+            for position in planned.positions() {
                 control.charge(1)?;
-                let node = self.node(entry.node)?;
+                let node = self.node(planned.node(position))?;
                 let Some(document) = node.as_document() else {
                     continue;
                 };
@@ -631,10 +601,10 @@ impl DomSnapshot {
                 if inert != inert_pass {
                     continue;
                 }
-                let subject = control.subject(&staged, entry.node)?;
+                let subject = planned.staged(&mut control, position)?;
                 let cache = match document.associated_inert_template_document() {
                     Some(owner) => HtmlCaptureTemplateCacheInput::Document(
-                        control.subject(&staged, owner.node())?,
+                        planned.subject(&mut control, owner.node())?,
                     ),
                     None => HtmlCaptureTemplateCacheInput::Absent,
                 };
@@ -654,16 +624,16 @@ impl DomSnapshot {
             }
         }
         // Hosts precede their shadow roots even when arena order differs.
-        for entry in &planned {
+        for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(entry.node)?;
+            let node = self.node(planned.node(position))?;
             if matches!(
                 node.kind(),
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
             ) {
                 continue;
             }
-            let root = control.subject(&staged, node.node.document().node())?;
+            let root = planned.subject(&mut control, node.node.document().node())?;
             control.reserve(&mut staged, 1)?;
             let subject = match node.kind() {
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
@@ -711,8 +681,8 @@ impl DomSnapshot {
                     }
                     if let Some(hyperlink) = node.as_hyperlink() {
                         let history = if let Some(observation) = hyperlink.parse_observation() {
-                            let document = control.subject(
-                                &staged,
+                            let document = planned.subject(
+                                &mut control,
                                 hyperlink
                                     .parse_document()
                                     .expect("actual parsed provenance")
@@ -770,17 +740,18 @@ impl DomSnapshot {
                     ),
                 )?,
             };
-            staged.push(StagedEntry {
-                node: node.id(),
-                subject,
-            });
+            planned.stage(position, subject);
+            staged.push(position);
         }
-        for entry in &planned {
+        for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(entry.node)?;
+            let node = self.node(planned.node(position))?;
             if let DomNodeKind::ShadowRoot(state) = node.kind() {
-                let document = control.subject(&staged, node.node.document().node())?;
-                let host = control.subject(&staged, self.shadow_root(entry.node)?.host())?;
+                let document = planned.subject(&mut control, node.node.document().node())?;
+                let host = planned.subject(
+                    &mut control,
+                    self.shadow_root(planned.node(position))?.host(),
+                )?;
                 let registry = registry_input(
                     &mut builder,
                     self,
@@ -800,42 +771,45 @@ impl DomSnapshot {
                     ),
                     registry,
                 )?;
-                staged.push(StagedEntry {
-                    node: entry.node,
-                    subject,
-                });
+                planned.stage(position, subject);
+                staged.push(position);
             }
         }
-        for entry in &planned {
+        for position in planned.positions() {
             control.charge(1)?;
-            if let Some(template) = self.node(entry.node)?.as_template() {
-                let host = control.subject(&staged, entry.node)?;
+            let entry = planned.node(position);
+            if let Some(template) = self.node(entry)?.as_template() {
+                let host = planned.subject(&mut control, entry)?;
                 let contents_id = template.contents()?;
-                let contents = control.subject(&staged, contents_id)?;
+                let contents = planned.subject(&mut control, contents_id)?;
                 if matches!(self.node(contents_id)?.kind(), DomNodeKind::ShadowRoot(_)) {
                     builder.establish_template_shadow_reference(&host, &contents)?;
                 } else {
-                    builder.establish_template_contents(&host, &contents)?;
+                    builder
+                        .establish_template_contents_with(&host, &contents, || control.charge(1))
+                        .map_err(edge_capture_error)?;
                 }
             }
         }
         let mut children = Vec::new();
-        for plan in &planned {
+        for position in planned.positions() {
             control.charge(1)?;
-            let node = self.node(plan.node)?;
-            let subject = control.subject(&staged, plan.node)?;
+            let node = self.node(planned.node(position))?;
+            let subject = planned.staged(&mut control, position)?;
             match node.kind() {
                 DomNodeKind::Document(_)
                 | DomNodeKind::DocumentFragment
                 | DomNodeKind::ShadowRoot(_)
                 | DomNodeKind::Element(_) => {
-                    if plan.complete_children {
+                    if planned.complete_children(position) {
                         children.clear();
                         control.reserve(&mut children, node.children().len())?;
                         for child in node.children() {
-                            children.push(control.subject(&staged, *child)?);
+                            children.push(planned.subject(&mut control, *child)?);
                         }
-                        builder.establish_children(&subject, &children)?;
+                        builder
+                            .establish_children_with(&subject, &children, || control.charge(1))
+                            .map_err(edge_capture_error)?;
                     }
                 }
                 DomNodeKind::Text(_)
@@ -857,16 +831,14 @@ impl DomSnapshot {
             } else if let Some(parent) = node.parent() {
                 // Complete parents establish their reciprocal child edges;
                 // partial supplemental ancestors establish only the true edge.
-                let mut complete_parent = false;
-                for entry in &planned {
-                    control.charge(1)?;
-                    if entry.node == parent {
-                        complete_parent = entry.complete_children;
-                        break;
-                    }
-                }
+                let complete_parent = planned
+                    .position(&mut control, parent)?
+                    .is_some_and(|parent| planned.complete_children(parent));
                 if !complete_parent {
-                    builder.establish_parent(&subject, &control.subject(&staged, parent)?)?;
+                    let parent = planned.subject(&mut control, parent)?;
+                    builder
+                        .establish_parent_with(&subject, &parent, || control.charge(1))
+                        .map_err(edge_capture_error)?;
                 }
             }
         }
@@ -877,11 +849,11 @@ impl DomSnapshot {
         drop(registries);
         let mut entries = Vec::new();
         control.reserve(&mut entries, staged.len())?;
-        for entry in staged {
+        for position in staged {
             control.charge(1)?;
             entries.push(Entry {
-                node: entry.node,
-                subject: capture.subject_id(&entry.subject)?,
+                node: planned.node(position),
+                subject: capture.subject_id(planned.staged_ref(position)?)?,
             });
         }
         let mut language_fallbacks = Vec::new();

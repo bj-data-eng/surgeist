@@ -617,14 +617,24 @@ impl HtmlSemanticContext {
                 retained_capacity: classifications.capacity(),
             });
         }
-        for (i, fact) in classifications.iter().enumerate() {
+        // One flag per capture subject finds the first repeat in a single pass.
+        let mut classified = Vec::new();
+        if !classifications.is_empty() {
+            let subjects = capture.usage().subjects();
+            classified
+                .try_reserve_exact(subjects)
+                .map_err(|_| HtmlCaptureError::RepresentationExhausted)
+                .map_err(HtmlSemanticContextError::Capture)?;
+            classified.resize(subjects, false);
+        }
+        for fact in &classifications {
             capture
                 .element_id(&fact.subject)
                 .map_err(HtmlSemanticContextError::Capture)?;
-            if classifications[..i]
-                .iter()
-                .any(|other| other.subject == fact.subject)
-            {
+            let seen = classified.get_mut(fact.subject.ordinal()).ok_or(
+                HtmlSemanticContextError::Capture(HtmlCaptureError::RepresentationExhausted),
+            )?;
+            if std::mem::replace(seen, true) {
                 return Err(HtmlSemanticContextError::DuplicateSubject(
                     fact.subject.clone(),
                 ));

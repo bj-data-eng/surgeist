@@ -23,15 +23,10 @@ pub(super) fn native_input(
             && element.custom_element_definition() == crate::DomElementDefinition::Null
         {
             control.reserve(&mut classifications, 1)?;
-            // Context::new performs one element qualification and i previous
-            // duplicate comparisons for this record; admit that exact envelope
+            // Context::new performs one element qualification and one
+            // duplicate flag test for this record; admit that exact envelope
             // before entering its non-cancelable bounded validation loop.
-            control.charge(
-                classifications
-                    .len()
-                    .checked_add(1)
-                    .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
-            )?;
+            control.charge(2)?;
             classifications.push(HtmlCustomControlClassification::new(
                 entry.subject.clone(),
                 false,
