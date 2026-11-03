@@ -998,3 +998,39 @@ fn work_of_reached_meta_csp_elements_at_most_doubles_with_their_number() {
         &[("record visits", |work| work.visited)],
     );
 }
+
+/// `<b><p>`, `styles` style elements, then `</b>`: the adoption agency moves the `p` and all its
+/// styles at once, so each style sees one removal and one insertion with the styles after it
+/// unlisted. `inside` wraps the markup in the given opening tags.
+fn moved_styles_document(inside: &str, styles: usize) -> String {
+    format!(
+        "<!doctype html><body>{inside}<b><p>{}</b>",
+        "<style>a{}</style>".repeat(styles)
+    )
+}
+
+fn assert_moved_styles_at_most_double(inside: &str) {
+    let sizes = [250, 500, 1_000, 2_000];
+    let measured: Vec<Rescan> = sizes
+        .iter()
+        .map(|&n| parse_rescan(moved_styles_document(inside, n)))
+        .collect();
+    assert_rescans_at_most_two_point_two_times(
+        sizes,
+        &measured,
+        &[
+            ("record visits", |work| work.visited),
+            ("auxiliary entries retained", |work| work.entries),
+        ],
+    );
+}
+
+#[test]
+fn work_of_styles_moved_together_by_the_adoption_agency_at_most_doubles_with_their_number() {
+    assert_moved_styles_at_most_double("");
+}
+
+#[test]
+fn work_of_styles_moved_together_by_the_adoption_agency_in_a_template_at_most_doubles() {
+    assert_moved_styles_at_most_double("<template>");
+}
