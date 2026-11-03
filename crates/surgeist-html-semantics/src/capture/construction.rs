@@ -4,6 +4,7 @@ use crate::{
     HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
     HtmlSemanticCancellation, HtmlTemplateContentsKind, bounded::HtmlConstructionResult,
 };
+use std::collections::HashMap;
 
 /// Explicit document assignment at one coherent host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -147,6 +148,14 @@ impl HtmlConstructionCaptureFacts {
     }
 }
 /// Finite adapter allowances, separate from capture retention limits.
+///
+/// Importing through the adapter is linear in the nodes and facts: node and fact
+/// lookups are indexed and charged one work credit each, array and index growth
+/// is charged when it moves entries, and establishing a container's children or
+/// attaching template contents revises only the subtrees it attaches. Each
+/// supplied fact and each mapped node holds one scratch entry for the whole
+/// import, in addition to the worklist and one container's temporary lists, so
+/// scratch is a constant number of entries per node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionCaptureLimits {
     mapping_entries: usize,
@@ -284,10 +293,64 @@ impl Control {
         count: usize,
     ) -> Result<(), HtmlConstructionCaptureError> {
         self.scratch(count)?;
-        self.work(vec.len())?;
+        // Only a reservation that must move the existing entries pays for moving
+        // them; the amortized growth makes those moves sum to a constant per entry.
+        if vec
+            .len()
+            .checked_add(count)
+            .is_none_or(|needed| needed > vec.capacity())
+        {
+            self.work(vec.len())?;
+        }
         vec.try_reserve(count)
             .map_err(|_| HtmlConstructionCaptureError::AllocationFailed)?;
         self.poll()
+    }
+}
+/// Position lookup for one import, keyed by source node identity.
+///
+/// The standard randomly keyed hash map is used because `HtmlNodeId` offers
+/// equality and hashing but neither an order nor a public dense index. It is
+/// only ever probed, never iterated, so no outcome depends on hash seeds or
+/// bucket order. Each probe is charged one work credit (expected constant); each
+/// new entry is admitted as one scratch entry before its allocation, and the
+/// rare growth that rehashes the existing entries is charged for them.
+#[derive(Debug)]
+struct Positions<K> {
+    slots: HashMap<K, usize>,
+}
+impl<K: Eq + std::hash::Hash> Positions<K> {
+    fn new() -> Self {
+        Self {
+            slots: HashMap::new(),
+        }
+    }
+    fn get(
+        &self,
+        node: &HtmlNodeId,
+        control: &mut Control,
+    ) -> Result<Option<usize>, HtmlConstructionCaptureError>
+    where
+        K: std::borrow::Borrow<HtmlNodeId>,
+    {
+        control.work(1)?;
+        Ok(self.slots.get(node).copied())
+    }
+    /// Admits and allocates room for one more entry without recording it.
+    fn reserve_one(&mut self, control: &mut Control) -> Result<(), HtmlConstructionCaptureError> {
+        control.scratch(1)?;
+        let len = self.slots.len();
+        if len == self.slots.capacity() {
+            control.work(len)?;
+            self.slots
+                .try_reserve(len.max(4))
+                .map_err(|_| HtmlConstructionCaptureError::AllocationFailed)?;
+        }
+        control.poll()
+    }
+    /// Records an entry for which `reserve_one` succeeded; never allocates.
+    fn insert_reserved(&mut self, node: K, position: usize) {
+        self.slots.insert(node, position);
     }
 }
 #[derive(Debug)]
@@ -564,41 +627,27 @@ impl HtmlConstructionCaptureAdapter {
     }
 }
 
-fn find(
-    map: &HtmlConstructionCaptureMap,
-    node: &HtmlNodeId,
-    control: &mut Control,
-) -> Result<Option<usize>, HtmlConstructionCaptureError> {
-    for (index, entry) in map.entries.iter().enumerate() {
-        control.work(1)?;
-        if &entry.node == node {
-            return Ok(Some(index));
-        }
-    }
-    Ok(None)
-}
 fn fact<'a>(
     facts: &'a HtmlConstructionCaptureFacts,
+    index: &Positions<&'a HtmlNodeId>,
     node: &HtmlNodeId,
     control: &mut Control,
 ) -> Result<&'a HtmlConstructionCaptureNodeFacts, HtmlConstructionCaptureError> {
-    for entry in &facts.nodes {
-        control.work(1)?;
-        if &entry.node == node {
-            return Ok(entry);
-        }
-    }
-    Err(HtmlConstructionCaptureError::MissingNodeDocument)
+    index
+        .get(node, control)?
+        .map(|position| &facts.nodes[position])
+        .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)
 }
 fn reached(
     map: &mut HtmlConstructionCaptureMap,
+    index: &mut Positions<HtmlNodeId>,
     node: HtmlNodeId,
     structural: bool,
     control: &mut Control,
 ) -> Result<usize, HtmlConstructionCaptureError> {
-    if let Some(index) = find(map, &node, control)? {
-        map.entries[index].structural |= structural;
-        return Ok(index);
+    if let Some(position) = index.get(&node, control)? {
+        map.entries[position].structural |= structural;
+        return Ok(position);
     }
     control.work(1)?;
     let next = map
@@ -610,11 +659,16 @@ fn reached(
         return Err(HtmlConstructionCaptureError::LimitExceeded);
     }
     control.usage.mapping_entries = next;
-    control.work(map.entries.len())?;
+    // Only growth moves the existing entries; amortized growth keeps the moves
+    // proportional to the final count.
+    if map.entries.len() == map.entries.capacity() {
+        control.work(map.entries.len())?;
+    }
     map.entries
         .try_reserve(1)
         .map_err(|_| HtmlConstructionCaptureError::AllocationFailed)?;
-    control.poll()?;
+    index.reserve_one(control)?;
+    index.insert_reserved(node.clone(), next - 1);
     map.entries.push(Entry {
         node,
         subject: None,
@@ -636,27 +690,27 @@ fn registry(
     }
     Ok(())
 }
-fn validate(
+fn validate<'a>(
     builder: &HtmlCaptureBuilder,
     source: &HtmlConstructionResult,
-    facts: &HtmlConstructionCaptureFacts,
+    facts: &'a HtmlConstructionCaptureFacts,
+    index: &mut Positions<&'a HtmlNodeId>,
     control: &mut Control,
 ) -> Result<(), HtmlConstructionCaptureError> {
     control.work(1)?;
     if facts.revision != builder.data.host_revision {
         return Err(HtmlConstructionCaptureError::HostRevisionMismatch);
     }
-    for (index, entry) in facts.nodes.iter().enumerate() {
+    for (position, entry) in facts.nodes.iter().enumerate() {
         control.work(1)?;
         let node = source
             .node(&entry.node)
             .map_err(|_| HtmlConstructionCaptureError::ForeignResult)?;
-        for prior in &facts.nodes[..index] {
-            control.work(1)?;
-            if prior.node == entry.node {
-                return Err(HtmlConstructionCaptureError::DuplicateNodeFacts);
-            }
+        if index.get(&entry.node, control)?.is_some() {
+            return Err(HtmlConstructionCaptureError::DuplicateNodeFacts);
         }
+        index.reserve_one(control)?;
+        index.insert_reserved(&entry.node, position);
         if (entry.document_facts.is_some() && !matches!(node.kind(), HtmlNodeKind::Document(_)))
             || (entry.element_facts.is_some() && !matches!(node.kind(), HtmlNodeKind::Element(_)))
             || (entry.shadow_facts.is_some() && !node.is_shadow_contents())
@@ -702,7 +756,35 @@ fn import(
     map: &mut HtmlConstructionCaptureMap,
     control: &mut Control,
 ) -> Result<(), HtmlConstructionCaptureError> {
-    validate(builder, source, facts, control)?;
+    let mark = control.scratch_live;
+    let mut fact_index = Positions::new();
+    let mut node_index = Positions::new();
+    let result = traverse(
+        builder,
+        source,
+        facts,
+        map,
+        &mut fact_index,
+        &mut node_index,
+        control,
+    );
+    // The lookups are scratch of this import only. Release them explicitly,
+    // whatever the outcome, and keep the first refusal.
+    drop(node_index);
+    drop(fact_index);
+    control.scratch_live = mark;
+    result
+}
+fn traverse<'a>(
+    builder: &mut HtmlCaptureBuilder,
+    source: &HtmlConstructionResult,
+    facts: &'a HtmlConstructionCaptureFacts,
+    map: &mut HtmlConstructionCaptureMap,
+    fact_index: &mut Positions<&'a HtmlNodeId>,
+    node_index: &mut Positions<HtmlNodeId>,
+    control: &mut Control,
+) -> Result<(), HtmlConstructionCaptureError> {
+    validate(builder, source, facts, fact_index, control)?;
     // Explicit tasks preserve source order without recursion or replaying a path.
     let mut pending = Vec::new();
     control.reserve(&mut pending, 1)?;
@@ -710,19 +792,23 @@ fn import(
     while let Some((id, structural)) = pending.pop() {
         control.scratch_live -= 1;
         control.work(2)?;
-        let index = reached(map, id.clone(), structural, control)?;
+        let index = reached(map, node_index, id.clone(), structural, control)?;
         let node = source
             .node(&id)
             .map_err(|_| HtmlConstructionCaptureError::ForeignResult)?;
-        fact(facts, &id, control)?;
-        if node.is_shadow_contents() && fact(facts, &id, control)?.shadow_facts.is_none() {
+        fact(facts, fact_index, &id, control)?;
+        if node.is_shadow_contents()
+            && fact(facts, fact_index, &id, control)?
+                .shadow_facts
+                .is_none()
+        {
             return Err(HtmlConstructionCaptureError::MissingShadowFacts);
         }
         if let Some(owner) = node.fragment_owner() {
             let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) = owner;
             // Only the endpoint is supplemental; do not traverse unrelated owner edges.
-            let owner_index = reached(map, owner.clone(), false, control)?;
-            fact(facts, &map.entries[owner_index].node, control)?;
+            let owner_index = reached(map, node_index, owner.clone(), false, control)?;
+            fact(facts, fact_index, &map.entries[owner_index].node, control)?;
         }
         if !structural || map.entries[index].expanded {
             continue;
@@ -754,7 +840,7 @@ fn import(
             if node.is_shadow_contents() != shadow_pass {
                 continue;
             }
-            let observations = fact(facts, &map.entries[index].node, control)?;
+            let observations = fact(facts, fact_index, &map.entries[index].node, control)?;
             let document = match &observations.document {
                 HtmlConstructionCaptureDocument::Existing(document) => Some(document.clone()),
                 HtmlConstructionCaptureDocument::ResultDocument
@@ -769,11 +855,12 @@ fn import(
                         .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?,
                 ),
             };
-            // Existing retained arrays may move during a capture reservation.
-            control.work(add(
-                builder.data.records.len(),
-                builder.data.usage.relationships,
-            )?)?;
+            // The retained record array moves only when its reservation grows it;
+            // amortized growth keeps those moves proportional to the final count.
+            control.work(1)?;
+            if builder.data.records.len() == builder.data.records.capacity() {
+                control.work(builder.data.records.len())?;
+            }
             let subject = match node.kind() {
                 HtmlNodeKind::Document(mode) => {
                     if document.is_some() {
@@ -837,7 +924,8 @@ fn import(
                         .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?;
                     control.work(10)?;
                     if let Some(HtmlFragmentOwner::ShadowHost(host)) = node.fragment_owner() {
-                        let host = find(map, host, control)?
+                        let host = node_index
+                            .get(host, control)?
                             .and_then(|i| map.entries[i].subject.as_ref())
                             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
                         builder.add_shadow_root(
@@ -939,7 +1027,8 @@ fn import(
             let mut children = Vec::new();
             control.reserve(&mut children, node.children().len())?;
             for id in node.children() {
-                let i = find(map, &id, control)?
+                let i = node_index
+                    .get(&id, control)?
                     .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
                 children.push(
                     map.entries[i]
@@ -959,7 +1048,8 @@ fn import(
         }
         // Associations from supplemental fragment views are still established.
         if let Some(HtmlFragmentOwner::Template(host)) = node.fragment_owner() {
-            let host = find(map, host, control)?
+            let host = node_index
+                .get(host, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
             let mark = control.scratch_live;
@@ -977,7 +1067,8 @@ fn import(
             let id = node
                 .template_contents()
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
-            let target = find(map, &id, control)?
+            let target = node_index
+                .get(&id, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
             let HtmlNodeKind::Element(element) = node.kind() else {

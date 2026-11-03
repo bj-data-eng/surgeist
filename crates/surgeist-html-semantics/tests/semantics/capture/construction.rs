@@ -1165,3 +1165,282 @@ fn finish_work_refusal_preserves_caller_additions_without_consuming_the_builder(
         Some(HtmlCapturedShadowRoot::Absent)
     );
 }
+
+/// Imports `source`, which has `nodes` nodes of at most `depth` levels, with a
+/// fact for every node, into a fresh builder that never refuses.
+#[expect(clippy::result_large_err)] // Exercise the actual unboxed failure carrier.
+fn import_all_nodes(
+    source: &HtmlFragment,
+    nodes: usize,
+    depth: usize,
+    limits: HtmlConstructionCaptureLimits,
+) -> Result<HtmlConstructionCaptureImport, HtmlConstructionCaptureFailure> {
+    let source = HtmlConstructionResult::Fragment(source.clone());
+    let revision = HtmlHostFactsRevision::fresh();
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(
+            nodes + 8,
+            8 * nodes + 64,
+            0,
+            64 * nodes + 256,
+            depth + 8,
+            4,
+            4,
+            1 << 20,
+        ),
+        revision.clone(),
+    );
+    let document = external_document(&mut builder);
+    let facts = facts(
+        &source,
+        revision,
+        HtmlConstructionCaptureDocument::Existing(document),
+    );
+    import(
+        builder,
+        source,
+        facts,
+        limits,
+        HtmlSemanticCancellation::new(),
+    )
+}
+/// Usage of importing `source` under allowances that never refuse.
+fn usage_of_import(
+    source: HtmlFragment,
+    nodes: usize,
+    depth: usize,
+) -> HtmlConstructionCaptureUsage {
+    let imported = import_all_nodes(
+        &source,
+        nodes,
+        depth,
+        HtmlConstructionCaptureLimits::new(nodes + 8, 1 << 24, 1 << 40),
+    )
+    .unwrap();
+    assert_eq!(imported.usage().mapping_entries(), nodes);
+    imported.usage()
+}
+fn fragment_builder(nodes: usize, depth: usize) -> HtmlFragmentBuilder {
+    HtmlFragment::builder(HtmlConstructionLimits::new(
+        nodes + 8,
+        2 * nodes + 8,
+        0,
+        64 * nodes + 256,
+        depth + 8,
+    ))
+    .unwrap()
+}
+/// A fragment root with `children` empty elements.
+fn wide_fragment(children: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(children + 1, 1);
+    let root = native.root();
+    for _ in 0..children {
+        native
+            .append_element(&root, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), children + 1, 1)
+}
+/// A fragment root with `pairs` elements that each contain one element.
+fn paired_fragment(pairs: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(2 * pairs + 1, 2);
+    let root = native.root();
+    for _ in 0..pairs {
+        let outer = native
+            .append_element(&root, name("li"), OrderedAttributes::default())
+            .unwrap();
+        native
+            .append_element(&outer, name("a"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), 2 * pairs + 1, 2)
+}
+/// A fragment root with a single chain of `depth` nested elements.
+fn chain_fragment(depth: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(depth + 1, depth);
+    let mut parent = native.root();
+    for _ in 0..depth {
+        parent = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), depth + 1, depth)
+}
+/// A fragment root holding a template whose contents hold a template, and so on
+/// `templates` times: the contents are attached to their template after their
+/// own contents have been established.
+fn nested_templates(templates: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 2 * templates + 1;
+    let mut native = fragment_builder(nodes, 2 * templates);
+    let mut parent = native.root();
+    for _ in 0..templates {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        parent = native.template_contents(&template).unwrap().unwrap();
+    }
+    usage_of_import(native.finish(), nodes, 2 * templates)
+}
+/// A chain of `size` nested elements whose deepest element holds `size`
+/// templates, each with one element in its contents.
+fn chain_with_templates(size: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 1 + size + 3 * size;
+    let mut native = fragment_builder(nodes, size + 2);
+    let mut parent = native.root();
+    for _ in 0..size {
+        parent = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+    }
+    for _ in 0..size {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        let contents = native.template_contents(&template).unwrap().unwrap();
+        native
+            .append_element(&contents, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), nodes, size + 2)
+}
+/// Every doubling of the size must at most double a charge that does not depend
+/// on the other nodes. A little slack covers the amortized growth of arrays,
+/// whose moves are charged when they happen; a charge that scans the earlier
+/// nodes for every node roughly quadruples it.
+fn assert_charge_is_linear(
+    shape: &str,
+    charge: &str,
+    measure: impl Fn(usize) -> HtmlConstructionCaptureUsage,
+    pick: impl Fn(HtmlConstructionCaptureUsage) -> usize,
+) {
+    let sizes = [50, 100, 200, 400];
+    let amounts = sizes.map(|size| pick(measure(size)));
+    for (pair, amounts) in sizes.windows(2).zip(amounts.windows(2)) {
+        assert!(
+            amounts[1] * 2 <= amounts[0] * 5,
+            "{shape}: {} nodes charged {} {charge} but {} nodes charged {}: more than 2.5 times",
+            pair[0],
+            amounts[0],
+            pair[1],
+            amounts[1]
+        );
+    }
+}
+#[test]
+fn charged_work_grows_linearly_with_the_number_of_imported_nodes() {
+    assert_charge_is_linear(
+        "wide",
+        "work",
+        wide_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_when_every_container_has_children() {
+    assert_charge_is_linear(
+        "paired",
+        "work",
+        paired_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_for_a_deep_chain() {
+    assert_charge_is_linear(
+        "chain",
+        "work",
+        chain_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_through_nested_template_contents() {
+    assert_charge_is_linear(
+        "nested templates",
+        "work",
+        nested_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_for_templates_below_a_deep_chain() {
+    assert_charge_is_linear(
+        "chain with templates",
+        "work",
+        chain_with_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
+    assert_charge_is_linear(
+        "wide",
+        "scratch entries",
+        wide_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "paired",
+        "scratch entries",
+        paired_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "chain",
+        "scratch entries",
+        chain_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "nested templates",
+        "scratch entries",
+        nested_templates,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "chain with templates",
+        "scratch entries",
+        chain_with_templates,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+}
+#[test]
+fn reported_usage_of_a_wide_import_is_its_least_admitting_allowance() {
+    let children = 100;
+    let mut native = fragment_builder(children + 1, 1);
+    let root = native.root();
+    for _ in 0..children {
+        native
+            .append_element(&root, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    let source = native.finish();
+    let nodes = children + 1;
+    let usage = usage_of_import(source.clone(), nodes, 1);
+    let exact = HtmlConstructionCaptureLimits::new(
+        usage.mapping_entries(),
+        usage.scratch_entries(),
+        usage.work(),
+    );
+    let imported = import_all_nodes(&source, nodes, 1, exact).unwrap();
+    assert_eq!(imported.usage(), usage);
+    // Each allowance is individually exact: one less is refused with the
+    // original builder, which then still completes an unconstrained import.
+    for refused in [
+        HtmlConstructionCaptureLimits::new(exact.mapping_entries() - 1, 1 << 24, 1 << 40),
+        HtmlConstructionCaptureLimits::new(nodes + 8, exact.scratch_entries() - 1, 1 << 40),
+        HtmlConstructionCaptureLimits::new(nodes + 8, 1 << 24, exact.work() - 1),
+    ] {
+        let failure = import_all_nodes(&source, nodes, 1, refused).unwrap_err();
+        assert_eq!(
+            failure.reason(),
+            &HtmlConstructionCaptureError::LimitExceeded
+        );
+        assert!(
+            failure.usage().mapping_entries() <= refused.mapping_entries()
+                && failure.usage().scratch_entries() <= refused.scratch_entries()
+                && failure.usage().work() <= refused.work()
+        );
+        assert_eq!(failure.builder().usage().subjects(), 1);
+    }
+}
