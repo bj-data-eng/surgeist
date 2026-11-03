@@ -1,6 +1,6 @@
 //! Explicit fresh-native installation, distinct from complete parser reports.
 use crate::{DocumentId, DomChanges, DomDocumentStamp, DomError, DomSnapshot, DomStamp, NodeId};
-use surgeist_html::HtmlNodeId;
+use surgeist_html::construction::HtmlNodeId;
 
 /// Requested insertion target for one native HTML installation. These operands
 /// are not a qualification: the canonical receiver checks their current basis,
@@ -98,7 +98,7 @@ pub enum DomNativeHtmlInstallError {
     },
     SourceLookup {
         subject: HtmlNodeId,
-        error: surgeist_html::ForeignHtmlResult,
+        error: surgeist_html::construction::ForeignHtmlResult,
     },
     UnsupportedAssociation {
         subject: HtmlNodeId,

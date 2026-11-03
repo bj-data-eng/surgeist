@@ -1,18 +1,22 @@
 //! Capture-qualified HTML877d relationships; external definitions are finite facts.
 use super::*;
+use surgeist_html::{
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 mod noopener;
 mod selectors;
-use crate::bounded as rel;
-use crate::bounded::{
-    HtmlRelActionError, HtmlRelInterpretation, HtmlRelMeter, HtmlRelRefinement, HtmlRelReservation,
-    RelInputs,
-};
-use crate::{
-    HtmlCaptureDocumentId, HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole,
-    HtmlRelSpelling, HtmlSpaceToken,
-};
+use crate::HtmlCaptureDocumentId;
 pub use noopener::*;
 pub use selectors::*;
+use surgeist_html::bounded::rel::{
+    HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation, HtmlRelMeter, HtmlRelRefinement,
+    HtmlRelReservation,
+};
+use surgeist_html::elements::link::{
+    HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole, HtmlRelSpelling,
+};
 
 #[derive(Clone, Debug)]
 pub struct HtmlRelProducerId(Arc<()>);
@@ -586,7 +590,9 @@ impl FactsAdmission {
         }
         for (a, b) in a.code_units().iter().zip(b.code_units()) {
             self.work(3)?;
-            if rel::fold_rel_ascii(*a) != rel::fold_rel_ascii(*b) {
+            if surgeist_html::bounded::lexical::ascii_lowercase(*a)
+                != surgeist_html::bounded::lexical::ascii_lowercase(*b)
+            {
                 return Ok(false);
             }
         }
@@ -663,16 +669,17 @@ impl FactsAdmission {
         if !self.exact(actual, raw)? {
             return Err(HtmlRelFactsError::RawMismatch);
         }
-        self.work(crate::bounded::HtmlSpaceTokenCursor::BEGIN_WORK)?;
-        let mut cursor = crate::bounded::HtmlSpaceTokenCursor::new(raw.code_units());
+        self.work(surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::BEGIN_WORK)?;
+        let mut cursor =
+            surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::new(raw.code_units());
         loop {
-            self.work(crate::bounded::HtmlSpaceTokenCursor::STEP_WORK)?;
+            self.work(surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::STEP_WORK)?;
             match cursor.step() {
-                crate::bounded::HtmlSpaceTokenStep::Continue => {}
-                crate::bounded::HtmlSpaceTokenStep::Done => {
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Continue => {}
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Done => {
                     return Err(HtmlRelFactsError::InvalidOccurrence);
                 }
-                crate::bounded::HtmlSpaceTokenStep::Token { start: s, end: e }
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Token { start: s, end: e }
                     if s == start && e == end =>
                 {
                     return Ok(());
@@ -733,7 +740,10 @@ impl HtmlRelFacts {
                             .checked_add(1)
                             .ok_or(HtmlRelFactsError::RepresentationExhausted)?,
                     )?;
-                    if rel::rel_ascii_keyword(d.canonical.value().code_units(), keyword.keyword()) {
+                    if surgeist_html::bounded::rel::rel_ascii_keyword(
+                        d.canonical.value().code_units(),
+                        keyword.keyword(),
+                    ) {
                         return Err(HtmlRelFactsError::CanonicalMismatch);
                     }
                 }
@@ -769,10 +779,10 @@ impl HtmlRelFacts {
                             .ok_or(HtmlRelFactsError::RepresentationExhausted)?,
                     )?;
                     if units.len() != canonical.len()
-                        || !units
-                            .iter()
-                            .zip(canonical)
-                            .all(|(a, b)| rel::fold_rel_ascii(*a) == rel::fold_rel_ascii(*b))
+                        || !units.iter().zip(canonical).all(|(a, b)| {
+                            surgeist_html::bounded::lexical::ascii_lowercase(*a)
+                                == surgeist_html::bounded::lexical::ascii_lowercase(*b)
+                        })
                     {
                         return Err(HtmlRelFactsError::CanonicalMismatch);
                     }
@@ -829,15 +839,14 @@ impl HtmlRelFacts {
                     if role == HtmlRelRole::Form {
                         return Err(HtmlRelFactsError::InvalidRole);
                     }
-                    if role == HtmlRelRole::Link && o.valid {
-                        let mut nonspace = false;
-                        for &u in actual.code_units() {
-                            a.work(6)?;
-                            nonspace |= !matches!(u, 9 | 10 | 12 | 13 | 32);
-                        }
-                        if !nonspace {
-                            return Err(HtmlRelFactsError::GrammarContradiction);
-                        }
+                    if role == HtmlRelRole::Link
+                        && o.valid
+                        && surgeist_html::bounded::rel::rel_href_is_empty_or_ascii_whitespace_with(
+                            actual.code_units(),
+                            |n| a.work(n),
+                        )?
+                    {
+                        return Err(HtmlRelFactsError::GrammarContradiction);
                     }
                 }
             }
@@ -945,7 +954,7 @@ struct RelContextData {
     href_grammar: Option<bool>,
     href_author: HtmlSemanticValue<bool>,
     image_source_preload_author: HtmlSemanticValue<bool>,
-    history: HtmlSemanticValue<crate::HtmlLinkHistory>,
+    history: HtmlSemanticValue<surgeist_html::elements::link::HtmlLinkHistory>,
     implicit_render_blocking: HtmlSemanticValue<bool>,
 }
 /// One admitted owning record keeps semantic fact variants compact.
@@ -984,7 +993,9 @@ impl HtmlRelContextReadback {
     pub fn image_source_preload_author(&self) -> &HtmlSemanticValue<bool> {
         &self.data[0].image_source_preload_author
     }
-    pub fn link_history(&self) -> &HtmlSemanticValue<crate::HtmlLinkHistory> {
+    pub fn link_history(
+        &self,
+    ) -> &HtmlSemanticValue<surgeist_html::elements::link::HtmlLinkHistory> {
         &self.data[0].history
     }
     pub fn implicitly_potentially_render_blocking(&self) -> &HtmlSemanticValue<bool> {
@@ -1015,11 +1026,12 @@ impl HtmlRelMeter for RelControl<'_, '_> {
         self.session.charge(n)
     }
     fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        let target = guard.target_capacity();
         self.session.reserve_record_capacity(
             guard.len(),
             guard.capacity(),
             guard.record_size(),
-            1,
+            target.saturating_sub(guard.len()),
             HtmlSemanticResource::NestedOutputRecords,
             || {
                 guard.try_reserve().map_err(|_| ())?;
@@ -1091,7 +1103,7 @@ impl<'a> HtmlSemanticSession<'a> {
         } else {
             None
         };
-        let inputs = RelInputs::new(role)
+        let inputs = HtmlRelInputs::new(role)
             .with_rel(slots[0])
             .with_rev(slots[1])
             .with_href(slots[2])
@@ -1338,12 +1350,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 association,
             });
         }
-        let translation =
-            if local.alternate() != crate::HtmlRelAlternate::Representation || slots[7].is_none() {
-                HtmlSemanticValue::Inapplicable
-            } else {
-                self.rel_translation(subject, slots[7].expect("selected hreflang"))?
-            };
+        let translation = if local.alternate()
+            != surgeist_html::elements::link::HtmlRelAlternate::Representation
+            || slots[7].is_none()
+        {
+            HtmlSemanticValue::Inapplicable
+        } else {
+            self.rel_translation(subject, slots[7].expect("selected hreflang"))?
+        };
         let mut href_grammar = None;
         if let Some(facts) = facts {
             for g in &facts.input.grammar {
@@ -1356,17 +1370,22 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(3)?;
         let href_author = match local.href_author() {
-            crate::HtmlRelHrefAuthor::NotRequired => HtmlSemanticValue::Inapplicable,
-            crate::HtmlRelHrefAuthor::EmptyOrOnlyAsciiSpaces => HtmlSemanticValue::Known(false),
-            crate::HtmlRelHrefAuthor::GrammarUnchecked => href_grammar.map_or_else(
-                || {
-                    HtmlSemanticValue::Missing(Self::rel_missing(
-                        subject,
-                        HtmlRelMissingFact::UrlGrammar,
-                    ))
-                },
-                HtmlSemanticValue::Known,
-            ),
+            surgeist_html::elements::link::HtmlRelHrefAuthor::NotRequired => {
+                HtmlSemanticValue::Inapplicable
+            }
+            surgeist_html::elements::link::HtmlRelHrefAuthor::EmptyOrOnlyAsciiSpaces => {
+                HtmlSemanticValue::Known(false)
+            }
+            surgeist_html::elements::link::HtmlRelHrefAuthor::GrammarUnchecked => href_grammar
+                .map_or_else(
+                    || {
+                        HtmlSemanticValue::Missing(Self::rel_missing(
+                            subject,
+                            HtmlRelMissingFact::UrlGrammar,
+                        ))
+                    },
+                    HtmlSemanticValue::Known,
+                ),
         };
         let history = if role != HtmlRelRole::Link {
             HtmlSemanticValue::Inapplicable
@@ -1391,17 +1410,19 @@ impl<'a> HtmlSemanticSession<'a> {
                 && !occurrence.registry_resolved();
         }
         self.charge(4)?;
-        let image_source_preload_author = if role != HtmlRelRole::Link
-            || !local.imagesrcset_present()
-        {
-            HtmlSemanticValue::Inapplicable
-        } else if local.image_source_preload_context() {
-            HtmlSemanticValue::Known(true)
-        } else if local.as_destination() != Some(crate::HtmlLinkDestination::Image) || !unresolved {
-            HtmlSemanticValue::Known(false)
-        } else {
-            HtmlSemanticValue::Missing(Self::rel_missing(subject, HtmlRelMissingFact::Registry))
-        };
+        let image_source_preload_author =
+            if role != HtmlRelRole::Link || !local.imagesrcset_present() {
+                HtmlSemanticValue::Inapplicable
+            } else if local.image_source_preload_context() {
+                HtmlSemanticValue::Known(true)
+            } else if local.as_destination()
+                != Some(surgeist_html::attributes::HtmlLinkDestination::Image)
+                || !unresolved
+            {
+                HtmlSemanticValue::Known(false)
+            } else {
+                HtmlSemanticValue::Missing(Self::rel_missing(subject, HtmlRelMissingFact::Registry))
+            };
         let implicit_render_blocking = if role != HtmlRelRole::Link {
             HtmlSemanticValue::Inapplicable
         } else if stylesheet {

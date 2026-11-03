@@ -373,8 +373,14 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
     assert_eq!(request.subject(), dialog);
     assert!(request.cancelable());
     let toggle = request.toggle_event().unwrap();
-    assert_eq!(toggle.old_state(), surgeist_html::HtmlDialogState::Closed);
-    assert_eq!(toggle.new_state(), surgeist_html::HtmlDialogState::Open);
+    assert_eq!(
+        toggle.old_state(),
+        surgeist_html::elements::dialog::HtmlDialogState::Closed
+    );
+    assert_eq!(
+        toggle.new_state(),
+        surgeist_html::elements::dialog::HtmlDialogState::Open
+    );
     let mut context = Reentry {
         recipients: dispatcher(),
         registrations: Vec::new(),

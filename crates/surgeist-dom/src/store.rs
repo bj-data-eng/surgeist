@@ -9,9 +9,10 @@ use std::{
 use crate::batch::{BatchIdentity, Command, Creation};
 use crate::document::{DomDocumentMetadata, NATIVE_DOCUMENT_STRING_UNITS};
 use crate::{
-    CreatedNode, DocumentId, DocumentString, DomBatch, DomDocumentType, DomElement, DomNodeKind,
-    DomOwnerId, DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
+    CreatedNode, DocumentId, DomBatch, DomDocumentType, DomElement, DomNodeKind, DomOwnerId,
+    DomProcessingInstruction, DomRevision, DomSnapshot, DomStamp, NodeId, NodeOperand,
 };
+use surgeist_html::values::DocumentString;
 
 mod attributes;
 mod autofocus;
@@ -188,6 +189,9 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// A completed parse report holds a reference to a record its own tables
+    /// cannot resolve, so the operation that read it is refused.
+    ParsedReportUnresolved(surgeist_html_parser::HtmlParseUnresolvedReference),
     /// Original parsed association history must be admitted before a native
     /// association-changing operation may cross this exact Document.
     ParsedAssociationPending {
@@ -268,19 +272,19 @@ pub enum DomError {
     SourceReceiverRetired {
         operation: crate::DomSourceOperationId,
         subject: NodeId,
-        action: surgeist_html::HtmlDialogAction,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
     },
     SourceCloseWatcherReceiverRetired {
         operation: crate::DomSourceOperationId,
         subject: NodeId,
-        action: surgeist_html::HtmlCloseWatcherRequestAction,
+        action: surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction,
     },
-    CloseWatcherProtocol(surgeist_html::HtmlCloseWatcherRequestError),
+    CloseWatcherProtocol(surgeist_html::elements::dialog::HtmlCloseWatcherRequestError),
     SourceEventExecutorUnavailable,
     DialogInvalidState,
     NeedsEventfulOperation {
         subject: Option<NodeId>,
-        action: surgeist_html::HtmlDialogAction,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
     },
     SourceNestedOperationLimit {
         limit: usize,
@@ -297,7 +301,7 @@ pub enum DomError {
     InvalidCharacter,
     Namespace,
     NotSupported,
-    NativeInitializationRequired(surgeist_html::HtmlElementClass),
+    NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass),
     NonceInapplicable,
     TemplateContentsUnavailable,
     MarqueeInapplicable,
@@ -305,18 +309,18 @@ pub enum DomError {
     DialogDocumentStateUnavailable,
     AutofocusDocumentStateUnavailable,
     AutofocusInsertionUnavailable {
-        action: surgeist_html::HtmlAutofocusInsertionAction,
+        action: surgeist_html::focus::HtmlAutofocusInsertionAction,
     },
-    AutofocusInsertionProtocol(surgeist_html::HtmlAutofocusInsertionError),
+    AutofocusInsertionProtocol(surgeist_html::focus::HtmlAutofocusInsertionError),
     DesignModeProcessingUnavailable {
         step: crate::DomSourceDesignModeStep,
     },
-    DesignModeProtocol(surgeist_html::HtmlDesignModeError),
+    DesignModeProtocol(surgeist_html::elements::native::HtmlDesignModeError),
     DialogFocusingUnavailable {
-        action: surgeist_html::HtmlDialogFocusingAction,
+        action: surgeist_html::elements::dialog::HtmlDialogFocusingAction,
     },
-    DialogFocusingProtocol(surgeist_html::HtmlDialogFocusingError),
-    FocusDelegateProtocol(surgeist_html::HtmlFocusDelegateError),
+    DialogFocusingProtocol(surgeist_html::elements::dialog::HtmlDialogFocusingError),
+    FocusDelegateProtocol(surgeist_html::focus::HtmlFocusDelegateError),
     /// The reached HTML removing step cannot compare this Element with its
     /// node-Document's unavailable focused-area designation. Identities are
     /// present only when the actual Draft keys have been published; `None`
@@ -325,21 +329,21 @@ pub enum DomError {
         subject: Option<NodeId>,
         document: Option<DocumentId>,
     },
-    AutofocusDelegateProtocol(surgeist_html::HtmlAutofocusDelegateError),
+    AutofocusDelegateProtocol(surgeist_html::focus::HtmlAutofocusDelegateError),
     TopLayerAlreadyActive {
         subject: NodeId,
         document: DocumentId,
     },
     DialogProcessingUnavailable {
-        action: surgeist_html::HtmlDialogAction,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
     },
-    DialogProtocol(surgeist_html::HtmlDialogCursorError),
+    DialogProtocol(surgeist_html::elements::dialog::HtmlDialogCursorError),
     CustomValidityInapplicable,
     ButtonInapplicable,
     InputInapplicable,
     TextareaInapplicable,
     OutputInapplicable,
-    OutputProtocol(surgeist_html::HtmlOutputCursorError),
+    OutputProtocol(surgeist_html::elements::form::HtmlOutputCursorError),
     TextareaReadWorkLimit {
         limit: u64,
     },
@@ -348,11 +352,11 @@ pub enum DomError {
     InputProcessingWorkLimit {
         limit: u64,
     },
-    InputNumeric(surgeist_html::bounded::RangeNumericError),
+    InputNumeric(surgeist_html::bounded::numeric::HtmlRangeNumericError),
     InputColorUnavailable(surgeist_css::color::CssColorUnavailable),
     InputColorUnsupported(surgeist_css::color::CssColorUnsupported),
     InputColorFacts(surgeist_css::color::CssColorFactDefect),
-    StyleCompositionRequired(surgeist_html::HtmlStyleUpdateAction),
+    StyleCompositionRequired(surgeist_html::elements::style::HtmlStyleUpdateAction),
     StyleOwnerAttributesCompositionRequired,
     StyleDisabledCompositionRequired,
     StyleProcessingUnavailable,
@@ -401,7 +405,7 @@ pub enum DomError {
     },
     InvalidNativeTask,
     SlotInapplicable,
-    NonceEnvironmentUnavailable(surgeist_html::HtmlNonceMissing),
+    NonceEnvironmentUnavailable(surgeist_html::security::nonce::HtmlNonceMissing),
     NotFound,
     InvalidDestruction,
     IndexSize,
@@ -962,7 +966,7 @@ pub enum DomChange {
     },
     ImageUpdateCancelled {
         update: crate::DomImageUpdateId,
-        flags: surgeist_html::HtmlImageUpdateFlags,
+        flags: surgeist_html::elements::image::HtmlImageUpdateFlags,
         reason: crate::DomImageUpdateCancellationReason,
     },
     /// Template contents ownership or a Document's appropriate-owner cache changed.
@@ -988,8 +992,8 @@ pub enum DomChange {
     DetailsToggleIntentionCancelled {
         operation: crate::DomDetailsToggleIntentionId,
         target: NodeId,
-        old: surgeist_html::HtmlDetailsState,
-        new: surgeist_html::HtmlDetailsState,
+        old: surgeist_html::elements::details::HtmlDetailsState,
+        new: surgeist_html::elements::details::HtmlDetailsState,
         reason: crate::DomDetailsToggleCancellationReason,
     },
     SelectTaskCancelled {
@@ -1277,7 +1281,7 @@ pub struct Dom {
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
     value_sharing: value_sharing::Owner,
-    csp_owner: custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
+    csp_owner: custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
     _custody_administration: custody::Debit,
 }
 impl Dom {
@@ -2495,7 +2499,7 @@ impl Draft {
         if self.node(key)?.image().is_some() {
             self.start_image_update(
                 key,
-                surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false),
                 cancel,
             )?;
         }

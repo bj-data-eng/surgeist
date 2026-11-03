@@ -57,9 +57,13 @@ fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
     let mut dom = Dom::new(limits).unwrap();
     let mut b = DomBatch::new();
     let document = b.create_document();
-    let root = b.create_element_ns(&document, crate::Namespace::html(), "main");
-    let dialog = b.create_element_ns(&document, crate::Namespace::html(), "dialog");
-    let target = b.create_element_ns(&document, crate::Namespace::html(), "div");
+    let root = b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "main");
+    let dialog = b.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
+    let target = b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     b.insert_before(&root, &document, None);
     b.insert_before(&dialog, &root, None);
     b.insert_before(&target, &root, None);

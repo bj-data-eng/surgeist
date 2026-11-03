@@ -17,10 +17,11 @@ pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;
-use crate::{DocumentString, DomDocumentStamp, DomSnapshot, DomStyleRequest, Namespace, NodeId};
+use crate::{DomDocumentStamp, DomSnapshot, DomStyleRequest, NodeId};
 pub use event::*;
 use std::sync::Arc;
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
+use surgeist_html::values::{DocumentString, Namespace};
 pub(crate) use url::UrlBasis;
 pub use url::{
     DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest, DomSourceUrlStage,

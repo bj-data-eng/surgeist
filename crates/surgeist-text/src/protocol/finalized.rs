@@ -244,8 +244,10 @@ impl FinalizedLine {
                     flow,
                     box_geometry,
                     alignment,
+                    fit,
                     ..
                 } => super::AtomicLineAllocation::InFlow {
+                    fit,
                     flow,
                     box_geometry,
                     alignment,

@@ -80,10 +80,11 @@ where
             .into_iter()
             .enumerate()
         {
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden_in_containing_pass(
@@ -227,10 +228,11 @@ where
     {
         let child_style = placements.item_input(source_index).clone();
         if child_style.display == super::Display::None {
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden_in_containing_pass(
@@ -275,10 +277,11 @@ where
             continue;
         };
         if area.row >= rows.len() || area.column >= columns.len() {
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden_in_containing_pass(
@@ -439,11 +442,8 @@ where
         let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let first_baseline =
             baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size);
-        let last_baseline = baselines
-            .last_block_baseline(child_flow_axes)
-            .unwrap_or_else(|| {
-                baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size)
-            });
+        let last_baseline =
+            baselines.last_or_synthesize_block_baseline(child_flow_axes, output.size);
         let block_auto_margins = logical_unresolved_margin.block_start.is_none()
             || logical_unresolved_margin.block_end.is_none();
         let row_span_tracks = row_tracks.get(area.row..area.row_end).unwrap_or(&[]);
@@ -618,6 +618,14 @@ where
             )
         })?
         .unwrap_or(item.vertical_axis.offset);
+        let normal_location = constants.flow_axes.physical_point(
+            LogicalPointOf::new(
+                area_origin.inline + inline_axis_offset,
+                area_origin.block + block_axis_offset,
+            ),
+            constants.flow_axes.logical_size(item.output.size),
+            containing_size,
+        );
         let logical_location = LogicalPointOf::new(
             area_origin.inline + inline_axis_offset + item.logical_relative_offset.inline,
             area_origin.block + block_axis_offset + item.logical_relative_offset.block,
@@ -650,17 +658,22 @@ where
             in_flow: true,
         };
 
-        prepared_item_placements.push((block_axis_offset, location, contribution));
+        prepared_item_placements.push((block_axis_offset, normal_location, location, contribution));
     }
 
-    for (item, (block_axis_offset, location, contribution)) in
+    for (item, (block_axis_offset, normal_location, location, contribution)) in
         pending_items.iter_mut().zip(prepared_item_placements)
     {
         item.block_offset = block_axis_offset;
-        item.location = location;
+        item.location = normal_location;
         child_contributions.push(contribution);
-        tree.set_unrounded(
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
+            crate::output::NormalGeometryOf::box_geometry(
+                normal_location,
+                item.output.size,
+                contribution.geometry.content_box(),
+            ),
             NodeOutputOf {
                 source_index: crate::SourceIndex::new(item.source_index),
                 location,
@@ -672,7 +685,7 @@ where
                 padding: item.padding,
                 margin: item.margin,
             },
-        );
+        ));
     }
     let baselines = if parent_context.has_inherited_axis() {
         grid_container_baselines(

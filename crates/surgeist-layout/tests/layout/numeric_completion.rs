@@ -93,7 +93,7 @@ fn boundary<S: l::LayoutScalar>(
     // Both endpoints are the SAME actual native box's8/10 baseline metrics.
     // Its individual inline margin, border and padding are genuinely zero.
     l::LayoutInputOf::inline_boundary(
-        l::InlineBoundaryInputOf::new(
+        l::InlineBoundaryInputOf::contribution(
             kind,
             l::InlineMetricsOf::try_new(
                 surgeist_layout::InlineBaselineContext::Physical,
@@ -103,6 +103,7 @@ fn boundary<S: l::LayoutScalar>(
             .unwrap(),
             l::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction),
     )
 }

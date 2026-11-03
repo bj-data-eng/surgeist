@@ -1,8 +1,17 @@
-use crate::semantics::support::{builder_with, context};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context,
+    wide_builder_without_registries as builder,
+};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlSemanticCancellation, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
     HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
@@ -10,11 +19,6 @@ use surgeist_html_semantics::{
     HtmlTableModelError,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    builder_with(HtmlCaptureLimits::new(
-        10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216,
-    ))
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -717,31 +721,25 @@ fn exact_work_cutoff_and_duplicate_requests_preserve_atomic_batch_results() {
     let cx = context(&c);
     let req =
         HtmlSemanticRequest::new(c.subject_id(&table).unwrap(), HtmlSemanticQuery::TableModel);
-    let baseline = run(&c, &table);
-    let work = baseline.usage().work();
-    for cap in [work - 1, work] {
-        let mut session = HtmlSemanticSession::new(
-            &c,
-            &cx,
-            HtmlValueInterpreter::new(10000),
-            HtmlSemanticLimits::new(cap, 100, 100000, 10000, 100000000, 100000),
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let result = session.query(std::slice::from_ref(&req));
-        if cap == work {
-            assert_eq!(model(&result.unwrap()), model(&baseline));
-        } else {
-            assert!(matches!(
-                result.unwrap_err().kind(),
-                HtmlSemanticFailureKind::LimitExceeded {
-                    resource: HtmlSemanticResource::Work,
-                    ..
-                }
-            ));
-        }
-        assert_eq!(session.usage().scratch_records(), 0);
-    }
+    // Scratch frames are only needed to defer footers (see the footer
+    // admission test), so a table without one uses none. The model's cell,
+    // slot and edge vectors are private layout, so work, nested records and
+    // bytes are required to be charged without pinning their amounts; the
+    // single result record is pinned.
+    let baseline = assert_exact_and_one_short_caps(
+        "table model",
+        &c,
+        &cx,
+        10000,
+        HtmlSemanticLimits::new(100000000, 100, 100000, 10000, 100000000, 100000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Charged,
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(model(&baseline), model(&run(&c, &table)));
     let mut session = HtmlSemanticSession::new(
         &c,
         &cx,

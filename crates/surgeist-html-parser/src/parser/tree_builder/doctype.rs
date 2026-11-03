@@ -11,11 +11,12 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf. The governing HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a supplies the prologue conditions.
 
-use crate::HtmlDocumentMode;
 use crate::parser::{
-    control::{ParseControl, ParseStop, WorkCategory},
+    control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl},
     tokenizer::token::{Doctype, Text},
 };
+use surgeist_html::bounded::lexical::ascii_case_insensitive_unit;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DoctypeDecision {
@@ -109,31 +110,26 @@ fn matches(
     prefix: bool,
     insensitive: bool,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
+) -> Result<bool, HtmlParseStop> {
     c.require_document_string(text.value.allocation(), text.value.text())?;
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let units = text.value.text().code_units();
     if units.len() < literal.len() || (!prefix && units.len() != literal.len()) {
         return Ok(false);
     }
-    let mut index = 0;
-    while index < literal.len() {
-        c.charge(WorkCategory::StateStep, 1)?;
-        c.charge(WorkCategory::InspectByte, 3)?;
-        let mut unit = units[index];
-        let byte = literal.as_bytes()[index];
-        if insensitive && (65..=90).contains(&unit) {
-            unit += 32;
-        }
-        let byte = if insensitive {
-            byte.to_ascii_lowercase()
+    // The text is at least as long as the literal, so the pairs are exactly the
+    // literal's indices.
+    for (&unit, byte) in units.iter().zip(literal.bytes()) {
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        c.charge_unit_literal_comparison()?;
+        let equal = if insensitive {
+            ascii_case_insensitive_unit(unit, byte)
         } else {
-            byte
+            unit == u16::from(byte)
         };
-        if unit != u16::from(byte) {
+        if !equal {
             return Ok(false);
         }
-        index += 1;
     }
     Ok(true)
 }
@@ -144,8 +140,8 @@ fn optional_matches(
     prefix: bool,
     insensitive: bool,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+) -> Result<bool, HtmlParseStop> {
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     match text {
         Some(text) => matches(text, literal, prefix, insensitive, c),
         None => Ok(false),
@@ -157,16 +153,13 @@ fn any(
     candidates: &[&str],
     prefix: bool,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    let mut index = 0;
-    while index < candidates.len() {
-        c.charge(WorkCategory::StateStep, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let candidate = candidates[index];
+) -> Result<bool, HtmlParseStop> {
+    for candidate in candidates {
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if optional_matches(text, candidate, prefix, true, c)? {
             return Ok(true);
         }
-        index += 1;
     }
     Ok(false)
 }
@@ -176,22 +169,22 @@ fn any(
 pub(super) fn classify(
     doctype: &Doctype,
     c: &mut ParseControl,
-) -> Result<DoctypeDecision, ParseStop> {
+) -> Result<DoctypeDecision, HtmlParseStop> {
     // Validate every retained input owner before reading flags or payloads.
     for text in [&doctype.name, &doctype.public_id, &doctype.system_id] {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(text) = text {
             c.require_document_string(text.value.allocation(), text.value.text())?;
         }
     }
     let html = optional_matches(&doctype.name, "html", false, false, c)?;
-    c.charge(WorkCategory::RecordVisit, 2)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     let public_missing = doctype.public_id.is_none();
     let system_missing = doctype.system_id.is_none();
     let legacy = optional_matches(&doctype.system_id, "about:legacy-compat", false, false, c)?;
     let error = !html || !public_missing || (!system_missing && !legacy);
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    c.charge(WorkCategory::InspectByte, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
     let force = doctype.force_quirks;
     let mode = if force
         || !html

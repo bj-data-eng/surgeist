@@ -13,13 +13,13 @@
 
 use super::*;
 use states::{
-    Escape::{DoubleEscaped, Escaped},
-    Identifier::{Public, System},
-    Quote::{Double, Single, Unquoted},
-    Raw::{Rawtext, Rcdata, Script, ScriptEscaped},
-    State::*,
+    HtmlTokenizerEscape::{DoubleEscaped, Escaped},
+    HtmlTokenizerIdentifier::{Public, System},
+    HtmlTokenizerQuote::{Double, Single, Unquoted},
+    HtmlTokenizerRawState::{Rawtext, Rcdata, Script, ScriptEscaped},
+    HtmlTokenizerState::*,
 };
-use token::DiagnosticCode::*;
+use token::HtmlTokenizerDiagnostic::*;
 
 impl Tokenizer<'_> {
     fn emit_syntax(
@@ -28,11 +28,16 @@ impl Tokenizer<'_> {
         source: &HtmlSourceRange,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let text = DraftText::build(c, |text, c| {
             for &byte in bytes {
-                c.charge(WorkCategory::InspectByte, 1)?;
-                text.push(u32::from(byte), source, OriginKind::RecoverySyntax, c)?;
+                c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
+                text.push(
+                    u32::from(byte),
+                    source,
+                    HtmlParseOriginKind::RecoverySyntax,
+                    c,
+                )?;
             }
             Ok(())
         })?;
@@ -48,38 +53,39 @@ impl Tokenizer<'_> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if let Some(old) = self.lexical.as_ref() {
             let range = self.range(self.start, self.current.start(), c)?;
             evidence.lexical_finish(
                 c,
                 old,
                 &range,
-                LexicalKind::Markup,
-                LexicalDisposition::LiteralRecovery,
+                HtmlParseLexicalKind::Markup,
+                HtmlParseLexicalDisposition::LiteralRecovery,
             )?;
         }
-        admit_record_write(size_of::<usize>() + size_of::<HtmlSourceRange>(), 2, c)?;
+        admit_record_write(
+            const { size_of::<usize>() + size_of::<HtmlSourceRange>() },
+            2,
+            c,
+        )?;
         self.save_proof_range(
             ProofRole::LessThan,
             self.current.start(),
             self.current.end(),
             c,
         )?;
-        if self.cursor.is_progressive() {
-            let start = self.boundary_proof(self.current.start(), c)?;
-            admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
-            self.proofs.as_mut().expect("progressive").start = start;
-        }
+        self.save_single_proof(SingleProof::Start, self.current.start(), c)?;
         self.start = self.current.start();
         self.less_than = self.current.clone();
-        let lexical = evidence.lexical_begin(c, &self.current, LexicalKind::Markup, None)?;
+        let lexical =
+            evidence.lexical_begin(c, &self.current, HtmlParseLexicalKind::Markup, None)?;
         admit_record_write(size_of::<Option<LexicalRef>>(), 1, c)?;
-        self.lexical = Some(lexical);
+        let occurrence = self.lexical.insert(lexical);
         evidence.lexical_part(
             c,
-            self.lexical.as_ref().expect("retained occurrence"),
-            LexicalRole::Syntax,
+            occurrence,
+            HtmlParseLexicalRole::Syntax,
             &self.current,
             0..0,
             None,
@@ -91,7 +97,7 @@ impl Tokenizer<'_> {
         c: &mut ParseControl,
         cdata_allowed: bool,
         evidence: &mut ParseEvidence,
-    ) -> Result<StepProgress, ParseStop> {
+    ) -> Result<StepProgress, HtmlParseStop> {
         // These lookahead states examine the next input without consuming a
         // mismatching character. The indexed cursor charges each repeated read.
         if self.state == MarkupDeclaration {
@@ -118,12 +124,22 @@ impl Tokenizer<'_> {
                 } else {
                     self.error(CdataInHtmlContent, c, evidence)?;
                     self.create_comment(c)?;
-                    let source = self.range(self.less_than.end() + 1, self.current.end(), c)?;
+                    let after_bang = self
+                        .less_than
+                        .end()
+                        .checked_add(1)
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
+                    let source = self.range(after_bang, self.current.end(), c)?;
                     for &p in b"[CDATA[" {
                         self.comment
                             .as_mut()
-                            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                            .push(u32::from(p), &source, OriginKind::RecoverySyntax, c)?;
+                            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                            .push(
+                                u32::from(p),
+                                &source,
+                                HtmlParseOriginKind::RecoverySyntax,
+                                c,
+                            )?;
                     }
                     self.set_state(BogusComment, c)?;
                 }
@@ -208,15 +224,7 @@ impl Tokenizer<'_> {
             },
             TagOpen => match p {
                 0x21 => {
-                    if self.cursor.is_progressive() {
-                        let proof = self.boundary_proof(self.current.end(), c)?;
-                        admit_record_write(
-                            size_of::<crate::source::ConsumedSourceBoundary>(),
-                            1,
-                            c,
-                        )?;
-                        self.proofs.as_mut().expect("progressive").declaration = proof;
-                    }
+                    self.save_single_proof(SingleProof::Declaration, self.current.end(), c)?;
                     self.set_state(MarkupDeclaration, c)?;
                 }
                 0x2F => {
@@ -238,7 +246,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x3C,
                         &self.less_than.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -252,7 +260,10 @@ impl Tokenizer<'_> {
                     self.set_state(TagName, c)?;
                 }
                 0x3E => {
+                    // HTML877d end tag open state: no token follows, so the
+                    // consumed `</>` ends its markup occurrence abandoned.
                     self.error(MissingEndTagName, c, evidence)?;
+                    self.abandon_lexical(c, evidence)?;
                     self.set_state(Data, c)?;
                 }
                 _ => {
@@ -287,7 +298,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x3C,
                         &self.less_than.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -297,7 +308,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x3C,
                         &self.less_than.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -319,7 +330,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x3C,
                         &self.less_than.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -389,7 +400,7 @@ impl Tokenizer<'_> {
                         lower(p),
                         &self.current,
                         if lower(p) != p {
-                            OriginKind::AsciiLowercase
+                            HtmlParseOriginKind::AsciiLowercase
                         } else {
                             self.current_kind
                         },
@@ -516,7 +527,7 @@ impl Tokenizer<'_> {
                     self.error(UnexpectedNullCharacter, c, evidence)?;
                     self.attribute_value(
                         0xFFFD,
-                        OriginKind::NullReplacement,
+                        HtmlParseOriginKind::NullReplacement,
                         &self.current.clone(),
                         c,
                     )?;
@@ -806,7 +817,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x5D,
                         &self.pending_syntax.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -815,12 +826,13 @@ impl Tokenizer<'_> {
             }
             CdataEnd => match p {
                 0x5D => {
-                    let first = self.range(
-                        self.pending_syntax.start(),
-                        self.pending_syntax.start() + 1,
-                        c,
-                    )?;
-                    self.emit_point(0x5D, &first, OriginKind::Literal, c, evidence)?;
+                    let after_first = self
+                        .pending_syntax
+                        .start()
+                        .checked_add(1)
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
+                    let first = self.range(self.pending_syntax.start(), after_first, c)?;
+                    self.emit_point(0x5D, &first, HtmlParseOriginKind::Literal, c, evidence)?;
                     let source = self.range(first.end(), self.current.end(), c)?;
                     self.remember_syntax(source, c)?;
                 }
@@ -832,8 +844,8 @@ impl Tokenizer<'_> {
                             c,
                             occurrence,
                             &source,
-                            LexicalKind::Cdata,
-                            LexicalDisposition::Applied,
+                            HtmlParseLexicalKind::Cdata,
+                            HtmlParseLexicalDisposition::Applied,
                         )?;
                         admit_record_write(size_of::<Option<LexicalRef>>(), 1, c)?;
                         self.lexical = None;
@@ -897,7 +909,7 @@ impl Tokenizer<'_> {
                 _ => self
                     .pi_data
                     .as_mut()
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
                     .push(p, &self.current, self.current_kind, c)?,
             },
             PiQuestionable => {
@@ -907,16 +919,20 @@ impl Tokenizer<'_> {
                 } else {
                     self.pi_data
                         .as_mut()
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                        .push(0x3F, &self.pending_syntax, OriginKind::Literal, c)?;
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                        .push(0x3F, &self.pending_syntax, HtmlParseOriginKind::Literal, c)?;
                     self.reconsume(PiData, c)?;
                 }
             }
-            MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),
+            MarkupDeclaration => return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState)),
         }
         Ok(StepProgress::Advanced)
     }
-    fn eof(&mut self, c: &mut ParseControl, evidence: &mut ParseEvidence) -> Result<(), ParseStop> {
+    fn eof(
+        &mut self,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), HtmlParseStop> {
         match self.state {
             Data | Plaintext | Raw(Rcdata) | Raw(Rawtext) | Raw(Script) => {
                 self.emit(
@@ -936,7 +952,7 @@ impl Tokenizer<'_> {
                     self.emit_point(
                         0x3C,
                         &self.less_than.clone(),
-                        OriginKind::Literal,
+                        HtmlParseOriginKind::Literal,
                         c,
                         evidence,
                     )?;
@@ -972,7 +988,7 @@ impl Tokenizer<'_> {
                 self.emit_point(
                     0x3C,
                     &self.less_than.clone(),
-                    OriginKind::Literal,
+                    HtmlParseOriginKind::Literal,
                     c,
                     evidence,
                 )?;
@@ -1030,7 +1046,7 @@ impl Tokenizer<'_> {
                 self.emit_point(
                     0x5D,
                     &self.pending_syntax.clone(),
-                    OriginKind::Literal,
+                    HtmlParseOriginKind::Literal,
                     c,
                     evidence,
                 )?;
@@ -1044,9 +1060,10 @@ impl Tokenizer<'_> {
             PiOpen | PiTarget | AfterPiTarget | PiData | PiQuestionable => {
                 self.error(EofInProcessingInstruction, c, evidence)?;
                 self.abandon_lexical(c, evidence)?;
+                self.discard_pi(c)?;
                 self.reconsume(Data, c)?;
             }
-            MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),
+            MarkupDeclaration => return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState)),
         }
         Ok(())
     }

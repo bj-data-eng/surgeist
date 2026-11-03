@@ -1,13 +1,20 @@
-use crate::semantics::support::{builder, semantic_limits as limits, session};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, result_record_bytes,
+    semantic_limits as limits, session,
+};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::KnownHtmlElement,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState, HtmlOptionReadback,
-    HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState,
+    HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -511,76 +518,149 @@ fn work_output_scratch_utf16_capacity_and_bytes_have_exact_one_short_limits() {
     let (c, o) = leaf_option(&[], &[" A  B C ".into()]);
     let cx = context(&c, &[]);
     let req = request(&o, HtmlSemanticQuery::OptionText);
-    let baseline = session(&c, &cx, limits(), 0, HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&req))
-        .unwrap()
-        .usage();
-    assert!(baseline.nested_output_records() >= 5);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    limits().work()
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    100000
-                },
-            );
-            let mut ss = session(&c, &cx, l, 0, HtmlSemanticCancellation::new());
-            let r = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(r.is_ok(), "{resource:?}: {r:?}");
-            } else {
-                let failure = r.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {failure:?}"
-                );
-                assert_eq!(failure.qualification().unwrap().capture(), c.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // readback lookup (1), namespace test (29) and "option" recognition; the
+    // text walk's lookup and visit (2) and its one frame (growth 1, push 1);
+    // the text child's loop charge (1), lookup (1) and eight unit reads (8);
+    // the three kept units cost a retained unit each plus one separator
+    // each for the last two, and every kept unit also grows the buffer:
+    // "A" = growth 1 + push 1, "B" = growth 1 + separator 1 + push 1 and
+    // "C" likewise (2 + 3 + 3 = 8); the exhausted text frame (loop charge 1,
+    // pop 1); the closing charge (1); and the result write (1).
+    let work = 1
+        + 1
+        + (1 + ns)
+        + 1
+        + (1 + ns)
+        + (("option".len() + 1) * n + ns)
+        + 2
+        + 2
+        + (1 + 1 + 8)
+        + 8
+        + 2
+        + 1
+        + 1;
+    // "A B C" is five units retained by exact growth of 1, 2 and 2; one frame
+    // is live for the walk.
+    let r = assert_exact_and_one_short_caps(
+        "option text",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 100000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(5),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'static>>()
+                    + 5 * 2,
+            ),
+        },
+    );
+    assert_eq!(
+        option(r.results()[0].fact()).value().code_units(),
+        [65, 32, 66, 32, 67]
+    );
+}
+
+#[test]
+fn documented_work_covers_each_descended_and_skipped_element_kind() {
+    // Reference: semantic query work, OptionText. The option's children are text,
+    // an HTML span holding text, a childless HTML br, an HTML script, an HTML img,
+    // a comment, an SVG g holding text and an SVG script. The script, the img and the SVG
+    // script end after recognition (the SVG script after the svg-script test);
+    // every other element is entered, with a frame only when it has children.
+    let (mut b, d) = builder();
+    let o = html(&mut b, &d, "option", &[]);
+    let a = text(&mut b, &d, "a");
+    let span = html(&mut b, &d, "span", &[]);
+    let span_text = text(&mut b, &d, "b");
+    children(&mut b, &span, &[span_text]);
+    let br = html(&mut b, &d, "br", &[]);
+    children(&mut b, &br, &[]);
+    let script = html(&mut b, &d, "script", &[]);
+    let hidden = text(&mut b, &d, "hidden");
+    children(&mut b, &script, &[hidden]);
+    let img = html(&mut b, &d, "img", &[]);
+    children(&mut b, &img, &[]);
+    let comment = b.add_comment(&d, "c".into()).unwrap();
+    let g = element(&mut b, &d, Namespace::svg(), "g", attrs(&[]));
+    let g_text = text(&mut b, &d, "c");
+    children(&mut b, &g, &[g_text]);
+    let svg_script = element(&mut b, &d, Namespace::svg(), "script", attrs(&[]));
+    let skipped = text(&mut b, &d, "skipped");
+    children(&mut b, &svg_script, &[skipped]);
+    children(
+        &mut b,
+        &o,
+        &[a, span, br, script, img, comment, g, svg_script],
+    );
+    b.establish_root(&o).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&o).unwrap();
+    let cx = context(&c, &[]);
+    let n = KnownHtmlElement::ALL.len();
+    let k = |l: usize, namespace_units: usize| (l + 1) * n + namespace_units;
+    let (html_ns, svg_ns) = (28, 26);
+    let d_ns = 29;
+    // A text node: iteration 1 and lookup 1, then 3 for its one unit.
+    let one_unit_text = 1 + 1 + 3;
+    // The svg-script test: 1, the namespace comparison, then for a matching
+    // namespace the local-name comparison. An HTML namespace (28 units) differs
+    // from the 26 of SVG at the length check: 1 + 1.
+    let html_svg_test = 1 + 1;
+    let svg_g_test = 1 + (1 + svg_ns) + 1;
+    let svg_script_test = 1 + (1 + svg_ns) + (1 + 6);
+    let work = (1 + 1 + d_ns) // query prefix
+        + (1 + d_ns + k(6, html_ns)) // lookup, namespace test, option
+        + 2 // entry
+        + 2 // frame: the option has children
+        + one_unit_text // a
+        + (1 + 1 + k(4, html_ns) + html_svg_test + 1 + 2) // span: iteration, lookup, K, svg test, entered, frame
+        + one_unit_text // b
+        + 2 // span's exhausted frame
+        + (1 + 1 + k(2, html_ns) + html_svg_test + 1) // br: entered, no frame
+        + (1 + 1 + k(6, html_ns)) // script ends after recognition
+        + (1 + 1 + k(3, html_ns)) // img ends after recognition
+        + (1 + 1) // comment: iteration and lookup only
+        + (1 + 1 + k(1, svg_ns) + svg_g_test + 1 + 2) // svg g: entered with a frame
+        + one_unit_text // c
+        + 2 // g's exhausted frame
+        + (1 + 1 + k(6, svg_ns) + svg_script_test) // svg script ends after the test
+        + 2 // option's exhausted frame
+        + 1 // closing
+        + 1; // result write
+    let r = assert_exact_and_one_short_caps(
+        "option text element kinds",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 100000),
+        &[request(&id, HtmlSemanticQuery::OptionText)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            // The option's frame stays live while one nested frame (the span's
+            // or the g's, never both) is on the stack.
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes()
+                    + 3 * 2
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+        },
+    );
+    assert_eq!(
+        option(r.results()[0].fact()).value().code_units(),
+        [97, 98, 99]
+    );
 }
 
 #[test]

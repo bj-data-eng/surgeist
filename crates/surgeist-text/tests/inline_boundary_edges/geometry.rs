@@ -23,7 +23,7 @@ fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingS
 fn context(p: &t::PreparedText, index: usize, width: f64) -> t::InlineBoundaryContextAllocation {
     t::InlineBoundaryContextAllocation {
         occurrence: p.control_views().nth(index).unwrap().handle(),
-        boundary: t::InlineBoundaryAllocation::try_new(width).unwrap(),
+        boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
     }
 }
 
@@ -53,13 +53,14 @@ fn request(
                     boundary: facts
                         .iter()
                         .find(|fact| fact.0 == index)
-                        .map(|fact| t::InlineBoundaryAllocation::try_new(fact.1).unwrap()),
+                        .map(|fact| t::InlineBoundaryAllocation::contribution(fact.1).unwrap()),
                 })
             }
             _ => None,
         })
         .collect();
     t::LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
@@ -117,7 +118,7 @@ fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(
             .boundary_context
             .push(t::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: t::InlineBoundaryAllocation::try_new(width).unwrap(),
+                boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
             });
     }
 }
@@ -203,7 +204,7 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .control_slots()
             .find(|slot| slot.control() == end)
             .unwrap()
-            .inline_bounds(),
+            .strip_interval(),
         (20.0, 25.0)
     );
     let fragment = positive
@@ -490,7 +491,7 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
                     .control_slots()
                     .find(|slot| slot.control() == p.control_views().next().unwrap().handle())
                     .unwrap();
-                let (left, right) = opening.inline_bounds();
+                let (left, right) = opening.strip_interval();
                 assert_eq!(right - left, edge);
                 for run in receiving.run_views() {
                     assert_eq!(run.face().bytes(), bytes);
@@ -640,7 +641,7 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
 #[test]
 fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert_eq!(
-        t::InlineBoundaryAllocation::try_new(-0.0)
+        t::InlineBoundaryAllocation::contribution(-0.0)
             .unwrap()
             .advance()
             .to_bits(),
@@ -651,7 +652,7 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
         (f64::INFINITY, t::TextNumericError::NonFinite),
         (f64::NAN, t::TextNumericError::NonFinite),
     ] {
-        let error = t::InlineBoundaryAllocation::try_new(value).unwrap_err();
+        let error = t::InlineBoundaryAllocation::contribution(value).unwrap_err();
         assert!(
             matches!(error.detail(), Some(t::ErrorDetail::InvalidTextNumeric { phase: t::TextNumericPhase::Selection, category: actual, .. }) if *actual == category)
         );
@@ -784,7 +785,7 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
             .control_slots()
             .find(|slot| slot.control() == p.control_views().next().unwrap().handle())
             .unwrap();
-        let (left, right) = slot.inline_bounds();
+        let (left, right) = slot.strip_interval();
         assert_eq!(right - left, edge);
         if edge > 0.0 {
             for run in receiving.run_views() {
@@ -903,8 +904,8 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
                 [0, 1, 2, 3]
             );
             assert!(slots.iter().all(|slot| slot.level().get() == level));
-            let (left, outer_end) = slots[0].inline_bounds();
-            let (inner_start, inner_end) = slots[1].inline_bounds();
+            let (left, outer_end) = slots[0].strip_interval();
+            let (inner_start, inner_end) = slots[1].strip_interval();
             assert_eq!(outer_end - left, outer);
             assert_eq!(inner_start, outer_end);
             assert_eq!(inner_end - inner_start, inner);
@@ -931,10 +932,10 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
                 ]
             );
             assert_eq!(
-                slots[2].inline_bounds(),
+                slots[2].strip_interval(),
                 (inner_end + 20.0, inner_end + 20.0)
             );
-            assert_eq!(slots[3].inline_bounds(), slots[2].inline_bounds());
+            assert_eq!(slots[3].strip_interval(), slots[2].strip_interval());
             assert_eq!(
                 p.analyzed_source().source().text(),
                 &t::Text::from("AA\u{ad}AAA")
@@ -975,3 +976,27 @@ fn an_empty_original_occurrence_does_not_hide_the_actual_closing_endpoint() {
         "real empty source metadata is transparent to closing custody: {observed:?}"
     );
 }
+
+#[path = "signed_source_consumers.rs"]
+mod signed_source_consumers;
+
+#[path = "geometry/signed_shaping.rs"]
+mod signed_shaping;
+
+#[path = "bidi_fragmentation_baseline.rs"]
+mod bidi_fragmentation_baseline;
+
+#[path = "family_admission_negative.rs"]
+mod family_admission_negative;
+
+#[path = "geometry/shared_packet_membership.rs"]
+mod shared_packet_membership;
+
+#[path = "deleted_only_box_family.rs"]
+mod deleted_only_box_family;
+
+#[path = "native_endpoint_uniqueness.rs"]
+mod native_endpoint_uniqueness;
+
+#[path = "geometry/trailing_body.rs"]
+mod trailing_body;

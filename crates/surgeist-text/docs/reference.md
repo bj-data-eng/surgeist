@@ -31,7 +31,8 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
-| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
+| Prepared whole-body box fragments | `PreparedText::inline_box_family`, `PreparedInlineBoxFamily`, `LineSelectionRequest::inline_boxes`, `InlineBoxFragment`, selected/finalized/placed piece views | [family admission](../src/protocol/inline_box/fragments.rs), [consumed views](../src/protocol/inline_box/fragments/views.rs), [whole-body contract](#prepared-whole-body-box-fragments) |
+| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxEdgeComponents`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::{flow_interval, strip_interval}` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
@@ -702,8 +703,14 @@ no exterior targets succeeds with an empty complete allocation. The selected all
 payload participates in the existing scope allowance and shared-product census.
 
 Source-resolved inner directional controls retain their effect in the used bidi
-levels without becoming provider scalars or additional outer units. Interior
-inline-boundary controls still return `TextCombineError::UnsupportedCellPreparation`.
+levels without becoming provider scalars or additional outer units. With complete
+captured box topology, an Inline's own Start/End controls remain exterior to its
+Cells and contribute their actual allocated flow and endpoint footprints. Every
+real box, including an empty Inline, fences combination without splitting an
+indivisible typographic unit. An unscoped native endpoint pair does not establish
+captured box authority. Preparation defensively returns
+`TextCombineError::UnsupportedCellPreparation` if an inline-boundary control
+occurs inside a Cell binding.
 A preserved in-cell TAB under CssStops executes during preparation on a horizontal
 zero-origin grid in the captured inner direction. Its actual computed tab-size
 uses the text-containing Inline or derived RootInline's specified horizontal
@@ -725,9 +732,9 @@ Cell font metrics use their common horizontal metric reference; native TABs
 retain a separate layout/em-band reference without borrowing a body font.
 Removed-only Cell units preserve source metadata with no rectangle. See the
 [Range query guide](composed-lines.md) for source closure, identity and accounting.
-Placed
-`accessibility_update` returns `ErrorDetail::UnsupportedAccessibilityCell` without
-replacing the prior binding; source-only analyzed accessibility remains available.
+Placed `accessibility_update` enriches original selectable units with their actual
+Cell contributions; [logical Cell accessibility](#native-cell-accessibility)
+retains its own source and word membership independently of Range closure.
 
 `combined_cells()` borrows completed source-cell facts, including separate
 selection and used unit counts, inner direction and exact original-resource
@@ -875,25 +882,58 @@ and [native determination](../../../references/text-hanging-punctuation--native-
 
 ## Native inline endpoint geometry
 
-Layout owns each Start/End endpoint's actual used border and padding on its own
-inline side. [InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs)
-checks the nonnegative finite components and their sum in Layout scalar `S`;
-`InlineBoundaryInputOf::new(kind, metrics, edge)` requires that explicit edge.
-Its `ZERO` is affirmative used zero, not unavailable Style geometry. Lower
-`edge.advance()` once to Text's `f64`; separately widening and adding `f32`
-components would change the used sum and potentially a tab threshold.
+An endpoint's flow moves the line pen; its strip is the actual border/padding
+footprint. A signed margin can move the pen backwards or cancel the strip's
+advance, so these observations are separate. Layout's
+[InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs) retains
+finite signed margin and finite nonnegative border/padding. Its `ZERO` is an
+affirmative three-component zero, not unavailable Style geometry.
+
+Choose the operation explicitly. `InlineBoundaryInputOf::contribution` and
+Text's `InlineBoundaryAllocation::contribution` supply one endpoint's finite
+nonnegative advance; uncaptured, unpaired and strut-only Native controls remain
+valid. Layout's Contribution constructor refuses a nonzero margin. Full box-side
+geometry uses Layout's `box_edge(..., parent_axes)` and Text's
+`InlineBoundaryAllocation::box_edge(context, components)`. Layout's existing
+writing-mode/direction fields still describe the containing Block formatter.
+The immediate parent's axes are a separate resolved fact, including when its
+direction opposes that formatter.
+
+For BoxEdge, obtain an `InlineBoxSource` from a genuine captured Inline scope or
+`PreparedText::native_inline_box` over actual captured Start/End controls. Exact
+scope nominations canonicalize to that scope; matching cuts do not establish a
+pair. `PreparedText::inline_box_edge_context` checks the source owner and actual
+immediate parent, retaining the caller's resolved physical source-Start side.
+The domain is a legal parent, not an inline owner. Selection checks all owner and
+parent references in the supplied family, paired-side consistency and selected
+incidence. Zero BoxEdge still needs its context; zero Contribution does not
+acquire box authority from capture. A refused BoxEdge is never retried as a
+Contribution by the implementation.
+
+`InlineBoxEdgeComponents::from_f32` and `::from_f64` check the actual component
+lane before widening its results. Ordinary border/padding addition retains that
+lane's existing rounding; the new signed margin-plus-strip flow is checked
+separately, including nonfinite and wholly lost nonzero terms. Exact cancellation
+is valid, and signed zeros canonicalize. A caller cannot supply inconsistent
+totals. Do not widen `f32` components separately and re-sum them in `f64`: that
+can change the used flow and a tab threshold. Actual execution and Layout
+conversion separately qualify nonzero margin displacement at its recipient.
 
 | Text input | Admission and custody |
 | --- | --- |
-| `InlineBoundaryAllocation::try_new(advance)` / `ZERO` | Checked nonnegative finite total; negative zero normalizes to zero. No authored lengths or duplicated components. |
+| `InlineBoundaryAllocation::contribution(advance)` | One real endpoint's Native advance, without an inferred box or parent. |
+| `InlineBoundaryAllocation::box_edge(context, components)` | Checked actual owner/parent/side plus the typed signed margin and border/padding receipt, including zero. |
 | `ControlAllocation::boundary` | Every selected InlineBoundaryStart/End requires `Some`, including zero; all other controls require `None`. Struts remain independent vertical metrics. |
 | `LineSelectionRequest::boundary_context` | Only demanded off-selection endpoint facts; no selected flow, strut, fragment or placement. Selected endpoints belong only in `controls`. |
 
 For each complete candidate request, `PreparedText::boundary_context_demand`
 returns the next genuine off-selection `PreparedControl` needed by consumed
 shaping context, or `None`. Append its actual `InlineBoundaryContextAllocation`
-and repeat. The list must be the canonical first-demand prefix; a proved positive
-barrier stops the outward walk, while zero can reveal a farther endpoint.
+and repeat. The list must be the canonical first-demand prefix; a proved separating
+boundary stops the outward walk, while an all-zero edge can reveal a farther
+endpoint. BoxEdge separation uses individual nonzero components, including
+negative margin and zero-total cancellation; Contribution retains its positive
+scalar rule.
 The query validates the request without shaping, fitting or querying fonts.
 `select` also accepts a directly supplied complete list in the same order.
 
@@ -904,20 +944,54 @@ control yields `InvalidControlGeometry`. Missing demanded context yields
 `DuplicateBoundaryContext`, and wrong-role, out-of-order or surplus rows yield
 `UnexpectedBoundaryContext`. Foreign preparation and numeric failures remain
 typed. Missing geometry cannot be replaced with zero.
+`ProtocolError::InlineBoxEdge` distinguishes missing/foreign capture, wrong domain,
+invalid owner/pair/parent, inconsistent context and unrepresented incidence.
 
-Positive inter-unit edges bound selection-local original and presentation joining
-context. An edge inside one indivisible typographic unit keeps its own numeric
-contribution without splitting the unit's shared provider positions. Selected
-edges count once in actual flow, tabs, prefixes and all purpose measurements;
-zero edges remain transparent to hanging, and positive edges stop it locally.
+Separating inter-unit edges bound selection-local original and presentation joining
+context. A Contribution inside one indivisible typographic unit keeps its Native
+numeric contribution without splitting shared provider positions. BoxEdges use
+actual selected membership and packet extrema: the assigned sides surround the
+whole grapheme/provider/Cell packet, preserving non-edge payload order and original
+Source levels. An empty or deleted-only owner needs an authentic captured gap;
+unrepresentable incidence refuses. One schedule supplies spacing, TAB pens,
+measurements and geometry. Only selected endpoints add flow. Finalized
+`prefix_at` retains original-logical receipts from that complete frozen execution,
+including its actual TAB advances; a new partial selection executes separately.
+Hanging eligibility tests border/padding, not margin alone or net flow, for both
+punctuation and preserved separators. Conditional hanging still uses the actual
+signed geometry and available edge. `InlineBoundaryAllocation::participates()`
+uses individual nonzero margin/border/padding for BoxEdge and the positive scalar
+rule for Contribution, independently of struts and final physical size.
+Non-atomic boundaries remain transparent to
+phase-II whitespace processing.
 
-`FinalizedControlView::inline_bounds()` returns the checked physical left/right
-interval; `slot().x` is its left end. The source-free
-`FinalizedFragmentOwner::Control` retains that interval at actual line-metric
-height. Layout separately publishes the endpoint node's width×0 footprint and
-own-side border/padding. Virtual-separator Scope fragments retain only their
-actual local separator geometry. These are distinct observations of genuine
-occurrences; endpoint width is never added to every incident source Range.
+Operation and context remain part of request, conditional/frame and replay
+identity, including component lane and zero-flow operations. A changed shaping
+barrier requires reselection; spacing replay preserves its admitted facts. The
+operation accounts its actual retained records,
+source owners and derived plan/scratch through the existing resource owner;
+Contribution-only requests need no box-family scan or topology buffer.
+
+`FinalizedControlView::flow_interval()` returns the executed directed pen pair;
+`strip_interval()` returns the nonnegative physical strip. A start margin of 3 with
+border 2/padding 1 produces strip 3..6 and flow 0..6. After Ahem10 at 6..16, end
+border 1/padding 2/margin −4 produces strip 16..19 but flow 16..15. No negative-width
+rectangle represents that backwards flow.
+
+The source-free `FinalizedFragmentOwner::Control` retains the strip at actual
+line-metric height. Layout separately publishes the node's strip footprint at
+zero block extent,
+own-side border/padding and actual physical margin. Static normal-flow consumers
+use flow; exact Source events retain their original-level orientation over the
+strip. Glyph, source Range and accessibility geometry do not acquire transparent
+margin gaps. Virtual-separator Scope fragments keep only their actual local
+separator geometry.
+
+Selected component-bearing BoxEdges use the existing
+[margin-edge fit observation](atomic-fit.md) with signed executed flow and
+independent Native opaque constraints. Context-only components add no flow or fit
+authority. Raw strip/glyph geometry remains truthful when a negative margin lets
+the selected candidate fit a narrower band.
 
 The [endpoint contract](../../../docs/text-layout-contract.md#native-inline-endpoint-geometry)
 defines soft-cut attachment, exact event-side positions, reuse and rollback.
@@ -925,6 +999,61 @@ This bounded native operation consumes explicit used facts; it does not provide
 a live Style producer, authored percentage resolution, Layout's vertical adapter
 or complete inline-decoration envelopes/painting. Raw standalone whitespace, six-mode
 processing and the separate #74/Cc/default-ignorable contracts retain their rules.
+
+## Prepared whole-body box fragments
+
+A consumer requests global bidi-fragment provenance by constructing one
+`PreparedInlineBoxFamily` from its actual immutable `PreparedText` and complete
+extra native-box declarations, then retaining it in `LineSelectionRequest::inline_boxes`.
+Captured Inline boxes and undecorated captured ancestors come from that capture;
+extra `InlineBoxSource` declarations name genuine captured native endpoint pairs.
+Exact captured nominations canonicalize to their captured box. Identical repeated
+pairs canonicalize; distinct boxes cannot share one actual Start or End control.
+Distinct controls at the same numerical source cut remain distinct occurrences.
+
+The new constructor independently requires the captured domain's
+`SourceProcessingTopology::Complete` and complete owned structural bodies through
+actual raw/joint member custody. Complete text coverage does not prove complete
+topology. Partial bodies and foreign preparations refuse through
+`ProtocolError::InlineBoxFragmentation`; no failed request downgrades to an absent
+family. The existing endpoint operation with `None` makes no global-fragment claim.
+
+The family reuses completed Source bidi inputs and resolved levels, with the
+existing used-profile projection, full-body L1 and L2 owners. Its explicit Native
+empty-box policy borrows the following nonopaque resolved row's level, with the
+actual paragraph base at full-body end. This includes real empty Inline boxes
+without a positive-size or glyph requirement. Marker-only occurrences are not
+invented boxes. The policy does not substitute finite-line trailing fallback or
+rerun contextual UBA.
+
+Consumed selected and finalized piece views carry stable `InlineBoxFragment`
+identities, actual owner/parent/NCA and actual issued endpoint associations.
+Changing wrapping can change selected pieces and adjacency without merging global
+IDs. Members identify authentic unit/row/cut associations and whole-packet closure;
+they neither assign every ancillary Source alias exclusively nor own all the
+original pieces of a shared TCU/provider packet. Removed/empty/control aliases
+remain in canonical Source execution/readback. Indications use their already
+issued Before/After attachment, not their empty insertion range as provenance.
+Payload is emitted once; zero-effect boundaries preserve eligible shaping.
+
+`ConditionalLineContext::Unframed` retains an explicit optional family;
+`::Finalized` derives it from the actual completed frame. Issued measurement flows
+retain their family while observation requests remain geometry-only. Finalization,
+replay and placed piece readback reuse the admitted projection and actual frame;
+Source levels and Before/After semantics do not change.
+
+Captured feature limits are preparation-led: successful public preparation with
+those limits has retained preparation accounting. The family uses the same owned
+census and exact borrowed related-family products; input Vec backing capacity is
+counted, while its caller/stack header is not. The real family header and native
+overlay, mixed rows, lookup, fragment and selected-piece backings are funded once.
+Without a captured ceiling, construction uses fallible Native storage and does not
+invent a global quota.
+
+This is the [PreparedText-backed contribution to #1646](https://github.com/bj-data-eng/surgeist/issues/1646).
+Numeric/supplied-line global fragments, NCA-controlled justification and complete
+decoration painting remain separate work under #780. These views are not another
+geometry engine or exclusive box-body paint rectangles.
 
 ## Font catalogue publications
 
@@ -1479,14 +1608,41 @@ The [owned AccessKit projection](../src/accessibility.rs) retains the exact anal
 identity and source maps. Source-only updates need no point and omit font, glyph,
 line and all geometry fields. Placed updates enrich the same semantic projection
 from actual finalized rows, and replacement clears obsolete optional fields. Updates are fallible and publish complete state only.
-Host values and character lengths use UTF-8 bytes; an indivisible unit longer
-than 255 bytes is unsupported. Mixed-style units preserve all source/geometry
+Host values and character lengths use UTF-8 bytes; an original selectable unit
+longer than 255 bytes is unsupported. A carrier may contain more than 255 units
+or total bytes when its individual lengths and word starts are representable.
+Mixed-style units preserve all source/geometry
 and publish only uniform node metadata. Optional one-dimensional geometry is
 omitted when it cannot truthfully describe the fragments. Retained child focus
 is valid on repeat updates; parent/child collisions and ID exhaustion refuse.
 Queries require the exact analyzed or placed binding that produced the state; a
 foreign identity or wrong phase returns `AccessibilityBindingMismatch`. Original
 ill-formed UTF-16 cannot form a host string and refuses before state publication.
+
+### Native Cell accessibility
+
+Source-only and placed updates retain the same original host-grapheme characters
+and UTF-8 values. `AA` keeps two characters; `ß` transformed to `SS` keeps one
+original `ß`. The actual Cell source closure forms one word-navigation span.
+A newline-bearing Cell may share one TextRun carrier while `character_lengths`
+preserves every original character. Genuine source holes or shared ancestry that
+prevent a truthful mapping return `UnsupportedAccessibilityCellMapping` atomically.
+For example, Lithuanian uppercase `i\u{0307}` leaves one original grapheme but
+the Cell owns only the emitted `I` ancestor; the partial ownership refuses.
+
+Cell source positions and partial or reversed logical selections use original
+host stops. Ordinary placed endpoints keep their existing glyph/ligature closure;
+mixed selections compose those owners per endpoint. Physical Cell carets, hits
+and movement retain their two exterior edges.
+
+Bounds use each original's actual finalized contributions through the horizontal
+Cell frame, compression, scope displacement and placement once. Removed or
+provider-empty originals add no bounds; genuine native TABs retain their own
+executed band, including actual zero width. Aggregate carrier bounds union only
+real contributions. Cell TextRuns omit both optional character-position and
+character-width arrays, and publish font/direction metadata only when truthful
+for the complete carrier. Source-only updates remain independent of fonts and
+placement; failed updates preserve the prior binding and node-ID space.
 
 ### Native wbr separators
 

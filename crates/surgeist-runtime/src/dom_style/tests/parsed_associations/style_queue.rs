@@ -4,7 +4,7 @@ use super::super::*;
 use super::consumption::envelope;
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_dom::*;
-use surgeist_html::HtmlStyleTrigger;
+use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
@@ -89,6 +89,7 @@ fn next_occurrence(
     let mut after = false;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *original => after = true,
             Step::Occurrence(row) if after && row.requires_processing() => {
                 assert!(matches!(

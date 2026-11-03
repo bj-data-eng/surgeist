@@ -5,17 +5,19 @@ mod sheet;
 mod subject;
 mod successor;
 use crate::{
-    DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
-    DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
+    DocumentId, DomError, DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId,
+    DomParsedHtmlHistoricalDocument,
 };
 pub use frontier::*;
 pub use notification::*;
 pub use sheet::*;
 pub use subject::*;
 pub use successor::*;
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    HtmlCspAssociation, HtmlCspProtocolError, HtmlNodeId, HtmlStyleProtocolError, HtmlStyleState,
-    HtmlStyleUpdateAction,
+    construction::HtmlNodeId,
+    elements::style::{HtmlStyleProtocolError, HtmlStyleState, HtmlStyleUpdateAction},
+    security::csp::{HtmlCspAssociation, HtmlCspProtocolError},
 };
 use surgeist_html_parser::{
     HtmlParseAssociationContextEpochId, HtmlParseAssociationContextRequirement,
@@ -74,7 +76,7 @@ pub enum DomParsedHtmlStyleError {
         contribution: DomParsedHtmlAssociationId,
     },
     WrongExecutionProfile {
-        profile: surgeist_html::HtmlStyleExecutionProfile,
+        profile: surgeist_html::elements::style::HtmlStyleExecutionProfile,
     },
     AlreadyBound,
     MissingPolicy,
@@ -100,6 +102,11 @@ pub enum DomParsedHtmlStyleError {
 impl From<DomError> for DomParsedHtmlStyleError {
     fn from(e: DomError) -> Self {
         Self::Admission(e.into())
+    }
+}
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlStyleError {
+    fn from(e: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Admission(DomParsedHtmlAssociationAdmissionError::UnresolvedReport(e))
     }
 }
 impl From<DomParsedHtmlAssociationAdmissionError> for DomParsedHtmlStyleError {
@@ -184,11 +191,11 @@ impl DomParsedHtmlStyleInitialPolicyRequest {
 pub(crate) enum StylePolicyOrigin {
     Offline(HtmlParseAssociationContextSlotId),
     Known {
-        document: surgeist_html::HtmlCspDocumentId,
-        generation: surgeist_html::HtmlCspAssociationGeneration,
-        policy: surgeist_html::HtmlCspPolicyId,
-        revision: surgeist_html::HtmlCspPolicyRevision,
-        profile: Option<surgeist_html::HtmlCspProcessorProfile>,
+        document: surgeist_html::security::csp::HtmlCspDocumentId,
+        generation: surgeist_html::security::csp::HtmlCspAssociationGeneration,
+        policy: surgeist_html::security::csp::HtmlCspPolicyId,
+        revision: surgeist_html::security::csp::HtmlCspPolicyRevision,
+        profile: Option<surgeist_html::security::csp::HtmlCspProcessorProfile>,
     },
 }
 impl StylePolicyOrigin {
@@ -222,7 +229,7 @@ pub struct DomParsedHtmlStyleInlinePolicyRequest {
     pub(crate) state: HtmlStyleState,
     pub(crate) policy: HtmlCspAssociation,
     pub(crate) origin: StylePolicyOrigin,
-    pub(crate) cursor: surgeist_html::HtmlStyleUpdateCursor,
+    pub(crate) cursor: surgeist_html::elements::style::HtmlStyleUpdateCursor,
     pub(crate) created_sheet: Option<CreatedSheetProcessing>,
 }
 impl DomParsedHtmlStyleInlinePolicyRequest {
@@ -280,11 +287,11 @@ impl DomParsedHtmlStyleInlinePolicyRequest {
 #[derive(Debug)]
 pub struct DomParsedHtmlStyleInlinePolicyObservation {
     pub(crate) qualification: DomParsedHtmlStyleQualification,
-    pub(crate) document: surgeist_html::HtmlCspDocumentId,
-    pub(crate) generation: surgeist_html::HtmlCspAssociationGeneration,
-    pub(crate) policy: surgeist_html::HtmlCspPolicyId,
-    pub(crate) revision: surgeist_html::HtmlCspPolicyRevision,
-    pub(crate) profile: Option<surgeist_html::HtmlCspProcessorProfile>,
+    pub(crate) document: surgeist_html::security::csp::HtmlCspDocumentId,
+    pub(crate) generation: surgeist_html::security::csp::HtmlCspAssociationGeneration,
+    pub(crate) policy: surgeist_html::security::csp::HtmlCspPolicyId,
+    pub(crate) revision: surgeist_html::security::csp::HtmlCspPolicyRevision,
+    pub(crate) profile: Option<surgeist_html::security::csp::HtmlCspProcessorProfile>,
     pub(crate) allowed: bool,
 }
 impl DomParsedHtmlStyleInlinePolicyObservation {

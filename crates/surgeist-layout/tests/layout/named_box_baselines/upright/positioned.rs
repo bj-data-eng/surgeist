@@ -226,6 +226,7 @@ fn selected_parent(parent: &Parent) -> t::FinalizedLine {
         .handle();
     prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
@@ -344,6 +345,7 @@ fn absolute_input<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
 
 fn child_binding(child: &Fixture, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: child.prepared.clone(),
         container,
         nodes: vec![text],
@@ -456,6 +458,7 @@ fn scene<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(inner.origins[0].origin.clone())),
     );
     let outer = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container: 0,
         nodes: vec![1, 2, 3],

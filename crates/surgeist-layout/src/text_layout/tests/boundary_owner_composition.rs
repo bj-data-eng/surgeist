@@ -287,6 +287,7 @@ fn capture(
         })
         .collect();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes,
@@ -327,7 +328,7 @@ fn tree<S: LayoutScalar>(
         tree = tree.children(control.node, []).input(
             control.node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(
+                InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
                         crate::InlineBaselineContext::Physical,
@@ -340,6 +341,7 @@ fn tree<S: LayoutScalar>(
                         .find_map(|(node, edge)| (*node == control.node).then_some(*edge))
                         .unwrap_or(InlineBoundaryEdgeOf::ZERO),
                 )
+                .unwrap()
                 .with_direction(if rtl { Direction::Rtl } else { Direction::Ltr }),
             ),
         );
@@ -358,6 +360,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![p.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -712,6 +716,8 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     0,
                     vec![fresh],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },

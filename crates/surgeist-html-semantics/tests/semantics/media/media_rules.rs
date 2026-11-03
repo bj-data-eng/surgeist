@@ -1,5 +1,22 @@
-use crate::semantics::support::{builder_with, capture_limits, semantic_limits as limits};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, capture_limits,
+    semantic_limits as limits,
+};
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability,
+        media::{HtmlMediaElementRole, HtmlMediaPlacementObservation},
+    },
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    elements::media::{
+        HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMediaValueCursor, HtmlMetaMediaPlacement,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::KnownHtmlElement,
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -13,8 +30,9 @@ use surgeist_html_semantics::{
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue, HtmlSourceMediaContext,
-    HtmlSourceMediaDecision, HtmlTemplateDocumentRole, HtmlThemeColorMediaUniqueness,
+    HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSourceMediaContext, HtmlSourceMediaDecision, HtmlTemplateDocumentRole,
+    HtmlThemeColorMediaUniqueness,
 };
 use surgeist_html_semantics::{HtmlMediaEnvironmentRevision, HtmlMediaGrammarRevision};
 
@@ -190,7 +208,7 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
         i.media_for_meta(
             &KnownHtmlElement::Meta.qualified_name(),
             Some(&media),
-            None::<&surgeist_html::Attribute>
+            None::<&surgeist_html::values::Attribute>
         )
         .unwrap()
         .meta_placement(),
@@ -220,7 +238,7 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
         HtmlValueInterpreter::new(1)
             .media_for_meta(
                 &KnownHtmlElement::Div.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 Some(&n)
             )
             .is_err()
@@ -277,10 +295,12 @@ fn role_defaults_empty_match_and_forbidden_placement_remain_independent_of_css()
         value(&r).processing(),
         &HtmlMediaProcessing::Meta(HtmlMetaMediaProcessing::NoProcessingEffect)
     );
-    assert!(matches!(
+    // The meta has a media attribute but no supplied grammar attestation, so
+    // the missing evidence is the media grammar of exactly this meta.
+    assert_eq!(
         value(&r).grammar(),
-        HtmlMediaGrammarEvidence::Missing(_)
-    ));
+        &HtmlMediaGrammarEvidence::Missing(HtmlSemanticMissing::MediaGrammar(id))
+    );
 }
 
 fn revision() -> HtmlMediaContextRevision {
@@ -867,7 +887,26 @@ fn semantic_atomic_limits_cancellation_scratch_release_and_sticky_stop() {
     ));
     let used = r.usage();
     assert_eq!(used.scratch_records(), 0);
-    assert!(used.peak_scratch_records() > 0);
+    // The independent expectation for the usage capped below: one result
+    // record and a traversal whose private layout makes work, scratch and
+    // payload bytes required-to-be-charged rather than pinned; the exact cap
+    // on every resource must reproduce the report and one short must fail with
+    // exactly that resource.
+    assert_exact_and_one_short_caps(
+        "theme-color media uniqueness",
+        &c,
+        &context,
+        100,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            nested_output_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         used.work(),
         used.output_records(),

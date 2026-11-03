@@ -3,6 +3,7 @@
 //! reset and establishing an output's actual default override are external.
 
 use super::*;
+use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
 /// Actual output slot: established null differs from missing evidence and empty.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +176,11 @@ impl HtmlOutputDefaultFacts {
         &self.records
     }
     /// Admitted construction work, useful when selecting a finite producer cap.
+    ///
+    /// Each record charges 1 for its subject lookup, the vocabulary envelope
+    /// `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`,
+    /// 1 for every earlier record compared for a duplicate, and 1 for the
+    /// override check.
     pub fn validation_work(&self) -> usize {
         self.validation_work
     }

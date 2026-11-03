@@ -1,7 +1,9 @@
 use super::absolute::absolute_static_position;
-use super::in_flow::{content_size_contribution, relative_inset_offset};
-use super::scroll::{child_scrollbar_size, retained_child_scroll_geometry};
-use super::sizing::{max_content_size, resolve_auto_optional, resolve_length_or_zero};
+use super::relative::{self, InsetReference};
+use super::scroll::{
+    BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
+};
+use super::sizing::{resolve_auto_optional, resolve_length_or_zero};
 use super::*;
 use crate::FlowAxes;
 use crate::inline::InlineSourcePositionOf;
@@ -12,6 +14,8 @@ mod baseline_offset_tests;
 type TextFragmentGroup<Node, S> = (
     Node,
     Vec<InlineFragmentOutputOf<S>>,
+    Option<Point<S>>,
+    Option<Point<S>>,
     Option<Point<S>>,
     Option<Point<S>>,
 );
@@ -118,6 +122,31 @@ where
         flow,
         FlowAxes::new(boundary.writing_mode(), boundary.direction()),
     )?;
+    if let Some(parent) = boundary.parent_edge_axes() {
+        let compatible = matches!(
+            (flow.inline_start(), parent.inline_start()),
+            (
+                crate::PhysicalSide::Left | crate::PhysicalSide::Right,
+                crate::PhysicalSide::Left | crate::PhysicalSide::Right
+            ) | (
+                crate::PhysicalSide::Top | crate::PhysicalSide::Bottom,
+                crate::PhysicalSide::Top | crate::PhysicalSide::Bottom
+            )
+        );
+        if !compatible {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::ContainerSubject {
+                    container,
+                    subject: child,
+                },
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentAxis {
+                    parent,
+                    formatter: flow,
+                }),
+            ));
+        }
+    }
     Ok(Some(boundary))
 }
 
@@ -183,8 +212,7 @@ impl VisibleInlineRunTransition {
             hyphenation_state,
             tail_ledger,
             cursor_block,
-            content_size,
-            scroll_content_size,
+            intrinsic_inline_demand,
             baselines,
             static_positions,
             resolved_terminal_float_block_end,
@@ -206,6 +234,7 @@ impl VisibleInlineRunTransition {
                 .and_then(|state| state.semantic_run(node, segment))
                 .expect("semantic transition retains its validated actual binding")
         });
+        let publish_native = context.set_layout;
         let mut placement = layout_inline_run_children(
             tree,
             node,
@@ -218,6 +247,15 @@ impl VisibleInlineRunTransition {
             float_exclusions,
             contributions,
         )?;
+
+        if publish_native {
+            tree.publish_native_inline_run(
+                node,
+                self.start..self.end,
+                placement.native_completion.take(),
+                core::mem::take(&mut placement.native_lines),
+            )?;
+        }
 
         if placement.margin == InlineRunMargin::Separates {
             *cursor_block = *cursor_block + adjoining_margin;
@@ -236,7 +274,7 @@ impl VisibleInlineRunTransition {
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
         }
-        let placement_content_size = constants.flow_axes.logical_size(placement.content_size);
+        let placement_size = constants.flow_axes.logical_size(placement.size);
         // An individual float still contributes its actual margin width.
         // Captured Max cohorts use actual Text-line and float-query receipts;
         // the ordinary global sum would combine expired rows.
@@ -250,20 +288,12 @@ impl VisibleInlineRunTransition {
                     .and_then(|accepted| accepted.intrinsic_inline_demand),
             );
         }
-        content_size.inline = content_size
-            .inline
-            .max(placement_content_size.inline)
+        // Intrinsic inline demand follows the accepted flow/fit report. Actual
+        // atomic borders and visible overflow remain in the independent content
+        // and scroll geometry; a negative margin does not shrink those boxes.
+        *intrinsic_inline_demand = (*intrinsic_inline_demand)
+            .max(placement_size.inline)
             .max(float_intrinsics.result());
-        content_size.block = content_size.block.max(placement_content_size.block);
-        let placement_scroll_content_size = constants
-            .flow_axes
-            .logical_size(placement.scroll_content_size);
-        scroll_content_size.inline = scroll_content_size
-            .inline
-            .max(placement_scroll_content_size.inline);
-        scroll_content_size.block = scroll_content_size
-            .block
-            .max(placement_scroll_content_size.block);
         *owned_float_block_end = (*owned_float_block_end).max(placement.owned_float_block_end);
         let contribution = &placement.baselines;
         baselines
@@ -297,10 +327,9 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
     pub(super) cursor_block: &'a mut S,
-    pub(super) content_size: &'a mut LogicalSizeOf<S>,
-    pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
+    pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
-    pub(super) static_positions: &'a mut Vec<(Node, Point<S>)>,
+    pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
     pub(super) is_collapsing_first_margin: &'a mut bool,
@@ -310,7 +339,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) float_intrinsics: &'a mut super::floats::FloatIntrinsics<S>,
     pub(super) pending_floats: &'a mut Vec<PendingFloat<Node, S>>,
     pub(super) owned_float_block_end: &'a mut S,
-    pub(super) contributions: &'a mut ScrollContributionAccumulatorOf<S>,
+    pub(super) contributions: &'a mut BlockScrollContributions<S>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -320,6 +349,8 @@ enum InlineRunMargin {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    native_completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
+    native_lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<S>>,
     margin: InlineRunMargin,
     box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
@@ -330,9 +361,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     indent_state: Option<crate::text_indent::IndentLineState>,
     hyphenation_state: crate::hyphenation::LineHyphenationState,
     size: Size<S>,
-    content_size: Size<S>,
-    scroll_content_size: Size<S>,
-    static_positions: Vec<(Node, Point<S>)>,
+    static_positions: Vec<(Node, StaticPositionOf<S>)>,
     baselines: crate::inline::PhysicalBaselineReport,
     resolved_float_terminal_block_end: Option<S>,
 }
@@ -407,6 +436,7 @@ fn inline_boundary_control<S: LayoutScalar>(
         input.metrics(),
         input.vertical_align(),
         input.edge(),
+        input.parent_edge_axes(),
     )
 }
 
@@ -422,7 +452,7 @@ fn layout_inline_run_children<'input, Tree, S, M>(
     run: &[<Tree as Traverse>::Node],
     request: InlineRunRequest<'_, 'input, <Tree as Traverse>::Node, S>,
     float_exclusions: &mut FloatExclusions<S, <Tree as Traverse>::Node>,
-    contributions: &mut ScrollContributionAccumulatorOf<S>,
+    contributions: &mut BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InlineRunPlacement<<Tree as Traverse>::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -472,6 +502,12 @@ where
             .and_then(|state| state.run(container, run))
     });
     let text_binding = text_run.as_ref().map(|run| run.binding);
+    let inset_reference = tree
+        .text_computation()
+        .and_then(|state| state.frame(container))
+        .map_or(InsetReference::Measurement(node_inner_size), |frame| {
+            InsetReference::Accepted(frame.measured_inset_basis)
+        });
     if text_run.as_ref().is_some_and(|run| {
         run.nodes().is_empty()
             && run.binding.line_strut.is_none()
@@ -536,12 +572,16 @@ where
             InlineParticipantKindOf::LineBreak(line_break) => {
                 if line_break.display().is_none() {
                     if set_layout {
-                        tree.set_unrounded(
+                        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                             child,
+                            crate::output::NormalGeometryOf::metadata(
+                                crate::Point::ZERO,
+                                crate::Size::ZERO,
+                            ),
                             NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                 source_index,
                             )),
-                        );
+                        ));
                     }
                     continue;
                 }
@@ -581,10 +621,14 @@ where
         };
         if child_style.display == crate::Display::None {
             if set_layout {
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(
+                        crate::Point::ZERO,
+                        crate::Size::ZERO,
+                    ),
                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
-                );
+                ));
                 tree.compute_child(
                     child,
                     ComputeInputOf::<S>::hidden_in_containing_pass(
@@ -786,17 +830,13 @@ where
             });
         }
         if text_binding.is_some() {
-            let relative_offset = relative_inset_offset(
-                constants
-                    .flow_axes
-                    .zip_physical_edges_with_inline_extent(
-                        *child_style.common.inset,
-                        node_inner_size,
-                        |length, basis| resolve_auto_optional(length, basis),
-                    )
-                    .transpose_with_node(tree, child)?,
+            let relative_offset = relative::resolve(
+                tree,
+                child,
+                *child_style.common.inset,
+                inset_reference,
                 constants.flow_axes,
-            );
+            )?;
             let content_box = output
                 .scroll_geometry
                 .map(|geometry| geometry.content_box())
@@ -861,17 +901,15 @@ where
             .canonical_for_text(container, &frames)
             .map_err(|error| text_run_error(container, error))?;
         let exclusions = canonical_exclusions.as_ref().unwrap_or(float_exclusions);
-        let actual_content = frame
-            .and_then(|frame| frame.output.scroll_geometry)
-            .map(|geometry| geometry.content_box());
+        let actual_content = frame.and_then(|frame| frame.normal.content_box);
         let content_insets =
             frame
                 .zip(actual_content)
                 .map_or(constants.content_box_inset, |(frame, rect)| {
                     Edges::new(
                         rect.origin().y,
-                        frame.output.size.width - rect.origin().x - rect.size().width,
-                        frame.output.size.height - rect.origin().y - rect.size().height,
+                        frame.normal.size.width - rect.origin().x - rect.size().width,
+                        frame.normal.size.height - rect.origin().y - rect.size().height,
                         rect.origin().x,
                     )
                 });
@@ -908,6 +946,47 @@ where
             .group_computation()
             .map(|groups| groups.snapshot())
             .unwrap_or_default();
+        let actual_frame = if let Some(frame) = frame {
+            let visual_content = frame
+                .output
+                .scroll_geometry
+                .map(|geometry| geometry.content_box())
+                .ok_or_else(|| {
+                    text_run_error(
+                        container,
+                        crate::text_layout::fit::FitError::InvalidGeometry,
+                    )
+                })?;
+            if frame.normal.content_box.is_none() {
+                return Err(text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            crate::text_layout::run::Frame::Canonical {
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: frame.normal_origin,
+                    size: frame.normal.size,
+                    content_insets,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: frame.origin,
+                    size: frame.output.size,
+                    content_insets: Edges::new(
+                        visual_content.origin().y,
+                        frame.output.size.width
+                            - visual_content.origin().x
+                            - visual_content.size().width,
+                        frame.output.size.height
+                            - visual_content.origin().y
+                            - visual_content.size().height,
+                        visual_content.origin().x,
+                    ),
+                },
+            }
+        } else {
+            crate::text_layout::run::Frame::Measurement
+        };
         let context = crate::text_layout::run::Context {
             scope_alignments,
             orientation: text_orientation
@@ -924,12 +1003,7 @@ where
                 .map(|projection| projection.with_incoming(box_frontier.clone()))
             }),
             formatted,
-            frame: frame.map_or(crate::text_layout::run::Frame::Measurement, |frame| {
-                crate::text_layout::run::Frame::Canonical {
-                    origin: frame.origin,
-                    size: frame.output.size,
-                }
-            }),
+            frame: actual_frame,
             containing_size,
             content_insets,
             cursor_block,
@@ -983,10 +1057,51 @@ where
                 };
                 let boundary = endpoint
                     .map(|endpoint| {
-                        surgeist_text::InlineBoundaryAllocation::try_new(
-                            endpoint.edge.advance().to_f64(),
-                        )
-                        .map_err(|error| text_run_error(container, error.into()))
+                        let advance = endpoint.edge.border_padding_advance().to_f64();
+                        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else { unreachable!("an endpoint retains its normalized input"); };
+                        let Some(parent_axes) = input.parent_edge_axes() else {
+                            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
+                                .map_err(|error| text_run_error(container, error.into()));
+                        };
+                        let limits = binding.occurrence.captured_control().and_then(|control| control.scope().scope_alignment_limits());
+                        let inspect = || {
+                            if let Some(limits) = limits {
+                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, 1)?;
+                            }
+                            Ok::<_, surgeist_text::Error>(())
+                        };
+                        let fallback = associations.box_for_endpoint(node, inspect)
+                            .map_err(|error| text_run_error(container, error.into()))?;
+                        let (wrapping, _) = tree.wrapping_context().ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
+                        let (owner, parent) = wrapping.text_box_edge_sources(container, node, fallback.as_ref(), &text_binding.expect("the actual Text branch retains its binding").prepared, inspect)
+                            .map_err(|error| text_run_error(container, error.into()))?
+                            .ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
+                        if let Some(scope) = parent.captured_scope().filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain) {
+                            if let Some(limits) = scope.scope_alignment_limits() {
+                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, associations.captured_binding_work(scope))
+                                    .map_err(|error| text_run_error(container, error.into()))?;
+                            }
+                            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) = associations.captured_binding(scope) {
+                            let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| crate::inline_wrapping::wrapping_error(parent_node, crate::WrappingScopeError::CaptureAssociation))?;
+                            let expected = crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
+                            if parent_axes != expected {
+                                return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
+                                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentMismatch { expected: Some(expected), actual: Some(parent_axes) })));
+                            }
+                        }
+                        }
+                        let side = match (context.orientation, parent_axes.inline_start()) {
+                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
+                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Top) => surgeist_text::LineEdgeSide::Start,
+                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
+                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Bottom) => surgeist_text::LineEdgeSide::End,
+                            _ => return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
+                                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentAxis { parent: parent_axes, formatter: constants.flow_axes }))),
+                        };
+                        let context = text_binding.expect("the actual Text branch retains its binding").prepared.inline_box_edge_context(owner, parent, side)
+                            .map_err(|error| text_run_error(container, error.into()))?;
+                        let components = crate::text_layout::edge_components::from_native(endpoint.edge).map_err(|error| text_run_error(container, error.into()))?;
+                        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(context, components))
                     })
                     .transpose()?;
                 Ok(crate::text_layout::run::Control {
@@ -1194,7 +1309,15 @@ where
                         })
                         .collect();
                     context
-                        .numeric_projection(graph, container, &nodes)
+                        .numeric_projection(
+                            graph,
+                            container,
+                            crate::inline_wrapping::NativeRunSource {
+                                nodes: run,
+                                start: source_index_start,
+                            },
+                            &nodes,
+                        )
                         .map(|projection| {
                             if matches!(available_inline_extent, AvailableOf::MinContent) {
                                 projection.without_avoidance()
@@ -1353,7 +1476,15 @@ where
             InlineSourcePositionOf::Logical(point) => {
                 project_point(point.inline, point.block, size)
             }
-            InlineSourcePositionOf::Physical(point) => point,
+            InlineSourcePositionOf::Physical { visual, .. } => visual,
+        };
+
+    let project_normal_source =
+        |position: InlineSourcePositionOf<S>, size: LogicalSizeOf<S>| match position {
+            InlineSourcePositionOf::Logical(point) => {
+                project_point(point.inline, point.block, size)
+            }
+            InlineSourcePositionOf::Physical { normal, .. } => normal,
         };
 
     // Numeric geometry has no grid conversion. Validate every newly consumed
@@ -1430,7 +1561,22 @@ where
         }
     }
 
-    let mut text_content_size = Size::ZERO;
+    if set_layout && text_output.is_none() {
+        for band in &report.line_bands {
+            let size = LogicalSizeOf::new(
+                band.inline_end - band.inline_start,
+                band.block_end - band.block_start,
+            );
+            let rect = crate::ScrollRectOf::try_new(
+                project_point(band.inline_start, band.block_start, size),
+                constants.flow_axes.physical_size(size),
+            )
+            .map_err(|error| layout_own_geometry_error(container, input.run_mode(), error))?;
+            contributions
+                .include_line(rect)
+                .map_err(|error| layout_own_geometry_error(container, input.run_mode(), error))?;
+        }
+    }
     if let Some(output) = text_output {
         if let Some(state) = tree.text_computation() {
             state.record_boxes(crate::text_layout::boxes::BoxRunUse {
@@ -1451,53 +1597,59 @@ where
         if let Some(Some(assignment)) = output.paragraph.boxes.last() {
             box_frontier = Some(assignment.outgoing.clone());
         }
-        // Every normal-flow line allocation and actual placed metric bound
-        // contributes independently, including atomic-only and terminal empty
-        // lines, beside genuine source-fragment and child-box contributions.
-        for rect in output
-            .line_bounds
-            .iter()
-            .flat_map(|bounds| [bounds.allocation, bounds.metrics])
-            .chain(
-                output
-                    .fragments
-                    .iter()
-                    .filter_map(|(_, fragment)| fragment.rect()),
-            )
-        {
-            let location = rect.origin();
-            text_content_size = max_content_size(
-                text_content_size,
-                content_size_contribution(
-                    Point::new(
-                        location.x - constants.content_box_inset.left,
-                        location.y - constants.content_box_inset.top,
-                    ),
-                    rect.size(),
-                    rect.size(),
-                    ComputedOverflow::VISIBLE,
-                    false,
-                ),
-            );
-            if set_layout {
-                contributions.include_direct_line(rect);
+        if set_layout {
+            // Only the actual line allocation supplies terminal padding edges.
+            // Placed metrics and source fragments remain independent overflow.
+            for bounds in &output.line_bounds {
+                contributions
+                    .include_line(bounds.allocation)
+                    .map_err(|error| {
+                        layout_own_geometry_error(container, input.run_mode(), error)
+                    })?;
+                contributions.geometry.include_direct_line(bounds.metrics);
+            }
+            for rect in output
+                .fragments
+                .iter()
+                .filter_map(|source| source.fragment.rect())
+            {
+                contributions.geometry.include_direct_line(rect);
             }
         }
         let mut groups: Vec<TextFragmentGroup<Tree::Node, S>> = Vec::new();
         let mut scope_fragments = Vec::new();
-        for (owner, fragment) in output.fragments {
+        for crate::text_layout::run::SourceFragment {
+            owner,
+            normal_rect,
+            fragment,
+        } in output.fragments
+        {
             let crate::InlineFragmentOwner::Node(node) = owner else {
                 scope_fragments.push(crate::InlineFragmentOutputEntryOf::new(owner, fragment));
                 continue;
             };
             let index = groups
                 .iter()
-                .position(|(subject, _, _, _)| *subject == node);
+                .position(|(subject, _, _, _, _, _)| *subject == node);
             let index = index.unwrap_or_else(|| {
-                groups.push((node, Vec::new(), None, None));
+                groups.push((node, Vec::new(), None, None, None, None));
                 groups.len() - 1
             });
-            let (_, fragments, minimum, maximum) = &mut groups[index];
+            let (_, fragments, minimum, maximum, normal_minimum, normal_maximum) =
+                &mut groups[index];
+            if let Some(rect) = normal_rect {
+                let location = rect.origin();
+                let end = Point::new(
+                    location.x + rect.size().width,
+                    location.y + rect.size().height,
+                );
+                *normal_minimum = Some(normal_minimum.map_or(location, |p| {
+                    Point::new(p.x.min(location.x), p.y.min(location.y))
+                }));
+                *normal_maximum = Some(
+                    normal_maximum.map_or(end, |p| Point::new(p.x.max(end.x), p.y.max(end.y))),
+                );
+            }
             if let Some(rect) = fragment.rect() {
                 let location = rect.origin();
                 let end = Point::new(
@@ -1524,7 +1676,7 @@ where
             }
         }
         if set_layout {
-            for (child, location) in output.nonformatted_controls {
+            for (child, normal_location, location) in output.nonformatted_controls {
                 let source_index = source_index_start
                     + run
                         .iter()
@@ -1536,8 +1688,9 @@ where
                     }
                     _ => (Edges::ZERO, Edges::ZERO),
                 };
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(normal_location, crate::Size::ZERO),
                     NodeOutputOf::<S> {
                         source_index: crate::SourceIndex::new(source_index),
                         location,
@@ -1545,7 +1698,7 @@ where
                         padding,
                         ..NodeOutputOf::new()
                     },
-                );
+                ));
             }
         }
         if set_layout {
@@ -1554,11 +1707,17 @@ where
                 .flat_map(|binding| binding.origins.iter())
                 .filter(|row| run.contains(&row.node))
             {
-                if !groups.iter().any(|(node, _, _, _)| *node == row.node) {
-                    groups.push((row.node, Vec::new(), None, None));
+                if !groups.iter().any(|(node, _, _, _, _, _)| *node == row.node) {
+                    groups.push((row.node, Vec::new(), None, None, None, None));
                 }
             }
-            for (node, fragments, minimum, maximum) in groups {
+            for (node, fragments, minimum, maximum, normal_minimum, normal_maximum) in groups {
+                let (normal_location, normal_size) = match (normal_minimum, normal_maximum) {
+                    (Some(start), Some(end)) => {
+                        (start, Size::new(end.x - start.x, end.y - start.y))
+                    }
+                    _ => (Point::ZERO, Size::ZERO),
+                };
                 let (location, size) = match (minimum, maximum) {
                     (Some(minimum), Some(maximum)) => (
                         minimum,
@@ -1571,8 +1730,9 @@ where
                         .iter()
                         .position(|child| *child == node)
                         .expect("capture admitted this source node");
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     node,
+                    crate::output::NormalGeometryOf::metadata(normal_location, normal_size),
                     NodeOutputOf {
                         source_index: crate::SourceIndex::new(source_index),
                         location,
@@ -1580,7 +1740,7 @@ where
                         content_size: size,
                         ..NodeOutputOf::new()
                     },
-                );
+                ));
                 tree.set_unrounded_inline_fragment_state(node, Some(fragments));
             }
             let state = tree
@@ -1592,13 +1752,10 @@ where
                 output.paragraph.nodes.clone(),
                 scope_fragments,
             );
-            state.record_atomic_origins(output.atomic_origins);
             state.record(output.paragraph);
         }
     }
 
-    let mut content_size = report_size;
-    let mut scroll_content_size = text_content_size;
     for RetainedAtomicChild {
         node: child,
         source_index,
@@ -1612,6 +1769,7 @@ where
         let InlineParticipantKindOf::Box(child_projection) = child_style.kind() else {
             unreachable!("atomic child retains its settled box projection");
         };
+        let normal_location = project_normal_source(source.position, logical_size);
         let location = if let Some(location) = shifted_atomic_locations.get(&source_index) {
             *location
         } else {
@@ -1626,19 +1784,6 @@ where
             )?;
             Point::new(point.x + inset.x, point.y + inset.y)
         };
-        let contribution = content_size_contribution(
-            Point::new(
-                location.x - constants.content_box_inset.left,
-                location.y - constants.content_box_inset.top,
-            ),
-            source.item.size,
-            output.content_size,
-            child_projection.common.overflow,
-            child_projection.common.item_is_replaced,
-        );
-        content_size = max_content_size(content_size, contribution);
-        scroll_content_size = max_content_size(scroll_content_size, contribution);
-
         if set_layout {
             let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
                 tree,
@@ -1656,24 +1801,51 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            contributions
-                .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
-                .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            tree.set_unrounded(
-                child,
-                NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
-                    location,
-                    size: source.item.size,
-                    named_baselines: output.named_baselines,
-                    content_size: source.item.content_size,
-                    border: source.item.border,
-                    padding: source.item.padding,
-                    margin: source.item.margin,
-                    ..NodeOutputOf::new()
-                }
-                .with_scroll_geometry(Some(scroll_geometry)),
-            );
+            if text_binding.is_some() || !relative::needs_basis(*child_projection.common.inset) {
+                contributions
+                    .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
+                    .map_err(|error| layout_child_geometry_error(container, child, error))?;
+            }
+            let named_baselines = match source.canonical_geometry {
+                Some(canonical) => crate::text_layout::run::pending_visual_named_baselines(
+                    output.named_baselines,
+                    canonical.visual_readback_offset,
+                )
+                .map_err(|error| text_run_error(container, error))?,
+                None => output.named_baselines,
+            };
+            let visual = NodeOutputOf::<S> {
+                source_index: crate::SourceIndex::new(source_index),
+                location,
+                size: source.item.size,
+                named_baselines,
+                content_size: source.item.content_size,
+                border: source.item.border,
+                padding: source.item.padding,
+                margin: source.item.margin,
+                ..NodeOutputOf::new()
+            }
+            .with_scroll_geometry(Some(scroll_geometry));
+            let entry = match source.canonical_geometry {
+                Some(canonical) => crate::LayoutOutputEntryOf::canonical_atomic(
+                    child,
+                    canonical.measured_normal,
+                    canonical.normal,
+                    canonical.normal_origin,
+                    canonical.visual_origin,
+                    visual,
+                ),
+                None => crate::LayoutOutputEntryOf::ordinary_unrounded(
+                    child,
+                    crate::output::NormalGeometryOf::box_geometry(
+                        normal_location,
+                        source.item.size,
+                        scroll_geometry.content_box(),
+                    ),
+                    visual,
+                ),
+            };
+            tree.set_unrounded(entry);
         }
     }
 
@@ -1684,19 +1856,27 @@ where
             .map(|source| (source.control.source_index(), source))
             .collect::<BTreeMap<_, _>>();
         for (child, source_index, _) in control_children {
-            let (position, inline_extent, endpoint) =
+            let (position, inline_extent, endpoint, margin_flow, formatted) =
                 if let Some(source) = control_sources.get(&source_index) {
-                    (source.position, source.inline_extent, source.endpoint)
+                    (
+                        source.position,
+                        source.inline_extent,
+                        source.endpoint,
+                        source.margin_flow,
+                        true,
+                    )
                 } else if let Some(source) = nonformatted_controls.get(&source_index) {
                     (
                         InlineSourcePositionOf::Logical(LogicalPointOf::new(
                             source.inline_start,
                             source.block_start,
                         )),
-                        source.control.edge().advance(),
+                        source.control.edge().border_padding_advance(),
                         Some(crate::inline::InlineEndpointOf::from_control(
                             source.control,
                         )),
+                        None,
+                        false,
                     )
                 } else {
                     continue;
@@ -1706,20 +1886,95 @@ where
             let (border, padding) = endpoint.map_or((Edges::ZERO, Edges::ZERO), |endpoint| {
                 endpoint.physical_components()
             });
-            tree.set_unrounded(
+            let normal_location = project_normal_source(position, logical_size);
+            let location = shifted_control_locations
+                .get(&source_index)
+                .copied()
+                .unwrap_or_else(|| project_source(position, logical_size));
+            if let Some((before_flow, after_flow)) = margin_flow {
+                let InlineSourcePositionOf::Logical(point) = position else {
+                    unreachable!("numeric margin flow has the same logical phase as its strip");
+                };
+                let endpoint = endpoint.expect("numeric margin belongs to an endpoint");
+                let flow_point = |inline| {
+                    project_source(
+                        InlineSourcePositionOf::Logical(LogicalPointOf::new(inline, point.block)),
+                        LogicalSizeOf::new(S::ZERO, S::ZERO),
+                    )
+                };
+                let before_flow = flow_point(before_flow);
+                let after_flow = flow_point(after_flow);
+                let positive =
+                    FlowAxes::new(constants.flow_axes.writing_mode(), crate::Direction::Ltr)
+                        .inline_start();
+                let side = match endpoint.kind {
+                    crate::InlineBoundaryKind::Start => endpoint.axes.inline_start(),
+                    crate::InlineBoundaryKind::End => endpoint.axes.inline_end(),
+                };
+                let (before, after) = match (positive, side == positive) {
+                    (crate::PhysicalSide::Left, true) => (before_flow.x, location.x),
+                    (crate::PhysicalSide::Left, false) => (location.x + size.width, after_flow.x),
+                    (crate::PhysicalSide::Top, true) => (before_flow.y, location.y),
+                    (crate::PhysicalSide::Top, false) => (location.y + size.height, after_flow.y),
+                    (crate::PhysicalSide::Bottom, true) => {
+                        (before_flow.y, location.y + size.height)
+                    }
+                    (crate::PhysicalSide::Bottom, false) => (location.y, after_flow.y),
+                    _ => unreachable!("the forward native inline basis is left, top or bottom"),
+                };
+                if !before.is_finite() || !after.is_finite() {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(child),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::TextNumeric {
+                            value: if !after.is_finite() {
+                                after.to_f64()
+                            } else {
+                                before.to_f64()
+                            },
+                            reason: crate::LayoutTextNumericError::NonFinite,
+                        },
+                    ));
+                }
+                if before == after {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(child),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::TextNumeric {
+                            value: endpoint.edge.margin().to_f64(),
+                            reason: crate::LayoutTextNumericError::NonZeroLost,
+                        },
+                    ));
+                }
+            }
+            if formatted {
+                contributions
+                    .include_inline_strip(
+                        location,
+                        size,
+                        endpoint.map_or(
+                            Edges::ZERO,
+                            crate::inline::InlineEndpointOf::physical_margin,
+                        ),
+                    )
+                    .map_err(|error| layout_child_geometry_error(container, child, error))?;
+            }
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(normal_location, size),
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
-                    location: shifted_control_locations
-                        .get(&source_index)
-                        .copied()
-                        .unwrap_or_else(|| project_source(position, logical_size)),
+                    location,
                     size,
                     border,
                     padding,
+                    margin: endpoint.map_or(
+                        Edges::ZERO,
+                        crate::inline::InlineEndpointOf::physical_margin,
+                    ),
                     ..NodeOutputOf::new()
                 },
-            );
+            ));
         }
     }
 
@@ -1794,6 +2049,8 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        native_completion: report.native_completion,
+        native_lines: report.native_lines,
         margin,
         box_frontier,
         formatted: formatted_item,
@@ -1804,8 +2061,6 @@ where
         indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
         hyphenation_state: report.hyphenation_state,
         size: report_size,
-        content_size,
-        scroll_content_size,
         static_positions,
         baselines,
         resolved_float_terminal_block_end,
@@ -1829,18 +2084,18 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    if captured {
+    if captured || relative::needs_basis(*projection.common.inset) {
+        // Captured offsets are sealed by the real converter. Native percentage
+        // offsets are deferred until this parent's performed normal size exists.
         return Ok(Point::ZERO);
     }
-    Ok(relative_inset_offset(
-        axes.zip_physical_edges_with_inline_extent(
-            *projection.common.inset,
-            inner_size,
-            |length, basis| resolve_auto_optional(length, basis),
-        )
-        .transpose_with_node(tree, child)?,
+    relative::resolve(
+        tree,
+        child,
+        *projection.common.inset,
+        InsetReference::Measurement(inner_size),
         axes,
-    ))
+    )
 }
 
 /// Compare the actual post-match displacement inside the same retained frame.

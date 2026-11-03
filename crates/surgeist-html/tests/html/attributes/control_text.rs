@@ -1,5 +1,14 @@
 use crate::html::support::{input_element as input, input_state_forbids_attribute as forbidden};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport, HtmlInputType,
+        control_text::{HtmlDirectionSubmissionName, HtmlInputPlaceholder},
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 const BASE: &str =
     "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#";
@@ -24,7 +33,7 @@ fn dirname_absence_and_empty_have_no_default_name_and_distinct_author_evidence()
     let interpreter = HtmlValueInterpreter::new(0);
     for element in [input(), textarea()] {
         let absent = interpreter
-            .dirname(&element, None::<&surgeist_html::Attribute>)
+            .dirname(&element, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(
             absent.applicability(),
@@ -100,7 +109,7 @@ fn empty_placeholder_is_conforming_and_is_distinct_from_absence() {
     let interpreter = HtmlValueInterpreter::new(0);
     for element in [input(), textarea()] {
         let absent = interpreter
-            .placeholder(&element, None::<&surgeist_html::Attribute>)
+            .placeholder(&element, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
         assert_eq!(absent.recognition(), HtmlAttributeRecognition::Missing);
@@ -289,10 +298,10 @@ fn all_22_normative_input_states_have_independent_dirname_placeholder_presence_r
             "placeholder {state:?}"
         );
         let absent_name = interpreter
-            .dirname_for_input(&input(), None::<&surgeist_html::Attribute>, state)
+            .dirname_for_input(&input(), None::<&surgeist_html::values::Attribute>, state)
             .unwrap();
         let absent_hint = interpreter
-            .placeholder_for_input(&input(), None::<&surgeist_html::Attribute>, state)
+            .placeholder_for_input(&input(), None::<&surgeist_html::values::Attribute>, state)
             .unwrap();
         assert_eq!(absent_name.author(), HtmlAttributeAuthorState::Missing);
         assert_eq!(absent_hint.author(), HtmlAttributeAuthorState::Missing);

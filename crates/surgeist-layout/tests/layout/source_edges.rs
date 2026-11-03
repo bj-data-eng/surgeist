@@ -120,6 +120,7 @@ impl<S: layout::LayoutScalar> Host<S> {
             })
             .collect();
         layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),
@@ -149,6 +150,8 @@ impl<S: layout::LayoutScalar> Host<S> {
             }
         };
         layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()
@@ -1113,17 +1116,19 @@ impl<S: layout::LayoutScalar> PairedEarly<S> {
             S::ZERO,
         )
         .unwrap();
-        let start = layout::InlineBoundaryInputOf::new(
+        let start = layout::InlineBoundaryInputOf::contribution(
             layout::InlineBoundaryKind::Start,
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction);
-        let end = layout::InlineBoundaryInputOf::new(
+        let end = layout::InlineBoundaryInputOf::contribution(
             layout::InlineBoundaryKind::End,
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction);
         // The physical flow contains the actual pair's endpoints, while the
         // generated tree contains the one paired inline box, not two children.

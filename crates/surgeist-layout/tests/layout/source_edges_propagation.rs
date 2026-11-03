@@ -141,7 +141,7 @@ impl<S: l::LayoutScalar> Host<S> {
             non_box: l::NodeInputOf::non_box(),
             children: std::array::from_fn(|i| if i == 0 { (1..=7).collect() } else { vec![] }),
             boundaries: std::array::from_fn(|i| {
-                l::InlineBoundaryInputOf::new(
+                l::InlineBoundaryInputOf::contribution(
                     if i < 2 {
                         l::InlineBoundaryKind::Start
                     } else {
@@ -153,8 +153,10 @@ impl<S: l::LayoutScalar> Host<S> {
                         S::from_f64(10.0),
                     )
                     .unwrap(),
-                    l::InlineBoundaryEdgeOf::try_new(S::from_f64(ADVANCES[i]), S::ZERO).unwrap(),
+                    l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(ADVANCES[i]), S::ZERO)
+                        .unwrap(),
                 )
+                .unwrap()
             }),
             declarations,
             associations,
@@ -217,6 +219,7 @@ impl<S: l::LayoutScalar> Host<S> {
             })
             .collect();
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),
@@ -240,6 +243,8 @@ impl<S: l::LayoutScalar> Host<S> {
             ),
         };
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()
@@ -722,7 +727,10 @@ fn run<S: l::LayoutScalar>(case: Case) {
                         alignment: t::LineBoxAlignment::Baseline
                     })
                 );
-                assert_eq!(allocation.boundary.unwrap().advance(), ADVANCES[ordinal]);
+                assert_eq!(
+                    allocation.boundary.as_ref().unwrap().advance(),
+                    ADVANCES[ordinal]
+                );
                 ordinal
             })
             .collect();

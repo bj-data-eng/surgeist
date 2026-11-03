@@ -38,6 +38,7 @@ use crate::{InlineBox, InlineBoxKind, Result, projection::SourceProjection};
 #[derive(Default)]
 pub(crate) struct AnalysisDataSources;
 
+pub(crate) mod bidi_input;
 pub(crate) mod edge;
 pub(super) mod storage;
 pub(crate) mod structural;
@@ -401,126 +402,37 @@ pub(crate) fn analyze(
     let positions: Vec<_> = (0..paragraph.anchor_order.len())
         .map(|anchor| anchor_atom(anchor, paragraph, boxes, projection))
         .collect();
-    for (position, pair) in positions.windows(2).enumerate() {
-        if pair[0] > pair[1] {
-            let item = paragraph.anchor_order[position + 1].item;
-            let (kind, occurrence) = anchor_kind(item);
-            return Err(crate::protocol::protocol_error(
-                crate::protocol::ProtocolError::InvalidAnchorOrder {
-                    position: position + 1,
-                    kind,
-                    occurrence,
-                },
-            ));
-        }
+    let mut ledger = None;
+    bidi_input::Input {
+        typography,
+        projection,
+        infos: &infos,
+        boxes,
+        paragraph,
+        combination,
+        events,
+        anchor_positions: &positions,
     }
-    if combination.is_some_and(|output| !output.bindings.is_empty()) {
-        let events = events.expect("completed source cells have canonical logical events");
-        let output = combination.expect("actual cell bindings");
-        let mut next_cell = output.bindings.iter().enumerate().peekable();
-        let mut participant = 0usize;
-        while participant <= events.len() {
-            if let Some(&(index, binding)) = next_cell.peek()
-                && binding.participants.start == participant
-            {
-                if binding.participants.end < participant || binding.participants.end > events.len()
-                {
-                    return Err(crate::protocol::protocol_error(
-                        crate::ProtocolError::InvalidLineDirectionQuery,
-                    ));
-                }
-                storage::push(&mut stream, (BidiClass::LeftToRight, None))?;
-                storage::push(&mut owners, BidiOwner::CombinedCell(index))?;
-                participant = binding.participants.end;
-                next_cell.next();
-                continue;
-            }
-            let Some(event) = events.get(participant) else {
-                break;
-            };
-            match event.kind {
-                wrapping::Event::Text(atom) => {
-                    storage::push(
-                        &mut stream,
-                        (
-                            infos[atom].0.bidi_class,
-                            char::from_u32(projection.atoms[atom].code_point)
-                                .map(|ch| (ch, infos[atom].0.bracket)),
-                        ),
-                    )?;
-                    storage::push(&mut owners, BidiOwner::Atom(atom))?;
-                }
-                wrapping::Event::Anchor(anchor) => push_bidi_anchor(
-                    anchor.item,
-                    paragraph,
-                    boxes,
-                    &sources,
-                    &mut stream,
-                    &mut owners,
-                )?,
-                wrapping::Event::Deleted(..) => (),
-            }
-            participant += 1;
-        }
-        if next_cell.next().is_some() {
-            return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::InvalidLineDirectionQuery,
-            ));
-        }
-    } else {
-        // Preserve the ordinary projected-anchor order. Source cells instead
-        // consume the exact completed logical incidence above, never atom cuts.
-        let mut next_anchor = paragraph.anchor_order.iter().zip(&positions).peekable();
-        for (index, atom) in projection.atoms.iter().enumerate() {
-            while next_anchor.peek().is_some_and(|(_, at)| **at <= index) {
-                let (anchor, _) = next_anchor.next().expect("peek established an anchor");
-                push_bidi_anchor(
-                    anchor.item,
-                    paragraph,
-                    boxes,
-                    &sources,
-                    &mut stream,
-                    &mut owners,
-                )?;
-            }
-            storage::push(
-                &mut stream,
-                (
-                    infos[index].0.bidi_class,
-                    char::from_u32(atom.code_point).map(|ch| (ch, infos[index].0.bracket)),
-                ),
-            )?;
-            storage::push(&mut owners, BidiOwner::Atom(index))?;
-        }
-        for (anchor, _) in next_anchor {
-            push_bidi_anchor(
-                anchor.item,
-                paragraph,
-                boxes,
-                &sources,
-                &mut stream,
-                &mut owners,
-            )?;
-        }
-    }
-    // Structural B delimiters are already present at their actual owner cuts.
-    // Reinterpret only the effective stream; original Unicode/control facts
-    // continue to own source, segmentation, invisibility and extraction roles.
-    if typography.is_upright() {
-        for (class, _) in &mut stream {
-            *class = used_bidi_class(typography, *class);
-        }
-    }
+    .visit(&mut ledger, |row, _| {
+        storage::push(&mut stream, (row.class, row.bracket))?;
+        storage::push(&mut owners, row.owner)
+    })?;
     let mut body_ranges = storage::filled(sections.map_or(1, <[_]>::len), 0..0)?;
     let mut cursor = 0usize;
     for (section, range) in body_ranges.iter_mut().enumerate() {
         range.start = cursor;
-        while cursor < owners.len()
-            && sections.is_none_or(|sections| {
-                structural::owner_section(owners[cursor], paragraph, sections, combination)
-                    == section
-            })
-        {
+        while cursor < owners.len() {
+            if let Some(sections) = sections
+                && structural::owner_section(
+                    owners[cursor],
+                    paragraph,
+                    sections,
+                    combination,
+                    None,
+                )? != section
+            {
+                break;
+            }
             cursor += 1;
         }
         range.end = cursor;
@@ -663,7 +575,7 @@ fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: us
         })
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum BidiOwner {
     Atom(usize),
     Atomic(usize),
@@ -774,45 +686,6 @@ fn anchor_kind(item: SemanticAnchorItem) -> (crate::protocol::ProtocolHandleKind
             (crate::protocol::ProtocolHandleKind::ComputedLineBoundary, i)
         }
     }
-}
-
-fn push_bidi_anchor(
-    item: SemanticAnchorItem,
-    paragraph: &ParagraphContext,
-    boxes: &[InlineBox],
-    sources: &AnalysisDataSources,
-    original: &mut Vec<(BidiClass, Option<(char, BidiMirroringGlyph)>)>,
-    owners: &mut Vec<BidiOwner>,
-) -> Result<()> {
-    let (cp, owner) = match item {
-        SemanticAnchorItem::Atomic(index) if boxes[index].kind() == InlineBoxKind::InFlow => {
-            (0xfffc, BidiOwner::Atomic(index))
-        }
-        SemanticAnchorItem::ComputedLineBoundary(index) => {
-            (0xa, BidiOwner::ComputedLineBoundary(index))
-        }
-        SemanticAnchorItem::Control(index) => {
-            let control = &paragraph.controls[index];
-            let cp =
-                if control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {
-                    Some(0xa)
-                } else {
-                    control.kind.code_point()
-                };
-            let Some(cp) = cp else { return Ok(()) };
-            (cp, BidiOwner::Control(index))
-        }
-        _ => return Ok(()),
-    };
-    let ch = char::from_u32(cp).expect("closed semantic controls are Unicode scalars");
-    storage::push(
-        original,
-        (
-            CodePointMapData::<BidiClass>::new().get32(cp),
-            Some((ch, sources.brackets().get32(cp))),
-        ),
-    )?;
-    storage::push(owners, owner)
 }
 
 pub(crate) fn contributes_to_shaping(category: GeneralCategory, script: Script) -> bool {

@@ -591,6 +591,7 @@ fn line_request(
     let last = end.view().participant_offset();
     let rtl = prepared.analyzed_source().direction() == crate::Direction::RightToLeft;
     crate::LineSelectionRequest {
+        inline_boxes: None,
         segment: crate::test_wrapping::only_source_segment(prepared),
         start,
         end,
@@ -665,7 +666,17 @@ fn conditional_offsets(
         None
     };
     let search = crate::test_wrapping::only_source_segment(prepared)
-        .conditional_search(&start, None, &ceiling, purpose, &[], frame.as_ref())
+        .conditional_search(
+            &start,
+            None,
+            &ceiling,
+            purpose,
+            &[],
+            match frame.as_ref() {
+                Some(frame) => crate::ConditionalLineContext::Finalized(frame),
+                None => crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            },
+        )
         .unwrap();
     let batch = search.begin(&[]).unwrap();
     assert_eq!(batch.stage(), crate::ConditionalStage::Arbitrary);

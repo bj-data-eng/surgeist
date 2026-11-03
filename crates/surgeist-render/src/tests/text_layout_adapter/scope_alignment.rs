@@ -194,6 +194,7 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
         .handle();
     let selected = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: terminal.view().boundary(),

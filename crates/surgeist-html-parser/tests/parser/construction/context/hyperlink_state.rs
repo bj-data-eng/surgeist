@@ -1,29 +1,24 @@
-use crate::parser::support::revision;
-use surgeist_html::*;
+use crate::parser::support::{limits_builder, revision};
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
+/// The generous limits with the node, edge, attribute, diagnostic,
+/// context-effect and tree-depth caps lowered to ten thousand.
 fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(100000)
-        .buffered_utf16_units(100000)
-        .token_attributes(10000)
-        .auxiliary_entries(1000000)
+    limits_builder()
         .managed_nodes(10000)
         .managed_edges(10000)
         .managed_attributes(10000)
-        .managed_utf16_units(100000)
-        .source_map_entries(100000)
-        .source_map_payload_units(100000)
         .diagnostics(10000)
-        .diagnostic_payload_units(100000)
         .context_effects(10000)
-        .open_elements(100)
         .tree_depth(10000)
-        .managed_capacity_bytes(100000000)
-        .peak_transient_bytes(100000000)
-        .atomic_layout_bytes(100000000)
-        .work_credits(100000000)
         .finish()
         .unwrap()
 }
@@ -195,6 +190,7 @@ fn links(report: &HtmlParseReport) -> Vec<HtmlParseHyperlink<'_>> {
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     result
@@ -263,7 +259,12 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
             };
             assert_eq!(
                 doc.id(),
-                report.fragment_parser_document().unwrap().document().id()
+                report
+                    .fragment_parser_document()
+                    .unwrap()
+                    .unwrap()
+                    .document()
+                    .id()
             );
             assert_eq!(value.encoding(), &a);
             assert!(value.url().is_none());
@@ -283,7 +284,12 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
             };
             assert_ne!(
                 doc.id(),
-                report.fragment_parser_document().unwrap().document().id()
+                report
+                    .fragment_parser_document()
+                    .unwrap()
+                    .unwrap()
+                    .document()
+                    .id()
             );
             assert_eq!(value.encoding(), &i);
             assert!(value.url().is_none());

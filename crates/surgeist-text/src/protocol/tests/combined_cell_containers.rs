@@ -716,6 +716,7 @@ fn asymmetric_alphabetic_reference_matches_once_after_central_cell_centering() {
     let segment = prepared.source_segments().next().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

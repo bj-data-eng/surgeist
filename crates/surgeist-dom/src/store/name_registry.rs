@@ -3,13 +3,14 @@
 //! semantic rollback; only selected publication promotes them.
 use super::{DomError, DomResource, bank, custody};
 use crate::name::NameRecord;
-use crate::{DocumentString, DomNameAtom, DomNameLimits, DomOwnerId};
+use crate::{DomNameAtom, DomNameLimits, DomOwnerId};
 use std::{
     collections::hash_map::RandomState,
     hash::{BuildHasher, Hasher},
     mem::size_of,
     sync::{Arc, Mutex, MutexGuard, Weak},
 };
+use surgeist_html::values::DocumentString;
 
 mod index;
 mod ingress;

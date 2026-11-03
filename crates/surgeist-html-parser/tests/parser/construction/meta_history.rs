@@ -1,5 +1,5 @@
 use crate::parser::support::{bank, environment, limits, record};
-use surgeist_html::{DocumentString, HtmlReferrerPolicy};
+use surgeist_html::{attributes::HtmlReferrerPolicy, values::DocumentString};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -15,6 +15,7 @@ fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     result
@@ -253,6 +254,7 @@ fn base_after_unavailable_csp_is_explicitly_unavailable_and_earlier_frozen_value
                 }
                 HtmlParseMetadataStep::Skipped => (),
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(count, 1);
@@ -442,7 +444,8 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     loop {
         match cursor.advance() {
             HtmlParseMetadataStep::Record(row) if row.creation().is_some() => {
-                if let surgeist_html::HtmlNodeKind::Element(element) = row.node().kind()
+                if let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                    row.node().kind()
                     && element.name().local_name() == &DocumentString::from("meta")
                 {
                     subjects.push(row.node().id());
@@ -450,6 +453,7 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
             }
             HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(subjects.len(), 2);
@@ -465,6 +469,26 @@ fn scheme<'a>(
     state: &HtmlParseDocumentMeta<'a>,
 ) -> Option<&'a std::sync::Arc<surgeist_css::values::color_adjust::CssColorSchemeParseReport>> {
     state.color_scheme()
+}
+
+#[test]
+fn metas_that_cannot_be_candidates_leave_the_selected_theme_and_scheme_unchanged() {
+    // A meta is a candidate only with the exact name and a content attribute,
+    // so the selection must be the same with or without these around.
+    let plain = parse(
+        "<!doctype html><meta name=theme-color content=not-a-color><meta name=theme-color content=red><meta name=color-scheme content='only dark'><meta name=color-scheme content=light>",
+    );
+    let noisy = parse(
+        "<!doctype html><meta charset=x><meta name=theme-color content=not-a-color><meta name=viewport content=y><meta name=theme-color><meta name=theme-color content=red><meta name=color-scheme><meta name=author content=z><meta name=color-scheme content='only dark'><meta property=theme-color content=blue><meta name=color-scheme content=light>",
+    );
+    let (plain, noisy) = (rows(&plain), rows(&noisy));
+    assert_eq!(theme(&plain[0]), theme(&noisy[0]));
+    assert!(theme(&noisy[0]).is_some());
+    assert_eq!(
+        format!("{:?}", scheme(&plain[0])),
+        format!("{:?}", scheme(&noisy[0]))
+    );
+    assert!(scheme(&noisy[0]).is_some());
 }
 
 #[test]
@@ -570,4 +594,41 @@ fn media_and_css_fact_absence_are_missing_operations_and_independent_fields_cont
         assert_eq!(state.pragma_language(), Some(&"fr".into()));
         assert!(scheme(state).unwrap().result().is_ok());
     }
+}
+
+#[test]
+fn candidate_metas_in_a_subtree_the_adoption_agency_moves_select_in_tree_order() {
+    // Each document is the one parse that moves a subtree holding the three
+    // candidates. The first that selects a color or scheme in tree order wins,
+    // however the subtree arrived where it is.
+    for source in [
+        "<!doctype html><b><p><meta name=theme-color content=bogus><meta name=theme-color content=red><meta name=theme-color content=blue></b>",
+        "<!doctype html><a><b><div><meta name=theme-color content=bogus><meta name=theme-color content=red><meta name=theme-color content=blue></a>",
+        "<!doctype html><meta name=theme-color content=bogus><b><p><meta name=theme-color content=red><meta name=theme-color content=blue></b>",
+    ] {
+        let report = parse(source);
+        let states = rows(&report);
+        let theme = states[0]
+            .theme_color()
+            .unwrap_or_else(|_| panic!("{source}"));
+        assert_eq!(
+            theme.and_then(|color| color.srgb_bytes()),
+            Some([255, 0, 0]),
+            "{source}"
+        );
+    }
+    let report = parse(
+        "<!doctype html><b><p><meta name=color-scheme content=1><meta name=color-scheme content=dark><meta name=color-scheme content=light></b>",
+    );
+    let states = rows(&report);
+    let scheme = states[0].color_scheme().expect("a scheme is selected");
+    assert_eq!(
+        scheme
+            .source()
+            .source()
+            .original_utf16()
+            .unwrap()
+            .as_slice(),
+        "dark".encode_utf16().collect::<Vec<_>>()
+    );
 }

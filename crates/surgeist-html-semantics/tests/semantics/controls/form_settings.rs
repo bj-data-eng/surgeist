@@ -1,7 +1,18 @@
 use crate::semantics::support::{
-    moderate_semantic_limits as limits, small_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, moderate_semantic_limits as limits,
+    result_record_bytes, small_builder_without_registries as builder,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeAuthorState, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeRecognition, HtmlButtonSubmitterContext,
+        HtmlFormEnctype, HtmlFormMethod, HtmlInputType,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
@@ -770,71 +781,25 @@ fn both_setting_payloads_use_exact_finite_record_byte_work_and_output_budgets() 
             false,
         );
         let cx = context(&f, None);
-        let req = request(&f, query);
-        let baseline = session(&f, &cx, limits(), 100, HtmlSemanticCancellation::new())
-            .query(std::slice::from_ref(&req))
-            .unwrap()
-            .usage();
-        assert_eq!(baseline.nested_output_records(), 1);
-        assert_eq!(baseline.scratch_records(), 0);
-        assert_eq!(baseline.peak_scratch_records(), 0);
-        assert!(baseline.allocated_bytes() > 0);
-        for (resource, exact) in [
-            (HtmlSemanticResource::Work, baseline.work()),
-            (
-                HtmlSemanticResource::OutputRecords,
-                baseline.output_records(),
-            ),
-            (
-                HtmlSemanticResource::NestedOutputRecords,
-                baseline.nested_output_records(),
-            ),
-            (
-                HtmlSemanticResource::AllocatedBytes,
-                baseline.allocated_bytes(),
-            ),
-        ] {
-            for cap in [exact, exact - 1] {
-                let l = HtmlSemanticLimits::new(
-                    if resource == HtmlSemanticResource::Work {
-                        cap
-                    } else {
-                        10000000
-                    },
-                    if resource == HtmlSemanticResource::OutputRecords {
-                        cap
-                    } else {
-                        100
-                    },
-                    0,
-                    0,
-                    if resource == HtmlSemanticResource::AllocatedBytes {
-                        cap
-                    } else {
-                        1000000
-                    },
-                    if resource == HtmlSemanticResource::NestedOutputRecords {
-                        cap
-                    } else {
-                        10000
-                    },
-                );
-                let mut s = session(&f, &cx, l, 100, HtmlSemanticCancellation::new());
-                let r = s.query(std::slice::from_ref(&req));
-                if cap == exact {
-                    assert!(r.is_ok(), "{query:?} {resource:?}: {r:?}");
-                } else {
-                    let e = r.unwrap_err();
-                    assert!(
-                        matches!(e.kind(), HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                        "{query:?} {resource:?}: {e:?}"
-                    );
-                    assert_eq!(e.qualification().unwrap().limits(), l);
-                    assert_eq!(s.query(&[]).unwrap_err(), e);
-                }
-                assert_eq!(s.usage().scratch_records(), 0);
-            }
-        }
+        // One result record and one nested payload record; no scratch.
+        // The payload's byte size is a private layout, so the byte charge is
+        // required to cover at least the result record plus one payload byte.
+        // Work covers lookups, attribute scans and intrinsic envelopes of
+        // private step layout and is required to be charged, not pinned.
+        assert_exact_and_one_short_caps(
+            &format!("{query:?}"),
+            &f.capture,
+            &cx,
+            100,
+            HtmlSemanticLimits::new(10000000, 100, 0, 0, 1000000, 10000),
+            &[request(&f, query)],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                nested_output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+                ..ExpectedUsage::none()
+            },
+        );
     }
 }
 

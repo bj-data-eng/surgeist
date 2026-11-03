@@ -106,12 +106,10 @@ mod image_dimensions;
 pub use image_dimensions::*;
 
 use crate::{
-    Attribute, DocumentString, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
-    HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
-    HtmlCapturedBaseFacts, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
-    HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
-    HtmlDocumentClass, HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlMetaMediaPlacement,
-    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
+    HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
+    HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
 };
 use std::{
     error::Error,
@@ -122,9 +120,17 @@ use std::{
     },
 };
 use surgeist_html::bounded::{
-    HtmlOptionDisabledAncestor, IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError,
-    IntegerUnitStepResult, option_disabled_ancestor, select_display_size_default,
-    try_parse_integer,
+    numeric::{
+        HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
+        HtmlIntegerUnitStepResult, try_parse_integer,
+    },
+    select::{HtmlOptionDisabledAncestor, option_disabled_ancestor},
+};
+use surgeist_html::{
+    attributes::{HtmlBooleanAttribute, HtmlCustomControlAttributeContext, HtmlHiddenState},
+    microsyntax::numeric::HtmlInteger,
+    values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 /// Finite cumulative admission for one semantic session.
@@ -142,6 +148,65 @@ use surgeist_html::bounded::{
 /// atomic provider operations; work charges their visits and owned inspection
 /// envelopes, without claiming internal instruction counts. Capture retention
 /// and parsing have their separate controls.
+///
+/// # Shared tariffs
+///
+/// Every query's usage is the sum of these shared primitives and of the
+/// query's own steps, which are charged one unit per visit, unit read or write:
+///
+/// - A batch reserves its whole result vector once (1 work, one output record
+///   and `size_of::<HtmlSemanticResult>()` bytes per request) and charges 1 work
+///   per result written. An empty batch reserves nothing.
+/// - A subject lookup charges 1.
+/// - A namespace test charges 1, plus one per compared UTF-16 unit when the
+///   namespace length equals the expected length, stopping at the first
+///   mismatch. The 28-unit HTML namespace therefore costs 29 on a match.
+/// - Recognizing an element name in the HTML vocabulary charges
+///   `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`
+///   before the existing recognizer runs.
+/// - An attribute lookup charges 1 per attribute scanned. When an attribute has
+///   a namespace URI of the expected length it also charges one per compared URI
+///   unit up to the first mismatch, and, for a length-matching local name, one
+///   per compared local-name unit.
+/// - Reserving record capacity charges nothing for zero additional records.
+///   When the request fits the vector's existing capacity it charges 1 work and
+///   grows nothing. Otherwise it checks the resource and byte limits and then
+///   charges 1 work, adds the actual capacity growth to the usage of its
+///   resource and `growth * size_of::<element>()` to allocated bytes. Output and
+///   nested records use exact reservation, so reserving one record at a time
+///   grows capacity one record at a time. The two vectors that HTML fills one
+///   record at a time under this session's admission, the microdata token list
+///   and the link-relationship occurrences, instead grow to the greater of one
+///   more record and double their capacity (at least 4), so that `n` records
+///   request `O(log n)` reallocations. That target depends only on the vector,
+///   never on a limit. It is admitted at the capacity it reaches, before it is
+///   allocated, and charged as above; a limit that cannot hold it refuses the
+///   reservation. Only an allocator refusal falls back to the one record needed.
+///   The unused capacity of such a vector counts against the limits while the
+///   vector is retained, as any capacity does. These lists' own usage is
+///   therefore fixed by the input and is up to about twice the exact growth for
+///   each live list, plus the minimum of 4: a one-token list needs 4 records.
+///   A query whose other reservations are likewise independent of the limits
+///   succeeds under a limit exactly when the limit is at least its peak usage;
+///   this is established for the queries that grow only these lists, and is not
+///   claimed for others. A query that passed a nested-record or allocated-byte
+///   limit under exact growth can now be refused by up to that spare capacity.
+///
+/// Scratch records count the live capacity of any transient working vector
+/// reserved for a query, whatever it holds, and are released when that query
+/// step finishes; the peak is reported separately. Examples are the iterator
+/// frame stacks of the tree walks (one `HtmlCapturedChildIds` per entered
+/// element, document or fragment), a list owner's item vector, template-for
+/// names, the microdata visited, on-path, contributor and key vectors, the table
+/// scope and output vectors, the natural-dimension product and difference
+/// buffers, and the language task stack.
+///
+/// A query that composes further owner steps (intrinsic envelopes, form
+/// association, option text) charges them under the same one-unit-per-visit
+/// rule. The stable per-query charges that tests pin are stated by request name
+/// in the handwritten reference documentation, `docs/reference/html-operations.md`
+/// (anchor `semantic-query-work`); the work of any query not stated there is only
+/// required to be charged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
@@ -2048,39 +2113,39 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn numeric_result(
         &mut self,
-        result: Result<IntegerUnitStepResult, IntegerUnitStepError>,
+        result: Result<HtmlIntegerUnitStepResult, HtmlIntegerUnitStepError>,
     ) -> Result<HtmlInteger, HtmlSemanticFailure> {
         let capacity = match &result {
             Ok(result) => result.capacity_bytes(),
-            Err(IntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. }) => {
-                *capacity_bytes
-            }
+            Err(HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
+                capacity_bytes, ..
+            }) => *capacity_bytes,
             _ => 0,
         };
         self.record_allocated_bytes(capacity)?;
         let result = result.map_err(|error| {
             let kind = match error {
-                IntegerUnitStepError::RepresentationExhausted => {
+                HtmlIntegerUnitStepError::RepresentationExhausted => {
                     HtmlSemanticFailureKind::RepresentationExhausted
                 }
-                IntegerUnitStepError::AllocationFailed { .. } => {
+                HtmlIntegerUnitStepError::AllocationFailed { .. } => {
                     HtmlSemanticFailureKind::AllocationFailed
                 }
-                IntegerUnitStepError::DigitLimitExceeded { limit, required } => {
+                HtmlIntegerUnitStepError::DigitLimitExceeded { limit, required } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::IntegerDigits,
                         limit,
                         required,
                     }
                 }
-                IntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
                         required: self.usage.allocated_bytes.saturating_add(required),
                     }
                 }
-                IntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
+                HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
@@ -2109,9 +2174,9 @@ impl<'a> HtmlSemanticSession<'a> {
         let remaining = self.numeric_budget(value.magnitude().decimal_digits().len())?;
         self.numeric_result(value.try_unit_step(
             if reversed {
-                IntegerUnitStep::Decrement
+                HtmlIntegerUnitStep::Decrement
             } else {
-                IntegerUnitStep::Increment
+                HtmlIntegerUnitStep::Increment
             },
             self.limits.integer_digits,
             remaining,
@@ -2131,11 +2196,11 @@ impl<'a> HtmlSemanticSession<'a> {
         let remaining = self.numeric_budget(raw.value().len())?;
         match try_parse_integer(raw.value(), self.limits.integer_digits, remaining) {
             Ok(value) => self.numeric_result(Ok(value)).map(Some),
-            Err(IntegerRecoveryError::Syntax(_)) => {
+            Err(HtmlIntegerRecoveryError::Syntax(_)) => {
                 self.poll()?;
                 Ok(None)
             }
-            Err(IntegerRecoveryError::Allocation(error)) => {
+            Err(HtmlIntegerRecoveryError::Allocation(error)) => {
                 self.numeric_result(Err(error)).map(Some)
             }
         }
@@ -2438,14 +2503,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlSemanticQuery::DocumentFeeds => {
                     HtmlSemanticFact::DocumentFeeds(self.document_relationship_candidates(
                         &request.subject,
-                        crate::HtmlRelKeyword::Alternate,
+                        surgeist_html::elements::link::HtmlRelKeyword::Alternate,
                         false,
                     )?)
                 }
                 HtmlSemanticQuery::FirstManifest => HtmlSemanticFact::FirstManifest(
                     self.document_relationship_candidates(
                         &request.subject,
-                        crate::HtmlRelKeyword::Manifest,
+                        surgeist_html::elements::link::HtmlRelKeyword::Manifest,
                         true,
                     )?
                     .map(|v| v.into_iter().next()),

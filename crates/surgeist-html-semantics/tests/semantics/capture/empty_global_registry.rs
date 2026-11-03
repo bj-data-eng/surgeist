@@ -1,4 +1,4 @@
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureError, HtmlCapturedDefinitions, HtmlCapturedRegistry,
     HtmlDefinitionLookupStep, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
@@ -77,6 +77,10 @@ fn formation_peak_is_an_admitted_boundary_not_a_post_creation_estimate() {
     .unwrap();
     let peak = formed.formation_peak_bytes();
     let expected = formed.retained_storage_usage();
+    // The peak includes the transient bank beside the retained result, so it
+    // cannot be below the retained bytes; its exact value is the producer's own
+    // admitted boundary, proved minimal by the exact and one-short checks below.
+    assert!(peak >= expected.retained_bytes());
     let exact = HtmlCapture::complete_empty_global_registry_with(
         HtmlHostFactsRevision::fresh(),
         peak,

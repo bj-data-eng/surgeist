@@ -1,7 +1,8 @@
 //! Qualified native facts and source-time first-Base changes, without a URL engine.
 use super::*;
 use crate::base::{BaseState, DomBaseFactsError as Failure, Frozen, Response};
-use surgeist_html::{HtmlScriptResult, KnownHtmlAttribute};
+
+use surgeist_html::{elements::script::HtmlScriptResult, vocabulary::KnownHtmlAttribute};
 use surgeist_html_semantics::{
     HtmlAboutBaseUrl, HtmlBaseMissing, HtmlBaseUrlScheme, HtmlParseBaseFacts,
 };
@@ -396,10 +397,10 @@ impl Draft {
                 .expect("checked Link")
                 .flags
                 .disabled_attribute_changed(
-                    &name
-                        .namespace_uri()
-                        .cloned()
-                        .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+                    &name.namespace_uri().cloned().map_or_else(
+                        surgeist_html::values::Namespace::none,
+                        surgeist_html::values::Namespace::from_uri,
+                    ),
                     old,
                     new,
                 );
@@ -431,7 +432,7 @@ impl Draft {
         // Thus disabled-set has no associated sheet to disable (HTML877d19799).
         if link.sheet.is_some()
             || metadata.document_environment().browsing_context()
-                != surgeist_html::HtmlBrowsingContextPresence::Absent
+                != surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
         {
             return Err(DomError::LinkProcessingUnavailable);
         }
@@ -643,7 +644,8 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Namespace;
+    use surgeist_html::values::Namespace;
+
     use surgeist_html_semantics::*;
     fn policy(work: u64) -> DomLimits {
         DomLimits::new(

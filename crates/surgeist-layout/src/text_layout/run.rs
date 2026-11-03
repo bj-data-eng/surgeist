@@ -455,6 +455,17 @@ pub(crate) struct Atomic<Node, S: LayoutScalar> {
     pub relative_offset: Point<S>,
 }
 
+impl<Node: Copy, S: LayoutScalar> Atomic<Node, S> {
+    fn normal_input(&self) -> Self {
+        Self {
+            node: self.node,
+            item: self.item,
+            content_box: self.content_box,
+            relative_offset: Point::ZERO,
+        }
+    }
+}
+
 pub(crate) struct Control<Node, S: LayoutScalar> {
     pub node: Node,
     pub source_index: usize,
@@ -466,7 +477,17 @@ pub(crate) struct Control<Node, S: LayoutScalar> {
 #[derive(Clone, Copy)]
 pub(crate) enum Frame<S: LayoutScalar> {
     Measurement,
-    Canonical { origin: Point<f64>, size: Size<S> },
+    Canonical {
+        normal: CanonicalLineFrame<S>,
+        visual: CanonicalLineFrame<S>,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct CanonicalLineFrame<S: LayoutScalar> {
+    pub origin: Point<f64>,
+    pub size: Size<S>,
+    pub content_insets: crate::Edges<S>,
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
@@ -497,8 +518,22 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
 impl<Node, S: LayoutScalar> Context<Node, S> {
     fn frame_size(&self) -> Size<S> {
         match self.frame {
-            Frame::Canonical { size, .. } => size,
+            Frame::Canonical { normal, .. } => normal.size,
             Frame::Measurement => self.containing_size,
+        }
+    }
+
+    fn visual_line_frame(&self, normal_origin: Point<f64>) -> LineFrame {
+        match self.frame {
+            Frame::Measurement => self.line_frame(normal_origin),
+            Frame::Canonical { visual, .. } => LineFrame {
+                axes: self.axes,
+                orientation: self.orientation,
+                origin: visual.origin,
+                size: visual.size.map(LayoutScalar::to_f64),
+                insets: visual.content_insets.map(LayoutScalar::to_f64),
+                cursor_block: self.cursor_block.to_f64(),
+            },
         }
     }
 
@@ -509,7 +544,11 @@ impl<Node, S: LayoutScalar> Context<Node, S> {
             orientation: self.orientation,
             origin,
             size: Size::new(size.width.to_f64(), size.height.to_f64()),
-            insets: self.content_insets.map(LayoutScalar::to_f64),
+            insets: match self.frame {
+                Frame::Canonical { normal, .. } => normal.content_insets,
+                Frame::Measurement => self.content_insets,
+            }
+            .map(LayoutScalar::to_f64),
             cursor_block: self.cursor_block.to_f64(),
         }
     }
@@ -1058,16 +1097,21 @@ pub(crate) struct LineBounds<S: LayoutScalar> {
     pub metrics: ScrollRectOf<S>,
 }
 
+pub(crate) struct SourceFragment<Node, S: LayoutScalar> {
+    pub owner: crate::InlineFragmentOwner<Node>,
+    pub normal_rect: Option<ScrollRectOf<S>>,
+    pub fragment: InlineFragmentOutputOf<S>,
+}
+
 pub(crate) struct Output<Node, S: LayoutScalar> {
     pub formatted: super::formatted::FormattedTailUses,
     pub box_uses: Vec<super::boxes::BoxTrialUse>,
     pub report: MixedInlineRunReportOf<S>,
     pub paragraph: PendingParagraph<Node>,
     pub line_bounds: Vec<LineBounds<S>>,
-    pub fragments: Vec<(crate::InlineFragmentOwner<Node>, InlineFragmentOutputOf<S>)>,
-    pub atomic_origins: Vec<(Node, Point<f64>)>,
-    pub static_positions: Vec<(Node, Point<S>)>,
-    pub nonformatted_controls: Vec<(Node, Point<S>)>,
+    pub fragments: Vec<SourceFragment<Node, S>>,
+    pub static_positions: Vec<(Node, crate::block::StaticPositionOf<S>)>,
+    pub nonformatted_controls: Vec<(Node, Point<S>, Point<S>)>,
 }
 
 /// One invocation's coupled line-band and source-event transitions. Each
@@ -1108,7 +1152,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     } = environment;
     let origin = match context.frame {
         Frame::Measurement => Point::ZERO,
-        Frame::Canonical { origin, .. } => origin,
+        Frame::Canonical { normal, .. } => normal.origin,
     };
     let frame = context.line_frame(origin);
     // Only actual nominated own-box endpoints are intrinsic here. Their scope
@@ -1220,6 +1264,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
+            inline_boxes: run.inline_boxes.family(),
             segment: run.segment.clone(),
             scope_alignments: &context.scope_alignments,
             available,
@@ -1307,17 +1352,19 @@ fn initial_allocation<Node: Copy + Eq, S: LayoutScalar>(
         .occurrence
         .clone();
     let item = atomic.item;
+    let (flow, fit) = flow(
+        frame,
+        item,
+        item.size.width.to_f64(),
+        item.size.height.to_f64(),
+        frame.atomic_baseline(item)?,
+    )?;
     Ok(AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
+            fit,
             alignment: alignment(item.alignment)?,
-            flow: flow(
-                frame,
-                item,
-                item.size.width.to_f64(),
-                item.size.height.to_f64(),
-                frame.atomic_baseline(item)?,
-            )?,
+            flow,
             box_geometry: initial_box(frame, atomic)?,
         },
     })
@@ -1372,7 +1419,7 @@ fn flow<S: LayoutScalar>(
     width: f64,
     height: f64,
     baseline: f64,
-) -> Result<AtomicFlowAllocation, FitError> {
+) -> Result<(AtomicFlowAllocation, surgeist_text::AtomicFitAllocation), FitError> {
     let (left, right, over, under, inline, cross) = if frame.vertical_cell() {
         (
             item.margin.top,
@@ -1394,18 +1441,24 @@ fn flow<S: LayoutScalar>(
     };
     let left = left.to_f64();
     let right = right.to_f64();
-    let advance = add(add(left, inline)?, right)?;
-    Ok(AtomicFlowAllocation {
-        advance,
-        before_baseline: add(over.to_f64(), baseline)?,
-        after_baseline: if item.first_baseline.is_some() {
-            add(cross - baseline, under.to_f64())?
-        } else {
-            0.0
+    let css = surgeist_text::CssMarginBoxFit::try_new(left, inline, right)?;
+    let advance = css.advance();
+    let (occupied_start, occupied_end) = css.occupied_inline_bounds();
+    Ok((
+        AtomicFlowAllocation {
+            advance,
+            normal_border_inline_size: inline,
+            before_baseline: add(over.to_f64(), baseline)?,
+            after_baseline: if item.first_baseline.is_some() {
+                add(cross - baseline, under.to_f64())?
+            } else {
+                0.0
+            },
+            occupied_start,
+            occupied_end,
         },
-        occupied_start: 0.0f64.min(left).min(advance),
-        occupied_end: 0.0f64.max(add(left, inline)?).max(advance),
-    })
+        surgeist_text::AtomicFitAllocation::CssMarginBox(css),
+    ))
 }
 
 fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
@@ -1418,10 +1471,17 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
     block: f64,
 ) -> Result<Vec<AtomicAllocation>, FitError> {
     let feedback = line.feedback();
-    let frame = context.line_frame(origin);
-    let anchor = finalized_anchor(
-        context,
-        origin,
+    let normal_frame = context.line_frame(origin);
+    let visual_frame = context.visual_line_frame(origin);
+    let anchor = finalized_frame_anchor(
+        normal_frame,
+        band.start,
+        line.metric_bounds().size.width,
+        block,
+        line,
+    )?;
+    let visual_anchor = finalized_frame_anchor(
+        visual_frame,
         band.start,
         line.metric_bounds().size.width,
         block,
@@ -1444,91 +1504,132 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|atomic| atomic.node == actual.node)
                 .expect("every admitted in-flow atomic was measured by its Layout owner");
-            let item = atomic.item;
-            let initial = initial_box(frame, atomic)?;
-            let (raw_x, raw_y) = raw_box(frame, atomic, anchor, slot.origin, feedback.baseline)?;
-            let slot_cross = frame.atomic_cross(anchor, feedback.baseline, slot.origin, 0.0)?;
-            let left = round(raw_x)?;
-            let top = round(raw_y)?;
-            if slot.scope_displacement.get() != 0.0 {
-                let amount = slot.scope_displacement.get();
-                let (matched, shifted, parent) = if frame.vertical_cell() {
-                    (raw_x - amount, left, frame.origin.x)
-                } else {
-                    (raw_y + amount, top, frame.origin.y)
-                };
-                // Scope placement precedes this same actual edge policy. Its
-                // contribution is not applied again to the published box.
-                qualify_shift_coordinate::<S>((matched + 0.5).floor() - parent, shifted - parent)?;
-            }
-            if let InlineControlAlignment::Shift(offset) = item.alignment
-                && offset.get() != S::ZERO
-            {
-                let amount = offset.get().to_f64();
-                let (matched, shifted, parent) = if frame.vertical_cell() {
-                    (raw_x - amount, left, frame.origin.x)
-                } else {
-                    (raw_y + amount, top, frame.origin.y)
-                };
-                // Both points undergo the actual edge policy before narrowing.
-                // Undoing the shift after rounding would lose threshold crossings.
-                let matched = (matched + 0.5).floor();
-                qualify_shift_coordinate::<S>(matched - parent, shifted - parent)?;
-            }
-            let right = round(add(raw_x, item.size.width.to_f64())?)?;
-            let bottom = round(add(raw_y, item.size.height.to_f64())?)?;
-            let width = finite((right - left).max(0.0))?;
-            let height = finite((bottom - top).max(0.0))?;
-            let content = atomic.content_box;
-            let content_x = round(add(raw_x, content.origin().x.to_f64())?)?;
-            let content_y = round(add(raw_y, content.origin().y.to_f64())?)?;
-            let content_right = round(add(
-                add(raw_x, content.origin().x.to_f64())?,
-                content.size().width.to_f64(),
-            )?)?;
-            let content_bottom = round(add(
-                add(raw_y, content.origin().y.to_f64())?,
-                content.size().height.to_f64(),
-            )?)?;
-            let actual_baseline = round(if frame.vertical_cell() {
-                frame.atomic_cross(anchor, feedback.baseline, slot.origin, initial.baseline)?
-            } else {
-                add(raw_y, frame.atomic_baseline(item)?)?
-            })?;
-            let baseline_over = if frame.vertical_cell() {
-                finite(right - actual_baseline)?
-            } else {
-                finite(actual_baseline - top)?
-            };
+            let normal_input = atomic.normal_input();
+            let normal = canonical_atomic_box(
+                normal_frame,
+                &normal_input,
+                anchor,
+                &slot,
+                feedback.baseline,
+            )?;
+            let visual = canonical_atomic_box(
+                visual_frame,
+                atomic,
+                visual_anchor,
+                &slot,
+                feedback.baseline,
+            )?;
+            let (flow, fit) = flow(
+                normal_frame,
+                atomic.item,
+                normal.border.size.width,
+                normal.border.size.height,
+                normal.baseline_over,
+            )?;
             Ok(AtomicAllocation {
                 occurrence: slot.occurrence,
                 allocation: AtomicLineAllocation::InFlow {
-                    alignment: alignment(item.alignment)?,
-                    flow: flow(frame, item, width, height, baseline_over)?,
-                    box_geometry: AtomicBoxAllocation {
-                        border: frame.atomic_local_rect(
-                            anchor,
-                            feedback.baseline,
-                            slot.origin,
-                            Rect::new(left, top, width, height),
-                        )?,
-                        content: frame.atomic_local_rect(
-                            anchor,
-                            feedback.baseline,
-                            slot.origin,
-                            Rect::new(
-                                content_x,
-                                content_y,
-                                (content_right - content_x).max(0.0),
-                                (content_bottom - content_y).max(0.0),
-                            ),
-                        )?,
-                        baseline: frame.cross_distance(slot_cross, actual_baseline)?,
-                    },
+                    fit,
+                    alignment: alignment(atomic.item.alignment)?,
+                    flow,
+                    box_geometry: visual.local,
                 },
             })
         })
         .collect()
+}
+
+#[derive(Clone, Copy)]
+struct CanonicalAtomicBox {
+    raw_origin: Point<f64>,
+    border: Rect,
+    content: Rect,
+    baseline_over: f64,
+    local: AtomicBoxAllocation,
+}
+
+fn canonical_atomic_box<Node, S: LayoutScalar>(
+    frame: LineFrame,
+    atomic: &Atomic<Node, S>,
+    anchor: LineAnchor,
+    slot: &surgeist_text::AtomicSlotFeedback,
+    line_baseline: f64,
+) -> Result<CanonicalAtomicBox, FitError> {
+    let item = atomic.item;
+    let initial = initial_box(frame, atomic)?;
+    let (raw_x, raw_y) = raw_box(frame, atomic, anchor, slot.origin, line_baseline)?;
+    let slot_cross = frame.atomic_cross(anchor, line_baseline, slot.origin, 0.0)?;
+    let left = round(raw_x)?;
+    let top = round(raw_y)?;
+    if slot.scope_displacement.get() != 0.0 {
+        let amount = slot.scope_displacement.get();
+        let (matched, shifted, parent) = if frame.vertical_cell() {
+            (raw_x - amount, left, frame.origin.x)
+        } else {
+            (raw_y + amount, top, frame.origin.y)
+        };
+        // Scope placement precedes this same actual edge policy. Its
+        // contribution is not applied again to the published box.
+        qualify_shift_coordinate::<S>((matched + 0.5).floor() - parent, shifted - parent)?;
+    }
+    if let InlineControlAlignment::Shift(offset) = item.alignment
+        && offset.get() != S::ZERO
+    {
+        let amount = offset.get().to_f64();
+        let (matched, shifted, parent) = if frame.vertical_cell() {
+            (raw_x - amount, left, frame.origin.x)
+        } else {
+            (raw_y + amount, top, frame.origin.y)
+        };
+        // Both points undergo the actual edge policy before narrowing.
+        // Undoing the shift after rounding would lose threshold crossings.
+        let matched = (matched + 0.5).floor();
+        qualify_shift_coordinate::<S>(matched - parent, shifted - parent)?;
+    }
+    let right = round(add(raw_x, item.size.width.to_f64())?)?;
+    let bottom = round(add(raw_y, item.size.height.to_f64())?)?;
+    let width = finite((right - left).max(0.0))?;
+    let height = finite((bottom - top).max(0.0))?;
+    let content = atomic.content_box;
+    let content_x = round(add(raw_x, content.origin().x.to_f64())?)?;
+    let content_y = round(add(raw_y, content.origin().y.to_f64())?)?;
+    let content_right = round(add(
+        add(raw_x, content.origin().x.to_f64())?,
+        content.size().width.to_f64(),
+    )?)?;
+    let content_bottom = round(add(
+        add(raw_y, content.origin().y.to_f64())?,
+        content.size().height.to_f64(),
+    )?)?;
+    let actual_baseline = round(if frame.vertical_cell() {
+        frame.atomic_cross(anchor, line_baseline, slot.origin, initial.baseline)?
+    } else {
+        add(raw_y, frame.atomic_baseline(item)?)?
+    })?;
+    let baseline_over = if frame.vertical_cell() {
+        finite(right - actual_baseline)?
+    } else {
+        finite(actual_baseline - top)?
+    };
+
+    let border = Rect::new(left, top, width, height);
+    let content = Rect::new(
+        content_x,
+        content_y,
+        (content_right - content_x).max(0.0),
+        (content_bottom - content_y).max(0.0),
+    );
+    Ok(CanonicalAtomicBox {
+        raw_origin: Point::new(raw_x, raw_y),
+        border,
+        content,
+        baseline_over,
+        local: AtomicBoxAllocation {
+            border: frame.atomic_local_rect(anchor, line_baseline, slot.origin, border)?,
+            content: frame.atomic_local_rect(anchor, line_baseline, slot.origin, content)?,
+            baseline: frame.cross_distance(slot_cross, actual_baseline)?,
+        },
+    })
 }
 
 fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
@@ -1589,7 +1690,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
             Ok(surgeist_text::ControlAllocation {
                 occurrence: allocation.occurrence.clone(),
                 strut,
-                boundary: original.allocation.boundary,
+                boundary: original.allocation.boundary.clone(),
             })
         })
         .collect()
@@ -1703,6 +1804,23 @@ fn finalized_anchor<Node, S: LayoutScalar>(
     )
 }
 
+fn finalized_frame_anchor(
+    frame: LineFrame,
+    start: f64,
+    available: f64,
+    block: f64,
+    line: &FinalizedLine,
+) -> Result<LineAnchor, FitError> {
+    let disposition = fit::LineDisposition::resolve(line)?;
+    frame.anchor(
+        start,
+        available,
+        block,
+        disposition.baseline(line),
+        disposition.height(line),
+    )
+}
+
 fn output<Node: Copy + Eq, S: LayoutScalar>(
     run: &super::AdmittedRun<'_, Node>,
     associations: &super::capture::ScopeAssociations<Node>,
@@ -1713,7 +1831,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
     let binding = run.binding;
-    let frame = context.line_frame(origin);
+    let normal_frame = context.line_frame(origin);
+    let normal_origin = origin;
+    let frame = context.visual_line_frame(origin);
+    let origin = frame.origin;
     let orientation = frame.orientation();
     let named = named_baseline(
         &binding.prepared,
@@ -1721,6 +1842,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         context.inline_baseline_context,
     );
     let mut report = MixedInlineRunReportOf {
+        native_lines: Vec::new(),
+        native_completion: None,
         baselines: InlineBaselineReportOf::Native(PhysicalBaselineReport {
             context: context.inline_baseline_context,
             first: None,
@@ -1767,7 +1890,6 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut box_uses = Vec::new();
     let mut line_bounds = Vec::new();
     let mut fragments = Vec::new();
-    let mut atomic_origins = Vec::new();
     let mut static_positions = Vec::new();
     let mut nonformatted_controls = Vec::new();
     let mut outflows = Vec::new();
@@ -1839,15 +1961,34 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             AvailableOf::MaxContent => line.finalized.measurements().max_content_contribution(),
             AvailableOf::Definite(_) => line.finalized.measurements().fit(),
         };
+        let admission = match context.available {
+            AvailableOf::MinContent => line
+                .finalized
+                .measurements()
+                .margin_edge_min_content_contribution(),
+            AvailableOf::MaxContent => line
+                .finalized
+                .measurements()
+                .margin_edge_max_content_contribution(),
+            AvailableOf::Definite(_) => line.finalized.measurements().margin_edge_fit(),
+        };
+        let indent = line.finalized.selected_line().request().context.indent;
+        let css_width = fit::css_margin_edge_width(admission, indent)?;
         if is_formatted {
             report.indent_state.commit(
                 line.finalized.selected_line().request().context.end
                     == surgeist_text::LineEnd::Forced,
             );
         }
-        let anchor = finalized_anchor(
-            context,
-            origin,
+        let normal_anchor = finalized_frame_anchor(
+            normal_frame,
+            line.inline_start,
+            line.available,
+            line.placed_start,
+            &line.finalized,
+        )?;
+        let anchor = finalized_frame_anchor(
+            frame,
             line.inline_start,
             line.available,
             line.placed_start,
@@ -1862,9 +2003,14 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         zones.push(line.zone_basis);
         phrases.push(line.phrase_basis);
         if let fit::LineDisposition::NonFormatted(completion) = line.disposition {
-            let used = line_anchor(
-                context,
-                origin,
+            let normal_used = normal_frame.anchor(
+                line.inline_start,
+                line.available,
+                line.placed_start,
+                0.0,
+                0.0,
+            )?;
+            let used = frame.anchor(
                 line.inline_start,
                 line.available,
                 line.placed_start,
@@ -1878,10 +2024,15 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     .iter()
                     .find(|row| row.occurrence == slot.control())
                     .expect("retained nonformatted control has actual capture ownership");
-                let (left, _) = slot.inline_bounds();
+                let (left, _) = slot.strip_interval();
                 let point = frame.point(used, 0.0, left, slot.slot().y)?;
                 frame.qualify_scope_position::<S>(point, slot.scope_displacement().get())?;
-                nonformatted_controls.push((actual.node, frame.relative_point(point)?));
+                let normal_point = normal_frame.point(normal_used, 0.0, left, slot.slot().y)?;
+                nonformatted_controls.push((
+                    actual.node,
+                    normal_frame.relative_point(normal_point)?,
+                    frame.relative_point(point)?,
+                ));
             }
             for slot in line.finalized.atomic_slots() {
                 let actual = binding
@@ -1894,13 +2045,22 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 }
                 static_positions.push((
                     actual.node,
-                    frame.static_position(
-                        used,
-                        0.0,
-                        0.0,
-                        slot.origin.x,
-                        slot.scope_displacement.get(),
-                    )?,
+                    crate::block::StaticPositionOf {
+                        normal: normal_frame.static_position(
+                            normal_used,
+                            0.0,
+                            0.0,
+                            slot.origin.x,
+                            slot.scope_displacement.get(),
+                        )?,
+                        visual: frame.static_position(
+                            used,
+                            0.0,
+                            0.0,
+                            slot.origin.x,
+                            slot.scope_displacement.get(),
+                        )?,
+                    },
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
@@ -1921,13 +2081,13 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         // Keep the accepted physical anchor in its actual used box frame.
         // In particular, an indefinite end-affine frame is resolved only when
         // the owning block knows its final border-box extent.
-        let origin_baseline = context.axes.block_axis_coordinate(origin);
-        let local_baseline = add(anchor.baseline, -origin_baseline)?;
-        add(-origin_baseline, anchor.baseline)?;
+        let origin_baseline = context.axes.block_axis_coordinate(normal_origin);
+        let local_baseline = add(normal_anchor.baseline, -origin_baseline)?;
+        add(-origin_baseline, normal_anchor.baseline)?;
         // Normal-flow allocations and placed metric bounds both contribute to
         // overflow, including lines without a source fragment or ink. Intrinsic
-        // allocation uses the exact requested contribution plus signed indent;
-        // actual Text metric and source-fragment geometry remain independent.
+        // allocation composes actual signed indent once with the requested
+        // admission operands; metric and source geometry remain independent.
         let width = match line
             .finalized
             .selected_line()
@@ -1936,10 +2096,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             .available_inline
         {
             Some(width) => width,
-            None => finite(
-                contribution.advance() + line.finalized.selected_line().request().context.indent,
-            )?
-            .max(0.0),
+            None => match css_width {
+                Some(width) => width,
+                None => finite(contribution.advance() + indent)?.max(0.0),
+            },
         };
         let allocation = frame.allocation_rect(
             line.inline_start,
@@ -1980,10 +2140,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         baselines.last = Some(local_baseline);
         baselines.last_named = named;
         report.block_extent = report.block_extent.max(number(line.flow.next)?);
+        let inline_end = match css_width {
+            Some(width) => add(line.inline_start, width)?,
+            None => line.inline_start + contribution.advance() + indent,
+        };
         report.inline_extent = report.inline_extent.max(number(
-            line.inline_start
-                + contribution.advance()
-                + line.finalized.selected_line().request().context.indent
+            inline_end
                 + line
                     .bands
                     .combined()
@@ -2006,15 +2168,20 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .bounds()
                 .map(|rect| frame.rect(anchor, feedback.baseline, rect))
                 .transpose()?;
-            fragments.push((
+            let normal_rect = view
+                .bounds()
+                .map(|rect| normal_frame.rect(normal_anchor, feedback.baseline, rect))
+                .transpose()?;
+            fragments.push(SourceFragment {
                 owner,
-                InlineFragmentOutputOf::new(
+                normal_rect,
+                fragment: InlineFragmentOutputOf::new(
                     fragment,
                     rect,
                     frame.relative_point(frame.anchor_point(anchor))?,
                     line_index,
                 ),
-            ));
+            });
         }
         for slot in line.finalized.control_slots() {
             let binding = binding
@@ -2026,7 +2193,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|row| row.node == binding.node)
                 .expect("capture admitted every actual control node");
-            let (left, right) = slot.inline_bounds();
+            let (left, right) = slot.strip_interval();
             let inline_extent = number(finite(right - left)?)?;
             let physical = frame.point(anchor, feedback.baseline, left, slot.slot().y)?;
             frame.qualify_scope_position::<S>(physical, slot.scope_displacement().get())?;
@@ -2042,13 +2209,66 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 // Control anchors have no atomic edge-quantization stage.
                 qualify_shift_coordinate::<S>(matched - parent, shifted - parent)?;
             }
+            if let Some(components) = control
+                .allocation
+                .boundary
+                .as_ref()
+                .and_then(surgeist_text::InlineBoundaryAllocation::box_components)
+                && components.margin() != 0.0
+            {
+                let flow = slot.flow_interval();
+                let strip = slot.strip_interval();
+                let context = control
+                    .allocation
+                    .boundary
+                    .as_ref()
+                    .and_then(surgeist_text::InlineBoundaryAllocation::box_context)
+                    .expect("component edge has checked context");
+                let left_side = match control.kind {
+                    InlineParticipantLayoutKind::InlineBoundaryStart => {
+                        context.start_side() == surgeist_text::LineEdgeSide::Start
+                    }
+                    InlineParticipantLayoutKind::InlineBoundaryEnd => {
+                        context.start_side() == surgeist_text::LineEdgeSide::End
+                    }
+                    _ => unreachable!("a component edge retains its admitted endpoint role"),
+                };
+                let (before, after) = if left_side {
+                    (flow.0, strip.0)
+                } else {
+                    (strip.1, flow.1)
+                };
+                let before = frame.point(anchor, feedback.baseline, before, slot.slot().y)?;
+                let after = frame.point(anchor, feedback.baseline, after, slot.slot().y)?;
+                let (before, after) = if frame.vertical_cell() {
+                    (before.y - frame.origin.y, after.y - frame.origin.y)
+                } else {
+                    (before.x - frame.origin.x, after.x - frame.origin.x)
+                };
+                let actual = number::<S>(after)?;
+                if S::from_f64(before) == actual {
+                    return Err(FitError::Numeric(
+                        components.margin(),
+                        LayoutTextNumericError::NonZeroLost,
+                    ));
+                }
+            }
             let physical = frame.relative_point(physical)?;
             report.controls.push(InlineControlSourceOf {
                 kind: control.kind,
                 source_index: control.source_index,
-                position: InlineSourcePositionOf::Physical(physical),
+                position: InlineSourcePositionOf::Physical {
+                    normal: normal_frame.relative_point(normal_frame.point(
+                        normal_anchor,
+                        feedback.baseline,
+                        left,
+                        slot.slot().y,
+                    )?)?,
+                    visual: physical,
+                },
                 inline_extent,
                 endpoint: control.endpoint,
+                margin_flow: None,
                 line_index,
                 visual_index: None,
             });
@@ -2060,16 +2280,25 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|row| row.occurrence == slot.occurrence)
                 .expect("Text returned a retained admitted occurrence");
-            let AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation else {
+            let AtomicLineAllocation::InFlow { box_geometry, .. } = &slot.allocation else {
                 static_positions.push((
                     binding.node,
-                    frame.static_position(
-                        anchor,
-                        feedback.baseline,
-                        feedback.line_height,
-                        slot.origin.x,
-                        slot.scope_displacement.get(),
-                    )?,
+                    crate::block::StaticPositionOf {
+                        normal: normal_frame.static_position(
+                            normal_anchor,
+                            feedback.baseline,
+                            feedback.line_height,
+                            slot.origin.x,
+                            slot.scope_displacement.get(),
+                        )?,
+                        visual: frame.static_position(
+                            anchor,
+                            feedback.baseline,
+                            feedback.line_height,
+                            slot.origin.x,
+                            slot.scope_displacement.get(),
+                        )?,
+                    },
                 ));
                 outflows.push((entry_index, slot.occurrence, binding.node));
                 continue;
@@ -2088,7 +2317,54 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 slot.origin,
                 box_geometry.baseline,
             )?;
-            atomic_origins.push((atomic.node, Point::new(border.origin.x, border.origin.y)));
+            let normal_input = atomic.normal_input();
+            let normal_box = canonical_atomic_box(
+                normal_frame,
+                &normal_input,
+                normal_anchor,
+                &slot,
+                feedback.baseline,
+            )?;
+            let normal_location = normal_frame.relative_point(Point::new(
+                normal_box.border.origin.x,
+                normal_box.border.origin.y,
+            ))?;
+            let normal_size = Size::new(
+                number(normal_box.border.size.width)?,
+                number(normal_box.border.size.height)?,
+            );
+            let normal_content = ScrollRectOf::try_new(
+                Point::new(
+                    number(normal_box.content.origin.x - normal_box.border.origin.x)?,
+                    number(normal_box.content.origin.y - normal_box.border.origin.y)?,
+                ),
+                Size::new(
+                    number(normal_box.content.size.width)?,
+                    number(normal_box.content.size.height)?,
+                ),
+            )
+            .map_err(|_| FitError::InvalidGeometry)?;
+            let measured_normal = crate::output::NormalGeometryOf::box_geometry(
+                normal_frame.relative_point(normal_box.raw_origin)?,
+                atomic.item.size,
+                atomic.content_box,
+            );
+            let (visual_raw_x, visual_raw_y) =
+                raw_box(frame, atomic, anchor, slot.origin, feedback.baseline)?;
+            let canonical_geometry = crate::output::CanonicalAtomicGeometryOf {
+                visual_readback_offset: Point::new(
+                    visual_raw_x - border.origin.x,
+                    visual_raw_y - border.origin.y,
+                ),
+                measured_normal,
+                normal: crate::output::NormalGeometryOf::box_geometry(
+                    normal_location,
+                    normal_size,
+                    normal_content,
+                ),
+                normal_origin: Point::new(normal_box.border.origin.x, normal_box.border.origin.y),
+                visual_origin: Point::new(border.origin.x, border.origin.y),
+            };
             let size = Size::new(number(border.size.width)?, number(border.size.height)?);
             let physical = Point::new(
                 number(border.origin.x - origin.x.to_f64())?,
@@ -2117,8 +2393,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 )?,
             );
             report.atomics.push(AtomicInlineSourceOf {
+                canonical_geometry: Some(canonical_geometry),
                 item,
-                position: InlineSourcePositionOf::Physical(physical),
+                position: InlineSourcePositionOf::Physical {
+                    normal: normal_location,
+                    visual: physical,
+                },
                 line_index,
                 visual_index: None,
             });
@@ -2150,11 +2430,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report,
         line_bounds,
         fragments,
-        atomic_origins,
         static_positions,
         nonformatted_controls,
         paragraph: PendingParagraph {
             binding_index: run.binding_index,
+            inline_boxes: run.inline_boxes.clone(),
             segment: run.segment.clone(),
             container: binding.container,
             nodes,
@@ -2279,6 +2559,41 @@ fn alignment<S: LayoutScalar>(
             surgeist_text::BaselineShift::try_new(offset.get().to_f64())?,
         ),
     })
+}
+
+/// Express the actual established named facts in the converter's canonical
+/// visual border frame. Rounding still owns their one final readback snap.
+pub(crate) fn pending_visual_named_baselines<S: LayoutScalar>(
+    facts: crate::NamedBaselinesOf<S>,
+    offset: Point<f64>,
+) -> Result<crate::NamedBaselinesOf<S>, FitError> {
+    let project = |fact: crate::BaselineFactOf<S>| match fact {
+        crate::BaselineFactOf::Available(coordinate) => {
+            let delta = match coordinate.axis() {
+                crate::PhysicalAxis::Horizontal => offset.x,
+                crate::PhysicalAxis::Vertical => offset.y,
+            };
+            crate::BaselineCoordinateOf::try_new(
+                coordinate.axis(),
+                number(add(coordinate.offset().to_f64(), delta)?)?,
+            )
+            .map(crate::BaselineFactOf::Available)
+            .map_err(|_| FitError::InvalidGeometry)
+        }
+        other => Ok(other),
+    };
+    let mut result = facts;
+    for name in [
+        crate::BaselineName::Alphabetic,
+        crate::BaselineName::Central,
+    ] {
+        let pair = facts.get(name);
+        result = result.with(
+            name,
+            crate::BaselinePairOf::new(project(pair.first())?, project(pair.last())?),
+        );
+    }
+    Ok(result)
 }
 
 fn canonical_edges<S: LayoutScalar>(

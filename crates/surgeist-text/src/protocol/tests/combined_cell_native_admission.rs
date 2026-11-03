@@ -78,6 +78,7 @@ fn ordinary_native_tracking_admission_does_not_spend_an_unrelated_scope_ledger()
     assert!(segments.next().is_none());
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
@@ -300,6 +301,7 @@ fn ordinary_native_word_feedback_does_not_spend_an_unrelated_scope_ledger() {
     assert!(segments.next().is_none());
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

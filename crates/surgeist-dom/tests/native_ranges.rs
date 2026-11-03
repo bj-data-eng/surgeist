@@ -7,7 +7,7 @@ use surgeist_dom::{
     DomLimits, DomRangeId, DomResource, DomShadowRootInit, DomSnapshot, DomSourceEdit,
     DomSourceLimits, DomSourceProgress, DomSourceRequest, HtmlShadowRootMode, Namespace, NodeId,
 };
-use surgeist_html::HtmlStyleUpdateAction;
+use surgeist_html::elements::style::HtmlStyleUpdateAction;
 
 fn limits(ranges: usize) -> DomLimits {
     DomLimits::new(

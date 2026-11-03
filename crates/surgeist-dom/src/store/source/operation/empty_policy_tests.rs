@@ -17,7 +17,8 @@ pub(in crate::store) fn style_fixture() -> (Dom, DocumentId, NodeId) {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let style = batch.create_element_ns(&document, crate::Namespace::html(), "style");
+    let style =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
     let text = batch.create_text(&document, "p {}");
     batch.insert_before(&text, &style, None);
     let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();

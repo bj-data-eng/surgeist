@@ -297,7 +297,7 @@ fn rooted(dom: &mut Dom) -> (DocumentId, NodeId, NodeId, DomRangeId) {
 
 #[test]
 fn document_element_focus_is_a_real_atomic_refusal_without_partial_flag_or_range_reset() {
-    use surgeist_html::HtmlFocusingAction;
+    use surgeist_html::focus::HtmlFocusingAction;
     let mut dom = owner();
     let (document, root, text, range) = rooted(&mut dom);
     let before = dom.snapshot();
@@ -343,7 +343,7 @@ fn document_element_focus_is_a_real_atomic_refusal_without_partial_flag_or_range
 
 #[test]
 fn published_focus_prefix_retains_exact_reset_and_called_stage_across_drop_cancel_and_resume() {
-    use surgeist_html::HtmlFocusingAction;
+    use surgeist_html::focus::HtmlFocusingAction;
     let mut dom = owner();
     let (document, root, text, range) = rooted(&mut dom);
     let before = dom.snapshot();
@@ -439,7 +439,7 @@ fn published_focus_prefix_retains_exact_reset_and_called_stage_across_drop_cance
 
 #[test]
 fn known_null_selection_skips_only_reset_and_still_calls_current_document_element_focus() {
-    use surgeist_html::HtmlFocusingAction;
+    use surgeist_html::focus::HtmlFocusingAction;
     let mut dom = owner();
     let (document, root, _, range) = rooted(&mut dom);
     let mut batch = DomBatch::new();

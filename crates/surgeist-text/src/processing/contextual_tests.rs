@@ -2,6 +2,7 @@
 use crate::*;
 use std::sync::Arc;
 
+mod cell_endpoints;
 mod combination_facts;
 mod continuity;
 mod domain_analysis;
@@ -289,8 +290,10 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             allocation: match atomic.original_box().kind() {
                 InlineBoxKind::OutOfFlow => AtomicLineAllocation::OutOfFlow,
                 InlineBoxKind::InFlow => AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 5.0,
+                        normal_border_inline_size: 5.0,
                         before_baseline: 8.0,
                         after_baseline: 2.0,
                         occupied_start: 0.0,
@@ -316,7 +319,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
                     crate::ParagraphControlKind::InlineBoundaryStart
                         | crate::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -329,6 +332,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -1201,6 +1205,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -1653,6 +1658,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -2051,6 +2057,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,

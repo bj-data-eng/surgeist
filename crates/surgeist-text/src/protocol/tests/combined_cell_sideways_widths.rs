@@ -124,6 +124,7 @@ pub(super) fn select(prepared: &PreparedText, policy: SpacingPolicy) -> Selected
     };
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

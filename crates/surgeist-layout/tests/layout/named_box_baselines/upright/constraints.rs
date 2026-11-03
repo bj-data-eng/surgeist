@@ -159,6 +159,7 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
         .collect();
     let line = prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
@@ -247,6 +248,7 @@ fn attach<S: l::LayoutScalar>(
         });
     }
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: native.prepared.clone(),
         container: 0,
         nodes,
@@ -486,7 +488,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
     ) -> Option<l::ComputeOutputOf<S>> {
         l::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         l::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(

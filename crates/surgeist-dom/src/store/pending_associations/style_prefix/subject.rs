@@ -1,6 +1,7 @@
 //! A new subject reuses the original controller, never another history registry.
 use super::*;
 use crate::DomParsedHtmlStyleSubjectError as Error;
+
 use surgeist_html_parser::HtmlParseAssociationOccurrenceId;
 /// The new exact request and actual retired original graph custody. No sheet,
 /// DOM/CSSOM publication, resource result or whole-history acknowledgement.
@@ -166,10 +167,12 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         let row = scan.next.ok_or(Error::WrongOccurrence)?;
         if !matches!(
             row.kind(),
-            Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::Insertion {
-                connected: true,
-                on_parser_stack: false
-            })
+            Kind::StyleUpdate(
+                surgeist_html::elements::style::HtmlStyleTrigger::Insertion {
+                    connected: true,
+                    on_parser_stack: false
+                }
+            )
         ) || row.subject().id() == *old.qualification.subject()
         {
             return Err(Error::Remaining(frontier::diagnostic(
@@ -195,6 +198,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         loop {
             self.meter.step(cancel)?;
             match rows.advance() {
+                Step::Fault(fault) => return Err(fault.into()),
                 Step::Occurrence(candidate) if candidate.id() == row.id() => break,
                 Step::Occurrence(candidate) if candidate.subject().id() == row.subject().id() => {
                     earlier_influence |= candidate.requires_processing();
@@ -203,7 +207,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     }
                 }
                 Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest.into()),
-                _ => (),
+                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
             }
         }
         // Disconnected attribute setup is legitimate no-effect history, but an

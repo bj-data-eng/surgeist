@@ -397,6 +397,8 @@ mod tests {
             0,
             vec![paragraph.binding(1)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -420,6 +422,8 @@ mod tests {
             0,
             vec![paragraph.binding(1)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

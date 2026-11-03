@@ -5,6 +5,42 @@
 
 use super::select::SelectMetadata;
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
+
+#[cfg(test)]
+std::thread_local! {
+    /// How many effect drains on this thread, which is where a parse runs, pass
+    /// before one raises the armed error as its own work, and every drain
+    /// counted so far.
+    static EFFECT_FAULT: std::cell::Cell<(Option<(usize, SessionError)>, usize)> =
+        const { std::cell::Cell::new((None, 0)) };
+}
+/// Arranges for the effect drain after `passing` others on this thread to fail
+/// with `error`, as effect work that met a state it cannot continue from.
+#[cfg(test)]
+pub(crate) fn fault_effect_drain(passing: usize, error: SessionError) {
+    EFFECT_FAULT.set((Some((passing, error)), 0));
+}
+/// The armed error if no drain raised it, and how many drains ran. This clears
+/// the hook.
+#[cfg(test)]
+pub(crate) fn take_effect_fault() -> (Option<SessionError>, usize) {
+    let (armed, drains) = EFFECT_FAULT.take();
+    (armed.map(|(_, error)| error), drains)
+}
+#[cfg(test)]
+fn effect_fault_due() -> Option<SessionError> {
+    let (armed, drains) = EFFECT_FAULT.take();
+    let due = match armed {
+        Some((passing, error)) if passing == drains => Some(error),
+        other => {
+            EFFECT_FAULT.set((other, drains + 1));
+            return None;
+        }
+    };
+    EFFECT_FAULT.set((None, drains + 1));
+    due
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum IntrinsicTask {
@@ -17,7 +53,7 @@ pub(super) enum IntrinsicTask {
 pub(super) enum EffectFrame {
     Details {
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
         root: usize,
         next: Option<usize>,
     },
@@ -136,7 +172,7 @@ impl ConstructionEffects {
         })
     }
     pub(super) fn require_idle(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 7)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 7)?;
         if self.range.is_some()
             || self.radio.is_some()
             || self.svg_wrapper.is_some()
@@ -146,13 +182,13 @@ impl ConstructionEffects {
             || self.checkpoint
         {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         Ok(())
     }
     pub(super) fn require_freezable(&self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 10)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 10)?;
         if self.range.is_some()
             || self.radio.is_some()
             || self.svg_wrapper.is_some()
@@ -175,7 +211,7 @@ impl ConstructionEffects {
             _ => None,
         }
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if let Some(range) = self.range {
             range.release(c)?;
         }
@@ -190,7 +226,7 @@ impl ConstructionEffects {
     ) -> Result<(), SessionError> {
         // Tasks carry no nested allocation; failed push returns the finite value.
         self.tasks
-            .try_push_recover(c, Some(QueuedTask { task, cause }))
+            .try_push_recover_geometric(c, Some(QueuedTask { task, cause }))
             .map_err(|(stop, _)| SessionError::Stop(stop))
     }
 }
@@ -209,14 +245,17 @@ impl SessionStorage {
         c: &mut ParseControl,
         parent: Option<usize>,
     ) -> Result<bool, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(EffectFrame::FragmentInsertion {
             parent: actual,
             stage: FragmentStage::Insert,
             ..
         }) = self.effects.current.as_ref()
         {
-            c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
             return Ok(parent == Some(*actual));
         }
         Ok(false)
@@ -230,7 +269,7 @@ impl SessionStorage {
         payload_write::<Option<EffectFrame>>(c, 1)?;
         if self.effects.transfer.is_some() {
             return Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .fail_invariant(crate::parser::control::HtmlParseInvariant::PendingFormEffects)
                 .into());
         }
         self.effects.transfer = Some(frame);
@@ -240,7 +279,7 @@ impl SessionStorage {
             let parent = parent.clone();
             self.effects
                 .frames
-                .try_push_recover(c, parent)
+                .try_push_recover_geometric(c, parent)
                 .map_err(|(stop, _)| SessionError::Stop(stop))?;
             self.effects.current = None;
         }
@@ -248,7 +287,7 @@ impl SessionStorage {
             payload_write::<Option<FormEffects>>(c, 1)?;
             self.effects
                 .frames
-                .try_push_recover(c, EffectFrame::Topology(parent))
+                .try_push_recover_geometric(c, EffectFrame::Topology(parent))
                 .map_err(|(stop, _)| SessionError::Stop(stop))?;
             self.effects.form = None;
         }
@@ -277,21 +316,30 @@ impl SessionStorage {
         service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<(), SessionError> {
         let result = (|| {
+            #[cfg(test)]
+            if let Some(error) = effect_fault_due() {
+                return Err(error);
+            }
             loop {
                 c.require_identity(&self.control)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if self.effects.form.is_some() {
                     self.step_form_effects_with_meta_csp(c, service)?;
                     continue;
                 }
                 if self.effects.current.is_some() {
                     c.admit_atomic_layout(mem::size_of::<EffectFrame>())?;
-                    c.charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)?;
+                    c.charge(
+                        HtmlParseWorkCategory::CopyByte,
+                        mem::size_of::<EffectFrame>() as u64,
+                    )?;
+                    // The wrapper below reports a missing frame as a registry
+                    // row.
                     let frame = self
                         .effects
                         .current
                         .as_ref()
-                        .expect("admitted present frame");
+                        .ok_or(SessionError::WrongToken)?;
                     frame.admit_clone(c)?;
                     let frame = frame.clone();
                     self.step_effect(c, frame)?;
@@ -315,18 +363,17 @@ impl SessionStorage {
                 | SessionError::CspService
                 | SessionError::CspProtocol(_)),
             ) => Err(error),
+            // A fact or reaction the capture lacks leaves the session terminal
+            // at the point it is met, whoever drives it, as the stop its class
+            // names (the provenance boundary).
             Err(
                 error @ (SessionError::ContextFactUnavailable(_)
                 | SessionError::ContextReactionUnavailable),
             ) => {
-                c.stop_unsupported_standalone(
-                    crate::parser::control::StandaloneUnsupported::Provenance,
-                );
+                super::session_class(&error).latch(c);
                 Err(error)
             }
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -334,7 +381,7 @@ impl SessionStorage {
     /// They use the same canonical phase owner while clone creation is suspended.
     pub(super) fn drain_form_effects(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         while let Some(form) = self.effects.form {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if form.stage != FormEffectStage::IdChange {
                 return self.drain_construction_effects(c);
             }
@@ -368,7 +415,7 @@ impl SessionStorage {
                     self.record_association(
                         c,
                         node,
-                        pending_association::OccurrenceKind::StyleDocumentChanged,
+                        pending_association::HtmlParseAssociationOccurrenceKind::StyleDocumentChanged,
                         None,
                         Some(next_document),
                         false,
@@ -379,7 +426,7 @@ impl SessionStorage {
                 self.start_img_update(
                     c,
                     node,
-                    surgeist_html::HtmlImageUpdateFlags::new(false, false),
+                    surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false),
                 )?;
                 let next = self.next_view_node(c, root, node, None)?;
                 let retained_document = document.try_clone(c)?;
@@ -391,17 +438,17 @@ impl SessionStorage {
                         document: retained_document,
                     }),
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(shadow) = self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .shadow_root()
                 {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let contents = self
                         .construction
-                        .storage()
+                        .storage(c)?
                         .node_by_result_id(shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -416,11 +463,11 @@ impl SessionStorage {
                         },
                     )?;
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .template_contents()
                     .is_some()
                 {
@@ -448,14 +495,14 @@ impl SessionStorage {
                     c,
                     Some(EffectFrame::PatchRemoval {
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .parent()
                     .map(|node| node.position())
                     .is_some()
@@ -478,12 +525,12 @@ impl SessionStorage {
                 cursor,
                 document,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if cursor
                     == self
                         .construction
                         .node_at(source)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                 {
                     self.write_current_effect(c, None)?;
@@ -500,13 +547,13 @@ impl SessionStorage {
                     }
                     return Ok(());
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(source)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(cursor)
-                    .expect("retained child ordinal")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 let child_document = document.try_clone(c)?;
                 let copied = self.clone_node(c, child, child_document)?;
@@ -516,7 +563,7 @@ impl SessionStorage {
                     Some(EffectFrame::CloneChildren {
                         source,
                         copy,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                         document: retained_document,
                     }),
                 )?;
@@ -535,7 +582,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(child)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .template_contents()
                     .is_some()
                 {
@@ -564,7 +611,7 @@ impl SessionStorage {
                     c,
                     Some(EffectFrame::PostConnection {
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                         cause,
                     }),
                 )?;
@@ -610,7 +657,7 @@ impl SessionStorage {
                             Some(EffectFrame::FragmentInsertion {
                                 parent,
                                 list,
-                                cursor: cursor + 1,
+                                cursor: next_cursor(cursor),
                                 stage,
                             }),
                         )?;
@@ -631,7 +678,7 @@ impl SessionStorage {
                             Some(EffectFrame::FragmentInsertion {
                                 parent,
                                 list,
-                                cursor: cursor + 1,
+                                cursor: next_cursor(cursor),
                                 stage,
                             }),
                         )?;
@@ -688,14 +735,17 @@ impl SessionStorage {
         kind: WorkListKind,
     ) -> Result<usize, SessionError> {
         let list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            list.release(c)?;
-            return Err(error);
-        }
-        let slot = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::WorkList(Some(list)));
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                list.release(c)?;
+                return Err(error);
+            }
+        };
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::WorkList(Some(list)))
+            .map_err(|_| latch_registry_row(c))?;
         let detached = match kind {
             WorkListKind::Options { detached } => detached,
             _ => None,
@@ -721,50 +771,55 @@ impl SessionStorage {
                 }
                 let inside_optgroup = recognized == Some(KnownHtmlElement::Optgroup)
                     && self.ancestor_optgroup(c, node, root, detached)?;
-                Some(surgeist_html::bounded::select_option_rule(
+                Some(surgeist_html::bounded::select::select_option_rule(
                     recognized,
                     inside_optgroup,
                 ))
             } else {
                 None
             };
-            let include = match kind {
-                WorkListKind::PostConnection | WorkListKind::FragmentChildren => true,
-                WorkListKind::SelectedTargets => {
-                    if self.html_local(c, node, "selectedcontent")? {
-                        let (_, SelectMetadata::Selectedcontent(state)) =
-                            self.select_metadata(c, node)?
-                        else {
-                            return Err(SessionError::SelectMetadataUnavailable);
-                        };
-                        !state.disabled
-                    } else {
-                        false
+            let include =
+                match kind {
+                    WorkListKind::PostConnection | WorkListKind::FragmentChildren => true,
+                    WorkListKind::SelectedTargets => {
+                        if self.html_local(c, node, "selectedcontent")? {
+                            let (_, SelectMetadata::Selectedcontent(state)) =
+                                self.select_metadata(c, node)?
+                            else {
+                                return Err(SessionError::SelectMetadataUnavailable);
+                            };
+                            !state.disabled
+                        } else {
+                            false
+                        }
                     }
-                }
-                WorkListKind::Options { .. } => {
-                    option_rule
-                        == Some(surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune)
-                }
-            };
-            if include {
-                let RetainedPayload::WorkList(Some(list)) = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                    WorkListKind::Options { .. } => option_rule
+                        == Some(
+                            surgeist_html::bounded::select::HtmlSelectOptionRule::IncludeAndPrune,
+                        ),
                 };
-                list.try_push_recover(c, node)
+            if include {
+                let Some(RetainedPayload::WorkList(Some(list))) =
+                    self.payloads.values.get_mut(slot)
+                else {
+                    return Err(latch_registry_row(c));
+                };
+                // An exact reserve per node would charge the whole list again
+                // for every node it already holds.
+                list.try_push_recover_geometric(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
             }
             let excluded = matches!(kind, WorkListKind::FragmentChildren)
                 || matches!(
                     option_rule,
                     Some(
-                        surgeist_html::bounded::HtmlSelectOptionRule::IncludeAndPrune
-                            | surgeist_html::bounded::HtmlSelectOptionRule::Prune
+                        surgeist_html::bounded::select::HtmlSelectOptionRule::IncludeAndPrune
+                            | surgeist_html::bounded::select::HtmlSelectOptionRule::Prune
                     )
                 );
             next = if excluded {
                 next_ordinary_view_after_subtree(
-                    ConstructionView::Active(self.construction.storage()),
+                    ConstructionView::Active(self.construction.storage(c)?),
                     c,
                     root,
                     node,
@@ -782,30 +837,35 @@ impl SessionStorage {
         roots: usize,
     ) -> Result<usize, SessionError> {
         let list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            list.release(c)?;
-            return Err(error);
-        }
-        let slot = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::WorkList(Some(list)));
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                list.release(c)?;
+                return Err(error);
+            }
+        };
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::WorkList(Some(list)))
+            .map_err(|_| latch_registry_row(c))?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         let mut cursor = 0;
         while let Some(root) = self.work_list_node(c, roots, cursor)? {
-            c.charge(WorkCategory::RecordWrite, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             let mut next = Some(root);
             while let Some(node) = next {
-                let RetainedPayload::WorkList(Some(list)) = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::WorkList(Some(list))) =
+                    self.payloads.values.get_mut(slot)
+                else {
+                    return Err(latch_registry_row(c));
                 };
-                list.try_push_recover(c, node)
+                list.try_push_recover_geometric(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
-                c.charge(WorkCategory::RecordWrite, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
                 next = self.next_view_node(c, root, node, None)?;
             }
-            c.charge(WorkCategory::RecordWrite, 1)?;
-            cursor += 1;
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+            cursor = next_cursor(cursor);
         }
         Ok(slot)
     }
@@ -827,12 +887,15 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<usize, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::WorkList(Some(list))) = self.payloads.values.get(slot) else {
             return Err(SessionError::WrongToken);
         };
         list.require_disposal_owner(c)?;
-        c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<usize>() as u64,
+        )?;
         Ok(list.len())
     }
     pub(super) fn work_list_node(
@@ -841,14 +904,17 @@ impl SessionStorage {
         slot: usize,
         cursor: usize,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::WorkList(Some(list))) = self.payloads.values.get(slot) else {
             return Err(SessionError::WrongToken);
         };
         list.require_disposal_owner(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(node) = list.as_slice().get(cursor) {
-            c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<usize>() as u64,
+            )?;
             Ok(Some(*node))
         } else {
             Ok(None)
@@ -860,11 +926,16 @@ impl SessionStorage {
         slot: usize,
     ) -> Result<(), SessionError> {
         payload_write::<RetainedPayload>(c, 2)?;
-        let RetainedPayload::WorkList(Some(list)) =
-            mem::replace(&mut self.payloads.values[slot], RetainedPayload::Retired)
-        else {
+        let row = self.payloads.row_mut(c, slot)?;
+        // Only a work list that is still held is taken; any other row stays.
+        let list = match row {
+            RetainedPayload::WorkList(list) => list.take(),
+            _ => None,
+        };
+        let Some(list) = list else {
             return Err(SessionError::WrongToken);
         };
+        *row = RetainedPayload::Retired;
         list.release(c)?;
         Ok(())
     }
@@ -879,7 +950,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             self.base_change(c, node, detached, false)?;
         }
@@ -887,7 +958,11 @@ impl SessionStorage {
             self.radio_insertion(c, node)?;
         }
         if !removal && self.html_local(c, node, "details")? {
-            self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)?;
+            self.start_details(
+                c,
+                node,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven,
+            )?;
         } else {
             self.intrinsic_select_tree_hook(c, node, detached, removal)?;
         }
@@ -903,7 +978,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         capability.validate_session(c, self)?;
         let storage = self.active_mut()?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if storage.effects.checkpoint {
             return Ok(());
         }
@@ -919,7 +994,7 @@ impl ParserArenaSession {
         let result = (|| {
             loop {
                 c.require_identity(&storage.control)?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if storage.effects.dequeue == storage.effects.tasks.len() {
                     if let Some(cause) = &return_cause {
                         storage
@@ -935,7 +1010,7 @@ impl ParserArenaSession {
                 let cursor = storage.effects.dequeue;
                 payload_write::<Option<QueuedTask>>(c, 2)?;
                 payload_write::<usize>(c, 1)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let slot = storage
                     .effects
                     .tasks
@@ -951,7 +1026,8 @@ impl ParserArenaSession {
                 }
                 let operation = task.task;
                 storage.effects.task = Some(task);
-                storage.effects.dequeue += 1;
+                // The branch above returned when `dequeue` reached the length.
+                storage.effects.dequeue = next_cursor(storage.effects.dequeue);
                 match operation {
                     IntrinsicTask::UpdateSelect(select) => storage.update_select(c, select)?,
                 }
@@ -962,9 +1038,7 @@ impl ParserArenaSession {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -972,4 +1046,4 @@ impl ParserArenaSession {
 
 #[cfg(test)]
 #[path = "effects_tests.rs"]
-mod tests;
+pub(in crate::construction) mod tests;

@@ -2,7 +2,11 @@
 //! flag is independent of reported listener failures. New private producer
 //! construction has no previously callable cancelable-event RED boundary.
 use super::*;
-use surgeist_html::{HtmlDetailsState, HtmlDetailsToggleEvent, HtmlDialogState};
+use surgeist_html::elements::{
+    details::{HtmlDetailsState, HtmlDetailsToggleEvent},
+    dialog::HtmlDialogState,
+};
+use surgeist_html::values::Namespace;
 
 fn dialog() -> Ordinary {
     let mut dom = dom();

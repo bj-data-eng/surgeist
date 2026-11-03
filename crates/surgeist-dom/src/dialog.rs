@@ -2,7 +2,8 @@
 //!
 //! Native Window-manager receipts establish or clear watcher identities through
 //! the original Source hooks. Modal state remains separately qualified.
-use crate::{DocumentString, DomNode, NodeId};
+use crate::{DomNode, NodeId};
+use surgeist_html::values::DocumentString;
 
 fn require_closed_parsed_dialog<'a>(
     disposition: surgeist_html_parser::HtmlParseDialogDisposition<'a>,
@@ -49,7 +50,7 @@ impl DomCloseWatcherId {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomDialogToggleTracker {
     pub(crate) task: crate::DomElementTaskId,
-    pub(crate) old: surgeist_html::HtmlDialogState,
+    pub(crate) old: surgeist_html::elements::dialog::HtmlDialogState,
 }
 impl DomDialogToggleTracker {
     /// Exact actual task identity; this observation grants no execution right.
@@ -57,7 +58,7 @@ impl DomDialogToggleTracker {
         self.task
     }
     /// First old state preserved by coalescing.
-    pub const fn old_state(self) -> surgeist_html::HtmlDialogState {
+    pub const fn old_state(self) -> surgeist_html::elements::dialog::HtmlDialogState {
         self.old
     }
 }
@@ -65,7 +66,7 @@ impl DomDialogState {
     /// Called only by the actual native Element initialization owner. Existing
     /// parsed history is not qualified by calling this constructor.
     pub(crate) fn fresh() -> Self {
-        let fresh = surgeist_html::HtmlDialogFreshState::fresh();
+        let fresh = surgeist_html::elements::dialog::HtmlDialogFreshState::fresh();
         Self {
             return_value: fresh.return_value().into(),
             is_modal: false,

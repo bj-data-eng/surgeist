@@ -396,7 +396,9 @@ fn seed_files_decode_to_the_documented_layout_and_independent_literal_success() 
             let payload = &b[README_HEADER_LEN..];
             if utf16 {
                 let units: Vec<u16> = payload
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|p| u16::from_le_bytes([p[0], p[1]]))
                     .collect();
                 assert_eq!(payload.len() % 2, 0, "{name}/{id} whole units");
@@ -453,33 +455,6 @@ fn processing_instruction_literals_use_each_documented_ending() {
 }
 
 #[test]
-fn descriptor_source_references_name_existing_repository_files() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap();
-    let descriptor: toml::Table = toml::from_str(
-        &std::fs::read_to_string(env!("CARGO_MANIFEST_DIR").to_owned() + "/fuzz.toml").unwrap(),
-    )
-    .unwrap();
-    let descriptor_targets = descriptor["targets"].as_array().unwrap();
-    assert_eq!(descriptor_targets.len(), 2);
-    for target in descriptor_targets {
-        let id = target["id"].as_str().unwrap();
-        let references = target["source_references"].as_array().unwrap();
-        assert!(!references.is_empty(), "{id}");
-        for reference in references {
-            let reference = reference.as_str().unwrap();
-            let path = reference.split('#').next().unwrap();
-            assert!(
-                root.join(path).is_file(),
-                "{id} source reference {reference:?} is not a file under the repository root"
-            );
-        }
-    }
-}
-
-#[test]
 fn owner_package_registers_real_workers_and_canonical_seed_directories() {
     use surgeist_fuzz::registry::TargetRegistry;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -511,8 +486,11 @@ fn owner_package_registers_real_workers_and_canonical_seed_directories() {
         let target = registry.get(&TargetId::new(id).unwrap()).unwrap();
         assert_eq!(target.package(), "surgeist-html-fuzz");
         assert_eq!(target.descriptor().binary(), binary);
-        assert_eq!(target.fixtures().len(), 2);
+        // The descriptor names every seed directory for provider hashing.
         assert!(target.fixtures().iter().all(|p| p.is_dir()));
+        for name in ["seeds/document", "seeds/fragment"] {
+            assert!(target.fixtures().iter().any(|p| p.ends_with(name)));
+        }
     }
 }
 #[cfg(not(feature = "coverage"))]

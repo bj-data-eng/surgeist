@@ -253,6 +253,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,
@@ -272,7 +273,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
                             crate::ParagraphControlKind::InlineBoundaryStart
                                 | crate::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }

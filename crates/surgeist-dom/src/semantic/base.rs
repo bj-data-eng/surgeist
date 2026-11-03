@@ -129,7 +129,8 @@ pub(super) fn with_facts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Dom, DomBatch, DomLimits, DomSlotQueryLimits, DomSlotSemanticLimits, Namespace};
+    use crate::{Dom, DomBatch, DomLimits, DomSlotQueryLimits, DomSlotSemanticLimits};
+    use surgeist_html::values::Namespace;
     use surgeist_html_semantics::*;
     fn fixture() -> (Dom, DocumentId) {
         let cancel = AtomicBool::new(false);

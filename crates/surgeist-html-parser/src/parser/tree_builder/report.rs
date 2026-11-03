@@ -4,10 +4,10 @@
 use super::{context::ownership::SealedFragmentConstruction, seal::SealedOrdinaryConstruction};
 use crate::{
     construction::{
-        SessionError, StandaloneDocumentState,
-        report::{MetadataCursor, PreparedReportStorage, ReportStorage},
+        HtmlParseDocumentState, SessionError,
+        report::{HtmlParseMetadataCursor, PreparedReportStorage, ReportStorage},
     },
-    parser::control::ParseUsage,
+    parser::control::HtmlParseUsage,
     request::{DocumentRequestParts, FragmentRequestParts},
 };
 use std::mem::size_of;
@@ -15,17 +15,17 @@ use std::mem::size_of;
 enum ReportContext {
     Document {
         request: DocumentRequestParts,
-        state: StandaloneDocumentState,
+        state: HtmlParseDocumentState,
     },
     Fragment(FragmentRequestParts),
 }
 
-pub struct ImmutableParseReport {
+pub struct HtmlParseReport {
     context: ReportContext,
     storage: ReportStorage,
-    usage: ParseUsage,
+    usage: HtmlParseUsage,
 }
-impl ImmutableParseReport {
+impl HtmlParseReport {
     /// Authoritative current original-controller construction capacity at this
     /// completed report's publication. Includes retained selected A/Img graphs
     /// and owned vector/string payloads; excludes released execution banks.
@@ -43,17 +43,66 @@ impl ImmutableParseReport {
             .resource(crate::HtmlParseResource::ManagedUtf16Units)
             .current()
     }
+    /// The retained storage, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn storage_mut(&mut self) -> &mut ReportStorage {
+        &mut self.storage
+    }
     /// Original pending operations and sealed per-Document capture qualification.
     /// This does not execute or certify any CSSOM association.
-    pub fn pending_associations(&self) -> crate::construction::pending_association::Cursor<'_> {
-        crate::construction::pending_association::Cursor::new(self.storage.history())
+    pub fn pending_associations(
+        &self,
+    ) -> crate::construction::pending_association::HtmlParsePendingAssociationCursor<'_> {
+        crate::construction::pending_association::HtmlParsePendingAssociationCursor::new(
+            self.storage.history(),
+        )
     }
-    /// Refusal retains the same source-owning native seal. Generic native-only
-    /// completion cannot supply the actual D1/history proof required here.
+    /// The slot form that tests drive: the seal stays in its slot while the
+    /// report is committed, so even an unwind during the commit leaves it there.
+    #[cfg(test)]
     pub(crate) fn take_document(
         input: &mut Option<SealedOrdinaryConstruction>,
     ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+        let (state, storage, usage) =
+            Self::commit_document(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
+        Ok(Self {
+            context: ReportContext::Document {
+                request: sealed.request,
+                state,
+            },
+            storage,
+            usage,
+        })
+    }
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_document(
+        mut sealed: SealedOrdinaryConstruction,
+    ) -> Result<Self, (SessionError, SealedOrdinaryConstruction)> {
+        match Self::commit_document(&mut sealed) {
+            Ok((state, storage, usage)) => {
+                // The remaining source binding and execution control are consumed
+                // here; no useful work, release/refund or cancellation check
+                // follows snapshot.
+                Ok(Self {
+                    context: ReportContext::Document {
+                        request: sealed.request,
+                        state,
+                    },
+                    storage,
+                    usage,
+                })
+            }
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_document(
+        sealed: &mut SealedOrdinaryConstruction,
+    ) -> Result<(HtmlParseDocumentState, ReportStorage, HtmlParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -77,36 +126,60 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedOrdinaryConstruction>>()
-                + size_of::<SealedOrdinaryConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedOrdinaryConstruction>>()
+                    + size_of::<SealedOrdinaryConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<HtmlParseUsage>()
+            },
             5,
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original document seal");
-        // The remaining source binding and execution control are consumed here;
-        // no useful work, release/refund or cancellation check follows snapshot.
+        Ok((state, storage, usage))
+    }
+    /// The slot form that tests drive, as for the Document seal.
+    #[cfg(test)]
+    pub(crate) fn take_fragment(
+        input: &mut Option<SealedFragmentConstruction>,
+    ) -> Result<Self, SessionError> {
+        let (storage, usage) =
+            Self::commit_fragment(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
         Ok(Self {
-            context: ReportContext::Document {
-                request: sealed.request,
-                state,
-            },
+            context: ReportContext::Fragment(sealed.request),
             storage,
             usage,
         })
     }
-    pub(crate) fn take_fragment(
-        input: &mut Option<SealedFragmentConstruction>,
-    ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_fragment(
+        mut sealed: SealedFragmentConstruction,
+    ) -> Result<Self, (SessionError, SealedFragmentConstruction)> {
+        match Self::commit_fragment(&mut sealed) {
+            Ok((storage, usage)) => Ok(Self {
+                context: ReportContext::Fragment(sealed.request),
+                storage,
+                usage,
+            }),
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_fragment(
+        sealed: &mut SealedFragmentConstruction,
+    ) -> Result<(ReportStorage, HtmlParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -124,26 +197,25 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedFragmentConstruction>>()
-                + size_of::<SealedFragmentConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedFragmentConstruction>>()
+                    + size_of::<SealedFragmentConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<HtmlParseUsage>()
+            },
             5,
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original fragment seal");
-        Ok(Self {
-            context: ReportContext::Fragment(sealed.request),
-            storage,
-            usage,
-        })
+        Ok((storage, usage))
     }
     pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
         match &self.context {
@@ -169,10 +241,10 @@ impl ImmutableParseReport {
             ReportContext::Fragment(request) => request.limits(),
         }
     }
-    pub fn document(&self) -> Option<&crate::HtmlDocument> {
+    pub fn document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.storage.history().document()
     }
-    pub fn fragment(&self) -> Option<&crate::HtmlFragment> {
+    pub fn fragment(&self) -> Option<&surgeist_html::construction::HtmlFragment> {
         self.storage.history().fragment()
     }
     pub fn context(&self) -> Option<&crate::HtmlFragmentContext> {
@@ -182,28 +254,41 @@ impl ImmutableParseReport {
         }
     }
     /// Actual source-created auxiliary parser Document, qualified by this
-    /// completed contextual report. Ordinary reports cannot issue this lender.
+    /// completed contextual report. Ordinary reports cannot issue this lender,
+    /// and answer `None`. A contextual report that cannot present its Document
+    /// is a fault.
     pub fn fragment_parser_document(
         &self,
-    ) -> Option<crate::construction::fragment_document::FragmentParserDocument<'_>> {
-        self.context()?;
-        self.storage.fragment_parser_document(self.source())
+    ) -> Result<
+        Option<crate::construction::fragment_document::HtmlParseFragmentParserDocument<'_>>,
+        crate::construction::read::HtmlParseUnresolvedReference,
+    > {
+        if self.context().is_none() {
+            return Ok(None);
+        }
+        self.storage
+            .fragment_parser_document(self.source())
+            .map(Some)
     }
-    pub fn document_state(&self) -> Option<StandaloneDocumentState> {
+    pub fn document_state(&self) -> Option<HtmlParseDocumentState> {
         match &self.context {
             ReportContext::Document { state, .. } => Some(*state),
             _ => None,
         }
     }
-    pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn requested_scripting_mode(&self) -> surgeist_html::parsing::HtmlParserScriptingMode {
         match &self.context {
-            ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
+            ReportContext::Document { .. } => {
+                surgeist_html::parsing::HtmlParserScriptingMode::Disabled
+            }
             ReportContext::Fragment(request) => request.requested_scripting_mode(),
         }
     }
-    pub fn effective_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn effective_scripting_mode(&self) -> surgeist_html::parsing::HtmlParserScriptingMode {
         match &self.context {
-            ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
+            ReportContext::Document { .. } => {
+                surgeist_html::parsing::HtmlParserScriptingMode::Disabled
+            }
             ReportContext::Fragment(request) => request.effective_scripting_mode(),
         }
     }
@@ -211,18 +296,7 @@ impl ImmutableParseReport {
     pub fn image_support(&self) -> crate::HtmlImageSupport {
         match &self.context {
             ReportContext::Document { request, .. } => request.image_support(),
-            ReportContext::Fragment(request) => match request
-                .context()
-                .capture()
-                .node(request.context().target_document().subject())
-                .expect("checked target document")
-                .kind()
-            {
-                crate::HtmlCapturedNodeKind::Document(facts) => {
-                    facts.parser_creation_image_support()
-                }
-                _ => unreachable!("checked target document"),
-            },
+            ReportContext::Fragment(request) => request.image_support(),
         }
     }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
@@ -231,32 +305,38 @@ impl ImmutableParseReport {
             _ => false,
         }
     }
-    pub fn usage(&self) -> &ParseUsage {
+    pub fn usage(&self) -> &HtmlParseUsage {
         &self.usage
     }
     pub(crate) fn history(&self) -> &crate::construction::history::FrozenHistory {
         self.storage.history()
     }
-    pub fn metadata(&self) -> MetadataCursor<'_> {
+    pub fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         self.storage.metadata()
     }
-    pub fn diagnostics(&self) -> crate::construction::evidence::DiagnosticEvidenceView<'_> {
-        self.storage
-            .evidence()
-            .expect("qualified report evidence")
-            .diagnostics()
+    pub fn diagnostics(&self) -> crate::construction::evidence::HtmlParseDiagnostics<'_> {
+        self.storage.evidence().diagnostics()
     }
-    pub fn effects(&self) -> Option<crate::construction::context::FrozenFragmentEffects<'_>> {
-        match &self.context {
-            ReportContext::Fragment(_) => {
-                Some(self.storage.effects().expect("qualified report effects"))
-            }
-            _ => None,
+    pub fn effects(
+        &self,
+    ) -> Result<
+        Option<crate::construction::context::HtmlParseEffects<'_>>,
+        crate::construction::read::HtmlParseUnresolvedReference,
+    > {
+        match (self.storage.effects(), &self.context) {
+            // A contextual report holds its fragment storage, as
+            // `fragment_parser_document` also requires.
+            (None, ReportContext::Fragment(_)) => Err(
+                crate::construction::read::HtmlParseUnresolvedReference::new(
+                    crate::construction::read::HtmlParseUnresolvedKind::Fragment,
+                ),
+            ),
+            (effects, _) => Ok(effects),
         }
     }
 }
 
-impl ImmutableParseReport {
+impl HtmlParseReport {
     pub fn associations(&self) -> crate::construction::read::HtmlParseAssociations<'_> {
         crate::construction::read::HtmlParseAssociations::new(self.history())
     }
@@ -265,7 +345,7 @@ impl ImmutableParseReport {
     }
 }
 
-impl std::fmt::Debug for ImmutableParseReport {
+impl std::fmt::Debug for HtmlParseReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HtmlParseReport")
             .field("source", self.source().identity())
@@ -318,12 +398,12 @@ mod tests {
 
     #[test]
     fn details_publication_keeps_native_attributes_and_skips_private_eligibility() {
-        use crate::HtmlNodeKind;
-        use crate::construction::report::{MetadataDocument, MetadataStep};
+        use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
+        use surgeist_html::construction::HtmlNodeKind;
         let literal =
             "<!doctype html><details name=g open>A</details><details name=g open>B</details>";
         let mut sealed = Some(ordinary(literal, true));
-        let report = ImmutableParseReport::take_document(&mut sealed).unwrap();
+        let report = HtmlParseReport::take_document(&mut sealed).unwrap();
         assert!(sealed.is_none());
         let document = report.document().unwrap();
         let html = document.root().children().last().unwrap();
@@ -366,12 +446,15 @@ mod tests {
         let mut cursor = report.metadata();
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     for (index, id) in details.iter().enumerate() {
                         if record.node().id() == *id {
                             // The private Details marker emits no record; ordinary
                             // creation has an independent no-definition record.
-                            if let Some(MetadataDocument::Owned(owner)) = record.node_document() {
+                            if let Some(HtmlParseMetadataDocument::Owned(owner)) =
+                                record.node_document()
+                            {
                                 assert_eq!(owner.id(), document.root().id());
                                 counts[index] += 1;
                             } else if let Some(nonce) = record.cryptographic_nonce() {
@@ -379,14 +462,14 @@ mod tests {
                                 nonce_counts[index] += 1;
                             } else {
                                 let creation = record.creation().unwrap();
-                                assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
+                                assert_eq!(creation.0, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
                                 assert!(creation.1.is_none());
                             }
                         }
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert_eq!(counts, [1, 1]);
@@ -407,6 +490,11 @@ mod tests {
             ContextFragmentDriver, ownership::FragmentInitializationOwner,
         };
         use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            parsing::HtmlParserScriptingMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
         let mut capture = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
@@ -469,8 +557,12 @@ mod tests {
 
     #[test]
     fn complete_fragment_report_keeps_capture_effects_source_and_options_after_cancel() {
-        use crate::construction::context::{FrozenFragmentEffect, FrozenFragmentHost};
+        use crate::construction::context::{HtmlParseEffect, HtmlParseEffectHost};
         use crate::*;
+        use surgeist_html::{
+            construction::{HtmlNodeKind, HtmlShadowRootMode},
+            parsing::HtmlParserScriptingMode,
+        };
         let literal = "<template shadowrootmode=closed shadowrootclonable><p>A</p></template><template shadowrootmode=open><p>B</p></template><p>Z</p>";
         let mut input = Some(fragment(literal, true));
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
@@ -481,7 +573,7 @@ mod tests {
             .capture()
             .identity()
             .clone();
-        let report = ImmutableParseReport::take_fragment(&mut input).unwrap();
+        let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         assert!(input.is_none());
         let usage = report.usage().clone();
         cancel.cancel();
@@ -506,15 +598,15 @@ mod tests {
             matches!(output.node(&children[0]).unwrap().kind(), HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [116,101,109,112,108,97,116,101])
         );
         assert_eq!(output.node(&children[0]).unwrap().children().len(), 0);
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         // The attachment uses the captured target document directly. Only the
         // second template's ordinary fallback allocates that document's cache.
         assert_eq!(effects.len(), 2);
         assert!(matches!(
             effects.get(1).unwrap(),
-            Some(FrozenFragmentEffect::TemplateCache { .. })
+            Some(HtmlParseEffect::TemplateCache { .. })
         ));
-        let Some(FrozenFragmentEffect::AttachShadow {
+        let Some(HtmlParseEffect::AttachShadow {
             host,
             template,
             contents,
@@ -526,7 +618,7 @@ mod tests {
         else {
             panic!("actual committed attachment");
         };
-        let FrozenFragmentHost::Captured(host) = host else {
+        let HtmlParseEffectHost::Captured(host) = host else {
             panic!("actual captured host");
         };
         assert_eq!(host, report.context().unwrap().context_element());
@@ -540,14 +632,17 @@ mod tests {
         assert!(
             matches!(output.node(&text).unwrap().kind(), HtmlNodeKind::Text(t) if t.code_units() == [65])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut metadata = report.metadata();
         let mut captured_documents = 0;
         loop {
-            use crate::construction::report::{MetadataDocument, MetadataStep};
+            use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
             match metadata.advance() {
-                MetadataStep::Record(record) => {
-                    if let Some(MetadataDocument::Captured(document)) = record.node_document() {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
+                    if let Some(HtmlParseMetadataDocument::Captured(document)) =
+                        record.node_document()
+                    {
                         assert!(matches!(document.kind(), HtmlCapturedNodeKind::Document(_)));
                         assert_eq!(
                             &document.node_document(),
@@ -556,8 +651,8 @@ mod tests {
                         captured_documents += 1;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert!(captured_documents > 0);
@@ -567,12 +662,12 @@ mod tests {
 
     #[test]
     fn complete_report_consumes_actual_document_source_and_keeps_reads_after_cancellation() {
-        use crate::construction::report::MetadataStep;
+        use crate::construction::report::HtmlParseMetadataStep;
         let literal = "<!doctype html><form id=f><input value='A&#13;B' type=text><textarea>\nC&amp;D</textarea></form><p>Z";
         let mut input = Some(ordinary(literal, true));
         let source = input.as_ref().unwrap().source().identity().clone();
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
-        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
         assert!(input.is_none());
         let usage = report.usage().clone();
         cancel.cancel();
@@ -580,10 +675,10 @@ mod tests {
         assert_eq!(report.source().as_utf8(), Some(literal));
         assert!(report.fragment().is_none());
         assert!(report.context().is_none());
-        assert!(report.effects().is_none());
+        assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.document().unwrap().mode(),
-            crate::HtmlDocumentMode::NoQuirks
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks
         );
         assert_eq!(
             super::super::tests::outline(report.document().unwrap()),
@@ -599,15 +694,19 @@ mod tests {
                 (3, "#Z")
             ])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut cursor = report.metadata();
         let mut values = Vec::new();
         let mut input_source = false;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some((state, raw)) = record.input() {
-                        assert_eq!(state.flags.input_type(), surgeist_html::HtmlInputType::Text);
+                        assert_eq!(
+                            state.flags.input_type(),
+                            surgeist_html::attributes::HtmlInputType::Text
+                        );
                         assert!(!state.flags.dirty_value());
                         assert_eq!(raw.code_units(), &[65, 66]);
                         values.push(record.node().id());
@@ -627,8 +726,8 @@ mod tests {
                         input_source = true;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert_eq!(values.len(), 2);
@@ -642,7 +741,7 @@ mod tests {
         let mut input = Some(ordinary("<!doctype html><p>A", false));
         let source = input.as_ref().unwrap().source().identity().clone();
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
+            HtmlParseReport::take_document(&mut input),
             Err(SessionError::WrongToken)
         ));
         let kept = input.as_mut().unwrap();
@@ -653,16 +752,102 @@ mod tests {
         super::super::tests::assert_released(&kept.parts.control);
     }
 
+    /// Publication refuses the seal with the registry-row stop latched first,
+    /// keeps the seal, and its release drains every resource.
+    fn assert_unpublishable(
+        literal: &str,
+        corrupt: impl FnOnce(&mut crate::construction::FrozenArena) -> bool,
+    ) {
+        let registry_row = crate::parser::control::HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        let mut input = Some(ordinary(literal, true));
+        assert!(corrupt(
+            input.as_mut().unwrap().parts.arena.as_mut().unwrap()
+        ));
+        assert_eq!(
+            HtmlParseReport::take_document(&mut input).err(),
+            Some(SessionError::Stop(registry_row))
+        );
+        let kept = input.as_mut().unwrap();
+        assert_eq!(kept.parts.control.stop(), Some(registry_row));
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn an_occurrence_naming_a_first_base_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><style>b{}</style>",
+            crate::construction::FrozenArena::corrupt_first_base_for_test,
+        );
+    }
+
+    #[test]
+    fn a_metadata_row_left_bound_to_no_node_is_not_published() {
+        // A row of some kinds is also refused by a check of its own, so the
+        // refusal is required, not which check makes it.
+        for kind in crate::construction::report::UnboundRow::ALL {
+            let mut input = Some(ordinary(kind.literal(), true));
+            assert!(
+                input
+                    .as_mut()
+                    .unwrap()
+                    .parts
+                    .arena
+                    .as_mut()
+                    .unwrap()
+                    .unbind_row_for_test(kind)
+            );
+            assert!(
+                HtmlParseReport::take_document(&mut input).is_err(),
+                "{kind:?}"
+            );
+            let kept = input.as_mut().expect("the seal is kept");
+            kept.release().unwrap();
+            super::super::tests::assert_released(&kept.parts.control);
+        }
+    }
+
+    #[test]
+    fn a_shadow_row_left_bound_to_no_node_is_not_published() {
+        // Shadow rows exist only in a contextual report that allows them.
+        let kind = crate::construction::report::UnboundRow::Shadow;
+        let mut input = Some(fragment(kind.literal(), true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .unbind_row_for_test(kind)
+        );
+        assert!(HtmlParseReport::take_fragment(&mut input).is_err());
+        let kept = input.as_mut().expect("the seal is kept");
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn a_document_naming_a_policy_row_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><p>a",
+            crate::construction::FrozenArena::corrupt_meta_policy_for_test,
+        );
+    }
+
     #[test]
     fn metadata_inventory_borrows_actual_family_and_document_facts_one_slot_at_a_time() {
-        use crate::construction::report::{MetadataDocument, MetadataStep};
+        use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
         let literal = "<!doctype html><script>A</script><template><p>T</p></template><form id=f><output>A<b>B</b>C</output><select><button><selectedcontent></selectedcontent></button><option selected>X</option><option>Y</option></select></form><svg><script/></svg><x-a is=saved></x-a>";
         let mut input = Some(ordinary(literal, true));
-        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
         assert!(report.document_state().is_some());
         assert_eq!(
             report.requested_scripting_mode(),
-            crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         );
         assert!(!report.allow_declarative_shadow_roots());
         let mut cursor = report.metadata();
@@ -671,18 +856,19 @@ mod tests {
         let mut saved_creation = false;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some(output) = record.output() {
                         assert_eq!(
                             output.default_value_override,
-                            crate::construction::OutputDefaultValueOverride::Null
+                            crate::construction::HtmlParseOutputOverride::Null
                         );
                         counts[0] += 1;
                     }
                     if let Some((form, owner)) = record.form() {
                         assert!(form.parser_inserted);
                         assert!(
-                            matches!(owner.unwrap().kind(), crate::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [102,111,114,109])
+                            matches!(owner.unwrap().kind(), surgeist_html::construction::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [102,111,114,109])
                         );
                         counts[1] += 1;
                     }
@@ -690,10 +876,10 @@ mod tests {
                         assert!(script.flags.already_started() && !script.flags.force_async());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
-                            matches!(parser.unwrap(), MetadataDocument::Owned(n) if matches!(n.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         assert!(
-                            matches!(preparation.unwrap(), MetadataDocument::Owned(n) if matches!(n.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(preparation.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         counts[2] += 1;
                     }
@@ -725,19 +911,26 @@ mod tests {
                     }
                     if let Some((state, saved)) = record.creation() {
                         if let Some(saved) = saved {
-                            assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                            assert_eq!(
+                                state,
+                                surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                            );
                             assert_eq!(saved.code_units(), &[115, 97, 118, 101, 100]);
                             saved_creation = true;
                         } else {
-                            assert_eq!(state, crate::HtmlCustomElementState::Uncustomized);
+                            assert_eq!(state, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
                         }
                     }
-                    if let Some(MetadataDocument::Owned(document)) = record.node_document() {
-                        assert!(matches!(document.kind(), crate::HtmlNodeKind::Document(_)));
+                    if let Some(HtmlParseMetadataDocument::Owned(document)) = record.node_document()
+                    {
+                        assert!(matches!(
+                            document.kind(),
+                            surgeist_html::construction::HtmlNodeKind::Document(_)
+                        ));
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         // Output, select and the real nested button are independently listed.
@@ -748,17 +941,21 @@ mod tests {
 
     #[test]
     fn captured_creation_saved_is_is_borrowed_without_fabricating_ordinary_facts() {
-        use crate::construction::report::{MetadataDocument, MetadataStep};
+        use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
         let mut input = Some(fragment("<x-a is=saved></x-a><script>A</script>", false));
-        let report = ImmutableParseReport::take_fragment(&mut input).unwrap();
+        let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         let mut cursor = report.metadata();
         let mut saved = false;
         let mut script = false;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some((state, Some(value))) = record.creation() {
-                        assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                        assert_eq!(
+                            state,
+                            surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                        );
                         assert_eq!(value.code_units(), &[115, 97, 118, 101, 100]);
                         saved = true;
                     }
@@ -770,10 +967,13 @@ mod tests {
                         assert!(parser.is_none() && preparation.is_none());
                         for document in [parser, preparation].into_iter().flatten() {
                             match document {
-                                MetadataDocument::Owned(node) => {
-                                    assert!(matches!(node.kind(), crate::HtmlNodeKind::Document(_)))
+                                HtmlParseMetadataDocument::Owned(node) => {
+                                    assert!(matches!(
+                                        node.kind(),
+                                        surgeist_html::construction::HtmlNodeKind::Document(_)
+                                    ))
                                 }
-                                MetadataDocument::Captured(node) => assert!(matches!(
+                                HtmlParseMetadataDocument::Captured(node) => assert!(matches!(
                                     node.kind(),
                                     crate::HtmlCapturedNodeKind::Document(_)
                                 )),
@@ -782,28 +982,32 @@ mod tests {
                         script = true;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert!(saved && script);
     }
 
-    fn first_text(document: &crate::HtmlDocument) -> &crate::DocumentString {
+    fn first_text(
+        document: &surgeist_html::construction::HtmlDocument,
+    ) -> &surgeist_html::values::DocumentString {
         let html = document
             .root()
             .children()
             .find(|node| {
                 matches!(
                     document.node(node).unwrap().kind(),
-                    crate::HtmlNodeKind::Element(_)
+                    surgeist_html::construction::HtmlNodeKind::Element(_)
                 )
             })
             .unwrap();
         let body = document.node(&html).unwrap().children().nth(1).unwrap();
         let p = document.node(&body).unwrap().children().next().unwrap();
         let text = document.node(&p).unwrap().children().next().unwrap();
-        let crate::HtmlNodeKind::Text(value) = document.node(&text).unwrap().kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Text(value) =
+            document.node(&text).unwrap().kind()
+        else {
             panic!("literal text");
         };
         value
@@ -814,7 +1018,7 @@ mod tests {
         let alias = first_text(input.as_ref().unwrap().document().unwrap()).clone();
         let pointer = alias.code_units().as_ptr();
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
+            HtmlParseReport::take_document(&mut input),
             Err(SessionError::AliasedPayload)
         ));
         assert!(input.as_ref().unwrap().parts.arena.is_some());
@@ -826,7 +1030,7 @@ mod tests {
             pointer
         );
         drop(alias);
-        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
         let snapshot = report.usage().clone();
         let alias = first_text(report.document().unwrap()).clone();
         let weak = std::sync::Arc::downgrade(alias.shared_code_units());
@@ -846,17 +1050,17 @@ mod tests {
 
     #[test]
     fn cancelled_report_transfer_keeps_source_first_stop_and_safe_cleanup_owner() {
-        use crate::parser::control::ParseStop;
+        use crate::parser::control::HtmlParseStop;
         let mut input = Some(ordinary("<!doctype html><p>A", true));
         let source = input.as_ref().unwrap().source().identity().clone();
         input.as_ref().unwrap().request.cancellation().cancel();
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         let sealed = input.as_mut().unwrap();
         assert_eq!(sealed.source().identity(), &source);
-        assert_eq!(sealed.parts.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(sealed.parts.control.stop(), Some(HtmlParseStop::Cancelled));
         let first = sealed.parts.control.first_stop_usage().unwrap().clone();
         sealed.parts.cleanup_failure().unwrap();
         assert!(sealed.parts.arena.is_none());
@@ -864,12 +1068,12 @@ mod tests {
         assert!(sealed.parts.diagnostics().is_ok());
         sealed.parts.release().unwrap();
         super::super::tests::assert_released(&sealed.parts.control);
-        assert_eq!(sealed.parts.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(sealed.parts.control.stop(), Some(HtmlParseStop::Cancelled));
     }
 
     #[test]
     fn finalization_capacity_refusal_keeps_terminal_owner_and_exact_source_for_cleanup() {
-        use crate::{HtmlParseResource, parser::control::ParseStop};
+        use crate::{HtmlParseResource, parser::control::HtmlParseStop};
         let mut input = Some(ordinary(
             "<!doctype html><p class=k>A</p><p class=k>A</p>",
             true,
@@ -886,7 +1090,7 @@ mod tests {
             c.test_limit(HtmlParseResource::ManagedCapacityBytes, 0);
             assert!(matches!(
                 prepared.share_values(c, crate::request::ValueSharingMode::Combined),
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
                     limit: 0,
                     ..
@@ -910,7 +1114,7 @@ mod tests {
 
     #[test]
     fn cancellation_after_value_finalization_retains_complete_original_owner_without_report() {
-        use crate::parser::control::ParseStop;
+        use crate::parser::control::HtmlParseStop;
         let mut input = Some(ordinary(
             "<!doctype html><p class=k>A</p><p class=k>A</p>",
             true,
@@ -928,8 +1132,8 @@ mod tests {
         }
         sealed.request.cancellation().cancel();
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         let kept = input.as_mut().unwrap();
         assert_eq!(kept.source().identity(), &source);
@@ -940,14 +1144,14 @@ mod tests {
         assert_eq!(kept.parts.control.first_stop_usage(), Some(&first));
         kept.parts.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);
-        assert_eq!(kept.parts.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(kept.parts.control.stop(), Some(HtmlParseStop::Cancelled));
     }
 
     #[test]
     fn populated_pool_replacement_refusal_and_cancel_keep_partial_custody_cleanup_owned() {
         use crate::{
             HtmlParseResource,
-            parser::control::{FinalizationCut, ParseStop},
+            parser::control::{FinalizationCut, HtmlParseStop},
         };
         for kind in [FinalizationCut::Work, FinalizationCut::Cancellation] {
             // Missing doctype gives this same actual owner one independent
@@ -969,7 +1173,7 @@ mod tests {
                 kind,
                 &mut sealed.parts.control,
             );
-            let result = ImmutableParseReport::take_document(&mut input);
+            let result = HtmlParseReport::take_document(&mut input);
             let kept = input
                 .as_mut()
                 .expect("failed terminal publication retains original seal");
@@ -983,7 +1187,8 @@ mod tests {
             assert!(observed.earlier_promoted);
             assert!(
                 observed.selected_bank_bytes
-                    >= size_of::<Vec<crate::Attribute>>() + 2 * size_of::<crate::Attribute>()
+                    >= size_of::<Vec<surgeist_html::values::Attribute>>()
+                        + 2 * size_of::<surgeist_html::values::Attribute>()
             );
             // Each of the two actual attributes has one local-name and one
             // value output receipt; absent namespace/prefix adds no fake row.
@@ -991,13 +1196,13 @@ mod tests {
             assert!(observed.selected_tickets_finalized);
             match kind {
                 FinalizationCut::Work => assert!(
-                    matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    matches!(result, Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits, limit, current, requested_delta: 1,
                 })) if limit == observed.work && current == observed.work)
                 ),
                 FinalizationCut::Cancellation => assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::Cancelled))
+                    Err(SessionError::Stop(HtmlParseStop::Cancelled))
                 )),
                 FinalizationCut::Panic => unreachable!("work/cancellation fixture"),
             }
@@ -1021,7 +1226,7 @@ mod tests {
                 .usage()
                 .resource(HtmlParseResource::WorkCredits);
             assert!(
-                matches!(ImmutableParseReport::take_document(&mut input), Err(SessionError::Stop(stop)) if stop == first)
+                matches!(HtmlParseReport::take_document(&mut input), Err(SessionError::Stop(stop)) if stop == first)
             );
             let kept = input.as_mut().unwrap();
             assert_eq!(
@@ -1036,7 +1241,7 @@ mod tests {
             assert!(kept.parts.arena.is_none());
             let diagnostics = kept.parts.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), 1);
-            let (diagnostic, location) = diagnostics.retained_record(0).unwrap();
+            let (diagnostic, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(
                 diagnostic.kind(),
                 crate::HtmlParseDiagnosticKind::Prologue(
@@ -1061,17 +1266,17 @@ mod tests {
 
     #[test]
     fn inert_fragment_report_preserves_actual_parser_script_prefix_and_diagnostics() {
-        use crate::construction::report::{MetadataDocument, MetadataStep};
+        use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
         let mut input = Some(fragment_with_scripting(
             "<!doctype html><script>A</script>",
             false,
             crate::HtmlScriptingStatus::Enabled,
         ));
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
-        let report = ImmutableParseReport::take_fragment(&mut input).unwrap();
+        let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         assert_eq!(
             report.effective_scripting_mode(),
-            crate::HtmlParserScriptingMode::Inert
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
         );
         cancel.cancel();
         assert!(!report.diagnostics().is_empty());
@@ -1079,20 +1284,21 @@ mod tests {
         let mut found = false;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some(script) = record.script() {
                         assert!(script.flags.already_started() && !script.flags.force_async());
                         assert!(script.script_type.is_none());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
-                            matches!(parser.unwrap(), MetadataDocument::Owned(node) if matches!(node.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(node) if matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         assert!(preparation.is_none());
                         found = true;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert!(found);
@@ -1101,7 +1307,7 @@ mod tests {
     #[test]
     fn original_initialization_failures_remain_source_owning_without_a_report_or_fabricated_binding()
      {
-        use crate::{HtmlParseResource, parser::control::ParseStop};
+        use crate::{HtmlParseResource, parser::control::HtmlParseStop};
         for (source_limit, work, cancelled) in [
             (0, 100_000_000, false),
             (100_000, 0, false),
@@ -1131,10 +1337,10 @@ mod tests {
                 panic!("actual stopped initialization");
             };
             if cancelled {
-                assert_eq!(stop, ParseStop::Cancelled);
+                assert_eq!(stop, HtmlParseStop::Cancelled);
             } else {
                 assert!(
-                    matches!(stop, ParseStop::LimitExceeded { resource, .. } if resource == if work == 0 { HtmlParseResource::WorkCredits } else { HtmlParseResource::SourceUnits })
+                    matches!(stop, HtmlParseStop::LimitExceeded { resource, .. } if resource == if work == 0 { HtmlParseResource::WorkCredits } else { HtmlParseResource::SourceUnits })
                 );
             }
             assert!(owner.diagnostics().is_none());
@@ -1171,20 +1377,20 @@ mod tests {
     fn last_fixed_transfer_exact_and_one_short_keep_actual_seal_on_denied_write() {
         use crate::{
             HtmlParseResource,
-            parser::control::{ParseStop, WorkCategory},
+            parser::control::{HtmlParseStop, HtmlParseWorkCategory},
         };
         let literal = "<!doctype html><p>A";
         let mut measured = Some(ordinary(literal, true));
-        let measured = ImmutableParseReport::take_document(&mut measured).unwrap();
+        let measured = HtmlParseReport::take_document(&mut measured).unwrap();
         let exact = measured
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
-        let last_bytes = size_of::<ImmutableParseReport>()
+        let last_bytes = size_of::<HtmlParseReport>()
             + size_of::<Option<SealedOrdinaryConstruction>>()
             + size_of::<SealedOrdinaryConstruction>()
             + size_of::<ReportContext>()
-            + size_of::<ParseUsage>();
+            + size_of::<HtmlParseUsage>();
         // Final publication copies these compiled receivers then admits five
         // writes: request, state, storage, snapshot and exclusive input clear.
         // One-short denies that entire last write admission before any take.
@@ -1201,8 +1407,8 @@ mod tests {
                 .parts
                 .control
                 .usage()
-                .work(WorkCategory::CopyByte);
-            let result = ImmutableParseReport::take_document(&mut input);
+                .work(HtmlParseWorkCategory::CopyByte);
+            let result = HtmlParseReport::take_document(&mut input);
             if budget == exact {
                 let report = result.unwrap();
                 assert!(input.is_none());
@@ -1214,11 +1420,12 @@ mod tests {
                     exact
                 );
                 assert!(
-                    report.usage().work(WorkCategory::CopyByte) >= before_copy + last_bytes as u64
+                    report.usage().work(HtmlParseWorkCategory::CopyByte)
+                        >= before_copy + last_bytes as u64
                 );
             } else {
                 assert!(
-                    matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, current, requested_delta: 5, .. })) if current == exact - 5)
+                    matches!(result, Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, current, requested_delta: 5, .. })) if current == exact - 5)
                 );
                 let kept = input.as_mut().unwrap();
                 assert!(kept.parts.arena.is_some());
@@ -1235,7 +1442,7 @@ mod tests {
 
     #[test]
     fn foreign_original_request_refuses_before_storage_transfer_and_preserves_both_owners() {
-        use crate::parser::control::{Invariant, ParseStop};
+        use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
         let mut first = Some(ordinary("<!doctype html><p>A", true));
         let mut second = Some(ordinary("<!doctype html><p>B", true));
         std::mem::swap(
@@ -1243,9 +1450,9 @@ mod tests {
             &mut second.as_mut().unwrap().request,
         );
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut first),
-            Err(SessionError::Stop(ParseStop::InternalInvariant(
-                Invariant::ForeignSource
+            HtmlParseReport::take_document(&mut first),
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignSource
             )))
         ));
         assert!(first.as_ref().unwrap().parts.arena.is_some());
@@ -1262,23 +1469,25 @@ mod tests {
         super::super::tests::assert_released(&kept.parts.control);
         assert_eq!(
             kept.parts.control.stop(),
-            Some(ParseStop::InternalInvariant(Invariant::ForeignSource))
+            Some(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignSource
+            ))
         );
-        let report = ImmutableParseReport::take_document(&mut second).unwrap();
+        let report = HtmlParseReport::take_document(&mut second).unwrap();
         assert_eq!(first_text(report.document().unwrap()).code_units(), &[66]);
     }
 
     #[test]
     fn stopped_alias_cleanup_refusal_keeps_real_arena_safe_diagnostics_and_request_for_retry() {
-        use crate::parser::control::ParseStop;
+        use crate::parser::control::HtmlParseStop;
         use crate::parser::tree_builder::{KernelError, StandaloneError, head::HeadError};
         let mut input = Some(ordinary("<!doctype html><p>A", true));
         let source = input.as_ref().unwrap().source().identity().clone();
         let alias = first_text(input.as_ref().unwrap().document().unwrap()).clone();
         input.as_ref().unwrap().request.cancellation().cancel();
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         let kept = input.as_mut().unwrap();
         let first = kept.parts.control.first_stop_usage().unwrap().clone();
@@ -1300,27 +1509,28 @@ mod tests {
         assert!(kept.parts.diagnostics().is_ok());
         kept.parts.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);
-        assert_eq!(kept.parts.control.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(kept.parts.control.stop(), Some(HtmlParseStop::Cancelled));
     }
 
     #[test]
     fn derived_pi_map_document_cache_and_shadow_flags_are_fixed_original_lenders() {
-        use crate::construction::report::MetadataStep;
+        use crate::construction::report::HtmlParseMetadataStep;
         let literal = "<div><template shadowrootmode=open shadowrootclonable><p>S</p></template><?marker name='x&amp;y'?><template>T</template></div>";
         let mut input = Some(fragment(literal, true));
-        let report = ImmutableParseReport::take_fragment(&mut input).unwrap();
+        let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         let mut cursor = report.metadata();
         let mut pi = false;
         let mut shadow = false;
         let mut inert = false;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some(count) = record.pi_attribute_count() {
                         assert_eq!(count, 1);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::ProcessingInstruction(_)
+                            surgeist_html::construction::HtmlNodeKind::ProcessingInstruction(_)
                         ));
                         let (name, value) = record.pi_attribute(0).unwrap();
                         assert_eq!(name.code_units(), &[110, 97, 109, 101]);
@@ -1336,7 +1546,7 @@ mod tests {
                         assert!(!keep_null && declarative && available);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::Fragment
+                            surgeist_html::construction::HtmlNodeKind::Fragment
                         ));
                         assert_eq!(record.node().children().len(), 1);
                         shadow = true;
@@ -1345,7 +1555,7 @@ mod tests {
                         assert_eq!(class, crate::HtmlDocumentClass::Html);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::Document(_)
+                            surgeist_html::construction::HtmlNodeKind::Document(_)
                         ));
                         if is_inert {
                             assert!(cache.is_none());
@@ -1353,19 +1563,19 @@ mod tests {
                         }
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert!(pi && shadow && inert);
     }
     #[test]
     fn option_cache_lends_actual_select_identity_and_applicable_null_after_cancel() {
-        use crate::construction::report::MetadataStep;
+        use crate::construction::report::HtmlParseMetadataStep;
         let literal = "<!doctype html><select id=s><option selected>A</option></select><option>B</option><p>Z</p>";
         let mut input = Some(ordinary(literal, true));
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
-        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
         assert!(input.is_none());
         assert_eq!(
             super::super::tests::outline(report.document().unwrap()),
@@ -1391,7 +1601,8 @@ mod tests {
         let mut inapplicable = 0;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if record.select().is_some() {
                         select = Some(record.node().id());
                         assert!(record.option_nearest_select().is_none());
@@ -1400,8 +1611,10 @@ mod tests {
                         let owner = record.option_nearest_select().expect("applicable option");
                         if let Some(owner) = owner {
                             cached = Some(owner.id());
-                            assert!(matches!(owner.kind(), crate::HtmlNodeKind::Element(e)
-                                if e.name().local_name().code_units() == [115,101,108,101,99,116]));
+                            assert!(
+                                matches!(owner.kind(), surgeist_html::construction::HtmlNodeKind::Element(e)
+                                if e.name().local_name().code_units() == [115,101,108,101,99,116])
+                            );
                         }
                         options.push((record.node().id(), owner.is_some()));
                     } else {
@@ -1409,8 +1622,8 @@ mod tests {
                         inapplicable += 1;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert_eq!(cached, select);
@@ -1424,10 +1637,10 @@ mod tests {
 
     #[test]
     fn cached_select_qualified_publication_exact_and_one_short_retains_original_seal() {
-        use crate::{HtmlParseResource, parser::control::ParseStop};
+        use crate::{HtmlParseResource, parser::control::HtmlParseStop};
         let literal = "<!doctype html><select><option>A</option></select>";
         let mut measured = Some(ordinary(literal, true));
-        let report = ImmutableParseReport::take_document(&mut measured).unwrap();
+        let report = HtmlParseReport::take_document(&mut measured).unwrap();
         let exact = report
             .usage()
             .resource(HtmlParseResource::WorkCredits)
@@ -1442,7 +1655,7 @@ mod tests {
                 .unwrap();
             let mut input = Some(ordinary_with_limits(literal, true, limits));
             let source = input.as_ref().unwrap().source().identity().clone();
-            let result = ImmutableParseReport::take_document(&mut input);
+            let result = HtmlParseReport::take_document(&mut input);
             if budget == exact {
                 let report = result.unwrap();
                 assert!(input.is_none());
@@ -1451,7 +1664,10 @@ mod tests {
                 let mut nonnull = 0;
                 loop {
                     match cursor.advance() {
-                        crate::construction::report::MetadataStep::Record(record) => {
+                        crate::construction::report::HtmlParseMetadataStep::Fault(fault) => {
+                            panic!("{fault}")
+                        }
+                        crate::construction::report::HtmlParseMetadataStep::Record(record) => {
                             if record
                                 .option_nearest_select()
                                 .is_some_and(|cache| cache.is_some())
@@ -1459,8 +1675,8 @@ mod tests {
                                 nonnull += 1;
                             }
                         }
-                        crate::construction::report::MetadataStep::Skipped => {}
-                        crate::construction::report::MetadataStep::Complete => {
+                        crate::construction::report::HtmlParseMetadataStep::Skipped => {}
+                        crate::construction::report::HtmlParseMetadataStep::Complete => {
                             break;
                         }
                     }
@@ -1468,7 +1684,7 @@ mod tests {
                 assert_eq!(nonnull, 1);
             } else {
                 assert!(
-                    matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    matches!(result, Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits, current, requested_delta: 5, ..
                 })) if current == exact - 5)
                 );
@@ -1487,7 +1703,7 @@ mod tests {
                     ])
                 );
                 let first = kept.parts.control.stop().unwrap();
-                assert!(matches!(ImmutableParseReport::take_document(&mut input),
+                assert!(matches!(HtmlParseReport::take_document(&mut input),
                     Err(SessionError::Stop(stop)) if stop == first));
                 let kept = input.as_mut().unwrap();
                 kept.parts.cleanup_failure().unwrap();
@@ -1499,33 +1715,36 @@ mod tests {
     }
     #[test]
     fn detached_fragment_option_lends_applicable_null_cache_without_ancestry_work() {
-        use crate::construction::report::MetadataStep;
+        use crate::construction::report::HtmlParseMetadataStep;
         let mut input = Some(fragment("<option>B</option>", false));
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
-        let report = ImmutableParseReport::take_fragment(&mut input).unwrap();
+        let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         let frozen = report.fragment().unwrap();
         let option = frozen.root().children().next().unwrap();
         let node = frozen.node(&option).unwrap();
-        assert!(matches!(node.kind(), crate::HtmlNodeKind::Element(e)
-            if e.name().local_name().code_units() == [111,112,116,105,111,110]));
+        assert!(
+            matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Element(e)
+            if e.name().local_name().code_units() == [111,112,116,105,111,110])
+        );
         let text = node.children().next().unwrap();
         assert!(matches!(frozen.node(&text).unwrap().kind(),
-            crate::HtmlNodeKind::Text(value) if value.code_units() == [66]));
+            surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units() == [66]));
         let usage = report.usage().clone();
         cancel.cancel();
         let mut cursor = report.metadata();
         let mut null = 0;
         loop {
             match cursor.advance() {
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Record(record) => {
                     if let Some(cache) = record.option_nearest_select() {
                         assert!(cache.is_none());
                         assert_eq!(record.node().id(), option);
                         null += 1;
                     }
                 }
-                MetadataStep::Skipped => {}
-                MetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
             }
         }
         assert_eq!(null, 1);
@@ -1551,7 +1770,7 @@ mod tests {
             &mut sealed.parts.control,
         );
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ImmutableParseReport::take_document(&mut input)
+            HtmlParseReport::take_document(&mut input)
         }))
         .unwrap_err();
         assert_eq!(
@@ -1575,7 +1794,7 @@ mod tests {
             .usage()
             .resource(crate::HtmlParseResource::WorkCredits);
         assert!(matches!(
-            ImmutableParseReport::take_document(&mut input),
+            HtmlParseReport::take_document(&mut input),
             Err(SessionError::Consumed)
         ));
         let kept = input.as_mut().unwrap();
@@ -1595,7 +1814,7 @@ mod tests {
 
     #[test]
     fn paired_roots_remain_guarded_through_receiver_refusal_cancellation_and_unwind() {
-        use crate::parser::control::{FinalizationCut, FinalizationTransferStage, ParseStop};
+        use crate::parser::control::{FinalizationCut, FinalizationTransferStage, HtmlParseStop};
         for stage in [
             FinalizationTransferStage::FirstPrepared,
             FinalizationTransferStage::Receiver,
@@ -1611,7 +1830,7 @@ mod tests {
                 let source = sealed.source().identity().clone();
                 sealed.parts.control.arm_finalization_transfer(stage, kind);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    ImmutableParseReport::take_document(&mut input)
+                    HtmlParseReport::take_document(&mut input)
                 }));
                 let kept = input.as_mut().expect("terminal source owner retained");
                 let seen = kept
@@ -1631,11 +1850,11 @@ mod tests {
                 assert_eq!(kept.source().as_utf8(), Some(literal));
                 match kind {
                     FinalizationCut::Work => assert!(
-                        matches!(result.unwrap(), Err(SessionError::Stop(ParseStop::LimitExceeded { resource: crate::HtmlParseResource::WorkCredits, limit, .. })) if limit == seen.work)
+                        matches!(result.unwrap(), Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: crate::HtmlParseResource::WorkCredits, limit, .. })) if limit == seen.work)
                     ),
                     FinalizationCut::Cancellation => assert!(matches!(
                         result.unwrap(),
-                        Err(SessionError::Stop(ParseStop::Cancelled))
+                        Err(SessionError::Stop(HtmlParseStop::Cancelled))
                     )),
                     FinalizationCut::Panic => {
                         assert_eq!(
@@ -1659,7 +1878,7 @@ mod tests {
                     .control
                     .usage()
                     .resource(crate::HtmlParseResource::WorkCredits);
-                let retry = ImmutableParseReport::take_document(&mut input);
+                let retry = HtmlParseReport::take_document(&mut input);
                 match first {
                     Some(stop) => {
                         assert!(matches!(retry, Err(SessionError::Stop(actual)) if actual == stop))

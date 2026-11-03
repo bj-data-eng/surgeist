@@ -228,7 +228,7 @@ FOOTER = '''
 #[cfg(test)]
 mod tests {
     use super::{BidiClass, DERIVED_BIDI_CLASS_SHA256, UAX9_REVISION, UCD_VERSION, bidi_class};
-    use crate::DocumentString;
+    use surgeist_html::values::DocumentString;
 
     #[test]
     fn strong_classes_and_neutral_controls_follow_the_pinned_property() {

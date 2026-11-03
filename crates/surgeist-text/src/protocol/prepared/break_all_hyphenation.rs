@@ -68,6 +68,7 @@ fn selection(
     };
     context.spacing = SpacingPolicy::None;
     LineSelectionRequest {
+        inline_boxes: None,
         segment: {
             let mut segments = p.source_segments();
             assert_eq!(

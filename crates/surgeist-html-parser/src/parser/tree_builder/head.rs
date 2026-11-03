@@ -13,7 +13,7 @@
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs behavior and PI.
 
 use super::{
-    KernelError, LocationKernel, copy_node,
+    KernelError, LocationKernel, StopCause, copy_node,
     formatting::FormattingEntry,
     prologue::{BeforeHead, Payload, PendingToken, PrologueError},
     tag_sets, write,
@@ -25,10 +25,13 @@ use crate::{
         validate_token_kind,
     },
     parser::{
-        control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
+        control::{
+            ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, OwnedVec,
+            ParseControl,
+        },
         tokenizer::{
             Tokenizer, TokenizerHandoffError,
-            states::{Raw, State},
+            states::{HtmlTokenizerRawState, HtmlTokenizerState},
             token::{Event, TagKind, Text, Token},
         },
     },
@@ -36,7 +39,7 @@ use crate::{
 use std::mem::size_of;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InsertionMode {
+pub enum HtmlInsertionMode {
     BeforeHead,
     InHead,
     InHeadNoscript,
@@ -57,7 +60,7 @@ pub enum InsertionMode {
     AfterAfterFrameset,
     InTemplate,
 }
-impl InsertionMode {
+impl HtmlInsertionMode {
     pub(super) fn rule_anchor(self) -> &'static str {
         match self {
             Self::BeforeHead => "the-before-head-insertion-mode",
@@ -83,7 +86,7 @@ impl InsertionMode {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HeadCondition {
+pub enum HtmlTreeDiagnostic {
     UnexpectedDoctype,
     UnexpectedEndTag,
     UnexpectedHead,
@@ -106,12 +109,12 @@ pub enum HeadCondition {
 }
 #[cfg(test)]
 pub(super) struct HeadDiagnostic {
-    pub(super) condition: HeadCondition,
-    pub(super) mode: InsertionMode,
+    pub(super) condition: HtmlTreeDiagnostic,
+    pub(super) mode: HtmlInsertionMode,
     pub(super) source: HtmlSourceRange,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HeadBoundary {
+pub enum HtmlParseConstructionBoundary {
     AfterHead,
     Script,
     Template,
@@ -122,7 +125,7 @@ pub(crate) enum HeadStep {
     NeedInput,
     Consumed,
     Complete,
-    Boundary(HeadBoundary),
+    Boundary(HtmlParseConstructionBoundary),
 }
 pub(crate) enum HeadError {
     Kernel(KernelError),
@@ -143,6 +146,58 @@ pub(crate) enum HeadError {
     InvalidScriptNesting,
     InvalidFormattingState,
     IncompleteCompletion,
+}
+impl HeadError {
+    /// What ends a parse that this error ends; the stop and the failure's
+    /// reason are both derived from it.
+    ///
+    /// - A lost owner is a state the stage's own sequencing cannot produce: an
+    ///   owner, slot or mode it keeps is gone, or a token, formatting entry,
+    ///   script nesting or tokenizer state is one it never creates, or a driver
+    ///   steps a stage that waits at a boundary. No input reaches these; they
+    ///   are faults of the parser, not unsupported documents.
+    ///   `AlreadyAtBoundary` is among them because the parse functions stop at
+    ///   the first boundary a stage returns and the driver consumes the
+    ///   after-head boundary itself.
+    /// - A tokenizer handoff that is refused is a shape of the document the
+    ///   environment does not continue from: queued events behind the first
+    ///   token are not excluded. A stop it carries is already latched.
+    /// - A completion that is not reached is the state that incomplete
+    ///   completion metadata reports.
+    /// - A script that asks the parser to pause, or a blocking script it would
+    ///   have to wait for, is a script state the environment does not run.
+    /// - A head owner that holds no proof of the construction capability
+    ///   cannot prove the browsing context or the document's provenance, so no
+    ///   effect that depends on it may run: the provenance boundary. Both
+    ///   drivers install the capability when the stage is created, so a parse
+    ///   cannot reach it, and an owner imported without it is refused rather
+    ///   than guessed at.
+    pub(super) fn stop_cause(&self) -> StopCause {
+        use crate::parser::control::HtmlParseUnsupportedState as State;
+        match self {
+            Self::Kernel(error) => error.stop_cause(),
+            Self::Prologue(error) => error.stop_cause(),
+            Self::Handoff(TokenizerHandoffError::Stop(stop)) => {
+                StopCause::Session(SessionError::Stop(*stop))
+            }
+            Self::Handoff(_) => StopCause::Unsupported(State::InvalidNesting),
+            Self::IncompleteCompletion => StopCause::Session(SessionError::CompletionIncomplete),
+            Self::UnsupportedScriptPause => StopCause::Unsupported(State::ScriptPause),
+            Self::UnsupportedPendingScript => StopCause::Unsupported(State::PendingScript),
+            Self::ConstructionCapabilityUnavailable => StopCause::Unsupported(State::Provenance),
+            Self::MissingInput
+            | Self::MissingTokenizer
+            | Self::Consumed
+            | Self::AlreadyAtBoundary
+            | Self::TokenizerExhausted
+            | Self::InvalidTextToken
+            | Self::MissingReturnMode
+            | Self::InvalidScriptNesting
+            | Self::InvalidFormattingState => StopCause::LostOwner,
+            #[cfg(test)]
+            Self::NotAtBoundary => StopCause::LostOwner,
+        }
+    }
 }
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -180,8 +235,8 @@ impl From<PrologueError> for HeadError {
         Self::Prologue(value)
     }
 }
-impl From<ParseStop> for HeadError {
-    fn from(value: ParseStop) -> Self {
+impl From<HtmlParseStop> for HeadError {
+    fn from(value: HtmlParseStop) -> Self {
         Self::Kernel(value.into())
     }
 }
@@ -259,12 +314,12 @@ pub(super) struct HeadState<'source> {
     pub(super) before: BeforeHead,
     pub(super) tokenizer: Option<Tokenizer<'source>>,
     pub(super) pending: Option<PendingToken>,
-    pub(super) mode: InsertionMode,
+    pub(super) mode: HtmlInsertionMode,
     pub(super) head: Option<ParserNode>,
     // Initial ordinary document pointer; no captured/fragment form is guessed.
     pub(super) current_form: Option<FormPointer>,
-    pub(super) return_mode: Option<InsertionMode>,
-    pub(super) boundary: Option<HeadBoundary>,
+    pub(super) return_mode: Option<HtmlInsertionMode>,
+    pub(super) boundary: Option<HtmlParseConstructionBoundary>,
     pub(super) lexical: OwnedVec<Event>,
     lexical_pending: Option<Event>,
     pub(super) whitespace_pending: Option<Text>,
@@ -277,7 +332,7 @@ pub(super) struct HeadState<'source> {
     pub(super) formatting_pending: Option<FormattingEntry>,
     pub(super) formatting_removed: Option<FormattingEntry>,
     pub(super) table: super::tables::TableCharacters,
-    pub(super) template_modes: OwnedVec<InsertionMode>,
+    pub(super) template_modes: OwnedVec<HtmlInsertionMode>,
     pub(super) script: Option<StandaloneScriptState<'source>>,
     pub(super) svg_pending: Option<ParserNode>,
     pub(super) end: Option<super::end::EndPhase>,
@@ -293,7 +348,7 @@ pub(super) struct HeadStage<'source> {
 /// dispatch. This is not EOF acceptance, a parse result or a complete report.
 #[cfg(test)]
 pub(super) struct HeadContinuation<'source> {
-    pub(super) boundary: HeadBoundary,
+    pub(super) boundary: HtmlParseConstructionBoundary,
     pub(super) driver: HeadStage<'source>,
 }
 impl<'source> HeadStage<'source> {
@@ -306,7 +361,7 @@ impl<'source> HeadStage<'source> {
         c: &mut ParseControl,
     ) -> Result<Self, HeadError> {
         c.require_source(source)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let input = before.as_mut().ok_or(HeadError::MissingInput)?;
         input.kernel.require(c)?;
         input.whitespace.require_owner(c)?;
@@ -327,21 +382,27 @@ impl<'source> HeadStage<'source> {
         // Preserve the existing enclosing ownership-transfer admission and add
         // the actual end-continuation field, removing the former diagnostic vector. The table constructor separately
         // admits its four field writes. All admissions precede the first take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
+        if let Err(stop) = write(const { size_of::<Self>() + size_of::<HeadState>() }, 29, c) {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
             template_modes.release(c)?;
             return Err(stop.into());
         }
-        if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
+        if let Err(stop) = c.charge(HtmlParseWorkCategory::ProviderCall, 1) {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
             template_modes.release(c)?;
             return Err(stop.into());
         }
-        let mut before = before.take().expect("verified prologue continuation");
+        let Some(mut before) = before.take() else {
+            lexical.release(c)?;
+            formatting.release(c)?;
+            table.entries.release(c)?;
+            template_modes.release(c)?;
+            return Err(HeadError::MissingInput);
+        };
         let pending = before.input.take().map(PendingToken::from_token);
         Ok(Self {
             source,
@@ -350,7 +411,7 @@ impl<'source> HeadStage<'source> {
                 before,
                 tokenizer: tokenizer.take(),
                 pending,
-                mode: InsertionMode::BeforeHead,
+                mode: HtmlInsertionMode::BeforeHead,
                 head: None,
                 current_form: None,
                 return_mode: None,
@@ -383,8 +444,8 @@ impl<'source> HeadStage<'source> {
         self.require(c)?;
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
         capability.validate_session(c, &state.before.kernel.session)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
-        if state.mode != InsertionMode::BeforeHead || state.script.is_some() {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        if state.mode != HtmlInsertionMode::BeforeHead || state.script.is_some() {
             return Err(HeadError::ConstructionCapabilityUnavailable);
         }
         write(size_of::<Option<StandaloneScriptState>>(), 7, c)?;
@@ -424,9 +485,9 @@ impl<'source> HeadStage<'source> {
             .script
             .as_ref()
             .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
-        c.charge(WorkCategory::RecordVisit, 5)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 5)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             (size_of::<u32>()
                 + size_of::<bool>()
                 + size_of::<Option<HtmlSourceRange>>()
@@ -507,6 +568,10 @@ impl<'source> HeadStage<'source> {
             HtmlParseResource::OpenElements,
             c,
         )?;
+        if let Some(templates) = state.before.kernel.templates.as_mut() {
+            templates.clear(c)?;
+            release_fixture_vector(templates, HtmlParseResource::AuxiliaryEntries, c)?;
+        }
         release_fixture_vector(
             &mut state.table.entries,
             HtmlParseResource::AuxiliaryEntries,
@@ -547,7 +612,7 @@ impl<'source> HeadStage<'source> {
     pub(super) fn require(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         c.require_identity(&self.owner)?;
         c.require_source(self.source)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.state.as_ref().ok_or(HeadError::Consumed)?;
         Ok(())
     }
@@ -563,10 +628,10 @@ impl<'source> HeadStage<'source> {
     ) -> Result<HeadStep, HeadError> {
         self.require(c)?;
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(script) = &state.script {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, size_of::<bool>() as u64)?;
             if script.pause {
                 return Err(HeadError::UnsupportedScriptPause);
             }
@@ -574,7 +639,7 @@ impl<'source> HeadStage<'source> {
         if state.svg_pending.is_some() {
             return Err(HeadError::UnsupportedScriptPause);
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if state.end.is_some() {
             return state.end_step(c);
         }
@@ -582,11 +647,11 @@ impl<'source> HeadStage<'source> {
             return Err(HeadError::AlreadyAtBoundary);
         }
         loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if state.pending.is_some() {
                 break;
             }
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             write(size_of::<Option<Event>>(), 1, c)?;
             // Namespace, including a foreign HTML integration point, controls
             // CDATA permission. Ordinary parsing has no fragment substitution.
@@ -626,14 +691,15 @@ impl<'source> HeadStage<'source> {
                     .map_err(KernelError::from)?
                     .get(c, id)?;
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if let Some(token) = event.token() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(token) = event.token(c)? {
                 validate_source(self.source, token, c)?;
-                write(size_of::<Option<Event>>() + size_of::<PendingToken>(), 4, c)?;
-                let Event::Token(event) = state.lexical_pending.take().expect("retained event")
-                else {
-                    unreachable!("actual token variant inspected")
-                };
+                write(
+                    const { size_of::<Option<Event>>() + size_of::<PendingToken>() },
+                    4,
+                    c,
+                )?;
+                let event = super::take_token_event(&mut state.lexical_pending, c)?;
                 state.pending = Some(PendingToken::from_token(event.into_token(c)?));
                 // HTML877d pre/listing/textarea: the initial-LF rule applies to the
                 // token immediately after the start tag, whichever mode handles it.
@@ -646,7 +712,7 @@ impl<'source> HeadStage<'source> {
                 let event = state
                     .lexical_pending
                     .take()
-                    .expect("retained lexical event");
+                    .ok_or(HeadError::TokenizerExhausted)?;
                 if let Err((stop, event)) = state.lexical.try_push_recover(c, event) {
                     // Terminal recovery preserves ownership, without useful work.
                     state.lexical_pending = Some(event);
@@ -662,10 +728,10 @@ impl<'source> HeadStage<'source> {
         c: &mut ParseControl,
     ) -> Result<HeadContinuation<'source>, HeadError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
-            size_of::<Option<HeadBoundary>>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<Option<HtmlParseConstructionBoundary>>() as u64,
         )?;
         let boundary = self
             .state
@@ -678,7 +744,7 @@ impl<'source> HeadStage<'source> {
             5,
             c,
         )?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         Ok(HeadContinuation {
             boundary,
             driver: Self {
@@ -711,10 +777,12 @@ impl<'source> HeadStage<'source> {
             // Normal owner transfer is admitted before mutation; terminal
             // disposal only deallocates/account-releases retained owners.
             write(
-                size_of::<Option<HeadState>>()
-                    + size_of::<Option<Tokenizer>>()
-                    + size_of::<Option<Text>>()
-                    + size_of::<Option<Event>>(),
+                const {
+                    size_of::<Option<HeadState>>()
+                        + size_of::<Option<Tokenizer>>()
+                        + size_of::<Option<Text>>()
+                        + size_of::<Option<Event>>()
+                },
                 4,
                 c,
             )?;
@@ -764,7 +832,7 @@ impl<'source> HeadStage<'source> {
         }
         // These empty vectors still retain admitted capacities. Move and release
         // the whole state only after alias-sensitive arena release succeeded.
-        let state = self.state.take().expect("retained active state");
+        let state = self.state.take().ok_or(HeadError::Consumed)?;
         state.before.whitespace.release(c)?;
         state.lexical.release(c)?;
         state.formatting.release(c)?;
@@ -778,7 +846,7 @@ fn release_fixture_vector<T>(
     vector: &mut OwnedVec<T>,
     resource: HtmlParseResource,
     c: &mut ParseControl,
-) -> Result<(), ParseStop> {
+) -> Result<(), HtmlParseStop> {
     vector.require_owner(c)?;
     write(size_of::<OwnedVec<T>>() * 2, 2, c)?;
     let empty = OwnedVec::new(resource)?;
@@ -789,10 +857,10 @@ fn validate_source(
     token: &Token,
     c: &mut ParseControl,
 ) -> Result<(), HeadError> {
-    c.charge(WorkCategory::ProviderCall, 1)?;
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if token.source.source() != source.identity() {
-        return Err(c.fail_invariant(Invariant::ForeignSource).into());
+        return Err(c.fail_invariant(HtmlParseInvariant::ForeignSource).into());
     }
     validate_token_kind(&token.kind, c)?;
     Ok(())
@@ -800,7 +868,7 @@ fn validate_source(
 impl HeadState<'_> {
     pub(super) fn record_trigger(
         &mut self,
-        rule: crate::construction::provenance::ParserRule,
+        rule: crate::construction::provenance::HtmlParserRule,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         let pending = self.pending.as_ref().ok_or(HeadError::MissingInput)?;
@@ -817,30 +885,33 @@ impl HeadState<'_> {
     pub(super) fn kernel(&mut self) -> &mut LocationKernel {
         &mut self.before.kernel
     }
-    pub(super) fn mode(&self, c: &mut ParseControl) -> Result<InsertionMode, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<InsertionMode>() as u64)?;
+    pub(super) fn mode(&self, c: &mut ParseControl) -> Result<HtmlInsertionMode, HeadError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<HtmlInsertionMode>() as u64,
+        )?;
         Ok(self.mode)
     }
     pub(super) fn set_mode(
         &mut self,
-        mode: InsertionMode,
+        mode: HtmlInsertionMode,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
-        write(size_of::<InsertionMode>(), 1, c)?;
+        write(size_of::<HtmlInsertionMode>(), 1, c)?;
         self.mode = mode;
         Ok(())
     }
     pub(super) fn emit(
         &mut self,
-        condition: HeadCondition,
-        rule: crate::construction::evidence::DiagnosticRule,
+        condition: HtmlTreeDiagnostic,
+        rule: crate::construction::evidence::HtmlParseDiagnosticRule,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         c.charge(
-            WorkCategory::InspectByte,
-            size_of::<crate::construction::evidence::DiagnosticToken>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<crate::construction::evidence::HtmlParseTokenFamily>() as u64,
         )?;
         let mode = self.mode(c)?;
         let pending = self.pending.as_ref().ok_or(HeadError::MissingInput)?;
@@ -848,12 +919,12 @@ impl HeadState<'_> {
         let family = pending.family;
         self.before.kernel.session.evidence(c)?.append(
             c,
-            crate::construction::evidence::DiagnosticKind::Tree(condition),
-            crate::construction::evidence::DiagnosticContext::Tree(mode),
+            crate::construction::evidence::HtmlParseDiagnosticKind::Tree(condition),
+            crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode),
             rule,
             crate::construction::evidence::DiagnosticLocationInput {
                 source,
-                role: crate::construction::evidence::DiagnosticLocationRole::TokenEnvelope,
+                role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TokenEnvelope,
                 token: Some(family),
             },
         )?;
@@ -880,8 +951,8 @@ impl HeadState<'_> {
                 evidence.retain_omission(
                     c,
                     text.origins.as_slice(),
-                    crate::construction::provenance::OmissionKind::IgnoredText,
-                    crate::construction::provenance::ParserRule::Tree(self.mode),
+                    crate::construction::provenance::HtmlParseOmissionKind::IgnoredText,
+                    crate::construction::provenance::HtmlParserRule::Tree(self.mode),
                 )?;
             }
         }
@@ -893,15 +964,15 @@ impl HeadState<'_> {
     }
     pub(super) fn stop_at(
         &mut self,
-        boundary: HeadBoundary,
+        boundary: HtmlParseConstructionBoundary,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
-        write(size_of::<Option<HeadBoundary>>(), 1, c)?;
+        write(size_of::<Option<HtmlParseConstructionBoundary>>(), 1, c)?;
         self.boundary = Some(boundary);
         Ok(HeadStep::Boundary(boundary))
     }
     fn classify(&self, c: &mut ParseControl) -> Result<Class, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let payload = &self
             .pending
             .as_ref()
@@ -916,10 +987,10 @@ impl HeadState<'_> {
             Payload::Tag(input) => {
                 let tag = input.as_ref().ok_or(HeadError::MissingInput)?;
                 c.require_document_string(tag.name.value.allocation(), tag.name.value.text())?;
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 c.charge(
-                    WorkCategory::InspectByte,
-                    (size_of::<TagKind>() + size_of::<bool>()) as u64,
+                    HtmlParseWorkCategory::InspectByte,
+                    const { size_of::<TagKind>() + size_of::<bool>() } as u64,
                 )?;
                 let kind = tag.kind;
                 let self_closing = tag.self_closing;
@@ -941,7 +1012,7 @@ impl HeadState<'_> {
                     ("script", Name::Script),
                     ("template", Name::Template),
                 ] {
-                    c.charge(WorkCategory::StateStep, 1)?;
+                    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                     if tag_sets::ascii_eq(tag.name.value.text(), name, c)? {
                         selected = value;
                         break;
@@ -957,7 +1028,7 @@ impl HeadState<'_> {
         Ok(class)
     }
     pub(super) fn whitespace(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let mode = self.mode(c)?;
         let Payload::Text(input) = &mut self
             .pending
@@ -969,17 +1040,19 @@ impl HeadState<'_> {
         };
         write(size_of::<Option<Text>>(), 1, c)?;
         self.whitespace_pending = split_leading_ascii_whitespace(c, input)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         write(size_of::<bool>(), 1, c)?;
         let empty = input.is_none();
         if self.whitespace_pending.is_some() {
-            if mode == InsertionMode::BeforeHead {
+            if mode == HtmlInsertionMode::BeforeHead {
                 write(size_of::<Option<Text>>(), 1, c)?;
                 let text = self
                     .whitespace_pending
                     .take()
-                    .expect("retained whitespace prefix");
-                if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
+                    .ok_or(HeadError::MissingInput)?;
+                if let Err((stop, text)) =
+                    self.before.whitespace.try_push_recover_geometric(c, text)
+                {
                     self.whitespace_pending = Some(text);
                     return Err(stop.into());
                 }
@@ -988,7 +1061,7 @@ impl HeadState<'_> {
                 // InBody rules while retaining their actual current mode.
                 if matches!(
                     mode,
-                    InsertionMode::AfterBody | InsertionMode::AfterAfterBody
+                    HtmlInsertionMode::AfterBody | HtmlInsertionMode::AfterAfterBody
                 ) {
                     self.reconstruct_formatting(c)?;
                 }
@@ -1038,7 +1111,7 @@ impl HeadState<'_> {
     ) -> Result<ParserNode, HeadError> {
         let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
             .pending
             .as_mut()
@@ -1071,7 +1144,7 @@ impl HeadState<'_> {
     pub(super) fn insert_input(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
         let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
             .as_ref()
@@ -1108,13 +1181,13 @@ impl HeadState<'_> {
     pub(super) fn insert_details(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
         let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
             .as_ref()
             .ok_or_else(|| {
                 c.stop_unsupported_standalone(
-                    crate::parser::control::StandaloneUnsupported::Provenance,
+                    crate::parser::control::HtmlParseUnsupportedState::Provenance,
                 )
             })?
             .capability;
@@ -1149,13 +1222,13 @@ impl HeadState<'_> {
     ) -> Result<ParserNode, HeadError> {
         let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let capability = &self
             .script
             .as_ref()
             .ok_or_else(|| {
                 c.stop_unsupported_standalone(
-                    crate::parser::control::StandaloneUnsupported::Provenance,
+                    crate::parser::control::HtmlParseUnsupportedState::Provenance,
                 )
             })?
             .capability;
@@ -1192,7 +1265,7 @@ impl HeadState<'_> {
         let node = copy_node(node, c)?;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         self.head = Some(node);
-        self.set_mode(InsertionMode::InHead, c)
+        self.set_mode(HtmlInsertionMode::InHead, c)
     }
     fn implied_head(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         let place = self.kernel().appropriate_place(None, c)?;
@@ -1212,7 +1285,7 @@ impl HeadState<'_> {
     }
     pub(super) fn raw_text(
         &mut self,
-        raw: Raw,
+        raw: HtmlTokenizerRawState,
         self_closing: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
@@ -1220,15 +1293,15 @@ impl HeadState<'_> {
         self.tokenizer
             .as_mut()
             .ok_or(HeadError::Consumed)?
-            .set_state(State::Raw(raw), c)?;
-        write(size_of::<Option<InsertionMode>>(), 1, c)?;
+            .set_state(HtmlTokenizerState::Raw(raw), c)?;
+        write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
         let mode = self.mode(c)?;
         self.return_mode = Some(mode);
-        self.set_mode(InsertionMode::Text, c)?;
+        self.set_mode(HtmlInsertionMode::Text, c)?;
         if self_closing {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inhead",
                     branch: "raw-text-start/self-closing",
                 },
@@ -1243,9 +1316,9 @@ impl HeadState<'_> {
             .script
             .as_ref()
             .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
-        c.charge(WorkCategory::RecordVisit, 7)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 7)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             size_of::<StandaloneScriptState>() as u64,
         )?;
         // §13.4 seeds a template mode for a template context without pushing
@@ -1253,13 +1326,13 @@ impl HeadState<'_> {
         let context_template_seed = if self.template_modes.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = context
                 .capture()
                 .node(context.context_element().subject())
                 .map_err(|_| SessionError::ContextUnavailable)?;
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                return Err(KernelError::NotElement.into());
+                return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
             super::tag_sets::html_named(element.name(), "template", c)?
         } else {
@@ -1282,7 +1355,7 @@ impl HeadState<'_> {
         write(size_of::<Option<HtmlSourceRange>>(), 1, c)?;
         self.script
             .as_mut()
-            .expect("qualified end script state")
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .insertion_point = None;
         Ok(())
     }
@@ -1290,7 +1363,7 @@ impl HeadState<'_> {
         &self,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.script
             .as_ref()
             .ok_or(HeadError::ConstructionCapabilityUnavailable)?
@@ -1303,7 +1376,7 @@ impl HeadState<'_> {
         self_closing: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let script = self
             .script
             .as_ref()
@@ -1312,14 +1385,14 @@ impl HeadState<'_> {
             .capability
             .validate_session(c, &self.before.kernel.session)?;
         let place = self.before.kernel.appropriate_place(None, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Payload::Tag(input) = &mut self
             .pending
             .as_mut()
             .ok_or(HeadError::MissingInput)?
             .payload
         else {
-            unreachable!("classified actual script tag")
+            return Err(HeadError::MissingInput);
         };
         let template = self.before.kernel.last_template(c)?;
         let context = template.as_ref().map_or(
@@ -1341,19 +1414,19 @@ impl HeadState<'_> {
             self.script.as_ref().map(|script| &script.capability),
         )?;
         self.before.kernel.push(&node, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.tokenizer
             .as_mut()
             .ok_or(HeadError::Consumed)?
-            .set_state(State::Raw(Raw::Script), c)?;
-        write(size_of::<Option<InsertionMode>>(), 1, c)?;
+            .set_state(HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script), c)?;
+        write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
         let mode = self.mode(c)?;
         self.return_mode = Some(mode);
-        self.set_mode(InsertionMode::Text, c)?;
+        self.set_mode(HtmlInsertionMode::Text, c)?;
         if self_closing {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inhead",
                     branch: "script-start/self-closing",
                 },
@@ -1368,7 +1441,7 @@ impl HeadState<'_> {
         node: &ParserNode,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.svg_pending.is_some() {
             return Err(HeadError::UnsupportedScriptPause);
         }
@@ -1404,13 +1477,13 @@ impl HeadState<'_> {
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
         script.saved_insertion_point = Some(script.insertion_point.take());
         script.insertion_point = Some(next);
-        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
         let nesting = script
             .nesting
             .checked_add(1)
@@ -1423,7 +1496,7 @@ impl HeadState<'_> {
             .kernel
             .session
             .process_svg_wrapper(c, node, &script.capability)?;
-        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
         let nesting = script
             .nesting
             .checked_sub(1)
@@ -1435,7 +1508,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1453,13 +1526,13 @@ impl HeadState<'_> {
         node: &ParserNode,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let script = self
             .script
             .as_ref()
             .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
         // This closed owner cannot reenter. Nesting is not the standard's
         // checkpoint predicate: its speculative parser is absent and its JS
         // execution stack is absent/empty, so the checkpoint is mandatory.
@@ -1473,35 +1546,35 @@ impl HeadState<'_> {
             .kernel
             .pop(c, self.script.as_ref().map(|script| &script.capability))?
             .ok_or(KernelError::EmptyStack)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
-            size_of::<Option<InsertionMode>>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<Option<HtmlInsertionMode>>() as u64,
         )?;
         let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
         self.set_mode(mode, c)?;
-        write(size_of::<Option<InsertionMode>>(), 1, c)?;
+        write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
         self.return_mode = None;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let script = self
             .script
             .as_mut()
             .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let next = self
             .tokenizer
             .as_ref()
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
         script.saved_insertion_point = Some(script.insertion_point.take());
         script.insertion_point = Some(next);
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
         let nesting = script
             .nesting
             .checked_add(1)
@@ -1512,8 +1585,8 @@ impl HeadState<'_> {
             .kernel
             .session
             .prepare_disabled_script(c, node, &script.capability)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
         let nesting = script
             .nesting
             .checked_sub(1)
@@ -1525,7 +1598,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1533,7 +1606,7 @@ impl HeadState<'_> {
             .saved_insertion_point
             .take()
             .ok_or(HeadError::InvalidScriptNesting)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if script.pending_blocking.is_some() {
             return Err(HeadError::UnsupportedPendingScript);
         }
@@ -1545,12 +1618,12 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
         self.record_trigger(
-            crate::construction::provenance::ParserRule::Tree(InsertionMode::InBody),
+            crate::construction::provenance::HtmlParserRule::Tree(HtmlInsertionMode::InBody),
             c,
         )?;
         self.emit(
-            HeadCondition::UnexpectedHtml,
-            crate::construction::evidence::DiagnosticRule {
+            HtmlTreeDiagnostic::UnexpectedHtml,
+            crate::construction::evidence::HtmlParseDiagnosticRule {
                 anchor: "parsing-main-inbody",
                 branch: "html-start/delegate-in-body",
             },
@@ -1574,8 +1647,8 @@ impl HeadState<'_> {
             .add_attributes_if_missing(c, &top, input)?;
         if self_closing {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "html-start/self-closing",
                 },
@@ -1591,16 +1664,19 @@ impl HeadState<'_> {
         service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<HeadStep, HeadError> {
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let mode = self.mode(c)?;
-            self.record_trigger(crate::construction::provenance::ParserRule::Tree(mode), c)?;
+            self.record_trigger(
+                crate::construction::provenance::HtmlParserRule::Tree(mode),
+                c,
+            )?;
             if self.foreign_dispatch(c)?
                 && let Some(step) = self.foreign_rules(c)?
             {
                 return Ok(step);
             }
-            if mode == InsertionMode::InTemplate {
+            if mode == HtmlInsertionMode::InTemplate {
                 if let Some(step) = self.template_rules(c)? {
                     return Ok(step);
                 }
@@ -1608,10 +1684,10 @@ impl HeadState<'_> {
             }
             if matches!(
                 mode,
-                InsertionMode::AfterHead
-                    | InsertionMode::InBody
-                    | InsertionMode::AfterBody
-                    | InsertionMode::AfterAfterBody
+                HtmlInsertionMode::AfterHead
+                    | HtmlInsertionMode::InBody
+                    | HtmlInsertionMode::AfterBody
+                    | HtmlInsertionMode::AfterAfterBody
             ) {
                 if let Some(step) = self.body_rules_with_meta_csp(mode, source, c, service)? {
                     return Ok(step);
@@ -1620,13 +1696,13 @@ impl HeadState<'_> {
             }
             if matches!(
                 mode,
-                InsertionMode::InTable
-                    | InsertionMode::InTableText
-                    | InsertionMode::InCaption
-                    | InsertionMode::InColumnGroup
-                    | InsertionMode::InTableBody
-                    | InsertionMode::InRow
-                    | InsertionMode::InCell
+                HtmlInsertionMode::InTable
+                    | HtmlInsertionMode::InTableText
+                    | HtmlInsertionMode::InCaption
+                    | HtmlInsertionMode::InColumnGroup
+                    | HtmlInsertionMode::InTableBody
+                    | HtmlInsertionMode::InRow
+                    | HtmlInsertionMode::InCell
             ) {
                 if let Some(step) = self.table_rules(mode, source, c)? {
                     return Ok(step);
@@ -1635,20 +1711,20 @@ impl HeadState<'_> {
             }
             if matches!(
                 mode,
-                InsertionMode::InFrameset
-                    | InsertionMode::AfterFrameset
-                    | InsertionMode::AfterAfterFrameset
+                HtmlInsertionMode::InFrameset
+                    | HtmlInsertionMode::AfterFrameset
+                    | HtmlInsertionMode::AfterAfterFrameset
             ) {
                 return self.frameset_rules(mode, c);
             }
-            if mode == InsertionMode::Text && self.first_lf(c)? {
+            if mode == HtmlInsertionMode::Text && self.first_lf(c)? {
                 return self.finish(c);
             }
-            if mode != InsertionMode::Text && self.whitespace(c)? {
+            if mode != HtmlInsertionMode::Text && self.whitespace(c)? {
                 return self.finish(c);
             }
             let class = self.classify(c)?;
-            if mode == InsertionMode::Text {
+            if mode == HtmlInsertionMode::Text {
                 match class {
                     Class::Text => {
                         let Payload::Text(input) = &mut self
@@ -1657,7 +1733,7 @@ impl HeadState<'_> {
                             .ok_or(HeadError::MissingInput)?
                             .payload
                         else {
-                            unreachable!("classified actual text")
+                            return Err(HeadError::InvalidTextToken);
                         };
                         self.before.kernel.insert_text(
                             input,
@@ -1668,7 +1744,7 @@ impl HeadState<'_> {
                         return self.finish(c);
                     }
                     Class::End(_) | Class::Eof => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let top = self.before.kernel.at(
                             self.before
                                 .kernel
@@ -1687,15 +1763,15 @@ impl HeadState<'_> {
                         }
                         if matches!(class, Class::Eof) {
                             self.emit(
-                                HeadCondition::EofInText,
-                                crate::construction::evidence::DiagnosticRule {
+                                HtmlTreeDiagnostic::EofInText,
+                                crate::construction::evidence::HtmlParseDiagnosticRule {
                                     anchor: mode.rule_anchor(),
                                     branch: "text/eof",
                                 },
                                 c,
                             )?;
                             if is_script {
-                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                                 let script = self
                                     .script
                                     .as_ref()
@@ -1711,14 +1787,14 @@ impl HeadState<'_> {
                             .kernel
                             .pop(c, self.script.as_ref().map(|script| &script.capability))?
                             .ok_or(KernelError::EmptyStack)?;
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         c.charge(
-                            WorkCategory::InspectByte,
-                            size_of::<Option<InsertionMode>>() as u64,
+                            HtmlParseWorkCategory::InspectByte,
+                            size_of::<Option<HtmlInsertionMode>>() as u64,
                         )?;
                         let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
                         self.set_mode(mode, c)?;
-                        write(size_of::<Option<InsertionMode>>(), 1, c)?;
+                        write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
                         self.return_mode = None;
                         if matches!(class, Class::Eof) {
                             continue;
@@ -1733,8 +1809,8 @@ impl HeadState<'_> {
             }
             if matches!(class, Class::Doctype) {
                 self.emit(
-                    HeadCondition::UnexpectedDoctype,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedDoctype,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: mode.rule_anchor(),
                         branch: "doctype/ignore",
                     },
@@ -1742,7 +1818,7 @@ impl HeadState<'_> {
                 )?;
                 return self.discard(c);
             }
-            if mode == InsertionMode::BeforeHead {
+            if mode == HtmlInsertionMode::BeforeHead {
                 match class {
                     Class::Comment | Class::Pi => return self.ordinary_node(c),
                     Class::Start(Name::Head, close) => {
@@ -1750,8 +1826,8 @@ impl HeadState<'_> {
                         self.set_head(&node, c)?;
                         if close {
                             self.emit(
-                                HeadCondition::UnacknowledgedSelfClosing,
-                                crate::construction::evidence::DiagnosticRule {
+                                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                                crate::construction::evidence::HtmlParseDiagnosticRule {
                                     anchor: mode.rule_anchor(),
                                     branch: "head-start/self-closing",
                                 },
@@ -1763,8 +1839,8 @@ impl HeadState<'_> {
                     Class::End(Name::Head | Name::Body | Name::Html | Name::Br) => {}
                     Class::End(_) => {
                         self.emit(
-                            HeadCondition::UnexpectedEndTag,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnexpectedEndTag,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: mode.rule_anchor(),
                                 branch: "before-head/disallowed-end-tag",
                             },
@@ -1777,14 +1853,14 @@ impl HeadState<'_> {
                 self.implied_head(c)?;
                 continue;
             }
-            if mode == InsertionMode::InHeadNoscript {
+            if mode == HtmlInsertionMode::InHeadNoscript {
                 match class {
                     Class::End(Name::Noscript) => {
                         self.before
                             .kernel
                             .pop(c, self.script.as_ref().map(|script| &script.capability))?
                             .ok_or(KernelError::EmptyStack)?;
-                        self.set_mode(InsertionMode::InHead, c)?;
+                        self.set_mode(HtmlInsertionMode::InHead, c)?;
                         return self.discard(c);
                     }
                     Class::Comment
@@ -1800,8 +1876,8 @@ impl HeadState<'_> {
                     ) => {}
                     Class::Start(Name::Head | Name::Noscript, _) => {
                         self.emit(
-                            HeadCondition::UnexpectedInNoscript,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnexpectedInNoscript,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: mode.rule_anchor(),
                                 branch: "noscript/head-or-noscript-start",
                             },
@@ -1811,8 +1887,8 @@ impl HeadState<'_> {
                     }
                     Class::End(name) if !matches!(name, Name::Br) => {
                         self.emit(
-                            HeadCondition::UnexpectedInNoscript,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnexpectedInNoscript,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: mode.rule_anchor(),
                                 branch: "noscript/disallowed-end-tag",
                             },
@@ -1822,8 +1898,8 @@ impl HeadState<'_> {
                     }
                     _ => {
                         self.emit(
-                            HeadCondition::UnexpectedInNoscript,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnexpectedInNoscript,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: mode.rule_anchor(),
                                 branch: "noscript/anything-else",
                             },
@@ -1833,7 +1909,7 @@ impl HeadState<'_> {
                             .kernel
                             .pop(c, self.script.as_ref().map(|script| &script.capability))?
                             .ok_or(KernelError::EmptyStack)?;
-                        self.set_mode(InsertionMode::InHead, c)?;
+                        self.set_mode(HtmlInsertionMode::InHead, c)?;
                         continue;
                     }
                 }
@@ -1853,17 +1929,19 @@ impl HeadState<'_> {
                     // syntax line 791); no tentative meta encoding transition.
                     return self.finish(c);
                 }
-                Class::Start(Name::Title, close) => return self.raw_text(Raw::Rcdata, close, c),
+                Class::Start(Name::Title, close) => {
+                    return self.raw_text(HtmlTokenizerRawState::Rcdata, close, c);
+                }
                 Class::Start(Name::Noframes | Name::Style, close) => {
-                    return self.raw_text(Raw::Rawtext, close, c);
+                    return self.raw_text(HtmlTokenizerRawState::Rawtext, close, c);
                 }
                 Class::Start(Name::Noscript, close) => {
                     self.insert_tag(c)?;
-                    self.set_mode(InsertionMode::InHeadNoscript, c)?;
+                    self.set_mode(HtmlInsertionMode::InHeadNoscript, c)?;
                     if close {
                         self.emit(
-                            HeadCondition::UnacknowledgedSelfClosing,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-inhead",
                                 branch: "noscript-start/self-closing",
                             },
@@ -1873,11 +1951,11 @@ impl HeadState<'_> {
                     return self.finish(c);
                 }
                 Class::Start(Name::Script, close) => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if self.script.is_some() {
                         return self.script_start(close, c);
                     }
-                    return self.stop_at(HeadBoundary::Script, c);
+                    return self.stop_at(HtmlParseConstructionBoundary::Script, c);
                 }
                 Class::Start(Name::Template, _) => return self.template_start(c),
                 Class::End(Name::Head) => {
@@ -1885,14 +1963,14 @@ impl HeadState<'_> {
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?
                         .ok_or(KernelError::EmptyStack)?;
-                    self.set_mode(InsertionMode::AfterHead, c)?;
+                    self.set_mode(HtmlInsertionMode::AfterHead, c)?;
                     self.discard(c)?;
-                    return self.stop_at(HeadBoundary::AfterHead, c);
+                    return self.stop_at(HtmlParseConstructionBoundary::AfterHead, c);
                 }
                 Class::Start(Name::Head, _) => {
                     self.emit(
-                        HeadCondition::UnexpectedHead,
-                        crate::construction::evidence::DiagnosticRule {
+                        HtmlTreeDiagnostic::UnexpectedHead,
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-inhead",
                             branch: "head-start/ignore",
                         },
@@ -1906,8 +1984,8 @@ impl HeadState<'_> {
                 Class::End(Name::Body | Name::Html | Name::Br) => {}
                 Class::End(_) => {
                     self.emit(
-                        HeadCondition::UnexpectedEndTag,
-                        crate::construction::evidence::DiagnosticRule {
+                        HtmlTreeDiagnostic::UnexpectedEndTag,
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-inhead",
                             branch: "head/disallowed-end-tag",
                         },
@@ -1921,8 +1999,8 @@ impl HeadState<'_> {
                 .kernel
                 .pop(c, self.script.as_ref().map(|script| &script.capability))?
                 .ok_or(KernelError::EmptyStack)?;
-            self.set_mode(InsertionMode::AfterHead, c)?;
-            return self.stop_at(HeadBoundary::AfterHead, c);
+            self.set_mode(HtmlInsertionMode::AfterHead, c)?;
+            return self.stop_at(HtmlParseConstructionBoundary::AfterHead, c);
         }
     }
 }
@@ -1936,8 +2014,8 @@ impl HeadState<'_> {
                 let (record, source) = e.retained_record(index)?;
                 match (record.kind, record.context) {
                     (
-                        crate::construction::evidence::DiagnosticKind::Tree(condition),
-                        crate::construction::evidence::DiagnosticContext::Tree(mode),
+                        crate::construction::evidence::HtmlParseDiagnosticKind::Tree(condition),
+                        crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode),
                     ) => Some(HeadDiagnostic {
                         condition,
                         mode,
@@ -1966,14 +2044,14 @@ mod script_state_tests {
             if driver
                 .head
                 .as_ref()
-                .is_some_and(|head| head.state.as_ref().unwrap().mode == InsertionMode::Text)
+                .is_some_and(|head| head.state.as_ref().unwrap().mode == HtmlInsertionMode::Text)
             {
                 break;
             }
         }
         driver.step().unwrap(); // actual script character token
         let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
-        assert_eq!(state.mode, InsertionMode::Text);
+        assert_eq!(state.mode, HtmlInsertionMode::Text);
         assert_eq!(state.script.as_ref().unwrap().nesting, 0);
         // Private-state fault injection tests the defense, without issuing a
         // capability, simulating script execution, or adding an input producer.
@@ -1986,12 +2064,12 @@ mod script_state_tests {
         ));
         assert_eq!(
             driver.control.stop(),
-            Some(ParseStop::UnsupportedStandaloneState(
-                crate::parser::control::StandaloneUnsupported::InvalidNesting
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::TreeBuilderState
             ))
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.mode, InsertionMode::Text);
+        assert_eq!(state.mode, HtmlInsertionMode::Text);
         assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
         assert!(matches!(
             state.pending.as_ref().unwrap().payload,
@@ -2010,7 +2088,7 @@ mod event_retention_tests {
     };
     use super::*;
     use crate::parser::{
-        control::{Invariant, ParseUsage},
+        control::{HtmlParseInvariant, HtmlParseUsage},
         input::PreprocessingRecord,
     };
     use crate::{HtmlDocumentParseRequest, HtmlParseCancellation, HtmlParseResource, HtmlSource};
@@ -2021,7 +2099,9 @@ mod event_retention_tests {
                 .head
                 .as_ref()
                 .and_then(|head| head.state.as_ref())
-                .is_some_and(|state| state.mode == InsertionMode::InHead && state.pending.is_none())
+                .is_some_and(|state| {
+                    state.mode == HtmlInsertionMode::InHead && state.pending.is_none()
+                })
             {
                 return;
             }
@@ -2046,7 +2126,7 @@ mod event_retention_tests {
         assert_eq!(retention.as_slice()[0], *range);
     }
 
-    fn first_comment_event_footprint(source: &HtmlSource) -> ParseUsage {
+    fn first_comment_event_footprint(source: &HtmlSource) -> HtmlParseUsage {
         let request = HtmlDocumentParseRequest::offline(source.clone(), limits(100));
         let mut driver = entry::initialized_driver(&request);
         assert_eq!(driver.step().unwrap(), HeadStep::Consumed);
@@ -2059,7 +2139,8 @@ mod event_retention_tests {
     }
 
     #[test]
-    fn fresh_event_capacity_clips_and_one_short_keeps_the_pending_preprocessing_ticket() {
+    fn fresh_event_capacity_admits_the_doubled_target_and_a_refusal_keeps_the_pending_preprocessing_ticket()
+     {
         let source = HtmlSource::utf8("<!--\r\n\r\n\r\n-->");
         let footprint = first_comment_event_footprint(&source);
         // CommentStart queues the first preprocessing Event and reconsumes
@@ -2069,24 +2150,30 @@ mod event_retention_tests {
             - size_of::<Event>() as u64
             - size_of::<crate::HtmlSourceRange>() as u64;
         let event = size_of::<Event>() as u64;
-        let origin = size_of::<crate::parser::tokenizer::token::TextOrigin>() as u64;
+        let origin = size_of::<crate::parser::tokenizer::token::HtmlParseTextOrigin>() as u64;
         let range = size_of::<crate::HtmlSourceRange>() as u64;
         // Three source-defined CRLFs produce three one-range Event tickets,
-        // three LF units and a four-slot geometric DraftText origin capacity.
-        // Existing two Event slots are replaced by exactly three when four
-        // cannot fit. Peak overlaps only the old/new vector being replaced.
-        let final_bytes = base + 6 + 4 * origin + 3 * range + 3 * event;
-        let peak = (base + 6 + 6 * origin + 3 * range + 2 * event)
-            .max(base + 6 + 4 * origin + 3 * range + 5 * event)
+        // three LF units in a four-unit (eight-byte) geometric DraftText value
+        // and a four-slot origin capacity. The two Event slots double to four,
+        // whatever the limits are. Peak overlaps only the old/new vector being
+        // replaced. A limit that holds the three required Event slots but not
+        // the doubled four refuses.
+        let final_bytes = base + 8 + 4 * origin + 3 * range + 4 * event;
+        let peak = (base + 8 + 6 * origin + 3 * range + 2 * event)
+            .max(base + 8 + 4 * origin + 3 * range + 6 * event)
             .max(
                 footprint
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
             );
-        for short in [false, true] {
+        for (short, managed) in [
+            (false, final_bytes),
+            (true, final_bytes - 1),
+            (true, final_bytes - event),
+        ] {
             let caps = limits(100)
                 .into_builder()
-                .managed_capacity_bytes(final_bytes - u64::from(short))
+                .managed_capacity_bytes(managed)
                 .peak_transient_bytes(peak)
                 .finish()
                 .unwrap();
@@ -2107,7 +2194,7 @@ mod event_retention_tests {
                 assert!(matches!(
                     result,
                     Err(super::super::StandaloneError::Stop(
-                        ParseStop::LimitExceeded {
+                        HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::ManagedCapacityBytes,
                             ..
                         }
@@ -2123,7 +2210,7 @@ mod event_retention_tests {
                 preprocessing(driver.event.as_ref().unwrap(), &source, 8);
                 assert_eq!(
                     driver.control.usage().actual_capacity_bytes,
-                    final_bytes - event
+                    final_bytes - 2 * event
                 );
                 let before = driver.control.usage().clone();
                 let stop = driver.control.stop();
@@ -2138,7 +2225,7 @@ mod event_retention_tests {
                         driver.lexical.as_ref().unwrap().len(),
                         driver.lexical.as_ref().unwrap().capacity()
                     ),
-                    (3, 3)
+                    (3, 4)
                 );
                 assert!(driver.event.is_none());
                 assert_eq!(driver.control.usage().actual_capacity_bytes, final_bytes);
@@ -2208,7 +2295,7 @@ mod event_retention_tests {
         assert!(matches!(
             driver.step(),
             Err(super::super::StandaloneError::Stop(
-                ParseStop::LimitExceeded {
+                HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     ..
                 }
@@ -2309,7 +2396,7 @@ mod event_retention_tests {
         assert!(matches!(
             driver.step(),
             Err(super::super::StandaloneError::Head(HeadError::Kernel(
-                KernelError::Stop(ParseStop::LimitExceeded {
+                KernelError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     ..
                 })
@@ -2347,8 +2434,10 @@ mod event_retention_tests {
 
     #[test]
     fn head_event_growth_preserves_source_eof_and_foreign_cancelled_owner_refusals() {
-        use crate::construction::evidence::{DiagnosticContext, DiagnosticKind};
-        use crate::parser::tokenizer::token::{DiagnosticCode, DiagnosticPhase};
+        use crate::construction::evidence::{HtmlParseDiagnosticContext, HtmlParseDiagnosticKind};
+        use crate::parser::tokenizer::token::{
+            HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase,
+        };
         let source = HtmlSource::utf8(format!(
             "<!doctype html><html><head><!--{}--></head><body></body></html>",
             "\0".repeat(32)
@@ -2361,7 +2450,7 @@ mod event_retention_tests {
         assert!(matches!(
             driver.head.as_mut().unwrap().step(&mut foreign),
             Err(HeadError::Kernel(KernelError::Stop(
-                ParseStop::InternalInvariant(Invariant::ForeignControl)
+                HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl)
             )))
         ));
         assert_eq!(driver.control.usage(), &before);
@@ -2395,13 +2484,15 @@ mod event_retention_tests {
             let (record, location) = evidence.get(&mut driver.control, id).unwrap();
             assert_eq!(
                 record.kind,
-                DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                HtmlParseDiagnosticKind::Tokenizer(
+                    HtmlTokenizerDiagnostic::UnexpectedNullCharacter
+                )
             );
             assert_eq!(
                 record.context,
-                DiagnosticContext::Tokenizer {
-                    phase: DiagnosticPhase::Tokenizer,
-                    state: State::Comment
+                HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                    state: HtmlTokenizerState::Comment
                 }
             );
             assert_eq!(location.source.source(), source.identity());
@@ -2479,5 +2570,56 @@ mod event_retention_tests {
                 .resource(HtmlParseResource::WorkCredits),
             before.resource(HtmlParseResource::WorkCredits)
         );
+    }
+}
+
+#[cfg(test)]
+mod stage_custody_tests {
+    use super::super::{
+        entry,
+        tests::{assert_released, limits},
+    };
+    use super::*;
+    use crate::parser::tokenizer::{Tokenizer, states::HtmlTokenizerState};
+    use crate::{HtmlDocumentParseRequest, HtmlParseCancellation, HtmlSource};
+
+    #[test]
+    fn a_head_stage_without_the_before_head_owner_reports_missing_input_and_keeps_the_tokenizer() {
+        let source = HtmlSource::utf8("<p>x");
+        let mut c = ParseControl::new(limits(100), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut tokenizer =
+            Some(Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap());
+        let mut before = None;
+        let error = HeadStage::new(&source, &mut before, &mut tokenizer, &mut c)
+            .err()
+            .unwrap();
+        assert!(matches!(error, HeadError::MissingInput), "{error:?}");
+        assert!(before.is_none());
+        // The tokenizer was neither taken nor charged for, so it still releases.
+        tokenizer.take().unwrap().release(&mut c).unwrap();
+        assert_released(&c);
+    }
+
+    #[test]
+    fn releasing_a_head_stage_without_its_state_reports_consumed_and_the_state_releases_later() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<html><p>x"), limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        for _ in 0..100 {
+            if driver.head.is_some() {
+                break;
+            }
+            driver.step().unwrap();
+        }
+        let head = driver.head.as_mut().unwrap();
+        // Private-state fault injection: the stage's state is not where release
+        // expects it.
+        let state = head.state.take().unwrap();
+        let error = head.release(&mut driver.control).unwrap_err();
+        assert!(matches!(error, HeadError::Consumed), "{error:?}");
+        head.state = Some(state);
+        driver.release().unwrap();
+        assert_released(&driver.control);
     }
 }

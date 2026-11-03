@@ -95,11 +95,15 @@ pub enum Position {
     Absolute,
 }
 
+/// Layout-ready float side in the containing block's logical inline frame.
+/// Consumers map authored float values into this frame before constructing input.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Float {
     #[default]
     None,
+    /// Place at logical line-start (physical right in horizontal RTL flow).
     Left,
+    /// Place at logical line-end (physical left in horizontal RTL flow).
     Right,
 }
 

@@ -12,7 +12,7 @@
 //! The source edition and adaptation notice are in `licenses/whatwg/NOTICE.md`.
 //! The generator expands the heading group and preserves contextual index rows.
 
-use crate::{DocumentString, Namespace, QualifiedName};
+use crate::values::{DocumentString, Namespace, QualifiedName};
 
 fn exact_string(value: &DocumentString, expected: &str) -> bool {
     value
@@ -20,10 +20,6 @@ fn exact_string(value: &DocumentString, expected: &str) -> bool {
         .iter()
         .copied()
         .eq(expected.encode_utf16())
-}
-
-fn html_namespace(namespace: Option<&DocumentString>) -> bool {
-    namespace.is_some_and(|uri| exact_string(uri, "http://www.w3.org/1999/xhtml"))
 }
 
 macro_rules! vocabulary {
@@ -57,8 +53,8 @@ impl KnownHtmlElement {
     ///
     /// Unknown, foreign, uppercase, and malformed names return `None`. The raw
     /// name remains unchanged; this is recognition, not HTML parser case folding.
-    pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
-        html_namespace(name.namespace_uri()).then(|| {
+    pub fn from_name(name: &(impl crate::values::HtmlNameInput + ?Sized)) -> Option<Self> {
+        crate::internal::values::is_html_namespace_uri(name.namespace_uri()).then(|| {
             Self::ALL
                 .iter()
                 .copied()
@@ -82,8 +78,8 @@ impl KnownHtmlAttribute {
     ///
     /// Recognition identifies the local spelling. Applicability and value
     /// semantics require the element-specific defining clause. A foreign or
-    /// unknown raw attribute remains representable by [`crate::Attribute`].
-    pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
+    /// unknown raw attribute remains representable by [`crate::values::Attribute`].
+    pub fn from_name(name: &(impl crate::values::HtmlNameInput + ?Sized)) -> Option<Self> {
         name.namespace_uri().is_none().then(|| {
             Self::ALL
                 .iter()

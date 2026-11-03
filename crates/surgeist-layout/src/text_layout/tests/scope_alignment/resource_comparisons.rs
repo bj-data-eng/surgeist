@@ -84,7 +84,7 @@ fn native<S: LayoutScalar>(
             .unwrap();
         assert_eq!(
             allocation.boundary,
-            Some(text::InlineBoundaryAllocation::ZERO)
+            Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
         );
         assert_eq!(
             allocation.strut,
@@ -176,7 +176,10 @@ fn qualify<S: LayoutScalar>(work: usize) {
     let prior_request = line.selected_line().request().clone();
     // This production ctor retains the genuine fully validated snapshot, while
     // creating its own operation-local resource state whose work starts at0.
-    let facts = ScopeAlignmentResources::new(Arc::clone(&flow.scope_alignments));
+    let facts = ScopeAlignmentResources::new(
+        Arc::clone(&flow.scope_alignments),
+        crate::text_layout::fragmentation::InlineBoxFamilies::default(),
+    );
     if work == WORK {
         // The conservative law is1 descriptor plus1 equal-length actual frame
         // per comparison. Repeated aliases are real immutable FinalizedLines;

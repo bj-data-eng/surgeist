@@ -1,6 +1,6 @@
 //! Literal expectations from HTML 877d textarea/select/option flag algorithms.
 //! These are local transitions, not substitutes for tree or event execution.
-use surgeist_html::{
+use surgeist_html::elements::form::{
     HtmlOptionFlags, HtmlSelectFlags, HtmlTextareaFlags, HtmlTextareaRawValueAction,
 };
 

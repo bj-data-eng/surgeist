@@ -1,14 +1,14 @@
+use crate::html::support::{cause, construction_limits as limits, is_limit};
 use surgeist_html::{
-    Attribute, DocumentString, ForeignHtmlResult, HtmlAuthoredProcessingInstruction,
-    HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource, HtmlDoctype,
-    HtmlDocument, HtmlDocumentMode, HtmlFragment, HtmlFragmentOwner, HtmlNodeKind,
-    HtmlProcessingInstruction, HtmlProcessingInstructionError, HtmlShadowRootMode,
-    HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
+    construction::{
+        ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
+        HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+        HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction, HtmlProcessingInstructionError,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
-fn limits() -> HtmlConstructionLimits {
-    HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
-}
 fn name(namespace: Namespace, local: &str) -> QualifiedName {
     QualifiedName::new(namespace, None, local)
 }
@@ -213,7 +213,7 @@ fn template_contents_are_a_separate_fragment_with_a_reverse_association() {
     let before = builder.usage();
     assert_eq!(
         builder.append_text(&template, "wrong parent").unwrap_err(),
-        HtmlConstructionError::TemplateContentsRequired
+        cause::TEMPLATE_CONTENTS_REQUIRED
     );
     assert_eq!(builder.usage(), before);
     let contents = builder.template_contents(&template).unwrap().unwrap();
@@ -285,7 +285,7 @@ fn shadow_host_and_contents_keep_properties_and_separate_ordinary_children() {
         builder
             .attach_declarative_shadow(&host, properties)
             .unwrap_err(),
-        HtmlConstructionError::ShadowAlreadyAttached
+        cause::SHADOW_ALREADY_ATTACHED
     );
     assert_eq!(builder.usage(), before);
     let fragment = builder.finish();
@@ -320,7 +320,7 @@ fn foreign_builder_handles_and_result_ids_are_rejected_without_changes() {
     let first_root = first.root();
     assert_eq!(
         second.append_text(&first_root, "foreign").unwrap_err(),
-        HtmlConstructionError::ForeignBuilder
+        cause::FOREIGN_BUILDER
     );
     assert_eq!(second.usage().nodes(), 1);
     first.append_text(&first_root, "first").unwrap();
@@ -403,21 +403,17 @@ fn each_finite_budget_rejects_atomically_and_later_smaller_append_succeeds() {
         let failure = builder
             .append_element(&root, name(Namespace::none(), "x"), attrs)
             .unwrap_err();
-        assert!(
-            matches!(failure, HtmlConstructionError::LimitExceeded { resource, .. } if resource == expected)
-        );
+        assert_eq!(failure.exceeded_resource(), Some(expected));
         assert_eq!(builder.usage(), before);
         assert_eq!(builder.finish().root().children().len(), 0);
     }
     let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2)).unwrap();
     let root = builder.root();
-    assert!(matches!(
-        builder.append_text(&root, "too long"),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Utf16Units,
-            attempted: 8,
-            limit: 2
-        })
+    assert!(is_limit(
+        builder.append_text(&root, "too long").err().as_ref(),
+        HtmlConstructionResource::Utf16Units,
+        8,
+        2
     ));
     builder
         .append_text(&root, DocumentString::from_utf16(vec![0xD800, 0xDC00]))
@@ -428,13 +424,13 @@ fn each_finite_budget_rejects_atomically_and_later_smaller_append_succeeds() {
 
 #[test]
 fn all_stored_string_slots_consume_exact_unit_budget_and_zero_nodes_rejects_root() {
-    assert!(matches!(
-        HtmlFragment::builder(HtmlConstructionLimits::new(0, 0, 0, 0, 0)),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Nodes,
-            attempted: 1,
-            limit: 0,
-        })
+    assert!(is_limit(
+        HtmlFragment::builder(HtmlConstructionLimits::new(0, 0, 0, 0, 0))
+            .err()
+            .as_ref(),
+        HtmlConstructionResource::Nodes,
+        1,
+        0
     ));
     let mut builder =
         HtmlFragment::builder(HtmlConstructionLimits::new(20, 20, 1, 31, 20)).unwrap();
@@ -471,13 +467,11 @@ fn all_stored_string_slots_consume_exact_unit_budget_and_zero_nodes_rejects_root
         .unwrap();
     assert_eq!(builder.usage().utf16_units(), 31);
     let before = builder.usage();
-    assert!(matches!(
-        builder.append_text(&root, "x"),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Utf16Units,
-            attempted: 32,
-            limit: 31,
-        })
+    assert!(is_limit(
+        builder.append_text(&root, "x").err().as_ref(),
+        HtmlConstructionResource::Utf16Units,
+        32,
+        31
     ));
     assert_eq!(builder.usage(), before);
     assert_eq!(builder.finish().root().children().len(), 5);
@@ -489,17 +483,18 @@ fn template_and_shadow_associations_obey_depth_and_edge_budgets_atomically() {
         HtmlFragment::builder(HtmlConstructionLimits::new(10, 1, 10, 1000, 10)).unwrap();
     let root = builder.root();
     let before = builder.usage();
-    assert!(matches!(
-        builder.append_element(
-            &root,
-            name(Namespace::html(), "template"),
-            OrderedAttributes::default()
-        ),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Edges,
-            attempted: 2,
-            limit: 1
-        })
+    assert!(is_limit(
+        builder
+            .append_element(
+                &root,
+                name(Namespace::html(), "template"),
+                OrderedAttributes::default()
+            )
+            .err()
+            .as_ref(),
+        HtmlConstructionResource::Edges,
+        2,
+        1
     ));
     assert_eq!(builder.usage(), before);
     let host = builder
@@ -517,13 +512,14 @@ fn template_and_shadow_associations_obey_depth_and_edge_budgets_atomically() {
         true,
         false,
     );
-    assert!(matches!(
-        builder.attach_declarative_shadow(&host, properties),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Edges,
-            attempted: 2,
-            limit: 1
-        })
+    assert!(is_limit(
+        builder
+            .attach_declarative_shadow(&host, properties)
+            .err()
+            .as_ref(),
+        HtmlConstructionResource::Edges,
+        2,
+        1
     ));
     assert_eq!(builder.usage(), before);
     let result = builder.finish();
@@ -538,17 +534,18 @@ fn template_and_shadow_associations_obey_depth_and_edge_budgets_atomically() {
     let mut builder =
         HtmlFragment::builder(HtmlConstructionLimits::new(10, 10, 10, 1000, 1)).unwrap();
     let root = builder.root();
-    assert!(matches!(
-        builder.append_element(
-            &root,
-            name(Namespace::html(), "template"),
-            OrderedAttributes::default()
-        ),
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Depth,
-            attempted: 2,
-            limit: 1
-        })
+    assert!(is_limit(
+        builder
+            .append_element(
+                &root,
+                name(Namespace::html(), "template"),
+                OrderedAttributes::default()
+            )
+            .err()
+            .as_ref(),
+        HtmlConstructionResource::Depth,
+        2,
+        1
     ));
     assert_eq!(builder.usage().nodes(), 1);
 }
@@ -563,7 +560,7 @@ fn leaf_parents_are_rejected_and_deep_artifacts_drop_without_recursive_ownership
     let leaf = builder.append_comment(&root, "").unwrap();
     assert_eq!(
         builder.append_text(&leaf, "invalid").unwrap_err(),
-        HtmlConstructionError::ParentCannotHaveChildren
+        cause::PARENT_CANNOT_HAVE_CHILDREN
     );
     assert_eq!(
         builder
@@ -578,7 +575,7 @@ fn leaf_parents_are_rejected_and_deep_artifacts_drop_without_recursive_ownership
                 )
             )
             .unwrap_err(),
-        HtmlConstructionError::ShadowHostMustBeElement
+        cause::SHADOW_HOST_MUST_BE_ELEMENT
     );
     let mut parent = root;
     for _ in 0..20_000 {

@@ -234,6 +234,7 @@ fn attach<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[1].clone())),
     );
     let mut bindings = vec![l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container,
         nodes: vec![first, atomic, last],
@@ -839,7 +840,7 @@ fn same_text<S: l::LayoutScalar>(
 fn retained<S: l::LayoutScalar>(
     host: &Host<S>,
     cache: &[l::CacheOf<S>],
-    nodes: &[Option<l::NodeOutputOf<S>>],
+    nodes: &[Option<l::LayoutOutputEntryOf<u32, S>>],
     old: &l::CompletedLayoutBatchOf<u32, S>,
 ) {
     assert_eq!(host.published.caches, cache);
@@ -1059,7 +1060,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
     ) -> Option<l::ComputeOutputOf<S>> {
         l::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         l::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(

@@ -1,8 +1,24 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::HtmlNodeKind,
+    elements::{
+        form::HtmlTextControlValueSetterFinish,
+        input::{
+            HtmlInputCheckedAttributeChange, HtmlInputEmailMode, HtmlInputEmptySelectionSupport,
+            HtmlInputFlags, HtmlInputNoneDirectionSupport, HtmlInputReset, HtmlInputResetEffect,
+            HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
+            HtmlInputSelection, HtmlInputSelectionDirection, HtmlInputTypeChange,
+            HtmlInputTypeCursor, HtmlInputTypeEffect, HtmlInputValueAttributeEffect,
+            HtmlInputValueComparison, HtmlInputValueComparisonCursor, HtmlInputValueMode,
+            HtmlInputValueSanitization, HtmlInputValueSetterStart, input_value_setter_finish,
+        },
+    },
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAssociationRelation, HtmlParseHistoryFrame,
-    HtmlParseHistoryStep, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseRangeBranch,
-    HtmlParseRangeOperandKind, HtmlParseRangeOperandRole, HtmlSource,
+    HtmlParseHistoryStep, HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,
+    HtmlParseRangeOperandRole, HtmlSource,
 };
 
 fn recognize(raw: Option<&DocumentString>) -> HtmlInputType {
@@ -687,28 +703,7 @@ fn range_requests_constraint_sanitization_without_selection_or_string_cursor_byp
 fn range_public_parse_lends_native_default_current_and_qualified_generated_dependencies() {
     let literal =
         "<!doctype html><form id=f><input type=range min=0 max=100 step=20 value=50>Z</form>";
-    let limits = HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
-        .token_attributes(10_000)
-        .auxiliary_entries(1_000_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
-        .finish()
-        .unwrap();
+    let limits = crate::parser::support::limits();
     let source = HtmlSource::utf8(literal);
     let identity = source.identity().clone();
     let report = HtmlDocumentParseRequest::offline(source, limits)
@@ -766,6 +761,7 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }
@@ -784,7 +780,10 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     }
     let (group, computation) = selected.expect("50 is equally far from40 and60: source selects60");
     assert!(!computation.original_is_fresh_empty());
-    assert!(computation.original_group().is_some() && computation.original_cause().is_some());
+    assert!(
+        computation.original_group().unwrap().is_some()
+            && computation.original_cause().unwrap().is_some()
+    );
     for role in [
         HtmlParseRangeOperandRole::Minimum,
         HtmlParseRangeOperandRole::Maximum,
@@ -792,9 +791,9 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     ] {
         let operand = computation.operand(role);
         assert_eq!(operand.kind(), HtmlParseRangeOperandKind::Finite);
-        assert!(operand.group().is_some() && operand.cause().is_some());
+        assert!(operand.group().unwrap().is_some() && operand.cause().unwrap().is_some());
         assert!(
-            (0..rows.len()).any(|index| rows.row(index).unwrap().relation()
+            (0..rows.len()).any(|index| rows.row(index).unwrap().unwrap().relation()
                 == HtmlParseAssociationRelation::RangeDependency(role))
         );
     }

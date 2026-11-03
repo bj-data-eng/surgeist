@@ -1,6 +1,17 @@
 //! Retained HTML877d local rel interpretation and checked refinement.
 #![forbid(unsafe_code)]
-use surgeist_html::{bounded::*, *};
+use surgeist_html::{
+    attributes::HtmlLinkDestination,
+    bounded::rel::{
+        HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation, HtmlRelInterpretationError,
+        HtmlRelMeter, HtmlRelRefinement, HtmlRelReservation,
+    },
+    elements::link::{
+        HtmlRelAlternate, HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelRole,
+        HtmlRelTitleAuthor,
+    },
+    values::DocumentString,
+};
 #[derive(Default)]
 struct Meter {
     work: Vec<usize>,
@@ -28,18 +39,25 @@ impl HtmlRelMeter for Meter {
         Ok(())
     }
 }
-fn interpreted<'a>(inputs: RelInputs<'a>) -> HtmlRelInterpretation<'a> {
+fn interpreted<'a>(inputs: HtmlRelInputs<'a>) -> HtmlRelInterpretation<'a> {
     let mut owner = HtmlRelInterpretation::new(inputs);
     owner.interpret(&mut Meter::default()).unwrap();
     owner
 }
+/// A refinement and the predicate that recognizes its expected refusal.
+type RefusalCase = (
+    usize,
+    HtmlRelRefinement,
+    fn(&HtmlRelInterpretationError) -> bool,
+);
+
 #[test]
 fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_stylesheet_rules() {
     let rel = DocumentString::from("ALTERNATE stylesheet alternate");
     let href = DocumentString::from("sheet.css");
     let title = DocumentString::from("Night");
     let owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&rel))
             .with_href(Some(&href))
             .with_title(Some(&title)),
@@ -61,9 +79,10 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
         report.rel().unwrap().shared_code_units(),
         rel.shared_code_units()
     ));
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::Consumed
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_consumed()
     );
 }
 #[test]
@@ -71,48 +90,49 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
     let raw = DocumentString::from("vendor vendor2 alternate");
     let rev = DocumentString::from("made");
     let mut owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&raw))
             .with_rev(Some(&rev)),
     );
     owner.begin_refinement().unwrap();
     let mut meter = Meter::default();
-    for (index, value, expected) in [
+    let cases: [RefusalCase; 6] = [
         (
             9,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::UnknownOccurrence,
+            HtmlRelInterpretationError::is_unknown_occurrence,
         ),
         (
             3,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::WrongSource,
+            HtmlRelInterpretationError::is_wrong_source,
         ),
         (
             2,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::WrongSpelling,
+            HtmlRelInterpretationError::is_wrong_spelling,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::InternalResource),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::StylesheetModifier),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::Annotation),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
-    ] {
-        assert_eq!(
+    ];
+    for (index, value, expected) in cases {
+        assert!(matches!(
             owner.refine(index, value, &mut meter),
-            Err(HtmlRelActionError::Protocol(expected))
-        );
+            Err(HtmlRelActionError::Protocol(ref error)) if expected(error)
+        ));
     }
     assert!(meter.work.is_empty());
     owner
@@ -123,22 +143,17 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
         )
         .unwrap();
     assert_eq!(meter.work, [4]);
-    assert_eq!(
-        owner.refine(1, HtmlRelRefinement::NoEffect, &mut meter),
-        Err(HtmlRelActionError::Protocol(
-            HtmlRelInterpretationError::RepeatedRefinement
-        ))
+    assert!(
+        matches!(owner.refine(1, HtmlRelRefinement::NoEffect, &mut meter), Err(HtmlRelActionError::Protocol(ref e)) if e.is_repeated_refinement())
     );
-    assert_eq!(
-        owner.refine(0, HtmlRelRefinement::NoEffect, &mut meter),
-        Err(HtmlRelActionError::Protocol(
-            HtmlRelInterpretationError::OutOfOrderRefinement
-        ))
+    assert!(
+        matches!(owner.refine(0, HtmlRelRefinement::NoEffect, &mut meter), Err(HtmlRelActionError::Protocol(ref e)) if e.is_out_of_order_refinement())
     );
     let mut slot = Some(owner);
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::NotReady
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_not_ready()
     );
     slot.as_mut().unwrap().refresh(&mut meter).unwrap();
     let report = HtmlRelInterpretation::try_finish(&mut slot).unwrap();
@@ -156,7 +171,7 @@ fn refresh_uses_original_type_title_and_image_preload_operands() {
     let hint = DocumentString::from("application/rss+xml");
     let images = DocumentString::from("x 1x");
     let mut owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&rel))
             .with_href(Some(&href))
             .with_type_hint(Some(&hint))
@@ -187,7 +202,7 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
     let title = DocumentString::from("t");
     let make = || {
         let mut o = interpreted(
-            RelInputs::new(Some(HtmlRelRole::Link))
+            HtmlRelInputs::new(Some(HtmlRelRole::Link))
                 .with_rel(Some(&raw))
                 .with_href(Some(&href))
                 .with_title(Some(&title)),
@@ -211,13 +226,14 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
             owner.as_mut().unwrap().refresh(&mut meter),
             Err(HtmlRelActionError::Admission("original stop"))
         );
-        assert_eq!(
-            HtmlRelInterpretation::try_finish(&mut owner).unwrap_err(),
-            HtmlRelInterpretationError::Stopped
+        assert!(
+            HtmlRelInterpretation::try_finish(&mut owner)
+                .unwrap_err()
+                .is_stopped()
         );
         assert!(matches!(
             owner.as_ref().unwrap().occurrences(),
-            Err(HtmlRelInterpretationError::Stopped)
+            Err(ref error) if error.is_stopped()
         ));
         let inputs = owner.take().unwrap().abort();
         assert!(std::ptr::eq(inputs.rel().unwrap(), &raw));
@@ -227,7 +243,7 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
 fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_terminal() {
     let raw = DocumentString::from_utf16([120, 0xd800]);
     let mut slot = Some(HtmlRelInterpretation::new(
-        RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
     ));
     let mut meter = Meter {
         fail_reserve: true,
@@ -238,20 +254,75 @@ fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_t
         Err(HtmlRelActionError::Admission("original reserve stop"))
     );
     assert!(meter.reservations[0].1 >= 1);
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::Stopped
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_stopped()
     );
     assert!(std::ptr::eq(
         slot.take().unwrap().abort().rel().unwrap(),
         &raw
     ));
     let mut owner = Some(interpreted(
-        RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
     ));
     owner.as_mut().unwrap().stop();
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut owner).unwrap_err(),
-        HtmlRelInterpretationError::Stopped
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_stopped()
     );
+}
+
+/// Answers every reservation and counts the reservations that changed the occurrence vector's
+/// capacity, found by its record size. A capacity change is exactly one reallocation request,
+/// because a vector that already has room is not asked to grow.
+#[derive(Default)]
+struct CapacityChanges {
+    capacity: std::collections::BTreeMap<usize, usize>,
+    changes: std::collections::BTreeMap<usize, usize>,
+}
+impl HtmlRelMeter for CapacityChanges {
+    type Error = std::convert::Infallible;
+    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
+        guard.try_reserve().unwrap();
+        let known = self.capacity.entry(guard.record_size()).or_insert(0);
+        if *known != guard.capacity() {
+            *known = guard.capacity();
+            *self.changes.entry(guard.record_size()).or_insert(0) += 1;
+        }
+        Ok(())
+    }
+}
+
+/// Appending n occurrences one at a time requests a logarithmic number of reallocations in n. The
+/// oracle is the doubling bound: from any positive capacity, `ceil(log2 n)` doublings reach `n`,
+/// so `floor(log2 n) + 2` changes allow the first allocation and one more for rounding. The
+/// record-sized report data takes exactly one record, so its single reservation is one change.
+#[test]
+fn reallocation_requests_for_n_occurrences_grow_at_most_logarithmically() {
+    for count in [64_usize, 1_024] {
+        let words: Vec<String> = (0..count).map(|i| format!("x{i:06}")).collect();
+        let raw = DocumentString::from(words.join(" ").as_str());
+        let mut owner = HtmlRelInterpretation::new(
+            HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        );
+        let mut meter = CapacityChanges::default();
+        owner.interpret(&mut meter).unwrap();
+        assert_eq!(owner.occurrences().unwrap().len(), count);
+        let allowed = count.ilog2() as usize + 2;
+        let mut by_size: Vec<_> = meter.changes.into_iter().collect();
+        by_size.sort();
+        assert_eq!(by_size.len(), 2, "occurrence and data vectors: {by_size:?}");
+        for (size, changes) in by_size {
+            assert!(
+                changes <= allowed,
+                "{count} occurrences changed the {size}-byte vector's capacity {changes} times, \
+                 more than {allowed}"
+            );
+        }
+    }
 }

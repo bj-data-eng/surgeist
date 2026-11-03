@@ -240,6 +240,7 @@ impl Case {
         };
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -316,6 +317,8 @@ impl Case {
             child_order.push(row(self.inline(1), vec![]));
         }
         WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes,
             child_order,
         }
@@ -347,7 +350,7 @@ impl Case {
             tree = tree.children(control.node, []).input(
                 control.node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         if control.node == 20 {
                             InlineBoundaryKind::Start
                         } else {
@@ -361,6 +364,7 @@ impl Case {
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(self.direction),
                 ),
             );
@@ -1283,6 +1287,7 @@ fn pinned_after_s(direction: Direction) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],
@@ -1777,6 +1782,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],
@@ -2199,6 +2205,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],
@@ -2436,3 +2443,6 @@ fn nested_auto_edges_keep_exactly_one_of_the_two_whole_coupled_metric_outcomes()
     nested_auto_coupling::<f32>();
     nested_auto_coupling::<f64>();
 }
+
+#[path = "box_incidence_cases/parent_geometry.rs"]
+mod parent_geometry;

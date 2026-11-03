@@ -13,33 +13,35 @@ enum InitializationPhase {
     Executing,
     Stopped,
     Transferred,
-    Consumed,
 }
 
 /// Fixed source-owning bootstrap carrier. Its request and failure slot exist
 /// before the first admission; no source-owning envelope is allocated after a
 /// pre-source stop. The control/Arc bootstrap remains the existing documented
 /// provider limitation. The native-only seal and full lexical D1 remain separate.
-pub(crate) struct OrdinaryInitializationOwner {
-    request: Option<HtmlDocumentParseRequest>,
+/// The carrier owns the request by construction: only a consuming transfer
+/// moves it out, so no state of the carrier lacks it.
+pub(crate) struct OrdinaryInitialization {
+    request: HtmlDocumentParseRequest,
     failure: Option<super::entry::StoppedInitialization>,
     phase: InitializationPhase,
 }
-impl OrdinaryInitializationOwner {
+impl OrdinaryInitialization {
     pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
+        let request = request.share_associated_inputs();
         let phase = super::entry::EntryRejection::for_request(&request)
             .map_or(InitializationPhase::Fresh, InitializationPhase::Rejected);
         Self {
-            request: Some(request),
+            request,
             failure: None,
             phase,
         }
     }
-    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
-        self.request.as_ref().map(|request| request.source())
+    pub(crate) fn source(&self) -> &crate::HtmlSource {
+        self.request.source()
     }
-    pub(crate) fn request(&self) -> Option<&HtmlDocumentParseRequest> {
-        self.request.as_ref()
+    pub(crate) fn request(&self) -> &HtmlDocumentParseRequest {
+        &self.request
     }
     /// The attempt retains every real borrowed prefix on refusal. It must be
     /// explicitly transferred or cleaned before dropping; no infallible Drop
@@ -71,8 +73,8 @@ impl OrdinaryInitializationOwner {
             InitializationPhase::Fresh => {}
             _ => return Err(StandaloneError::Consumed),
         }
-        let request = self.request.as_ref().ok_or(StandaloneError::Consumed)?;
         self.phase = InitializationPhase::Executing;
+        let request = &self.request;
         Ok(InitializationAttempt {
             entry: {
                 #[cfg(test)]
@@ -95,12 +97,11 @@ impl OrdinaryInitializationOwner {
             InitializationPhase::Rejected(reason) => {
                 Some(super::entry::InitializationFailure::Rejected(reason))
             }
-            InitializationPhase::Stopped => Some(super::entry::InitializationFailure::Stopped(
-                self.failure
-                    .as_ref()
-                    .expect("retained initialization failure")
-                    .stop(),
-            )),
+            InitializationPhase::Stopped => self
+                .failure
+                .as_ref()
+                .and_then(|failure| failure.stop())
+                .map(super::entry::InitializationFailure::Stopped),
             _ => None,
         }
     }
@@ -112,20 +113,20 @@ impl OrdinaryInitializationOwner {
             .as_ref()
             .map(|failure| failure.source_admitted())
     }
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
-        self.failure.as_ref().map(|failure| failure.at_stop())
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+        self.failure.as_ref().and_then(|failure| failure.at_stop())
     }
-    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.as_ref().map(|failure| failure.after_cleanup())
     }
-    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure
             .as_ref()
             .map(|failure| failure.retained_usage())
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.failure
             .as_ref()
             .and_then(|failure| failure.diagnostics())
@@ -134,24 +135,168 @@ impl OrdinaryInitializationOwner {
     pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(_) => Ok(()),
-            InitializationPhase::Stopped => self
-                .failure
-                .as_mut()
-                .expect("actual stopped owner")
-                .release(),
+            InitializationPhase::Stopped => match self.failure.as_mut() {
+                Some(failure) => failure.release(),
+                None => Err(StandaloneError::Consumed),
+            },
             _ => Err(StandaloneError::Consumed),
         }
     }
+    #[cfg(test)]
     /// A ready actual driver no longer borrows the carrier once its execution
     /// scope ends. Move the same original request to the existing final seal.
-    pub(crate) fn take_request(&mut self) -> Result<HtmlDocumentParseRequest, StandaloneError> {
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_request(self) -> Result<HtmlDocumentParseRequest, (StandaloneError, Self)> {
         match self.phase {
-            InitializationPhase::Fresh | InitializationPhase::Transferred => {}
-            _ => return Err(StandaloneError::Consumed),
+            InitializationPhase::Fresh | InitializationPhase::Transferred => Ok(self.request),
+            _ => Err((StandaloneError::Consumed, self)),
         }
-        let request = self.request.take().ok_or(StandaloneError::Consumed)?;
-        self.phase = InitializationPhase::Consumed;
-        Ok(request)
+    }
+    /// Joins the cleaned failure of the execution this carrier ran to the
+    /// original request. A refusal hands back the carrier and the failure.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failure(
+        self,
+        failure: super::terminal::DetachedStandaloneFailure,
+    ) -> Result<
+        OwnedOrdinaryFailure,
+        (
+            StandaloneError,
+            Self,
+            super::terminal::DetachedStandaloneFailure,
+        ),
+    > {
+        if !matches!(
+            self.phase,
+            InitializationPhase::Fresh | InitializationPhase::Transferred
+        ) {
+            return Err((StandaloneError::Consumed, self, failure));
+        }
+        let Self {
+            request,
+            failure: slot,
+            phase,
+        } = self;
+        match OwnedOrdinaryFailure::join(request, failure) {
+            Ok(joined) => Ok(joined),
+            Err((error, request, failure)) => Err((
+                error,
+                Self {
+                    request,
+                    failure: slot,
+                    phase,
+                },
+                failure,
+            )),
+        }
+    }
+    /// Seals the frozen construction of the execution this carrier ran with the
+    /// original request. A refusal hands back the carrier and the parts.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_sealed(
+        self,
+        parts: FrozenStandaloneParts,
+    ) -> Result<SealedOrdinaryConstruction, (StandaloneError, Self, FrozenStandaloneParts)> {
+        if !matches!(
+            self.phase,
+            InitializationPhase::Fresh | InitializationPhase::Transferred
+        ) {
+            return Err((StandaloneError::Consumed, self, parts));
+        }
+        let Self {
+            request,
+            failure: slot,
+            phase,
+        } = self;
+        match SealedOrdinaryConstruction::join(request, parts) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, request, parts)) => Err((
+                error,
+                Self {
+                    request,
+                    failure: slot,
+                    phase,
+                },
+                parts,
+            )),
+        }
+    }
+}
+
+/// The slot-style view of a carrier that tests drive: the request can be taken
+/// once, after which the carrier is gone.
+#[cfg(test)]
+pub(crate) struct OrdinaryInitializationOwner {
+    held: Option<OrdinaryInitialization>,
+}
+#[cfg(test)]
+impl OrdinaryInitializationOwner {
+    pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
+        Self {
+            held: Some(OrdinaryInitialization::new(request)),
+        }
+    }
+    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
+        self.held.as_ref().map(|held| held.source())
+    }
+    pub(crate) fn request(&self) -> Option<&HtmlDocumentParseRequest> {
+        self.held.as_ref().map(|held| held.request())
+    }
+    pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.held.as_mut().ok_or(StandaloneError::Consumed)?.begin()
+    }
+    pub(crate) fn begin_progressive(
+        &mut self,
+    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.held
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .begin_progressive()
+    }
+    pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
+        self.held.as_ref()?.failure()
+    }
+    pub(crate) fn source_admitted(&self) -> Option<bool> {
+        self.held.as_ref()?.source_admitted()
+    }
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+        self.held.as_ref()?.at_stop()
+    }
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+        self.held.as_ref()?.after_cleanup()
+    }
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+        self.held.as_ref()?.retained_usage()
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
+        self.held.as_ref()?.diagnostics()
+    }
+    pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
+        self.held
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .release_failure()
+    }
+    pub(crate) fn take_request(&mut self) -> Result<HtmlDocumentParseRequest, StandaloneError> {
+        let held = self.held.take().ok_or(StandaloneError::Consumed)?;
+        match held.into_request() {
+            Ok(request) => Ok(request),
+            Err((error, held)) => {
+                self.held = Some(held);
+                Err(error)
+            }
+        }
     }
 }
 
@@ -167,7 +312,7 @@ impl<'request> InitializationAttempt<'request> {
         self.entry.failure()
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.entry.at_stop()
     }
     pub(crate) fn take_driver(
@@ -185,52 +330,59 @@ impl<'request> InitializationAttempt<'request> {
 }
 
 /// Three carrier fields, four attempt fields and its three phase transitions,
-/// plus the cleared original request slot;
-/// plus the exact entry transfer slots. All are fixed bootstrap storage, not
+/// plus the exact entry transfer slots. The request is held by the carrier and
+/// moved out by value, so no request slot is cleared. All are fixed bootstrap storage, not
 /// variable source/native copies. Running admission follows source precedence;
 /// an earlier stop cannot pretend this layout was admitted.
-pub(super) fn initialization_bootstrap_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    let (bytes, writes) = super::entry::initialization_transfer_layout();
-    (
-        bytes
-            + size_of::<OrdinaryInitializationOwner>()
-            + size_of::<InitializationAttempt>()
-            + 3 * size_of::<InitializationPhase>()
-            + size_of::<Option<HtmlDocumentParseRequest>>(),
-        writes + 3 + 4 + 3 + 1,
-    )
+pub(super) const fn initialization_bootstrap_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        let (bytes, writes) = super::entry::initialization_transfer_layout();
+        (
+            bytes
+                + size_of::<OrdinaryInitialization>()
+                + size_of::<InitializationAttempt>()
+                + 3 * size_of::<InitializationPhase>(),
+            writes + 3 + 4 + 3,
+        )
+    }
 }
 /// One cancellation identity and two source identity/basis comparisons, plus
 /// six fixed phase/slot/stop/optional-binding visits, precede the stopped moves.
-pub(super) fn initialization_qualification_bytes() -> usize {
-    2 * std::mem::size_of::<crate::HtmlParseCancellation>()
-        + 4 * std::mem::size_of::<crate::HtmlSourceId>()
-        + 4 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+pub(super) const fn initialization_qualification_bytes() -> usize {
+    const {
+        2 * std::mem::size_of::<crate::HtmlParseCancellation>()
+            + 4 * std::mem::size_of::<crate::HtmlSourceId>()
+            + 4 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+    }
 }
 
 /// Exact physical transfer layouts are prepaid by the initialization owner.
-/// Four cleared owning options, five detached fields, four request fields and
-/// two joined fields: every terminal move is fixed and needs no new admission.
-pub(super) fn terminal_transfer_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    (
-        size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
-            + size_of::<super::terminal::DetachedStandaloneFailure>()
-            + size_of::<Option<HtmlDocumentParseRequest>>()
-            + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
-            + size_of::<DocumentRequestParts>()
-            + size_of::<OwnedOrdinaryFailure>(),
-        4 + 5 + 4 + 2,
-    )
+/// One cleared owning option (the controller's source binding), five detached
+/// fields, four request fields and two joined fields: every terminal move is
+/// fixed and needs no new admission. The failure moves between the stopped
+/// driver, the cleaned failure and the detached failure by value, so no option
+/// slot is cleared for them.
+pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<crate::parser::tree_builder::terminal::DetachedStandaloneFailure>()
+                + size_of::<DocumentRequestParts>()
+                + size_of::<OwnedOrdinaryFailure>(),
+            1 + 5 + 4 + 2,
+        )
+    }
 }
 /// The terminal join reads two actual Arc identities and coordinate tags, with
 /// two fixed offline-context predicates. Admission precedes the first pull.
-pub(super) fn terminal_qualification_bytes() -> usize {
-    2 * std::mem::size_of::<crate::HtmlParseCancellation>()
-        + 2 * std::mem::size_of::<crate::HtmlSourceId>()
-        + 2 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+pub(super) const fn terminal_qualification_bytes() -> usize {
+    const {
+        2 * std::mem::size_of::<crate::HtmlParseCancellation>()
+            + 2 * std::mem::size_of::<crate::HtmlSourceId>()
+            + 2 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+    }
 }
 
 pub(crate) struct SealedOrdinaryConstruction {
@@ -238,23 +390,49 @@ pub(crate) struct SealedOrdinaryConstruction {
     pub(super) parts: FrozenStandaloneParts,
 }
 impl SealedOrdinaryConstruction {
+    #[cfg(test)]
     /// Both original owning slots survive every admission/qualification error.
     /// No fallible operation follows the two already-admitted moves.
     pub(crate) fn take(
         request: &mut Option<HtmlDocumentParseRequest>,
         parts: &mut Option<FrozenStandaloneParts>,
     ) -> Result<Self, StandaloneError> {
-        let original = request.as_ref().ok_or(StandaloneError::Consumed)?;
-        parts
-            .as_mut()
-            .ok_or(StandaloneError::Consumed)?
-            .prepare_seal(original)?;
+        let original = request.take().ok_or(StandaloneError::Consumed)?;
+        let Some(frozen) = parts.take() else {
+            *request = Some(original);
+            return Err(StandaloneError::Consumed);
+        };
+        match Self::join(original, frozen) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, original, frozen)) => {
+                *request = Some(original);
+                *parts = Some(frozen);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands both owners back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn join(
+        request: HtmlDocumentParseRequest,
+        mut parts: FrozenStandaloneParts,
+    ) -> Result<
+        Self,
+        (
+            StandaloneError,
+            HtmlDocumentParseRequest,
+            FrozenStandaloneParts,
+        ),
+    > {
+        if let Err(error) = parts.prepare_seal(&request) {
+            return Err((error, request, parts));
+        }
         Ok(Self {
-            request: request
-                .take()
-                .expect("qualified original request")
-                .into_parts(),
-            parts: parts.take().expect("admitted immutable construction"),
+            request: request.into_parts(),
+            parts,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -268,7 +446,7 @@ impl SealedOrdinaryConstruction {
         self.request.is_offline()
     }
     #[cfg(test)]
-    pub(crate) fn document(&self) -> Option<&crate::HtmlDocument> {
+    pub(crate) fn document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.parts.immutable_document()
     }
     /// Same fixed committed store, with no controller borrow or new admission.
@@ -280,10 +458,10 @@ impl SealedOrdinaryConstruction {
         self.parts.immutable_evidence()
     }
     #[cfg(test)]
-    pub(crate) fn final_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn final_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.parts.final_usage()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.parts.retained_usage()
     }
     /// Actual fallible disposal remains explicit. A live borrowed/owned native
@@ -301,53 +479,85 @@ pub(crate) struct OwnedOrdinaryFailure {
     failure: super::terminal::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
+    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
+        self.failure.csp_storage_fits(storage)
+    }
+    pub(crate) fn release_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> Result<(), super::super::control::HtmlParseStop> {
         self.failure.release_csp_storage(storage)
     }
     pub(super) fn original_request(&self) -> &DocumentRequestParts {
         &self.request
     }
+    #[cfg(test)]
     pub(crate) fn take(
         request: &mut Option<HtmlDocumentParseRequest>,
         failure: &mut Option<super::terminal::DetachedStandaloneFailure>,
     ) -> Result<Self, StandaloneError> {
-        let original = request.as_ref().ok_or(StandaloneError::Consumed)?;
-        let failed = failure.as_ref().ok_or(StandaloneError::Consumed)?;
-        if original.capture().is_some()
-            || original.document().is_some()
-            || !failed.owns_request(original.cancellation())
-            || &failed.binding.0 != original.source().identity()
-            || failed.binding.1 != original.source().coordinates()
-        {
+        let original = request.take().ok_or(StandaloneError::Consumed)?;
+        let Some(failed) = failure.take() else {
+            *request = Some(original);
             return Err(StandaloneError::Consumed);
+        };
+        match Self::join(original, failed) {
+            Ok(joined) => Ok(joined),
+            Err((error, original, failed)) => {
+                *request = Some(original);
+                *failure = Some(failed);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands both owners back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn join(
+        request: HtmlDocumentParseRequest,
+        failure: super::terminal::DetachedStandaloneFailure,
+    ) -> Result<
+        Self,
+        (
+            StandaloneError,
+            HtmlDocumentParseRequest,
+            super::terminal::DetachedStandaloneFailure,
+        ),
+    > {
+        if request.capture().is_some()
+            || request.document().is_some()
+            || !failure.owns_request(request.cancellation())
+            || &failure.binding.0 != request.source().identity()
+            || failure.binding.1 != request.source().coordinates()
+        {
+            return Err((StandaloneError::Consumed, request, failure));
         }
         // Fixed envelope moves were admitted before the first source pull.
         Ok(Self {
-            request: request
-                .take()
-                .expect("actual original request")
-                .into_parts(),
-            failure: failure.take().expect("qualified cleaned failure"),
+            request: request.into_parts(),
+            failure,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
         self.request.source()
     }
-    pub(crate) fn stop(&self) -> crate::parser::control::ParseStop {
+    pub(crate) fn stop(&self) -> crate::parser::control::HtmlParseStop {
         self.failure.stop()
     }
-    pub(crate) fn at_stop(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.at_stop()
     }
-    pub(crate) fn after_cleanup(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn after_cleanup(&self) -> &crate::parser::control::HtmlParseUsage {
         self.failure.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.failure.retained_usage()
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.failure.diagnostics()
     }
     #[cfg(test)]
@@ -362,6 +572,25 @@ mod tests {
     use crate::parser::tree_builder::{StandaloneDocumentDriver, head::HeadStep};
     use crate::{HtmlParseResource, HtmlSource};
 
+    /// The ordinary terminal transfer listed term by term from what production
+    /// moves, not read from `terminal_transfer_layout`: the controller's source
+    /// binding slot (cleared), the detached failure, the request parts it joins
+    /// and the owned failure, with one write for the cleared slot, five
+    /// detached fields, four request fields and two joined fields.
+    #[test]
+    fn the_lowered_terminal_transfer_charge_is_the_listed_production_terms() {
+        use std::mem::size_of;
+        assert_eq!(
+            terminal_transfer_layout(),
+            (
+                size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                    + size_of::<crate::parser::tree_builder::terminal::DetachedStandaloneFailure>()
+                    + size_of::<DocumentRequestParts>()
+                    + size_of::<OwnedOrdinaryFailure>(),
+                12,
+            )
+        );
+    }
     fn frozen(request: &HtmlDocumentParseRequest) -> FrozenStandaloneParts {
         let mut driver = Some(super::super::entry::initialized_driver(request));
         for _ in 0..4096 {
@@ -418,7 +647,7 @@ mod tests {
         }
         owner
     }
-    fn no_retained_storage(usage: &crate::parser::control::ParseUsage) {
+    fn no_retained_storage(usage: &crate::parser::control::HtmlParseUsage) {
         for resource in crate::settings::RESOURCES {
             if resource.storage() && resource != HtmlParseResource::ManagedNodes {
                 assert_eq!(usage.resource(resource).current, 0, "{resource:?}");
@@ -428,9 +657,42 @@ mod tests {
     }
 
     #[test]
+    fn a_stopped_phase_without_its_failure_reads_as_no_failure_and_the_request_stays() {
+        let mut owner = OrdinaryInitializationOwner::new(request());
+        // Private-state fault injection: the phase names a stopped owner that
+        // the carrier no longer holds.
+        owner.held.as_mut().unwrap().phase = InitializationPhase::Stopped;
+        assert!(owner.failure().is_none());
+        assert_eq!(owner.source_admitted(), None);
+        assert!(owner.at_stop().is_none());
+        assert!(owner.request().is_some());
+    }
+    #[test]
+    fn a_slot_missing_beside_a_present_one_is_not_taken_and_both_stay_in_place() {
+        let mut parts = Some(frozen(&request()));
+        let mut no_request = None;
+        assert!(matches!(
+            SealedOrdinaryConstruction::take(&mut no_request, &mut parts),
+            Err(StandaloneError::Consumed)
+        ));
+        assert!(no_request.is_none() && parts.is_some());
+        let mut original = Some(request());
+        let mut no_parts = None;
+        assert!(matches!(
+            SealedOrdinaryConstruction::take(&mut original, &mut no_parts),
+            Err(StandaloneError::Consumed)
+        ));
+        assert!(original.is_some() && no_parts.is_none());
+        // The frozen parts belong to another request, so the real owner refuses
+        // and keeps both slots.
+        assert!(SealedOrdinaryConstruction::take(&mut original, &mut parts).is_err());
+        assert!(original.is_some() && parts.is_some());
+        parts.as_mut().unwrap().release_sealed().unwrap();
+    }
+    #[test]
     fn owned_cancelled_initialization_retains_exact_source_without_admitted_binding() {
         let request = HtmlDocumentParseRequest::offline(
-            HtmlSource::utf16(crate::DocumentString::from_utf16(vec![
+            HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(vec![
                 0xfeff, 0xd800, 0x41, 0xdc00,
             ])),
             work_limits(0),
@@ -446,7 +708,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::Cancelled
+                crate::parser::control::HtmlParseStop::Cancelled
             ))
         );
         assert_eq!(owner.source_admitted(), Some(false));
@@ -469,7 +731,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     limit: 0,
                     current: 0,
@@ -480,7 +742,7 @@ mod tests {
         assert_eq!(owner.source_admitted(), Some(false));
         let first = owner.at_stop().unwrap().clone();
         assert_eq!(
-            first.work(crate::parser::control::WorkCategory::RecordVisit),
+            first.work(crate::parser::control::HtmlParseWorkCategory::RecordVisit),
             0
         );
         assert_eq!(first.largest_atomic_layout, 0);
@@ -512,24 +774,24 @@ mod tests {
             ));
             let first = owner.at_stop().unwrap().clone();
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::RecordVisit),
+                first.work(crate::parser::control::HtmlParseWorkCategory::RecordVisit),
                 1
             );
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::CopyByte),
+                first.work(crate::parser::control::HtmlParseWorkCategory::CopyByte),
                 0
             );
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
             assert_eq!(owner.source_admitted(), Some(text.is_empty()));
             let expected = if text.is_empty() {
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AtomicLayoutBytes,
                     limit: 0,
                     current: 0,
                     requested_delta: initialization_bootstrap_layout().0 as u64,
                 }
             } else {
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::SourceUnits,
                     limit: 0,
                     current: 0,
@@ -563,7 +825,7 @@ mod tests {
             assert_eq!(
                 owner.failure(),
                 Some(super::super::entry::InitializationFailure::Stopped(
-                    crate::parser::control::ParseStop::LimitExceeded {
+                    crate::parser::control::HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         limit: cap,
                         current: 1 + copied,
@@ -574,11 +836,11 @@ mod tests {
             assert_eq!(owner.source_admitted(), Some(true));
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 1);
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::CopyByte),
+                first.work(crate::parser::control::HtmlParseWorkCategory::CopyByte),
                 copied
             );
             assert_eq!(
-                first.work(crate::parser::control::WorkCategory::RecordWrite),
+                first.work(crate::parser::control::HtmlParseWorkCategory::RecordWrite),
                 0
             );
             assert_eq!(first.largest_atomic_layout, bytes as u64);
@@ -605,7 +867,7 @@ mod tests {
         assert_eq!(
             owner.failure(),
             Some(super::super::entry::InitializationFailure::Stopped(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::AuxiliaryEntries,
                     limit: 2,
                     current: 2,
@@ -649,7 +911,7 @@ mod tests {
             assert!(matches!(
                 attempt.take_driver(),
                 Err(StandaloneError::Stop(
-                    crate::parser::control::ParseStop::Cancelled
+                    crate::parser::control::HtmlParseStop::Cancelled
                 ))
             ));
             first = attempt.at_stop().unwrap().clone();
@@ -706,7 +968,7 @@ mod tests {
         );
         let document = builder
             .add_document(
-                crate::HtmlDocumentMode::Quirks,
+                surgeist_html::construction::HtmlDocumentMode::Quirks,
                 crate::HtmlScriptingStatus::Disabled,
                 crate::HtmlCaptureRegistryInput::Null,
             )
@@ -818,7 +1080,7 @@ mod tests {
                         assert!(matches!(
                             attempt.failure(),
                             Some(super::super::entry::InitializationFailure::Stopped(
-                                crate::parser::control::ParseStop::LimitExceeded {
+                                crate::parser::control::HtmlParseStop::LimitExceeded {
                                     resource: HtmlParseResource::WorkCredits,
                                     ..
                                 }
@@ -845,17 +1107,17 @@ mod tests {
             }
         }
     }
-    fn owner_failure_stop(first: &crate::parser::control::ParseUsage) -> u64 {
-        use crate::parser::control::WorkCategory;
+    fn owner_failure_stop(first: &crate::parser::control::HtmlParseUsage) -> u64 {
+        use crate::parser::control::HtmlParseWorkCategory;
         [
-            WorkCategory::InputUnitRead,
-            WorkCategory::InspectByte,
-            WorkCategory::CopyByte,
-            WorkCategory::StateStep,
-            WorkCategory::RecordVisit,
-            WorkCategory::RecordWrite,
-            WorkCategory::ReserveByte,
-            WorkCategory::ProviderCall,
+            HtmlParseWorkCategory::InputUnitRead,
+            HtmlParseWorkCategory::InspectByte,
+            HtmlParseWorkCategory::CopyByte,
+            HtmlParseWorkCategory::StateStep,
+            HtmlParseWorkCategory::RecordVisit,
+            HtmlParseWorkCategory::RecordWrite,
+            HtmlParseWorkCategory::ReserveByte,
+            HtmlParseWorkCategory::ProviderCall,
         ]
         .into_iter()
         .map(|category| first.work(category))
@@ -870,14 +1132,12 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current;
         let bytes = std::mem::size_of::<SealedOrdinaryConstruction>()
-            + std::mem::size_of::<Option<FrozenStandaloneParts>>()
-            + std::mem::size_of::<Option<HtmlDocumentParseRequest>>()
             + std::mem::size_of::<DocumentRequestParts>()
-            + std::mem::size_of::<crate::parser::control::ParseUsage>();
+            + std::mem::size_of::<crate::parser::control::HtmlParseUsage>();
         measured.release().unwrap();
         let mut request = Some(HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><p>A&amp;B"),
-            work_limits(before + bytes as u64 + 1 + 5 + 9 - 1),
+            work_limits(before + bytes as u64 + 1 + 5 + 7 - 1),
         ));
         let mut parts = Some(frozen(request.as_ref().unwrap()));
         assert_eq!(
@@ -892,9 +1152,9 @@ mod tests {
         assert!(matches!(
             SealedOrdinaryConstruction::take(&mut request, &mut parts),
             Err(StandaloneError::Stop(
-                crate::parser::control::ParseStop::LimitExceeded {
+                crate::parser::control::HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
-                    requested_delta: 9,
+                    requested_delta: 7,
                     ..
                 }
             ))
@@ -927,10 +1187,10 @@ mod tests {
         assert!(sealed.is_offline());
         assert_eq!(sealed.limits(), &super::super::tests::limits(100));
         let tree = sealed.document().unwrap();
-        let element = |parent: crate::HtmlNode<'_>, name: &str| {
+        let element = |parent: surgeist_html::construction::HtmlNode<'_>, name: &str| {
             parent.children().find_map(|id| {
                 let node = tree.node(&id).unwrap();
-                matches!(node.kind(), crate::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == name.encode_utf16().collect::<Vec<_>>()).then_some(node)
+                matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == name.encode_utf16().collect::<Vec<_>>()).then_some(node)
             }).expect("literal native element")
         };
         let html = element(tree.root(), "html");
@@ -938,7 +1198,7 @@ mod tests {
         let p = element(body, "p");
         let text = tree.node(&p.children().next().unwrap()).unwrap();
         assert!(
-            matches!(text.kind(), crate::HtmlNodeKind::Text(value) if value.code_units() == [65, 38, 66])
+            matches!(text.kind(), surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units() == [65, 38, 66])
         );
         let before = sealed.retained_usage().clone();
         let evidence = sealed.evidence().unwrap() as *const _;
@@ -1048,7 +1308,7 @@ mod tests {
         assert!(parts.is_none());
         let mut owned = OwnedOrdinaryFailure::take(&mut request, &mut failure).unwrap();
         assert_eq!(owned.source().identity(), &source);
-        assert_eq!(owned.at_stop(), &first);
+        assert_eq!(owned.at_stop(), Some(&first));
         assert_eq!(
             owned
                 .retained_usage()
@@ -1057,7 +1317,7 @@ mod tests {
             first.resource(HtmlParseResource::ManagedNodes).current
         );
         owned.release().unwrap();
-        assert_eq!(owned.at_stop(), &first);
+        assert_eq!(owned.at_stop(), Some(&first));
         assert_eq!(
             owned
                 .retained_usage()
@@ -1113,7 +1373,7 @@ mod tests {
         ));
         let identity = request.as_ref().unwrap().source().identity().clone();
         let mut failure = Some(stopped(request.as_ref().unwrap()));
-        let at_stop = failure.as_ref().unwrap().at_stop().clone();
+        let at_stop = failure.as_ref().unwrap().at_stop().cloned();
         let cleaned = failure.as_ref().unwrap().after_cleanup().clone();
         let retained = failure.as_ref().unwrap().retained_usage().clone();
         let records = failure.as_ref().unwrap().diagnostics().unwrap().len();
@@ -1121,13 +1381,16 @@ mod tests {
         let mut owned = OwnedOrdinaryFailure::take(&mut request, &mut failure).unwrap();
         assert!(request.is_none() && failure.is_none());
         assert_eq!(owned.source().identity(), &identity);
-        assert_eq!(owned.stop(), crate::parser::control::ParseStop::Cancelled);
-        assert_eq!(owned.at_stop(), &at_stop);
+        assert_eq!(
+            owned.stop(),
+            crate::parser::control::HtmlParseStop::Cancelled
+        );
+        assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
         assert_eq!(owned.retained_usage(), &retained);
         assert_eq!(owned.diagnostics().unwrap().len(), records);
         owned.release().unwrap();
-        assert_eq!(owned.at_stop(), &at_stop);
+        assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
         assert_eq!(
             owned

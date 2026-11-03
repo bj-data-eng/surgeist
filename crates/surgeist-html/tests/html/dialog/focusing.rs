@@ -1,10 +1,10 @@
 //! Literal independent HTML877d Dialog focusing traces, raw46762–46782.
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction, HtmlDialogCursor, HtmlDialogFocusControl as Control,
     HtmlDialogFocusingAction as A, HtmlDialogFocusingCursor as Cursor,
-    HtmlDialogFocusingError as Error, HtmlDialogFocusingReply as R, HtmlDialogOperation,
-    HtmlDialogReply, HtmlDialogSubjectFocusFacts as Facts,
-    HtmlDialogSubjectFocusingDecision as Decision, dialog_subject_focusing_decision,
+    HtmlDialogFocusingReply as R, HtmlDialogOperation, HtmlDialogReply,
+    HtmlDialogSubjectFocusFacts as Facts, HtmlDialogSubjectFocusingDecision as Decision,
+    dialog_subject_focusing_decision,
 };
 
 fn step(c: &mut Cursor, action: A, reply: R) {
@@ -15,7 +15,7 @@ fn step(c: &mut Cursor, action: A, reply: R) {
     } else {
         R::AllowFocus(false)
     };
-    assert_eq!(c.reply(wrong), Err(Error::WrongReply));
+    assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     c.reply(reply).unwrap();
 }
@@ -23,7 +23,7 @@ fn complete(c: &mut Cursor) {
     assert_eq!(c.action(), A::Complete);
     let before = *c;
     for reply in [R::Applied, R::AllowFocus(true), R::SameOrigin(false)] {
-        assert_eq!(c.reply(reply), Err(Error::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -78,7 +78,7 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     ] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::ReadAllowFocus, R::AllowFocus(true));
@@ -88,13 +88,13 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     ] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::ReadAutofocus, R::Autofocus(false));
     for reply in [R::Autofocus(true), R::SameOrigin(true), R::Applied] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::FindFocusDelegate, R::FocusDelegatePresent(true));
@@ -113,7 +113,7 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     );
     let before = c;
-    assert_eq!(c.reply(R::Applied), Err(Error::WrongReply));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, before);
     step(
         &mut c,
@@ -189,9 +189,9 @@ fn subject_called_focusing_no_change_does_not_skip_dialog_autofocus_tail_or_comp
     parent.reply(HtmlDialogReply::Open(false)).unwrap();
     for action in [
         HtmlDialogAction::QueueToggle {
-            old: surgeist_html::HtmlDialogState::Closed,
-            new: surgeist_html::HtmlDialogState::Open,
-            source: surgeist_html::HtmlDialogEventSource::Null,
+            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+            new: surgeist_html::elements::dialog::HtmlDialogState::Open,
+            source: surgeist_html::elements::dialog::HtmlDialogEventSource::Null,
         },
         HtmlDialogAction::AddOpen,
         HtmlDialogAction::RememberFocusedElement,
@@ -251,6 +251,6 @@ fn subject_called_focusing_no_change_does_not_skip_dialog_autofocus_tail_or_comp
     parent.reply(HtmlDialogReply::Applied).unwrap();
     assert_eq!(
         parent.action(),
-        HtmlDialogAction::Complete(surgeist_html::HtmlDialogOutcome::Completed)
+        HtmlDialogAction::Complete(surgeist_html::elements::dialog::HtmlDialogOutcome::Completed)
     );
 }

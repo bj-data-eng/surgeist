@@ -1609,26 +1609,8 @@ where
         intrinsic_contribution_margin(child_style, containing_flow_axes, constants.node_inner_size)
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
     let used_overflow = grid_axis_used_overflow(child_style, containing_flow_axes, axis);
-    let min_output_size = lane_axis_size(containing_flow_axes.logical_size(min_output.size), axis);
-    let min_content_size = lane_axis_size(
-        containing_flow_axes.logical_size(min_output.content_size),
-        axis,
-    );
-    let max_output_size = lane_axis_size(containing_flow_axes.logical_size(max_output.size), axis);
-    let max_content_size = lane_axis_size(
-        containing_flow_axes.logical_size(max_output.content_size),
-        axis,
-    );
-    let min_contribution = if used_overflow.value() == Overflow::Visible {
-        min_output_size.max(min_content_size)
-    } else {
-        min_output_size
-    };
-    let max_contribution = if used_overflow.value() == Overflow::Visible {
-        max_output_size.max(max_content_size)
-    } else {
-        max_output_size
-    };
+    let min_contribution = lane_axis_size(containing_flow_axes.logical_size(min_output.size), axis);
+    let max_contribution = lane_axis_size(containing_flow_axes.logical_size(max_output.size), axis);
     let padding = containing_flow_axes
         .zip_physical_edges_with_inline_extent(
             child_style.padding,
@@ -1751,10 +1733,11 @@ where
             .into_iter()
             .enumerate()
         {
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden_in_containing_pass(
@@ -1917,10 +1900,11 @@ where
     {
         let child_style = placements.item_input(source_index).clone();
         if child_style.display == Display::None {
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden(crate::ContainingLayoutContext::new(
@@ -2247,26 +2231,25 @@ where
         } else {
             grid_area_track_offset(&row_offsets, 0, 1)
         };
-        let logical_location = match lane_axis.logical_axis() {
+        let normal_logical_location = match lane_axis.logical_axis() {
             LogicalAxis::Inline => LogicalPointOf::new(
-                selected_inline_lane_offset
-                    + lane_offset
-                    + item.horizontal_axis.offset
-                    + item.logical_relative_offset.inline,
-                selected_block_track_offset
-                    + item.vertical_axis.offset
-                    + item.logical_relative_offset.block,
+                selected_inline_lane_offset + lane_offset + item.horizontal_axis.offset,
+                selected_block_track_offset + item.vertical_axis.offset,
             ),
             LogicalAxis::Block => LogicalPointOf::new(
-                grid_area_inline_offset(&column_offsets, item.area)
-                    + item.horizontal_axis.offset
-                    + item.logical_relative_offset.inline,
-                lane_axis_alignment_start
-                    + lane_offset
-                    + item.vertical_axis.offset
-                    + item.logical_relative_offset.block,
+                grid_area_inline_offset(&column_offsets, item.area) + item.horizontal_axis.offset,
+                lane_axis_alignment_start + lane_offset + item.vertical_axis.offset,
             ),
         };
+        let normal_location = flow_axes.physical_point(
+            normal_logical_location,
+            flow_axes.logical_size(item.output.size),
+            containing_size,
+        );
+        let logical_location = LogicalPointOf::new(
+            normal_logical_location.inline + item.logical_relative_offset.inline,
+            normal_logical_location.block + item.logical_relative_offset.block,
+        );
         let location = flow_axes.physical_point(
             logical_location,
             flow_axes.logical_size(item.output.size),
@@ -2275,24 +2258,20 @@ where
         let baseline_location = match lane_axis.logical_axis() {
             LogicalAxis::Inline => flow_axes.physical_point(
                 LogicalPointOf::new(
-                    lane_axis_alignment_start
-                        + lane_offset
-                        + item.horizontal_axis.offset
-                        + item.logical_relative_offset.inline,
+                    lane_axis_alignment_start + lane_offset + item.horizontal_axis.offset,
                     grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end)
-                        + item.vertical_axis.offset
-                        + item.logical_relative_offset.block,
+                        + item.vertical_axis.offset,
                 ),
                 flow_axes.logical_size(item.output.size),
                 containing_size,
             ),
-            LogicalAxis::Block => location,
+            LogicalAxis::Block => normal_location,
         };
         let area_origin = LogicalPointOf::new(
             grid_area_inline_offset(&column_offsets, item.area),
             grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end),
         );
-        item.block_offset = logical_location.block - area_origin.block;
+        item.block_offset = normal_logical_location.block - area_origin.block;
         item.location = baseline_location;
         let scroll_geometry = item
             .output
@@ -2316,8 +2295,13 @@ where
             overflow: item.overflow,
             in_flow: true,
         });
-        tree.set_unrounded(
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
+            crate::output::NormalGeometryOf::box_geometry(
+                normal_location,
+                item.output.size,
+                scroll_geometry.content_box(),
+            ),
             NodeOutputOf {
                 source_index: crate::SourceIndex::new(item.source_index),
                 location,
@@ -2329,7 +2313,7 @@ where
                 padding: item.padding,
                 margin: item.margin,
             },
-        );
+        ));
     }
     let baseline_groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup::default(); rows.len()],

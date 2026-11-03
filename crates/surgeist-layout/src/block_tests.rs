@@ -27,8 +27,13 @@ mod floats_bfcs;
 mod in_flow_margins;
 #[path = "block_tests/inline_runs_tests.rs"]
 mod inline_runs;
+#[path = "block_tests/relative_flow_tests.rs"]
+mod relative_flow;
 #[path = "block_tests/sizing_scroll_tests.rs"]
 mod sizing_scroll;
 
 #[path = "block_tests/balance_provider_tests.rs"]
 mod balance_provider;
+
+#[path = "block_tests/scroll_terminal_tests.rs"]
+mod scroll_terminal;

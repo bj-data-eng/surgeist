@@ -1,10 +1,9 @@
 //! Independent literal algorithm traces from HTML877d raw60113–60159.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
-    HtmlAutofocusDelegateError as AE, HtmlAutofocusDelegateOutcome as AO,
-    HtmlAutofocusDelegateReply as AR, HtmlFocusDelegateAction as A,
-    HtmlFocusDelegateCandidate as Candidate, HtmlFocusDelegateCursor as C,
-    HtmlFocusDelegateError as E, HtmlFocusDelegateOutcome as O, HtmlFocusDelegateReply as R,
+    HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,
+    HtmlFocusDelegateAction as A, HtmlFocusDelegateCandidate as Candidate,
+    HtmlFocusDelegateCursor as C, HtmlFocusDelegateOutcome as O, HtmlFocusDelegateReply as R,
     HtmlFocusDelegateRoot as Root, HtmlFocusDelegateShadowRoot as Shadow,
     HtmlFocusDelegateTargetKind as Kind, HtmlFocusTriggerKind as Trigger,
 };
@@ -43,7 +42,7 @@ fn step(c: &mut C, action: A, reply: R) {
     for wrong in REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
             let before = *c;
-            assert_eq!(c.reply(wrong), Err(E::WrongReply));
+            assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(*c, before);
         }
     }
@@ -54,7 +53,7 @@ fn auto_step(c: &mut AC, action: AA, reply: AR) {
     for wrong in AUTO_REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
             let before = *c;
-            assert_eq!(c.reply(wrong), Err(AE::WrongReply));
+            assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(*c, before);
         }
     }
@@ -64,7 +63,7 @@ fn complete(c: &mut C, outcome: O) {
     assert_eq!(c.action(), A::Complete(outcome));
     for reply in REPLIES {
         let before = *c;
-        assert_eq!(c.reply(reply), Err(E::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -72,7 +71,7 @@ fn auto_complete(c: &mut AC, outcome: AO) {
     assert_eq!(c.action(), AA::Complete(outcome));
     for reply in AUTO_REPLIES {
         let before = *c;
-        assert_eq!(c.reply(reply), Err(AE::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -295,7 +294,7 @@ fn called_resolution_wait_retains_exact_caller_until_authentic_nested_result() {
     assert_eq!(caller, waiting);
     // Neither nested dispatch nor a general Applied receipt is the called
     // resolution's actual nullable return.
-    assert_eq!(caller.reply(R::Applied), Err(E::WrongReply));
+    assert!(matches!(caller.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(caller, waiting);
     step(
         &mut caller,

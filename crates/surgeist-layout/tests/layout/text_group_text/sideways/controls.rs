@@ -123,7 +123,7 @@ fn endpoints<S: l::LayoutScalar>() {
     assert_eq!(line.feedback().advance, 15.0);
     assert_eq!(
         line.control_slots()
-            .map(|slot| (slot.control(), slot.inline_bounds(), slot.level().get()))
+            .map(|slot| (slot.control(), slot.strip_interval(), slot.level().get()))
             .collect::<Vec<_>>(),
         [
             (p.binding.controls[0].occurrence.clone(), (0.0, 2.0), 0),

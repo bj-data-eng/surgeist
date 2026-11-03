@@ -5,9 +5,10 @@ use std::time::{Duration, Instant};
 
 use crate::store::value_sharing::fixture::{Layers, control};
 use crate::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
-    DomNodeKind, DomSnapshot, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits, DomNodeKind,
+    DomSnapshot, NodeId,
 };
+use surgeist_html::values::DocumentString;
 
 mod selected;
 

@@ -2,10 +2,11 @@
 //! A/Area history and Meta refresh consume the same qualified bank. No URL parser,
 //! CSP selection, navigable, resource effect or second URL identity is created.
 use crate::{
-    DocumentString, HtmlBaseEncoding, HtmlBaseFactsError, HtmlBaseFactsLimits,
-    HtmlBaseFactsRevision, HtmlBaseFactsUsage, HtmlBaseRetainedStorageUsage, HtmlBaseUrlRecord,
+    HtmlBaseEncoding, HtmlBaseFactsError, HtmlBaseFactsLimits, HtmlBaseFactsRevision,
+    HtmlBaseFactsUsage, HtmlBaseRetainedStorageUsage, HtmlBaseUrlRecord,
 };
 use std::{error::Error, fmt, sync::Arc};
+use surgeist_html::values::DocumentString;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlEncodingUrlParseOutcome {

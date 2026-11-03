@@ -238,7 +238,7 @@ fn conditional_identity_retains_box_alignment_without_freezing_candidate_geometr
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(frame),
+                crate::ConditionalLineContext::Finalized(frame),
             )
             .unwrap()
     };

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use surgeist_html::HtmlNewlineNormalizer;
+use surgeist_html::values::HtmlNewlineNormalizer;
 
 fn normalize(input: &[u16]) -> Vec<u16> {
     let mut normalizer = HtmlNewlineNormalizer::new();

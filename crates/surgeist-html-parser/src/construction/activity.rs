@@ -17,13 +17,13 @@ impl SessionStorage {
         match document {
             DocumentRef::Owned(document) => {
                 let slot = self.document_slot(c, document)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if matches!(
-                    self.payloads.values[slot],
-                    RetainedPayload::Document {
+                    self.payloads.values.get(slot),
+                    Some(RetainedPayload::Document {
                         state: template::DocumentState::InertTemplate,
                         ..
-                    }
+                    })
                 ) {
                     // The actual template-owner constructor creates this
                     // independent Document without a navigable or host ingress.
@@ -36,13 +36,13 @@ impl SessionStorage {
                     }
                     Err(error) => return Err(error),
                 };
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 // This original closed constructor issues the fresh ordinary
                 // parser Document, including the distinct §13.4 auxiliary
                 // Document. Its completion record cannot qualify another owner.
-                Ok(match self.payloads.values[completion] {
+                Ok(match self.payloads.row(c, completion)? {
                     RetainedPayload::StandaloneDocumentCompletion { node, .. }
-                        if node == document =>
+                        if *node == document =>
                     {
                         Some(false)
                     }
@@ -50,7 +50,7 @@ impl SessionStorage {
                 })
             }
             DocumentRef::Captured(document) => {
-                c.charge(WorkCategory::RecordVisit, 3)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                 let capture = self
                     .fragment
                     .as_ref()
@@ -66,9 +66,13 @@ impl SessionStorage {
                 // HTML #fully-active and #nav-bc: an absent actual browsing
                 // context rules out activity. Present does not establish it.
                 Ok(match facts.nonce_environment().browsing_context() {
-                    surgeist_html::HtmlBrowsingContextPresence::Absent => Some(false),
-                    surgeist_html::HtmlBrowsingContextPresence::Present
-                    | surgeist_html::HtmlBrowsingContextPresence::Unavailable => None,
+                    surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent => {
+                        Some(false)
+                    }
+                    surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
+                    | surgeist_html::security::nonce::HtmlBrowsingContextPresence::Unavailable => {
+                        None
+                    }
                 })
             }
         }

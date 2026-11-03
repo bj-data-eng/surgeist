@@ -1,6 +1,8 @@
 use surgeist_html::{
-    DocumentString, HtmlInputColorValueSource, input_color_standard_failure_fallback,
-    input_color_value_source,
+    elements::input::{
+        HtmlInputColorValueSource, input_color_standard_failure_fallback, input_color_value_source,
+    },
+    values::DocumentString,
 };
 
 #[test]

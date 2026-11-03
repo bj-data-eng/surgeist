@@ -99,7 +99,7 @@ impl<S: LayoutScalar> NumericTree<S> {
     fn boundary(&mut self, kind: InlineBoundaryKind, actual: LineBoxStrut) -> usize {
         let node = self.inputs.len();
         self.inputs.push(LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::new(
+            InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,
@@ -109,6 +109,7 @@ impl<S: LayoutScalar> NumericTree<S> {
                 .unwrap(),
                 InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_vertical_align(vertical::<S>(actual.alignment)),
         ));
         self.children.push(node);
@@ -157,6 +158,8 @@ impl<S: LayoutScalar> NumericTree<S> {
             0,
             vec![],
             WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: self.scopes.clone(),
                 child_order: vec![],
             },
@@ -298,3 +301,6 @@ fn numeric_fragmented_boxes_retain_baseline_top_and_bottom_groups_without_local_
     fragmented_mixed_groups::<f32>();
     fragmented_mixed_groups::<f64>();
 }
+
+#[path = "numeric_box_metrics/signed_empty.rs"]
+mod signed_empty;

@@ -41,6 +41,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
         .handle();
     let line = p
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),

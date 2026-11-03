@@ -69,6 +69,8 @@ fn batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -226,6 +228,8 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
         0,
         vec![prepared.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -288,6 +292,8 @@ fn intrinsic_with_indent(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -307,6 +313,7 @@ fn intrinsic_with_indent(
         super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
@@ -327,8 +334,16 @@ fn intrinsic_with_indent(
                 },
             ),
             frame: super::super::run::Frame::Canonical {
-                origin: Point::ZERO,
-                size: Size::new(width, 10.0),
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size: Size::new(width, 10.0),
+                    content_insets: crate::Edges::ZERO,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size: Size::new(width, 10.0),
+                    content_insets: crate::Edges::ZERO,
+                },
             },
             containing_size: Size::new(width, 10.0),
             content_insets: crate::Edges::ZERO,
@@ -497,6 +512,8 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

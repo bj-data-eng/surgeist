@@ -245,7 +245,27 @@ fn execute(
         collapse_edges_accounted(selected.presentation_input(), &mut shaped, &mut ledger)?;
     let levels = item_levels_accounted(&selected.presentation, &shaped, &mut ledger)?;
     let base = selected.presentation.analysis.base_level;
-    let ordered = &selected.basis.order;
+    let owned_boxed_execution = if selected.basis.inline_boxes.is_none() {
+        crate::protocol::inline_box::execution::build(
+            &selected,
+            &shaped,
+            &selected.basis.order,
+            &mut ledger,
+        )?
+    } else {
+        None
+    };
+    let boxed_execution = selected
+        .basis
+        .inline_boxes
+        .as_ref()
+        .and_then(|p| p.execution.as_ref())
+        .or(owned_boxed_execution.as_ref());
+    let ordered = boxed_execution
+        .as_ref()
+        .map_or(selected.basis.order.as_slice(), |plan| {
+            plan.order.as_slice()
+        });
     let participants = account::try_collect(
         &mut ledger,
         levels.iter().map(|&level| {
@@ -429,7 +449,10 @@ fn execute(
         &selected,
         &shaped,
         &atomics,
-        &order,
+        phase_two::MeasurementOrder {
+            order: &order,
+            box_edges: boxed_execution,
+        },
         natural,
         &mut metrics,
         &mut ledger,
@@ -477,7 +500,14 @@ fn execute(
                             .map(|_| {
                                 scoped_reference(
                                     metrics.baseline,
-                                    scopes.displacement(selected.scopes.cluster_owners[index]),
+                                    scopes.displacement(
+                                        selected
+                                            .scopes
+                                            .cluster_owners
+                                            .get(index)
+                                            .copied()
+                                            .flatten(),
+                                    ),
                                 )
                             })
                             .transpose()?,
@@ -524,8 +554,13 @@ fn execute(
         &shaped,
         &dispositions,
         &order,
-        &groups,
-        &atom_groups,
+        SharedEndpointGroups {
+            ranges: &groups,
+            atom_groups: &atom_groups,
+        },
+        boxed_execution
+            .as_ref()
+            .map(|plan| plan.boxed_units.as_slice()),
         &mut ledger,
     )?;
     let mut internal_edges = account::filled(&mut ledger, groups.len(), 0.0)?;
@@ -555,18 +590,20 @@ fn execute(
                 last_run = None;
             }
             ShapedItem::Anchor { unit, .. } => {
-                let advance =
-                    crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                let inline_end = add(
-                    "inline boundary end",
-                    TextNumericPhase::Finalization,
-                    pen,
-                    advance,
-                )?;
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                let advance = boundary.advance();
+                let executed = boundary.execute(pen, TextNumericPhase::Finalization)?;
+                let inline_end = executed.flow.1;
+                let component_edge = boundary
+                    .allocation()
+                    .is_some_and(|edge| edge.box_components().is_some());
                 let endpoint_offset = endpoint_offsets
                     .as_ref()
                     .and_then(|geometry| geometry.offsets[unit]);
-                let slot = if let Some(offset) = endpoint_offset {
+                let slot = if component_edge {
+                    executed.strip.0
+                } else if let Some(offset) = endpoint_offset {
                     add(
                         "shared unit endpoint origin",
                         TextNumericPhase::Finalization,
@@ -576,7 +613,9 @@ fn execute(
                 } else {
                     pen
                 };
-                let slot_end = if endpoint_offset.is_some() {
+                let slot_end = if component_edge {
+                    executed.strip.1
+                } else if endpoint_offset.is_some() {
                     add(
                         "shared unit endpoint end",
                         TextNumericPhase::Finalization,
@@ -588,9 +627,12 @@ fn execute(
                 };
                 let cut = selected.presentation.units[unit].atoms.start;
                 let group = groups.partition_point(|group| group.end <= cut);
-                if groups
-                    .get(group)
-                    .is_some_and(|group| group.start < cut && cut < group.end)
+                if !boxed_execution
+                    .as_ref()
+                    .is_some_and(|plan| plan.boxed_units[unit])
+                    && groups
+                        .get(group)
+                        .is_some_and(|group| group.start < cut && cut < group.end)
                 {
                     internal_edges[group] = add(
                         "shared unit boundary advance",
@@ -628,7 +670,17 @@ fn execute(
                         unit,
                         slot: Point::new(slot, slot_y),
                         level,
-                        inline_end: slot_end,
+                        geometry: if component_edge {
+                            AnchorGeometry::BoxEdge {
+                                flow_start: executed.flow.0,
+                                flow_end: executed.flow.1,
+                                strip_end: slot_end,
+                            }
+                        } else {
+                            AnchorGeometry::Ordinary {
+                                inline_end: slot_end,
+                            }
+                        },
                     },
                 )?;
                 pen = inline_end;
@@ -638,7 +690,7 @@ fn execute(
                     .get(&occurrence)
                     .copied()
                     .ok_or_else(|| invalid("selected atomic has no admitted allocation"))?;
-                let (flow, geometry, alignment) = inflow_allocation(allocation)?;
+                let (flow, geometry, alignment, fit) = inflow_allocation(allocation)?;
                 let delta = atomic_scope_displacement(
                     &selected,
                     &scopes,
@@ -733,9 +785,10 @@ fn execute(
                         following_gap: shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0),
                         geometry: FinalizedBoxGeometry::InFlow {
                             flow,
+                            fit,
                             alignment,
                             box_geometry: geometry,
-                            rect,
+                            border_origin: rect.origin,
                         },
                     },
                 )?;
@@ -840,7 +893,14 @@ fn execute(
                             .map(|_| {
                                 scoped_reference(
                                     metrics.baseline,
-                                    scopes.displacement(selected.scopes.glyph_owners[glyph_index]),
+                                    scopes.displacement(
+                                        selected
+                                            .scopes
+                                            .glyph_owners
+                                            .get(glyph_index)
+                                            .copied()
+                                            .flatten(),
+                                    ),
                                 )
                             })
                             .transpose()?;
@@ -1231,7 +1291,7 @@ fn execute(
         let unit = &selected.presentation.units[anchor.unit];
         let rect = data.cell_rect(
             anchor.slot.x,
-            crate::protocol::boundary::advance(selected.presentation_input(), anchor.unit),
+            anchor.strip_interval().1 - anchor.strip_interval().0,
             anchor.reference,
         );
         use crate::protocol::{paragraph::FragmentOwner, prepared::PresentationUnitKind};
@@ -1298,7 +1358,7 @@ fn execute(
             }
             FinalizedVisualItem::Anchor(index) => {
                 let item = &data.anchors[index];
-                (item.slot.x, item.inline_end)
+                item.strip_interval()
             }
             FinalizedVisualItem::InlineBox(index) => {
                 let item = &data.boxes[index];
@@ -1387,6 +1447,10 @@ fn execute(
     if let Some(geometry) = endpoint_offsets {
         account::drop_vec(&mut ledger, geometry.offsets)?;
         account::drop_vec(&mut ledger, geometry.leading)?;
+    }
+    if let Some(plan) = owned_boxed_execution {
+        account::drop_vec(&mut ledger, plan.order)?;
+        account::drop_vec(&mut ledger, plan.boxed_units)?;
     }
     account::drop_vec(&mut ledger, character_order)?;
     account::drop_vec(&mut ledger, word_halves)?;
@@ -1765,6 +1829,12 @@ struct SharedEndpointGeometry {
     leading: Vec<f64>,
 }
 
+/// Closed units and the corresponding atom-to-unit index from the same pass.
+struct SharedEndpointGroups<'a> {
+    ranges: &'a [std::ops::Range<usize>],
+    atom_groups: &'a [usize],
+}
+
 // Physical endpoints inside a shared unit retain their exact event order, but
 // their numeric intervals surround its complete text contribution rather than
 // its artificial component/caret shares. The flow pen consumes every item once.
@@ -1773,15 +1843,22 @@ fn shared_endpoint_offsets(
     shaped: &ShapedData,
     dispositions: &[SpacingSlotDisposition],
     order: &crate::SuppliedVisualOrder<'_, '_>,
-    groups: &[std::ops::Range<usize>],
-    atom_groups: &[usize],
+    groups: SharedEndpointGroups<'_>,
+    boxed_units: Option<&[bool]>,
     ledger: &mut Ledger,
 ) -> Result<Option<SharedEndpointGeometry>> {
+    let SharedEndpointGroups {
+        ranges: groups,
+        atom_groups,
+    } = groups;
     account::work(ledger, shaped.items.len())?;
     let mut endpoints = shaped.items.iter().filter_map(|item| {
         let ShapedItem::Anchor { unit } = *item else {
             return None;
         };
+        if boxed_units.is_some_and(|units| units[unit]) {
+            return None;
+        }
         let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
             selected.presentation.units[unit].kind
         else {
@@ -1998,13 +2075,15 @@ fn inflow_allocation(
     crate::protocol::AtomicFlowAllocation,
     crate::protocol::AtomicBoxAllocation,
     LineBoxAlignment,
+    crate::AtomicFitAllocation,
 )> {
     match allocation.allocation {
         crate::protocol::AtomicLineAllocation::InFlow {
             flow,
             box_geometry,
             alignment,
-        } => Ok((flow, box_geometry, alignment)),
+            fit,
+        } => Ok((flow, box_geometry, alignment, fit)),
         crate::protocol::AtomicLineAllocation::OutOfFlow => {
             Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
                 occurrence: allocation.occurrence.index,
@@ -2080,9 +2159,12 @@ fn install_out_of_flow(
     }
     for anchor in &data.anchors {
         slots[anchor.unit] = Some(if anchor.level & 1 == 0 {
-            (anchor.slot.x, anchor.inline_end)
+            anchor.flow_interval()
         } else {
-            (anchor.inline_end, anchor.slot.x)
+            {
+                let (start, end) = anchor.flow_interval();
+                (end, start)
+            }
         });
     }
     for item in &data.boxes {
@@ -2830,7 +2912,7 @@ fn native_metrics_scoped(
     }
     for item in &shaped.items {
         if let ShapedItem::InlineBox { occurrence, .. } = *item {
-            let (flow, _, alignment) = inflow_allocation(
+            let (flow, _, alignment, _) = inflow_allocation(
                 atomics
                     .get(&occurrence)
                     .copied()
@@ -2995,7 +3077,10 @@ fn classify_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
+                if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                    .allocation()
+                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                {
                     break;
                 }
                 continue;
@@ -3753,9 +3838,11 @@ mod tests {
                     occurrence: view.handle(),
                     allocation: if inflow {
                         AtomicLineAllocation::InFlow {
+                            fit: crate::AtomicFitAllocation::NativeOccupied,
                             alignment: LineBoxAlignment::Baseline,
                             flow: AtomicFlowAllocation {
                                 advance: 5.0,
+                                normal_border_inline_size: 5.0,
                                 before_baseline: 8.0,
                                 after_baseline: 2.0,
                                 occupied_start: 0.0,
@@ -3783,7 +3870,7 @@ mod tests {
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -3791,6 +3878,7 @@ mod tests {
             .collect();
         prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -3953,6 +4041,7 @@ mod tests {
                 flow,
                 box_geometry,
                 alignment: actual,
+                ..
             } = &mut request.atomics[0].allocation
             else {
                 panic!("the actual captured box is in-flow")
@@ -4192,6 +4281,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -4203,10 +4293,12 @@ mod tests {
                 atomics: vec![AtomicAllocation {
                     occurrence: occurrence.clone(),
                     allocation: AtomicLineAllocation::InFlow {
+                        fit: crate::AtomicFitAllocation::NativeOccupied,
                         // Four-unit border box, internal baseline3, margins-10/-10:
                         // before=-10+3=-7; after=(4-3)-10=-9.
                         flow: AtomicFlowAllocation {
                             advance: 4.0,
+                            normal_border_inline_size: 4.0,
                             before_baseline: -7.0,
                             after_baseline: -9.0,
                             occupied_start: 0.0,
@@ -4696,7 +4788,7 @@ mod tests {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -4707,6 +4799,7 @@ mod tests {
             crate::test_wrapping::select_neutral(
                 &prepared,
                 LineSelectionRequest {
+                    inline_boxes: None,
                     segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,

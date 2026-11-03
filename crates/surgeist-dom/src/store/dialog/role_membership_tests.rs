@@ -35,10 +35,18 @@ fn fixture(unrelated: usize) -> (Dom, DocumentId, NodeId, Vec<NodeId>) {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let absent = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let absent = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     let members: Vec<_> = (0..unrelated)
         .map(|_| {
-            let member = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+            let member = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "dialog",
+            );
             batch.set_attribute(&member, "open", "");
             member
         })

@@ -1,12 +1,13 @@
 //! Retention oracle for shared text history, independent of physical layouts.
 use super::{StandaloneDocumentDriver, entry::OrdinaryDocumentEntry, head::HeadStep};
 use crate::{
-    HtmlDocumentMode, HtmlDocumentParseRequest, HtmlParseResource, HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseResource, HtmlSource,
     construction::{
         ParserNode,
         native_view::{NativeKind, NativeString, NativeView},
     },
 };
+use surgeist_html::construction::HtmlDocumentMode;
 
 fn ascii(view: &mut NativeView<'_>, actual: NativeString<'_>, expected: &str) {
     assert!(expected.is_ascii());

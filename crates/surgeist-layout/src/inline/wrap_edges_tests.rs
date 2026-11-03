@@ -100,11 +100,13 @@ impl<S: LayoutScalar> Fixture<S> {
         });
     }
     fn boundary(&mut self, node: u32, kind: InlineBoundaryKind, advance: f64) {
-        let edge = InlineBoundaryEdgeOf::try_new(n(advance), S::ZERO).unwrap();
+        let edge = InlineBoundaryEdgeOf::try_new(S::ZERO, n(advance), S::ZERO).unwrap();
         self.tree.insert_input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(kind, metrics(), edge).with_direction(self.direction),
+                InlineBoundaryInputOf::contribution(kind, metrics(), edge)
+                    .unwrap()
+                    .with_direction(self.direction),
             ),
         );
         self.nodes.push(node);
@@ -120,6 +122,7 @@ impl<S: LayoutScalar> Fixture<S> {
                 metrics(),
                 InlineControlAlignment::Baseline,
                 edge,
+                None,
             ),
         ));
     }
@@ -131,9 +134,18 @@ impl<S: LayoutScalar> Fixture<S> {
     }
     fn numeric(&self) -> MixedInlineRunInputOf<S> {
         let flow = self.flow();
+        let raw: Vec<_> = crate::Traverse::children(&self.tree, 0).collect();
         let projection = flow
             .wrapping
-            .numeric_projection(&flow.graph, 0, &self.nodes)
+            .numeric_projection(
+                &flow.graph,
+                0,
+                crate::inline_wrapping::NativeRunSource {
+                    nodes: &raw,
+                    start: 0,
+                },
+                &self.nodes,
+            )
             .unwrap();
         MixedInlineRunInputOf {
             inline_baseline_context: crate::InlineBaselineContext::Physical,
@@ -286,11 +298,11 @@ fn simple_matrix<S: LayoutScalar>() {
                 supplied: &supplied,
             };
             assert_eq!(
-                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(10.0)
             );
             assert_eq!(
-                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(30.0)
             );
         }
@@ -347,11 +359,11 @@ fn force_matrix<S: LayoutScalar>() {
                 supplied: &supplied,
             };
             assert_eq!(
-                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(20.0)
             );
             assert_eq!(
-                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(20.0)
             );
         }
@@ -718,7 +730,7 @@ fn internal_atomic_formatting_context_is_opaque_to_outer_forced_propagation() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: std::collections::HashMap<u32, crate::CacheOf<S>>,
-    outputs: std::collections::HashMap<u32, NodeOutputOf<S>>,
+    outputs: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
 }
 struct Cached<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
@@ -778,7 +790,7 @@ impl<S: LayoutScalar> crate::LayoutTree for Cached<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
@@ -801,7 +813,7 @@ impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
             );
         }
         for e in batch.unrounded_entries() {
-            next.outputs.insert(e.node(), e.output());
+            next.outputs.insert(e.node(), *e);
         }
         Ok(next)
     }
@@ -1212,7 +1224,17 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .output();
                 let projection = flow
                     .wrapping
-                    .numeric_projection(&flow.graph, 0, &[node])
+                    .numeric_projection(
+                        &flow.graph,
+                        0,
+                        crate::inline_wrapping::NativeRunSource {
+                            nodes: &[node],
+                            start: crate::Traverse::children(&tree, 0)
+                                .position(|actual| actual == node)
+                                .unwrap(),
+                        },
+                        &[node],
+                    )
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
@@ -1329,3 +1351,11 @@ fn edge_forces_stay_in_their_own_numeric_run_across_a_real_block_separator() {
     separated_numeric_runs::<f32>();
     separated_numeric_runs::<f64>();
 }
+
+#[path = "wrap_edges_tests/bidi_metadata.rs"]
+mod bidi_metadata;
+mod gap_attachments;
+mod gap_scope_cuts;
+
+#[path = "wrap_edges_tests/native_family_functional.rs"]
+mod native_family_functional;

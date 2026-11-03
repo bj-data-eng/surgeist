@@ -1,5 +1,6 @@
 //! Contextual parse history is distinct from later canonical insertion effects.
 use super::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::HtmlParseMetadataStep;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
@@ -106,6 +107,7 @@ fn assert_report(report: &HtmlParseReport) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((controls, inputs, options), (2, 1, 1));
@@ -207,6 +209,7 @@ fn captured_form_context_stays_historical_while_insertion_clone_and_adoption_res
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let mut batch = DomBatch::new();
@@ -496,6 +499,7 @@ fn assert_nonancestor_report(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(inputs, 1);
@@ -709,9 +713,9 @@ fn assert_checked_report(report: &HtmlParseReport) {
                     assert_eq!(
                         flags.input_type(),
                         if index < 2 {
-                            surgeist_html::HtmlInputType::Radio
+                            surgeist_html::attributes::HtmlInputType::Radio
                         } else {
-                            surgeist_html::HtmlInputType::Checkbox
+                            surgeist_html::attributes::HtmlInputType::Checkbox
                         }
                     );
                     assert_eq!(flags.checkedness(), PARSED_CHECKED[index]);
@@ -727,6 +731,7 @@ fn assert_checked_report(report: &HtmlParseReport) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(associations.len(), 4);
@@ -815,6 +820,7 @@ fn parser_radio_normalization_and_checkbox_flags_transfer_before_canonical_check
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(associated, [true; 4]);

@@ -73,6 +73,8 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         2,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -177,6 +179,8 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -241,6 +245,8 @@ impl<S: LayoutScalar> CachedHost<S> {
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -289,13 +295,13 @@ impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
         }
         value
     }
-    fn unrounded_layout(&self, n: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, n: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
         self.published
             .as_ref()?
             .unrounded_entries()
             .iter()
             .find(|row| row.node() == n)
-            .map(|row| row.output())
+            .copied()
     }
     fn float_exclusion_interval(
         &self,
@@ -488,6 +494,8 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -524,6 +532,8 @@ fn assert_soft_replay<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -585,6 +595,8 @@ fn assert_clear<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -684,6 +696,8 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -749,6 +763,8 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -786,6 +802,8 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -839,6 +857,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 2,
         nodes: vec![30, 10],
@@ -865,6 +884,8 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -952,6 +973,8 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1033,6 +1056,8 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1105,6 +1130,8 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             2,
             vec![outer.clone(), inner.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1270,6 +1297,8 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
         2,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1284,6 +1313,8 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1353,6 +1384,8 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1451,6 +1484,8 @@ fn assert_max_float_cohort<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1589,6 +1624,8 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1658,6 +1695,8 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1741,6 +1780,8 @@ fn transparent_leading_capture<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1863,11 +1904,14 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     ] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                kind,
-                metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    metrics,
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     for (i, &(side, width, height, clear, horizontal_margin)) in floats.iter().enumerate() {
@@ -1896,6 +1940,8 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1928,7 +1974,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     assert!(terminal.atomics.is_empty());
     assert_eq!(terminal.controls.len(), 2);
     for control in &terminal.controls {
-        assert_eq!(control.boundary.unwrap().advance(), 0.0);
+        assert_eq!(control.boundary.as_ref().unwrap().advance(), 0.0);
         let strut = control.strut.unwrap();
         assert_eq!(strut.baseline, 0.0);
         assert_eq!(strut.line_extent, 0.0);
@@ -2078,6 +2124,8 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -2157,6 +2205,8 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -2315,3 +2365,6 @@ mod zone_cache;
 
 #[path = "last_tail_retry.rs"]
 mod last_tail_retry;
+
+#[path = "relative_warm_custody.rs"]
+mod relative_warm_custody;

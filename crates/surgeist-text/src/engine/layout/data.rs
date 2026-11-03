@@ -473,9 +473,12 @@ pub(crate) struct FinalizedBox {
 pub(crate) enum FinalizedBoxGeometry {
     InFlow {
         flow: crate::protocol::AtomicFlowAllocation,
+        fit: crate::AtomicFitAllocation,
         box_geometry: crate::protocol::AtomicBoxAllocation,
         alignment: crate::protocol::LineBoxAlignment,
-        rect: Rect,
+        // Finalization checks the translated border once. Its size remains the
+        // visual border size above; retaining that extent again is redundant.
+        border_origin: crate::Point,
     },
     OutOfFlow,
 }
@@ -508,7 +511,47 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) slot: crate::Point,
     pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
-    pub(crate) inline_end: f64,
+    pub(crate) geometry: AnchorGeometry,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum AnchorGeometry {
+    Ordinary {
+        inline_end: f64,
+    },
+    BoxEdge {
+        flow_start: f64,
+        flow_end: f64,
+        strip_end: f64,
+    },
+}
+impl AnchorGeometry {
+    pub(crate) const fn strip_interval(self, start: f64) -> (f64, f64) {
+        (
+            start,
+            match self {
+                Self::Ordinary { inline_end } => inline_end,
+                Self::BoxEdge { strip_end, .. } => strip_end,
+            },
+        )
+    }
+    pub(crate) const fn flow_interval(self, start: f64) -> (f64, f64) {
+        match self {
+            Self::Ordinary { inline_end } => (start, inline_end),
+            Self::BoxEdge {
+                flow_start,
+                flow_end,
+                ..
+            } => (flow_start, flow_end),
+        }
+    }
+}
+impl FinalizedAnchor {
+    pub(crate) fn strip_interval(&self) -> (f64, f64) {
+        self.geometry.strip_interval(self.slot.x)
+    }
+    pub(crate) fn flow_interval(&self) -> (f64, f64) {
+        self.geometry.flow_interval(self.slot.x)
+    }
 }
 
 /// Actual complete-unit feedback in selected-slot order, derived from its

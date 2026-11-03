@@ -12,7 +12,7 @@ use surgeist_text as t;
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::NodeOutputOf<S>>>,
+    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
     batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
 }
 struct Host<S: l::LayoutScalar> {
@@ -61,7 +61,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
@@ -82,7 +82,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
             next.caches[row.node() as usize].clear();
         }
         for row in batch.unrounded_entries() {
-            next.unrounded[row.node() as usize] = Some(row.output());
+            next.unrounded[row.node() as usize] = Some(*row);
         }
         for row in batch.cache_store_entries() {
             next.caches[row.node() as usize].store_with_context(
@@ -1205,6 +1205,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         1
     );
     let binding = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: vec![1],
@@ -2355,6 +2356,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     // The real transparent floating box belongs in the captured native window,
     // not in Text's atomic/origin tables. Its own actual child stays native.
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![1, 2, 3],
@@ -2524,19 +2526,25 @@ fn sizing_demand_host<S: l::LayoutScalar>(
             );
             host.push(
                 Some(4),
-                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
-                    l::InlineBoundaryKind::Start,
-                    metrics,
-                    l::InlineBoundaryEdgeOf::try_new(n(1.0), S::ZERO).unwrap(),
-                )),
+                l::LayoutInputOf::inline_boundary(
+                    l::InlineBoundaryInputOf::contribution(
+                        l::InlineBoundaryKind::Start,
+                        metrics,
+                        l::InlineBoundaryEdgeOf::try_new(S::ZERO, n(1.0), S::ZERO).unwrap(),
+                    )
+                    .unwrap(),
+                ),
             );
             host.push(
                 Some(4),
-                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
-                    l::InlineBoundaryKind::End,
-                    metrics,
-                    l::InlineBoundaryEdgeOf::ZERO,
-                )),
+                l::LayoutInputOf::inline_boundary(
+                    l::InlineBoundaryInputOf::contribution(
+                        l::InlineBoundaryKind::End,
+                        metrics,
+                        l::InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                ),
             );
         }
         DemandContent::UnsupportedGrid => {

@@ -1,6 +1,7 @@
 //! Native fact owners only. These tests do not fabricate a Window, active
 //! Document, focusing receipt or a completed native Dialog method.
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlAttribute;
 
 fn limits(work: u64) -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(32_000_000, 1_000_000, work, 32, 4096, 4096, 2)
@@ -22,12 +23,21 @@ fn fixture(root_dialog: bool) -> (Dom, NodeId, NodeId) {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let subject = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
-    let other = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let subject = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
+    let other = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     if root_dialog {
         batch.insert_before(&subject, &document, None);
     } else {
-        let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+        let root =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
         batch.insert_before(&root, &document, None);
         batch.insert_before(&subject, &root, None);
     }
@@ -35,13 +45,13 @@ fn fixture(root_dialog: bool) -> (Dom, NodeId, NodeId) {
     batch.set_attribute(&subject, "autofocus", "");
     batch.set_attribute_ns(
         &other,
-        crate::Namespace::from_uri("http://www.w3.org/XML/1998/namespace"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/XML/1998/namespace"),
         "xml:inert",
         "",
     );
     batch.set_attribute_ns(
         &other,
-        crate::Namespace::from_uri("http://www.w3.org/XML/1998/namespace"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/XML/1998/namespace"),
         "xml:autofocus",
         "",
     );
@@ -74,11 +84,11 @@ fn autofocus_and_own_inert_consume_real_boolean_intrinsics_and_exact_attribute_n
     let other = staged.resolve(other.into()).unwrap();
     for (selected, attribute) in [
         (
-            surgeist_html::HtmlBooleanAttribute::Autofocus,
+            surgeist_html::attributes::HtmlBooleanAttribute::Autofocus,
             KnownHtmlAttribute::Autofocus,
         ),
         (
-            surgeist_html::HtmlBooleanAttribute::Inert,
+            surgeist_html::attributes::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
         ),
     ] {
@@ -144,7 +154,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
         measured
             .focus_boolean(
                 key,
-                surgeist_html::HtmlBooleanAttribute::Inert,
+                surgeist_html::attributes::HtmlBooleanAttribute::Inert,
                 KnownHtmlAttribute::Inert,
                 &cancel
             )
@@ -161,7 +171,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     assert_eq!(
         staged.focus_boolean(
             key,
-            surgeist_html::HtmlBooleanAttribute::Inert,
+            surgeist_html::attributes::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
             &cancel
         ),
@@ -175,7 +185,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
     assert_eq!(
         staged.focus_boolean(
             key,
-            surgeist_html::HtmlBooleanAttribute::Inert,
+            surgeist_html::attributes::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
             &AtomicBool::new(true)
         ),
@@ -187,7 +197,7 @@ fn actual_boolean_report_work_refusal_and_cancellation_release_the_original_form
         staged
             .focus_boolean(
                 key,
-                surgeist_html::HtmlBooleanAttribute::Inert,
+                surgeist_html::attributes::HtmlBooleanAttribute::Inert,
                 KnownHtmlAttribute::Inert,
                 &cancel
             )

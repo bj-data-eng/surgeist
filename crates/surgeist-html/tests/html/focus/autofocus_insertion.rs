@@ -1,7 +1,7 @@
 //! Independent literal insertion traces from HTML877d raw60684–60707/1479–1485.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusInsertionAction as A, HtmlAutofocusInsertionCursor as C,
-    HtmlAutofocusInsertionError as E, HtmlAutofocusInsertionReply as R,
+    HtmlAutofocusInsertionReply as R,
 };
 
 const REPLIES: [R; 13] = [
@@ -25,7 +25,7 @@ fn step(c: &mut C, action: A, reply: R) {
     for wrong in REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
             let before = *c;
-            assert_eq!(c.reply(wrong), Err(E::WrongReply));
+            assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(*c, before);
         }
     }
@@ -35,7 +35,7 @@ fn complete(c: &mut C) {
     assert_eq!(c.action(), A::Complete);
     for reply in REPLIES {
         let before = *c;
-        assert_eq!(c.reply(reply), Err(E::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -127,7 +127,7 @@ fn permission_suspension_preserves_target_capture_and_exact_pending_stage() {
         R::SandboxAutomaticFeatures(false),
     );
     let waiting = c;
-    assert_eq!(c.reply(R::Applied), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, waiting);
     assert_eq!(c.action(), A::ReadAllowFocus);
     step(&mut c, A::ReadAllowFocus, R::AllowFocus(true));
@@ -146,7 +146,10 @@ fn permission_suspension_preserves_target_capture_and_exact_pending_stage() {
 
 #[test]
 fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spelling() {
-    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
+    use surgeist_html::{
+        focus::autofocus_presence,
+        values::{Attribute, DocumentString, Namespace, QualifiedName},
+    };
     let element = QualifiedName::new(Namespace::html(), None, "dialog");
     for value in [
         DocumentString::from(""),
@@ -169,7 +172,7 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
     assert!(autofocus_presence(&element, Some(&prefixed)));
     assert!(!autofocus_presence(
         &element,
-        None::<&surgeist_html::Attribute>
+        None::<&surgeist_html::values::Attribute>
     ));
     for local in [
         "",
@@ -204,7 +207,10 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
 
 #[test]
 fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
-    use surgeist_html::{Attribute, DocumentString, Namespace, QualifiedName, autofocus_presence};
+    use surgeist_html::{
+        focus::autofocus_presence,
+        values::{Attribute, DocumentString, Namespace, QualifiedName},
+    };
     let actual = Attribute::new(
         QualifiedName::new(Namespace::none(), None, "autofocus"),
         "false",
@@ -225,7 +231,7 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
             assert!(autofocus_presence(&element, Some(&actual)));
             assert!(!autofocus_presence(
                 &element,
-                None::<&surgeist_html::Attribute>
+                None::<&surgeist_html::values::Attribute>
             ));
         }
     }

@@ -10,9 +10,11 @@ the registry package checksum is
 The [crate notice](../NOTICE.md) links the retained license texts.
 
 Surgeist replaces the upstream layout-accessibility carrier with bindings to its
-own immutable layout identity and exact UTF-16 source. Selectable units respect
-source graphemes and actual provider clusters, rather than upstream style-index
-splits. Host strings remain UTF-8 as required by AccessKit. Checked unit lengths
+own immutable layout identity and exact UTF-16 source. Original host graphemes
+define selectable characters; ordinary placed conversions retain actual
+provider-cluster closure, while Cells preserve logical source positions
+independently of their opaque physical carets. Host strings remain UTF-8 as
+required by AccessKit. Checked unit lengths
 and node identities, off-side publication, mixed-style metadata summaries, and
 source-unit affinity/selection mappings are owned adaptations. The owned engine
 supplies original-atom analysis, actual shaping and finalized clusters. Host
@@ -21,4 +23,8 @@ real source barrier cannot fuse surrogate halves during accessibility conversion
 Source-only and placed projection share that same analysis identity. Composed
 lines retain their exact prepared, selected and placed associations; they do not
 create another accessibility source owner.
+Cell word/carrier membership and the per-original contribution join in
+[the private Cell projection](../src/accessibility/cells.rs) are owned adaptations;
+they reuse retained source correspondence and executed geometry without another
+segmenter or shaping pass.
 See the [complete mechanism derivation](owned-engine-provenance.md).

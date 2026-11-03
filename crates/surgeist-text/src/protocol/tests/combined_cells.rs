@@ -218,6 +218,7 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
     assert!(segments.next().is_none());
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
@@ -747,3 +748,6 @@ mod inner_controls;
 
 #[path = "combined_cell_inner_tabs.rs"]
 mod inner_tabs;
+
+#[path = "combined_cells/inline_box_family.rs"]
+mod inline_box_family;

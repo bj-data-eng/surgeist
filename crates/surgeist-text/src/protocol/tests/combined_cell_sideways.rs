@@ -40,6 +40,7 @@ fn select(prepared: &PreparedText) -> SelectedLine {
     let rtl = prepared.analyzed_source().direction() == Direction::RightToLeft;
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
@@ -490,13 +491,17 @@ fn cell_case(
             let before = fixture.analyzed.access_position(&state, start).unwrap();
             assert!(before.is_some());
             let error = layout
-                .accessibility_update(&mut state, parent, parent, Point::new(0.0, 0.0))
+                .accessibility_update(&mut state, parent, parent, Point::new(f64::INFINITY, 0.0))
                 .unwrap_err();
-            assert_eq!(error.code, ErrorCode::UnsupportedFeature);
-            assert_eq!(
+            assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
+            assert!(matches!(
                 error.detail(),
-                Some(&ErrorDetail::UnsupportedAccessibilityCell { line: 0, cell: 0 })
-            );
+                Some(ErrorDetail::InvalidTextNumeric {
+                    phase: TextNumericPhase::Accessibility,
+                    category: TextNumericError::NonFinite,
+                    ..
+                })
+            ));
             assert_eq!(
                 fixture.analyzed.access_position(&state, start).unwrap(),
                 before

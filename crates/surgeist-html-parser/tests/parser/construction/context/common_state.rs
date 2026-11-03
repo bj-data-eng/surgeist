@@ -1,5 +1,7 @@
 use crate::parser::support::{fragment_context, limits};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlNodeKind, elements::native::HtmlCommonScope, parsing::HtmlParserScriptingMode,
+};
 use surgeist_html_parser::*;
 
 #[test]
@@ -58,6 +60,7 @@ fn completed_null_registry_fragment_lends_actual_closed_common_state() {
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(found, [true, true]);

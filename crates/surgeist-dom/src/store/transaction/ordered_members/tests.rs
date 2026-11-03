@@ -287,14 +287,14 @@ fn shadow_order_connects_only_reciprocal_roots_before_light_children() {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let host = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     let light = batch.create_element(&document, "light");
     batch.insert_before(&light, &host, None);
     let shadow = batch.attach_shadow(
         &host,
-        crate::HtmlShadowRootProperties::new(
-            crate::HtmlShadowRootMode::Open,
-            crate::HtmlSlotAssignment::Named,
+        surgeist_html::construction::HtmlShadowRootProperties::new(
+            surgeist_html::construction::HtmlShadowRootMode::Open,
+            surgeist_html::construction::HtmlSlotAssignment::Named,
             false,
             true,
             false,

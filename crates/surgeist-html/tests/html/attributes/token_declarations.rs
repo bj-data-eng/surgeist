@@ -2,7 +2,26 @@ use crate::html::support::{
     known_attribute as attr, known_element as element, ordered_attributes as attrs,
     value_interpreter as interpreter,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlScriptAttributeContext,
+        token_declarations::{
+            HtmlAccessKeyReport, HtmlAccessKeys, HtmlBitmapIconSize, HtmlBlockingReport,
+            HtmlBlockingTokens, HtmlIconSize, HtmlIconSizeError, HtmlIconSizes,
+            HtmlIconSizesReport, HtmlTokenDeclarationAuthorState, HtmlTokenDeclarationError,
+        },
+    },
+    microsyntax::{
+        numeric::HtmlNonNegativeInteger,
+        tokens::{HtmlSpaceToken, HtmlTokenComparison},
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueInterpreter,
+        HtmlValueRecoveryState, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn token(value: impl Into<DocumentString>) -> HtmlSpaceToken {
     HtmlSpaceToken::new(value).unwrap()
@@ -47,7 +66,7 @@ fn zero_token_values_conform_but_missing_is_not_specified_empty() {
     let missing = i
         .accesskey(
             &element(KnownHtmlElement::Button),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(
@@ -85,7 +104,7 @@ fn zero_token_values_conform_but_missing_is_not_specified_empty() {
     let missing = i
         .blocking(
             &element(KnownHtmlElement::Style),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(missing.explicit_tokens(), Some(HtmlBlockingTokens::Empty));
@@ -96,7 +115,7 @@ fn zero_token_values_conform_but_missing_is_not_specified_empty() {
     let missing = i
         .icon_sizes(
             &element(KnownHtmlElement::Link),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(missing.keywords(), None);
@@ -353,7 +372,7 @@ fn complete_script_context_matrix_allows_only_two_external_kinds() {
             interpreter()
                 .blocking_for_script(
                     &element(KnownHtmlElement::Script),
-                    None::<&surgeist_html::Attribute>,
+                    None::<&surgeist_html::values::Attribute>,
                     context
                 )
                 .unwrap()

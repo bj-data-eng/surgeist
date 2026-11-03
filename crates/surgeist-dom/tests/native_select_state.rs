@@ -557,7 +557,9 @@ fn option_and_selectedcontent_retirement_leave_surviving_select_task() {
 
 #[test]
 fn slot_marker_and_select_updates_share_fifo_and_snapshot_signals_at_execution() {
-    use surgeist_html::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
     let mut f = fixture(false, false);
     let mut b = DomBatch::new();
     let host = b.create_element_ns(f.doc, Namespace::html(), "div");
@@ -628,7 +630,9 @@ fn slot_marker_and_select_updates_share_fifo_and_snapshot_signals_at_execution()
 
 #[test]
 fn selectedcontent_deep_clone_runs_real_control_template_and_shadow_hooks() {
-    use surgeist_html::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
     let mut f = fixture(false, true);
     let mut b = DomBatch::new();
     let input = b.create_element_ns(f.doc, Namespace::html(), "input");
@@ -835,7 +839,7 @@ fn initial_and_slot_capture_keep_actual_option_flags_and_select_form_association
     fn fact(c: &DomHtmlCapture, n: NodeId, q: HtmlSemanticQuery) -> HtmlSemanticFact {
         c.query(
             &[HtmlSemanticRequest::new(c.subject(n).unwrap(), q)],
-            surgeist_html::HtmlValueInterpreter::new(32768),
+            surgeist_html::values::HtmlValueInterpreter::new(32768),
             HtmlSemanticLimits::new(1_000_000, 16, 2048, 512, 4_000_000, 2048),
             HtmlSemanticCancellation::new(),
         )
@@ -1521,7 +1525,9 @@ fn retired_select_skip_refuses_while_a_real_style_source_obligation_is_parked() 
         };
         assert_eq!(
             request.action(),
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+            )
         );
     }
     assert_eq!(

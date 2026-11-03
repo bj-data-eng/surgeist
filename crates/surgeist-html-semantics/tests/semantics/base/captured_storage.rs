@@ -1,5 +1,9 @@
 //! Owner storage receipts include unused inputs and capacity, independently of queries.
-use surgeist_html::*;
+use crate::semantics::support::tenth_capture_limits;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn limits() -> HtmlBaseFactsLimits {
@@ -29,10 +33,8 @@ fn capture() -> (
     Vec<HtmlCaptureDocumentId>,
     Vec<HtmlCaptureSubjectId>,
 ) {
-    let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut builder =
+        HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let mut documents = Vec::new();
     let mut bases = Vec::new();
     for _ in 0..2 {
@@ -255,6 +257,12 @@ fn null_frozen_url_counts_href_and_preserves_exact_existing_formation_limits() {
         53 * size_of::<u16>()
     );
     let usage = small.formation_usage();
+    // One frozen record whose href is the single unit "x" and whose URL is null.
+    // The step layout of the validation work is private to the bank producer,
+    // so the work cap below is the producer's own report; the exact cap must
+    // admit and one less must stop at WorkLimit, which proves it is the minimum.
+    assert_eq!(usage.record_capacity(), 1);
+    assert_eq!(usage.utf16_extent(), 1);
     let exact = HtmlBaseFactsLimits::new(
         usage.record_capacity(),
         usage.utf16_extent(),

@@ -90,8 +90,13 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
         )
         .unwrap();
         let boundary = |kind| {
-            layout::InlineBoundaryInputOf::new(kind, metrics, layout::InlineBoundaryEdgeOf::ZERO)
-                .with_direction(direction)
+            layout::InlineBoundaryInputOf::contribution(
+                kind,
+                metrics,
+                layout::InlineBoundaryEdgeOf::ZERO,
+            )
+            .unwrap()
+            .with_direction(direction)
         };
         Self {
             root: layout::NodeInputOf {

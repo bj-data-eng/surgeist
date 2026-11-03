@@ -1,7 +1,91 @@
 //! Fixed public lenders over the already qualified immutable report owner.
 use super::*;
-use history::{FrozenHistory, HistoryGroup, HistoryView};
+use history::{FrozenHistory, HistoryView, HtmlParseOriginGroup};
 use provenance::{AssociationView, ConstructionCause, NativeAssociation, NativeDestination};
+use surgeist_html::{
+    construction::HtmlNode,
+    elements::{
+        form::HtmlNativeFormAssociationKind,
+        script::{HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
+    },
+    values::DocumentString,
+};
+
+/// What a reference of a published report denotes to a reader.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlParseUnresolvedKind {
+    /// A node of the report's tree.
+    Node,
+    /// A construction cause.
+    Cause,
+    /// A text origin group of the history.
+    Group,
+    /// A lexical occurrence.
+    LexicalOccurrence,
+    /// A part of a lexical occurrence.
+    LexicalPart,
+    /// A lexical omission.
+    Omission,
+    /// A fact the report retains: a string, a policy, an attribute map, a
+    /// metadata row or an effect binding.
+    Fact,
+    /// A node of the captured fragment context.
+    CapturedNode,
+    /// The fragment context of a contextual report.
+    Fragment,
+    /// The location of a committed diagnostic.
+    Diagnostic,
+}
+impl std::fmt::Display for HtmlParseUnresolvedKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Node => "a node of its tree",
+            Self::Cause => "a construction cause",
+            Self::Group => "an origin group of its text history",
+            Self::LexicalOccurrence => "a lexical occurrence",
+            Self::LexicalPart => "a part of a lexical occurrence",
+            Self::Omission => "a lexical omission",
+            Self::Fact => "a fact it retains",
+            Self::CapturedNode => "a node of its captured context",
+            Self::Fragment => "its fragment context",
+            Self::Diagnostic => "the location of a diagnostic",
+        })
+    }
+}
+
+/// A reference that a published report holds but that its own tables cannot
+/// resolve.
+///
+/// A report is qualified once, when it is published, and is immutable
+/// afterwards, so every reference it holds resolves. A reader that meets one
+/// that does not has found a defect in that qualification. It reports the
+/// fault instead of answering as though the reference were absent, because an
+/// answer built on a lost reference is wrong output that looks right. The
+/// consumer fails its operation on it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlParseUnresolvedReference {
+    kind: HtmlParseUnresolvedKind,
+}
+impl HtmlParseUnresolvedReference {
+    pub(crate) const fn new(kind: HtmlParseUnresolvedKind) -> Self {
+        Self { kind }
+    }
+    /// What the reference denotes.
+    pub const fn kind(&self) -> HtmlParseUnresolvedKind {
+        self.kind
+    }
+}
+impl std::fmt::Display for HtmlParseUnresolvedReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "a published parse report refers to {} that it does not hold",
+            self.kind
+        )
+    }
+}
+impl std::error::Error for HtmlParseUnresolvedReference {}
 
 /// Qualify only the references used by fixed public readers. The canonical
 /// history transfer still owns source/group/leaf qualification and alias checks.
@@ -13,13 +97,16 @@ pub(crate) fn prepare_public_readers(
     let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
     c.require_identity(&storage.control)?;
     let records = ConstructionView::Frozen(&storage.view);
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
     payload_write::<AssociationView<'_>>(c, 1)?;
     let view = evidence.associations()?;
     fn record<T>(c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, mem::size_of::<T>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<T>() as u64,
+        )?;
         Ok(())
     }
     fn node(
@@ -27,7 +114,7 @@ pub(crate) fn prepare_public_readers(
         c: &mut ParseControl,
         index: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if records.node_at(index).is_none() {
             return Err(SessionError::ForeignNode);
         }
@@ -54,7 +141,7 @@ pub(crate) fn prepare_public_readers(
             | StringLocation::AttributeValue(slot, index)
             | StringLocation::AttributeNamespace(slot, index)
             | StringLocation::AttributePrefix(slot, index) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
                     element: Some(owner),
                     values,
@@ -69,7 +156,7 @@ pub(crate) fn prepare_public_readers(
                 node(records, c, *owner)
             }
             StringLocation::PiName(slot, index) | StringLocation::PiValue(slot, index) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let Some(RetainedPayload::PiAttributes {
                     node: Some(owner),
                     values,
@@ -96,7 +183,7 @@ pub(crate) fn prepare_public_readers(
             | StringLocation::AttributeValue(slot, ordinal)
             | StringLocation::AttributeNamespace(slot, ordinal)
             | StringLocation::AttributePrefix(slot, ordinal) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match storage.payloads.values.get(slot) {
                     Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                         values,
@@ -129,7 +216,7 @@ pub(crate) fn prepare_public_readers(
             node(records, c, i)?;
         }
         if let Some(value) = cause.retired_destination {
-            if cause.operation != provenance::ConstructionOperation::Retirement {
+            if cause.operation != provenance::HtmlParseConstructionOperation::Retirement {
                 return Err(SessionError::WrongToken);
             }
             let group = cause.original.ok_or(SessionError::WrongToken)?;
@@ -222,7 +309,7 @@ impl<'a> HtmlParseAssociations<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
         Self {
             history,
-            view: history.associations().expect("qualified complete D1"),
+            view: history.associations(),
         }
     }
     pub fn len(&self) -> usize {
@@ -231,28 +318,68 @@ impl<'a> HtmlParseAssociations<'a> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    pub fn row(&self, index: usize) -> Option<HtmlParseAssociation<'a>> {
-        self.view.row(index).map(|row| HtmlParseAssociation {
-            history: self.history,
-            row,
-        })
+    /// The row at `index`, or `None` past the last row. A row whose cause,
+    /// group or destination the report cannot resolve is a fault.
+    pub fn row(
+        &self,
+        index: usize,
+    ) -> Result<Option<HtmlParseAssociation<'a>>, HtmlParseUnresolvedReference> {
+        self.view
+            .row(index)
+            .map(|row| HtmlParseAssociation::new(self.history, row))
+            .transpose()
     }
     pub fn reverse(
         &self,
         source: &'a crate::HtmlSourceRange,
         cancellation: Option<&'a crate::HtmlParseCancellation>,
-    ) -> Result<HtmlParseReverseCursor<'a>, provenance::reverse::ReverseQueryError> {
+    ) -> Result<HtmlParseReverseCursor<'a>, provenance::reverse::HtmlParseReverseError> {
         Ok(HtmlParseReverseCursor {
             history: self.history,
             cursor: self.view.reverse(source, cancellation)?,
+            fault: None,
         })
     }
 }
+/// One row of the inventory, with its cause, group and destination resolved
+/// when it is lent, so that they cannot fail afterwards.
+#[derive(Clone, Copy)]
 pub struct HtmlParseAssociation<'a> {
-    history: &'a FrozenHistory,
     row: &'a NativeAssociation,
+    cause: HtmlParseCause<'a>,
+    group: Option<HtmlParseOriginGroup<'a>>,
+    destination: HtmlParseDestination<'a>,
 }
 impl<'a> HtmlParseAssociation<'a> {
+    fn new(
+        history: &'a FrozenHistory,
+        row: &'a NativeAssociation,
+    ) -> Result<Self, HtmlParseUnresolvedReference> {
+        let cause =
+            history
+                .associations()
+                .cause(row.cause)
+                .ok_or(HtmlParseUnresolvedReference::new(
+                    HtmlParseUnresolvedKind::Cause,
+                ))?;
+        let group = row
+            .group
+            .map(|index| {
+                history
+                    .view()
+                    .group(index)
+                    .ok_or(HtmlParseUnresolvedReference::new(
+                        HtmlParseUnresolvedKind::Group,
+                    ))
+            })
+            .transpose()?;
+        Ok(Self {
+            row,
+            cause: HtmlParseCause { history, cause },
+            group,
+            destination: destination(history, row.destination)?,
+        })
+    }
     pub fn source(&self) -> Option<&'a crate::HtmlSourceRange> {
         self.row.source.as_ref()
     }
@@ -262,33 +389,24 @@ impl<'a> HtmlParseAssociation<'a> {
     pub fn end(&self) -> usize {
         self.row.end
     }
-    pub fn origin_kind(&self) -> Option<crate::parser::tokenizer::token::OriginKind> {
+    pub fn origin_kind(&self) -> Option<crate::parser::tokenizer::token::HtmlParseOriginKind> {
         self.row.kind
     }
-    pub fn relation(&self) -> provenance::reverse::AssociationRelation {
+    pub fn relation(&self) -> provenance::reverse::HtmlParseAssociationRelation {
         self.row.relation
     }
-    pub fn group(&self) -> Option<HistoryGroup<'a>> {
-        self.row
-            .group
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+    pub fn group(&self) -> Option<HtmlParseOriginGroup<'a>> {
+        self.group
     }
     pub fn cause(&self) -> HtmlParseCause<'a> {
-        HtmlParseCause {
-            history: self.history,
-            cause: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .cause(self.row.cause)
-                .expect("qualified cause"),
-        }
+        self.cause
     }
     pub fn destination(&self) -> HtmlParseDestination<'a> {
-        destination(self.history, self.row.destination)
+        self.destination
     }
 }
 /// A native destination never exposes an unchecked arena or payload slot.
+#[derive(Clone, Copy)]
 pub enum HtmlParseDestination<'a> {
     Field {
         node: HtmlNode<'a>,
@@ -297,7 +415,7 @@ pub enum HtmlParseDestination<'a> {
     Node(HtmlNode<'a>),
     Raw {
         node: HtmlNode<'a>,
-        kind: provenance::RawFieldKind,
+        kind: provenance::HtmlParseRawField,
     },
     Lexical {
         occurrence: HtmlParseLexicalOccurrence<'a>,
@@ -339,197 +457,251 @@ pub enum HtmlParseField {
     ProcessingInstructionAttributeName(usize),
     ProcessingInstructionAttributeValue(usize),
 }
-fn destination(history: &FrozenHistory, value: NativeDestination) -> HtmlParseDestination<'_> {
-    match value {
-        NativeDestination::Node(i) => HtmlParseDestination::Node(history.native_node(i)),
+/// The node a field names and which of its fields it is.
+fn field_of(
+    history: &FrozenHistory,
+    location: StringLocation,
+) -> Result<(HtmlNode<'_>, HtmlParseField), HtmlParseUnresolvedReference> {
+    let (node, field) = match location {
+        StringLocation::Text(i) => (i, HtmlParseField::Text),
+        StringLocation::Comment(i) => (i, HtmlParseField::Comment),
+        StringLocation::ProcessingInstructionTarget(i) => {
+            (i, HtmlParseField::ProcessingInstructionTarget)
+        }
+        StringLocation::ProcessingInstructionData(i) => {
+            (i, HtmlParseField::ProcessingInstructionData)
+        }
+        StringLocation::DoctypeName(i) => (i, HtmlParseField::DoctypeName),
+        StringLocation::DoctypePublic(i) => (i, HtmlParseField::DoctypePublic),
+        StringLocation::DoctypeSystem(i) => (i, HtmlParseField::DoctypeSystem),
+        StringLocation::ElementName(i) => (i, HtmlParseField::ElementName),
+        StringLocation::Namespace(i) => (i, HtmlParseField::Namespace),
+        StringLocation::AttributeName(i, a) => (
+            attribute_node(history, i)?,
+            HtmlParseField::AttributeName(a),
+        ),
+        StringLocation::AttributeValue(i, a) => (
+            attribute_node(history, i)?,
+            HtmlParseField::AttributeValue(a),
+        ),
+        StringLocation::AttributeNamespace(i, a) => (
+            attribute_node(history, i)?,
+            HtmlParseField::AttributeNamespace(a),
+        ),
+        StringLocation::AttributePrefix(i, a) => (
+            attribute_node(history, i)?,
+            HtmlParseField::AttributePrefix(a),
+        ),
+        StringLocation::PiName(i, a) => (
+            pi_node(history, i)?,
+            HtmlParseField::ProcessingInstructionAttributeName(a),
+        ),
+        StringLocation::PiValue(i, a) => (
+            pi_node(history, i)?,
+            HtmlParseField::ProcessingInstructionAttributeValue(a),
+        ),
+        // A detached payload is not a native destination.
+        StringLocation::Detached => {
+            return Err(HtmlParseUnresolvedReference::new(
+                HtmlParseUnresolvedKind::Fact,
+            ));
+        }
+    };
+    Ok((history.native_node(node)?, field))
+}
+fn destination(
+    history: &FrozenHistory,
+    value: NativeDestination,
+) -> Result<HtmlParseDestination<'_>, HtmlParseUnresolvedReference> {
+    let view = history.associations();
+    Ok(match value {
+        NativeDestination::Node(i) => HtmlParseDestination::Node(history.native_node(i)?),
         NativeDestination::Raw { node, kind } => HtmlParseDestination::Raw {
-            node: history.native_node(node),
+            node: history.native_node(node)?,
             kind,
         },
         NativeDestination::Field(location) => {
-            let (node, field) = match location {
-                StringLocation::Text(i) => (i, HtmlParseField::Text),
-                StringLocation::Comment(i) => (i, HtmlParseField::Comment),
-                StringLocation::ProcessingInstructionTarget(i) => {
-                    (i, HtmlParseField::ProcessingInstructionTarget)
-                }
-                StringLocation::ProcessingInstructionData(i) => {
-                    (i, HtmlParseField::ProcessingInstructionData)
-                }
-                StringLocation::DoctypeName(i) => (i, HtmlParseField::DoctypeName),
-                StringLocation::DoctypePublic(i) => (i, HtmlParseField::DoctypePublic),
-                StringLocation::DoctypeSystem(i) => (i, HtmlParseField::DoctypeSystem),
-                StringLocation::ElementName(i) => (i, HtmlParseField::ElementName),
-                StringLocation::Namespace(i) => (i, HtmlParseField::Namespace),
-                StringLocation::AttributeName(i, a) => {
-                    (attribute_node(history, i), HtmlParseField::AttributeName(a))
-                }
-                StringLocation::AttributeValue(i, a) => (
-                    attribute_node(history, i),
-                    HtmlParseField::AttributeValue(a),
-                ),
-                StringLocation::AttributeNamespace(i, a) => (
-                    attribute_node(history, i),
-                    HtmlParseField::AttributeNamespace(a),
-                ),
-                StringLocation::AttributePrefix(i, a) => (
-                    attribute_node(history, i),
-                    HtmlParseField::AttributePrefix(a),
-                ),
-                StringLocation::PiName(i, a) => (
-                    pi_node(history, i),
-                    HtmlParseField::ProcessingInstructionAttributeName(a),
-                ),
-                StringLocation::PiValue(i, a) => (
-                    pi_node(history, i),
-                    HtmlParseField::ProcessingInstructionAttributeValue(a),
-                ),
-                StringLocation::Detached => {
-                    unreachable!("detached payload is not a native destination")
-                }
-            };
-            HtmlParseDestination::Field {
-                node: history.native_node(node),
-                field,
-            }
+            let (node, field) = field_of(history, location)?;
+            HtmlParseDestination::Field { node, field }
         }
         NativeDestination::Lexical { occurrence, part } => {
-            let view = history.associations().expect("qualified lexical D1");
+            let value =
+                view.lexical_occurrence(occurrence)
+                    .ok_or(HtmlParseUnresolvedReference::new(
+                        HtmlParseUnresolvedKind::LexicalOccurrence,
+                    ))?;
+            let part = part
+                .map(|i| {
+                    view.lexical_part(i)
+                        .map(|value| HtmlParseLexicalPart { history, value })
+                        .ok_or(HtmlParseUnresolvedReference::new(
+                            HtmlParseUnresolvedKind::LexicalPart,
+                        ))
+                })
+                .transpose()?;
             HtmlParseDestination::Lexical {
-                occurrence: HtmlParseLexicalOccurrence {
-                    history,
-                    value: view
-                        .lexical_occurrence(occurrence)
-                        .expect("qualified occurrence"),
-                },
-                part: part.map(|i| HtmlParseLexicalPart {
-                    history,
-                    value: view.lexical_part(i).expect("qualified part"),
-                }),
+                occurrence: HtmlParseLexicalOccurrence { history, value },
+                part,
             }
         }
         NativeDestination::Omission(i) => HtmlParseDestination::Omission(HtmlParseOmission {
-            value: history
-                .associations()
-                .expect("qualified D1")
-                .omission(i)
-                .expect("qualified omission"),
+            value: view.omission(i).ok_or(HtmlParseUnresolvedReference::new(
+                HtmlParseUnresolvedKind::Omission,
+            ))?,
         }),
         NativeDestination::LexicalEnd => HtmlParseDestination::LexicalEnd,
         NativeDestination::Cause(i) => HtmlParseDestination::Cause(HtmlParseCause {
             history,
-            cause: history
-                .associations()
-                .expect("qualified D1")
-                .cause(i)
-                .expect("qualified cause"),
+            cause: view.cause(i).ok_or(HtmlParseUnresolvedReference::new(
+                HtmlParseUnresolvedKind::Cause,
+            ))?,
         }),
+    })
+}
+fn attribute_node(
+    history: &FrozenHistory,
+    slot: usize,
+) -> Result<usize, HtmlParseUnresolvedReference> {
+    match history.storage().payloads.values.get(slot) {
+        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+            element: Some(node),
+            ..
+        }))) => Ok(*node),
+        _ => Err(HtmlParseUnresolvedReference::new(
+            HtmlParseUnresolvedKind::Fact,
+        )),
     }
 }
-fn attribute_node(history: &FrozenHistory, slot: usize) -> usize {
-    let storage = history.arena().storage.as_ref().expect("published storage");
-    let RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-        element: Some(node),
-        ..
-    })) = &storage.payloads.values[slot]
-    else {
-        unreachable!("prequalified attribute owner")
-    };
-    *node
+fn pi_node(history: &FrozenHistory, slot: usize) -> Result<usize, HtmlParseUnresolvedReference> {
+    match history.storage().payloads.values.get(slot) {
+        Some(RetainedPayload::PiAttributes {
+            node: Some(node), ..
+        }) => Ok(*node),
+        _ => Err(HtmlParseUnresolvedReference::new(
+            HtmlParseUnresolvedKind::Fact,
+        )),
+    }
 }
-fn pi_node(history: &FrozenHistory, slot: usize) -> usize {
-    let storage = history.arena().storage.as_ref().expect("published storage");
-    let RetainedPayload::PiAttributes {
-        node: Some(node), ..
-    } = &storage.payloads.values[slot]
-    else {
-        unreachable!("prequalified PI map owner")
-    };
-    *node
+/// The origin group a stored index names, or the fault.
+fn group_of(
+    history: &FrozenHistory,
+    index: usize,
+) -> Result<HtmlParseOriginGroup<'_>, HtmlParseUnresolvedReference> {
+    history
+        .view()
+        .group(index)
+        .ok_or(HtmlParseUnresolvedReference::new(
+            HtmlParseUnresolvedKind::Group,
+        ))
+}
+/// The cause a stored index names, or the fault.
+fn cause_of(
+    history: &FrozenHistory,
+    index: usize,
+) -> Result<HtmlParseCause<'_>, HtmlParseUnresolvedReference> {
+    history
+        .associations()
+        .cause(index)
+        .map(|cause| HtmlParseCause { history, cause })
+        .ok_or(HtmlParseUnresolvedReference::new(
+            HtmlParseUnresolvedKind::Cause,
+        ))
+}
+/// The lexical occurrence a stored index names, or the fault.
+fn occurrence_of(
+    history: &FrozenHistory,
+    index: usize,
+) -> Result<HtmlParseLexicalOccurrence<'_>, HtmlParseUnresolvedReference> {
+    history
+        .associations()
+        .lexical_occurrence(index)
+        .map(|value| HtmlParseLexicalOccurrence { history, value })
+        .ok_or(HtmlParseUnresolvedReference::new(
+            HtmlParseUnresolvedKind::LexicalOccurrence,
+        ))
 }
 /// Fixed borrowed decisions from the qualified canonical cause owner.
+#[derive(Clone, Copy)]
 pub struct HtmlParseRangeComputation<'a> {
     history: &'a FrozenHistory,
     value: &'a provenance::RangeComputation,
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseRangeOperand<'a> {
     history: &'a FrozenHistory,
     value: provenance::RangeOperand,
 }
 impl<'a> HtmlParseRangeOperand<'a> {
-    pub fn kind(&self) -> provenance::RangeOperandKind {
+    pub fn kind(&self) -> provenance::HtmlParseRangeOperandKind {
         self.value.kind()
     }
-    pub fn group(&self) -> Option<HistoryGroup<'a>> {
-        self.value.edge().and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+    pub fn group(&self) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
+        self.value
+            .edge()
+            .map(|edge| group_of(self.history, edge.group))
+            .transpose()
     }
-    pub fn cause(&self) -> Option<HtmlParseCause<'a>> {
-        self.value.edge().map(|edge| HtmlParseCause {
-            history: self.history,
-            cause: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .cause(edge.cause)
-                .expect("qualified Range link"),
-        })
+    pub fn cause(&self) -> Result<Option<HtmlParseCause<'a>>, HtmlParseUnresolvedReference> {
+        self.value
+            .edge()
+            .map(|edge| cause_of(self.history, edge.cause))
+            .transpose()
     }
 }
 impl<'a> HtmlParseRangeComputation<'a> {
-    pub fn branch(&self) -> provenance::RangeBranch {
+    pub fn branch(&self) -> provenance::HtmlParseRangeBranch {
         self.value.branch
     }
     pub fn original_is_fresh_empty(&self) -> bool {
         matches!(self.value.original, provenance::RangeOriginal::FreshEmpty)
     }
-    pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
+    pub fn original_group(
+        &self,
+    ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
         match self.value.original {
-            provenance::RangeOriginal::FreshEmpty => None,
-            provenance::RangeOriginal::Group(edge) => self
-                .history
-                .view()
-                .expect("qualified history")
-                .group(edge.group),
+            provenance::RangeOriginal::FreshEmpty => Ok(None),
+            provenance::RangeOriginal::Group(edge) => group_of(self.history, edge.group).map(Some),
         }
     }
-    pub fn original_cause(&self) -> Option<HtmlParseCause<'a>> {
+    pub fn original_cause(
+        &self,
+    ) -> Result<Option<HtmlParseCause<'a>>, HtmlParseUnresolvedReference> {
         match self.value.original {
-            provenance::RangeOriginal::FreshEmpty => None,
-            provenance::RangeOriginal::Group(edge) => Some(HtmlParseCause {
-                history: self.history,
-                cause: self
-                    .history
-                    .associations()
-                    .expect("qualified D1")
-                    .cause(edge.cause)
-                    .expect("qualified Range original"),
-            }),
+            provenance::RangeOriginal::FreshEmpty => Ok(None),
+            provenance::RangeOriginal::Group(edge) => cause_of(self.history, edge.cause).map(Some),
         }
     }
-    pub fn operand(&self, role: provenance::RangeOperandRole) -> HtmlParseRangeOperand<'a> {
+    pub fn operand(
+        &self,
+        role: provenance::HtmlParseRangeOperandRole,
+    ) -> HtmlParseRangeOperand<'a> {
         HtmlParseRangeOperand {
             history: self.history,
-            value: self.value.operands[role.index()],
+            value: self.value.operands.copy(role),
         }
     }
-    pub fn minimum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+    pub fn minimum_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin> {
         self.value.minimum
     }
-    pub fn maximum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
+    pub fn maximum_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin> {
         self.value.maximum
     }
-    pub fn step_origin(&self) -> Option<crate::HtmlInputNumericStepOrigin> {
+    pub fn step_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepOrigin> {
         self.value.step
     }
-    pub fn base_origin(&self) -> Option<crate::HtmlInputNumericStepBaseOrigin> {
+    pub fn base_origin(
+        &self,
+    ) -> Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepBaseOrigin> {
         self.value.base
     }
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseCause<'a> {
     history: &'a FrozenHistory,
     cause: &'a ConstructionCause,
@@ -537,19 +709,23 @@ pub struct HtmlParseCause<'a> {
 /// Borrowed decisions and dependency groups from an admitted Color update.
 /// The environment identity denotes the parser's unavailable CSS fact policy,
 /// not a host palette/profile certificate. Generated units have no lexical atoms.
+#[derive(Clone, Copy)]
 pub struct HtmlParseColorComputation<'a> {
     history: &'a FrozenHistory,
     value: &'a provenance::ColorComputation,
 }
 impl<'a> HtmlParseColorComputation<'a> {
-    pub fn source(&self) -> provenance::ColorValueSource {
+    pub fn source(&self) -> provenance::HtmlParseColorValueSource {
         self.value.source
     }
-    pub fn colorspace(&self) -> crate::HtmlInputColorSpace {
+    pub fn colorspace(&self) -> surgeist_html::attributes::input_colorspace::HtmlInputColorSpace {
         self.value.space
     }
     pub fn alpha_present(&self) -> bool {
-        self.value.operands[0].is_some()
+        self.value
+            .operands
+            .get(provenance::HtmlParseColorOperandRole::Alpha)
+            .is_some()
     }
     pub fn standard_failure(&self) -> Option<surgeist_css::color::CssColorStandardFailure> {
         self.value.standard_failure
@@ -560,21 +736,23 @@ impl<'a> HtmlParseColorComputation<'a> {
     pub fn value(&self) -> surgeist_color::Color {
         self.value.value
     }
-    pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
-        self.value.original.and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+    pub fn original_group(
+        &self,
+    ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
+        self.value
+            .original
+            .map(|edge| group_of(self.history, edge.group))
+            .transpose()
     }
-    pub fn operand_group(&self, role: provenance::ColorOperandRole) -> Option<HistoryGroup<'a>> {
-        self.value.operands[role.index()].and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+    pub fn operand_group(
+        &self,
+        role: provenance::HtmlParseColorOperandRole,
+    ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
+        self.value
+            .operands
+            .copy(role)
+            .map(|edge| group_of(self.history, edge.group))
+            .transpose()
     }
 }
 impl<'a> HtmlParseCause<'a> {
@@ -600,54 +778,54 @@ impl<'a> HtmlParseCause<'a> {
             provenance::InputValueComputation::Color(_) => None,
         }
     }
-    pub fn operation(&self) -> provenance::ConstructionOperation {
+    pub fn operation(&self) -> provenance::HtmlParseConstructionOperation {
         self.cause.operation
     }
     pub fn source(&self) -> Option<&'a crate::HtmlSourceRange> {
         self.cause.source.as_ref()
     }
-    pub fn rule(&self) -> Option<provenance::ParserRule> {
+    pub fn rule(&self) -> Option<provenance::HtmlParserRule> {
         self.cause.rule
     }
-    pub fn token(&self) -> Option<evidence::DiagnosticToken> {
+    pub fn token(&self) -> Option<evidence::HtmlParseTokenFamily> {
         self.cause.family
     }
-    fn linked(&self, index: Option<usize>) -> Option<Self> {
-        index.map(|i| Self {
-            history: self.history,
-            cause: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .cause(i)
-                .expect("qualified cause link"),
-        })
+    fn linked(&self, index: Option<usize>) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
+        index.map(|i| cause_of(self.history, i)).transpose()
     }
-    pub fn original_cause(&self) -> Option<Self> {
+    pub fn original_cause(&self) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
         self.linked(self.cause.original_cause)
     }
-    pub fn trigger(&self) -> Option<Self> {
+    pub fn trigger(&self) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
         self.linked(self.cause.trigger)
     }
-    pub fn original_node(&self) -> Option<HtmlNode<'a>> {
+    pub fn original_node(&self) -> Result<Option<HtmlNode<'a>>, HtmlParseUnresolvedReference> {
         self.cause
             .original_node
             .map(|i| self.history.native_node(i))
+            .transpose()
     }
-    pub fn intended_parent(&self) -> Option<HtmlNode<'a>> {
+    pub fn intended_parent(&self) -> Result<Option<HtmlNode<'a>>, HtmlParseUnresolvedReference> {
         self.cause
             .intended_parent
             .map(|i| self.history.native_node(i))
+            .transpose()
     }
-    pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
+    pub fn original_group(
+        &self,
+    ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
         self.cause
             .original
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+            .map(|i| group_of(self.history, i))
+            .transpose()
     }
-    pub fn incoming_group(&self) -> Option<HistoryGroup<'a>> {
+    pub fn incoming_group(
+        &self,
+    ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
         self.cause
             .incoming
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+            .map(|i| group_of(self.history, i))
+            .transpose()
     }
     pub fn captured(&self) -> Option<HtmlParseCapturedCause<'a>> {
         self.cause
@@ -655,57 +833,53 @@ impl<'a> HtmlParseCause<'a> {
             .as_ref()
             .map(|value| HtmlParseCapturedCause { value })
     }
-    pub fn retired_destination(&self) -> Option<HtmlParseRetiredDestination<'a>> {
-        self.cause.retired_destination.map(|location| {
-            if location == StringLocation::Detached {
-                return HtmlParseRetiredDestination::Detached;
+    pub fn retired_destination(
+        &self,
+    ) -> Result<Option<HtmlParseRetiredDestination<'a>>, HtmlParseUnresolvedReference> {
+        let Some(location) = self.cause.retired_destination else {
+            return Ok(None);
+        };
+        if location == StringLocation::Detached {
+            return Ok(Some(HtmlParseRetiredDestination::Detached));
+        }
+        let attribute = match location {
+            StringLocation::AttributeName(slot, ordinal) => {
+                Some((slot, HtmlParseField::AttributeName(ordinal)))
             }
-            let attribute = match location {
-                StringLocation::AttributeName(slot, ordinal) => {
-                    Some((slot, HtmlParseField::AttributeName(ordinal)))
-                }
-                StringLocation::AttributeValue(slot, ordinal) => {
-                    Some((slot, HtmlParseField::AttributeValue(ordinal)))
-                }
-                StringLocation::AttributeNamespace(slot, ordinal) => {
-                    Some((slot, HtmlParseField::AttributeNamespace(ordinal)))
-                }
-                StringLocation::AttributePrefix(slot, ordinal) => {
-                    Some((slot, HtmlParseField::AttributePrefix(ordinal)))
-                }
-                _ => None,
-            };
-            if let Some((slot, field)) = attribute {
-                let storage = self
-                    .history
-                    .arena()
-                    .storage
-                    .as_ref()
-                    .expect("qualified historical owner");
-                return match &storage.payloads.values[slot] {
-                    RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
-                        element: Some(owner),
-                        ..
-                    })) => HtmlParseRetiredDestination::Field {
-                        node: self.history.native_node(*owner),
-                        field,
-                    },
-                    RetainedPayload::Attributes(Some(
-                        AttributeStorage::Building { .. }
-                        | AttributeStorage::Frozen { element: None, .. },
-                    )) => HtmlParseRetiredDestination::StagedField { field },
-                    _ => unreachable!("prequalified historical attribute category"),
-                };
+            StringLocation::AttributeValue(slot, ordinal) => {
+                Some((slot, HtmlParseField::AttributeValue(ordinal)))
             }
-            let HtmlParseDestination::Field { node, field } =
-                destination(self.history, NativeDestination::Field(location))
-            else {
-                unreachable!("field location")
+            StringLocation::AttributeNamespace(slot, ordinal) => {
+                Some((slot, HtmlParseField::AttributeNamespace(ordinal)))
+            }
+            StringLocation::AttributePrefix(slot, ordinal) => {
+                Some((slot, HtmlParseField::AttributePrefix(ordinal)))
+            }
+            _ => None,
+        };
+        if let Some((slot, field)) = attribute {
+            return match self.history.storage().payloads.values.get(slot) {
+                Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                    element: Some(owner),
+                    ..
+                }))) => Ok(Some(HtmlParseRetiredDestination::Field {
+                    node: self.history.native_node(*owner)?,
+                    field,
+                })),
+                Some(RetainedPayload::Attributes(Some(
+                    AttributeStorage::Building { .. }
+                    | AttributeStorage::Frozen { element: None, .. },
+                ))) => Ok(Some(HtmlParseRetiredDestination::StagedField { field })),
+                _ => Err(HtmlParseUnresolvedReference::new(
+                    HtmlParseUnresolvedKind::Fact,
+                )),
             };
-            HtmlParseRetiredDestination::Field { node, field }
-        })
+        }
+        let (node, field) = field_of(self.history, location)?;
+        Ok(Some(HtmlParseRetiredDestination::Field { node, field }))
     }
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseCapturedCause<'a> {
     value: &'a provenance::CapturedConstructionContext,
 }
@@ -728,56 +902,45 @@ impl<'a> HtmlParseCapturedCause<'a> {
     pub fn target_document(&self) -> &'a crate::HtmlCaptureDocumentId {
         &self.value.target_document
     }
-    pub fn role(&self) -> provenance::CapturedCauseRole {
+    pub fn role(&self) -> provenance::HtmlParseCapturedCauseRole {
         self.value.role
     }
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseLexicalOccurrence<'a> {
     history: &'a FrozenHistory,
     value: &'a provenance::LexicalOccurrence,
 }
 impl<'a> HtmlParseLexicalOccurrence<'a> {
-    pub fn kind(&self) -> provenance::LexicalKind {
+    pub fn kind(&self) -> provenance::HtmlParseLexicalKind {
         self.value.kind
     }
-    pub fn disposition(&self) -> provenance::LexicalDisposition {
+    pub fn disposition(&self) -> provenance::HtmlParseLexicalDisposition {
         self.value.disposition
     }
     pub fn source(&self) -> &'a crate::HtmlSourceRange {
         &self.value.source
     }
-    pub fn parent(&self) -> Option<Self> {
-        self.value.parent.map(|i| Self {
-            history: self.history,
-            value: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .lexical_occurrence(i)
-                .expect("qualified parent"),
-        })
+    pub fn parent(&self) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
+        self.value
+            .parent
+            .map(|i| occurrence_of(self.history, i))
+            .transpose()
     }
-    pub fn cause(&self) -> HtmlParseCause<'a> {
-        HtmlParseCause {
-            history: self.history,
-            cause: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .cause(self.value.cause())
-                .expect("qualified lexical cause"),
-        }
+    pub fn cause(&self) -> Result<HtmlParseCause<'a>, HtmlParseUnresolvedReference> {
+        cause_of(self.history, self.value.cause())
     }
     pub fn data_units(&self) -> usize {
         self.value.data_units()
     }
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseLexicalPart<'a> {
     history: &'a FrozenHistory,
     value: &'a provenance::LexicalPart,
 }
 impl<'a> HtmlParseLexicalPart<'a> {
-    pub fn role(&self) -> provenance::LexicalRole {
+    pub fn role(&self) -> provenance::HtmlParseLexicalRole {
         self.value.role
     }
     pub fn source(&self) -> &'a crate::HtmlSourceRange {
@@ -789,21 +952,16 @@ impl<'a> HtmlParseLexicalPart<'a> {
     pub fn end(&self) -> usize {
         self.value.end
     }
-    pub fn origin_kind(&self) -> Option<crate::parser::tokenizer::token::OriginKind> {
+    pub fn origin_kind(&self) -> Option<crate::parser::tokenizer::token::HtmlParseOriginKind> {
         self.value.kind
     }
-    pub fn occurrence(&self) -> HtmlParseLexicalOccurrence<'a> {
-        HtmlParseLexicalOccurrence {
-            history: self.history,
-            value: self
-                .history
-                .associations()
-                .expect("qualified D1")
-                .lexical_occurrence(self.value.occurrence)
-                .expect("qualified occurrence"),
-        }
+    pub fn occurrence(
+        &self,
+    ) -> Result<HtmlParseLexicalOccurrence<'a>, HtmlParseUnresolvedReference> {
+        occurrence_of(self.history, self.value.occurrence)
     }
 }
+#[derive(Clone, Copy)]
 pub struct HtmlParseOmission<'a> {
     value: &'a provenance::LexicalOmission,
 }
@@ -817,34 +975,45 @@ impl<'a> HtmlParseOmission<'a> {
     pub fn end(&self) -> usize {
         self.value.end
     }
-    pub fn origin_kind(&self) -> crate::parser::tokenizer::token::OriginKind {
+    pub fn origin_kind(&self) -> crate::parser::tokenizer::token::HtmlParseOriginKind {
         self.value.origin
     }
-    pub fn kind(&self) -> provenance::OmissionKind {
+    pub fn kind(&self) -> provenance::HtmlParseOmissionKind {
         self.value.kind
     }
-    pub fn rule(&self) -> provenance::ParserRule {
+    pub fn rule(&self) -> provenance::HtmlParserRule {
         self.value.rule
     }
 }
 pub struct HtmlParseReverseCursor<'a> {
     history: &'a FrozenHistory,
     cursor: provenance::reverse::ReverseCursor<'a>,
+    fault: Option<HtmlParseUnresolvedReference>,
 }
 pub enum HtmlParseReverseStep<'a> {
     Match(HtmlParseAssociation<'a>),
+    /// A row that does not overlap the query.
     Skipped,
     Complete,
     Cancelled,
+    /// A reference the report holds could not be resolved. The cursor stays
+    /// faulted, so a caller that continues is told again.
+    Fault(HtmlParseUnresolvedReference),
 }
 impl<'a> HtmlParseReverseCursor<'a> {
     pub fn advance(&mut self) -> HtmlParseReverseStep<'a> {
+        if let Some(fault) = self.fault {
+            return HtmlParseReverseStep::Fault(fault);
+        }
         match self.cursor.advance() {
             provenance::reverse::ReverseStep::Match(row) => {
-                HtmlParseReverseStep::Match(HtmlParseAssociation {
-                    history: self.history,
-                    row,
-                })
+                match HtmlParseAssociation::new(self.history, row) {
+                    Ok(row) => HtmlParseReverseStep::Match(row),
+                    Err(fault) => {
+                        self.fault = Some(fault);
+                        HtmlParseReverseStep::Fault(fault)
+                    }
+                }
             }
             provenance::reverse::ReverseStep::Skipped => HtmlParseReverseStep::Skipped,
             provenance::reverse::ReverseStep::Complete => HtmlParseReverseStep::Complete,
@@ -861,13 +1030,13 @@ pub struct HtmlParseHistoryHeader<'a> {
     pub units: usize,
     pub cause: HtmlParseCause<'a>,
     pub retirement: Option<HtmlParseCause<'a>>,
-    pub body: history::HistoryBody<'a>,
+    pub body: history::HtmlParseHistoryBody<'a>,
 }
 impl<'a> HtmlParseHistory<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
         Self {
             history,
-            view: history.view().expect("qualified history"),
+            view: history.view(),
         }
     }
     pub fn len(&self) -> usize {
@@ -876,13 +1045,13 @@ impl<'a> HtmlParseHistory<'a> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    pub fn group(&self, index: usize) -> Option<HistoryGroup<'a>> {
+    pub fn group(&self, index: usize) -> Option<HtmlParseOriginGroup<'a>> {
         self.view.group(index)
     }
     pub fn header(
         &self,
-        group: HistoryGroup<'_>,
-    ) -> Result<HtmlParseHistoryHeader<'a>, history::HistoryReadError> {
+        group: HtmlParseOriginGroup<'_>,
+    ) -> Result<HtmlParseHistoryHeader<'a>, history::HtmlParseHistoryError> {
         let h = self.view.header(group)?;
         Ok(HtmlParseHistoryHeader {
             units: h.units,
@@ -899,20 +1068,20 @@ impl<'a> HtmlParseHistory<'a> {
     }
     pub fn cursor<'s>(
         &'s self,
-        group: HistoryGroup<'_>,
-        scratch: &'s mut [history::HistoryFrame],
+        group: HtmlParseOriginGroup<'_>,
+        scratch: &'s mut [history::HtmlParseHistoryFrame],
         cancellation: Option<&'s crate::HtmlParseCancellation>,
-    ) -> Result<history::HistoryCursor<'a, 's>, history::HistoryReadError> {
+    ) -> Result<history::HtmlParseHistoryCursor<'a, 's>, history::HtmlParseHistoryError> {
         self.view.cursor(group, scratch, cancellation)
     }
 }
 
-impl<'a> report::MetadataRef<'a> {
+impl<'a> report::HtmlParseMetadata<'a> {
     /// Actual independent cryptographic slot, including initialized empty.
     pub fn cryptographic_nonce(&self) -> Option<&'a DocumentString> {
         self.nonce()
     }
-    pub fn input_flags(&self) -> Option<&'a crate::HtmlInputFlags> {
+    pub fn input_flags(&self) -> Option<&'a surgeist_html::elements::input::HtmlInputFlags> {
         self.input().map(|(s, _)| &s.flags)
     }
     pub fn input_raw_value(&self) -> Option<&'a DocumentString> {
@@ -925,17 +1094,22 @@ impl<'a> report::MetadataRef<'a> {
         self.input().and_then(|(state, _)| state.email_value_count)
     }
     /// Established actual File resources. Other input states have no File view.
-    pub fn input_file_selection(&self) -> Option<crate::HtmlInputFileSelection> {
+    pub fn input_file_selection(
+        &self,
+    ) -> Option<surgeist_html::elements::input::HtmlInputFileSelection> {
         self.input().and_then(|(state, _)| {
-            (state.flags.input_type() == crate::HtmlInputType::File && state.selected_files_empty)
-                .then_some(crate::HtmlInputFileSelection::Empty)
+            (state.flags.input_type() == surgeist_html::attributes::HtmlInputType::File
+                && state.selected_files_empty)
+                .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty)
         })
     }
     /// Initial selected coordinates of actual Image construction, not geometry.
-    pub fn input_image_coordinate(&self) -> Option<crate::HtmlInputImageCoordinate> {
+    pub fn input_image_coordinate(
+        &self,
+    ) -> Option<surgeist_html::elements::input::HtmlInputImageCoordinate> {
         self.input().and_then(|(state, _)| match state.image {
             input_image::ImageState::Last { coordinate, .. }
-                if state.flags.input_type() == crate::HtmlInputType::Image =>
+                if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Image =>
             {
                 Some(coordinate)
             }
@@ -951,9 +1125,10 @@ impl<'a> report::MetadataRef<'a> {
                 Some(HtmlInputImageSource::Absent)
             }
             input_image::ImageState::Last {
-                source: Some(source),
-                ..
-            } => Some(HtmlInputImageSource::Present(self.raw(source))),
+                source: Some(_), ..
+            } => self
+                .input_image_source_value()
+                .map(HtmlInputImageSource::Present),
         })
     }
     pub fn input_cursor(&self) -> Option<usize> {
@@ -965,19 +1140,19 @@ impl<'a> report::MetadataRef<'a> {
     pub fn input_creation_writeback(&self) -> Option<bool> {
         self.input().map(|(s, _)| s.value_rewritten_during_creation)
     }
-    pub fn textarea_flags(&self) -> Option<&'a crate::HtmlTextareaFlags> {
+    pub fn textarea_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlTextareaFlags> {
         self.textarea().map(|(s, _)| &s.flags)
     }
     pub fn textarea_raw_value(&self) -> Option<&'a DocumentString> {
         self.textarea().map(|(_, v)| v)
     }
-    pub fn output_default_override(&self) -> Option<OutputDefaultValueOverride> {
+    pub fn output_default_override(&self) -> Option<HtmlParseOutputOverride> {
         self.output().map(|s| s.default_value_override)
     }
-    pub fn select_flags(&self) -> Option<&'a crate::HtmlSelectFlags> {
+    pub fn select_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlSelectFlags> {
         self.select().map(|s| &s.flags)
     }
-    pub fn option_flags(&self) -> Option<&'a crate::HtmlOptionFlags> {
+    pub fn option_flags(&self) -> Option<&'a surgeist_html::elements::form::HtmlOptionFlags> {
         self.option().map(|s| &s.flags)
     }
     pub fn selectedcontent_disabled(&self) -> Option<bool> {
@@ -992,7 +1167,7 @@ impl<'a> report::MetadataRef<'a> {
     pub fn form_parser_inserted(&self) -> Option<bool> {
         self.form().map(|(s, _)| s.parser_inserted)
     }
-    pub fn form_evidence(&self) -> Option<FormAssociationEvidence> {
+    pub fn form_evidence(&self) -> Option<HtmlParseFormEvidence> {
         self.form().map(|(s, _)| s.evidence)
     }
     pub fn script_state(&self) -> Option<HtmlParseScript<'a>> {
@@ -1001,7 +1176,7 @@ impl<'a> report::MetadataRef<'a> {
     pub fn svg_script_processed(&self) -> Option<bool> {
         self.svg_script().map(|s| s.flags.already_processed())
     }
-    pub fn svg_script_origin(&self) -> Option<svg::SvgScriptOrigin> {
+    pub fn svg_script_origin(&self) -> Option<svg::HtmlParseSvgScriptOrigin> {
         self.svg_script().map(|s| s.origin)
     }
 }

@@ -223,7 +223,7 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
                     &ceiling,
                     t::ConditionalPurpose::Overflow,
                     &[],
-                    None
+                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -542,6 +542,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
             .handle();
         let line = p
             .select(t::LineSelectionRequest {
+                inline_boxes: None,
                 segment: p.source_segments().next().unwrap(),
                 start,
                 end: end.view().boundary(),

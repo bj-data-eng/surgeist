@@ -360,6 +360,7 @@ fn bind(prepared: text::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fixture {
         ));
     }
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: (1..inputs.len()).collect(),
@@ -385,6 +386,8 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
         0,
         vec![fixture.binding.clone()],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

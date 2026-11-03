@@ -209,6 +209,9 @@ mod handler;
 mod lease;
 mod loop_;
 mod native_geometry;
+mod native_input;
+mod native_monitor;
+mod native_preferences;
 mod normalization;
 mod planning;
 mod pointer_coordinates;
@@ -248,9 +251,9 @@ pub use environment::{
 pub use error::{Error, ErrorCode, Result};
 pub use event::{
     EventKind, FileDragEvent, ImeConfig, ImeEvent, ImeHint, ImePurpose, ImeRequest,
-    ImeSurroundingText, InputEvent, KeyEvent, KeyState, ModifierState, PointerButton,
-    PointerDeviceData, PointerEvent, PointerKind, PointerPhase, StandardKeyBindingEvent,
-    TouchPhase, WheelDelta, WheelEvent,
+    ImeSurroundingText, InputEvent, KeyEvent, KeyState, MagnificationDelta, MagnificationEvent,
+    MagnificationGesture, ModifierState, PointerButton, PointerDeviceData, PointerEvent,
+    PointerKind, PointerPhase, StandardKeyBindingEvent, TouchPhase, WheelDelta, WheelEvent,
 };
 pub use geometry::{Id, Insets, PhysicalPoint, PhysicalSize, Point, Rect, Size};
 pub use handler::Handler;
@@ -263,15 +266,26 @@ pub use planning::HostCommandPlan;
 pub use pointer_coordinates::NativePointerCoordinates;
 pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
 pub use system_fonts::{
-    SystemFont, SystemFontEnvironment, SystemFontError, SystemFontMetrics, SystemFontRole,
-    SystemFontTraits, SystemFontWeight,
+    AppKitFontMetrics, AppKitFontTraits, AppKitFontWeight, AppKitSystemFont, SystemFont,
+    SystemFontEnvironment, SystemFontError, SystemFontRole, WindowsSystemFont,
 };
 pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
+
+/// Platform monotonic clock shared by Window deadlines and input receipt times.
+///
+/// On native targets this is exactly [`std::time::Instant`]. Browser Wasm uses
+/// the host context's `Performance.now()` clock and requires its `Performance`
+/// object. This is not a DOM timestamp or a universal epoch shared by unrelated
+/// contexts; atomics-enabled browser workers use the upstream time-origin
+/// adjustment. Callers must create deadlines in the owning host clock domain.
+pub use web_time::Instant;
 
 pub(crate) use registry::UserEvent;
 pub(crate) use scheduler::DrawScheduler;
 
 #[cfg(test)]
 mod environment_tests;
+#[cfg(test)]
+mod magnification_tests;
 #[cfg(test)]
 mod tests;

@@ -1,13 +1,17 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources,
-    semantic_limits_without_nested_output as limits, session,
+    Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, scalar_semantic_limits, semantic_limits_without_nested_output as limits,
+    session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
     HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
     HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticUnsupported, HtmlSemanticValue,
@@ -556,43 +560,28 @@ fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
 fn actual_reset_work_output_scratch_and_bytes_have_exact_one_short_sticky_limits() {
     let (c, legend, fs, form) = reset_lookup(false);
     let cx = context(&c, &[(fs, HtmlFormAssociationState::ResetAgainstCapture)]);
-    let u = report(&c, &cx, &legend, 1).usage();
-    assert_eq!(u.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        assert!(exact > 0);
-        let mut exact_session = session(
-            &c,
-            &cx,
-            capped(resource, exact),
-            1,
-            HtmlSemanticCancellation::new(),
-        );
-        let r = exact_session.query(&[request(&legend)]).unwrap();
-        assert_eq!(value(&r, 0), &HtmlSemanticValue::Known(Some(form.clone())));
-        assert_eq!(exact_session.usage().scratch_records(), 0);
-        let mut short = session(
-            &c,
-            &cx,
-            capped(resource, exact - 1),
-            1,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = short.query(&[request(&legend)]).unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-            "{f:?}"
-        );
-        assert_eq!(short.query(&[]).unwrap_err(), f);
-        assert_eq!(short.usage().scratch_records(), 0);
-    }
+    // The reset id search keeps the document's, the fieldset's and the
+    // legend's child lists live together before it reaches the first form:
+    // three iterator records, no nested storage. The visit layout is private,
+    // so work is required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "legend reset lookup",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&legend)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(3),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + 3 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r, 0), &HtmlSemanticValue::Known(Some(form)));
 }
 
 #[test]
@@ -605,7 +594,7 @@ fn established_owner_uses_no_scratch_or_nested_records_and_physical_batch_storag
             HtmlFormAssociationState::EstablishedCurrent(Some(form.clone())),
         )],
     );
-    let l = HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0);
+    let l = scalar_semantic_limits();
     let mut ss = session(&c, &cx, l, 0, HtmlSemanticCancellation::new());
     let first = ss.query(&[request(&legend)]).unwrap();
     assert_eq!(
@@ -641,31 +630,22 @@ fn established_owner_uses_no_scratch_or_nested_records_and_physical_batch_storag
         &HtmlSemanticValue::Known(Some(form.clone()))
     );
     assert!(twice.usage().work() > first.usage().work());
-    for (resource, exact) in [
-        (
-            HtmlSemanticResource::OutputRecords,
-            twice.usage().output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            twice.usage().allocated_bytes(),
-        ),
-    ] {
-        let mut short = session(
-            &c,
-            &cx,
-            capped(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = short
-            .query(&[request(&legend), request(&legend)])
-            .unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource)
-        );
-        assert_eq!(short.query(&[]).unwrap_err(), f);
-    }
+    // Two requests: one shared reservation of two result records and nothing
+    // else allocated; the established owner is cloned, so no scratch or nested
+    // storage exists. Per-request lookup layout is private.
+    assert_exact_and_one_short_caps(
+        "legend established owner twice",
+        &c,
+        &cx,
+        0,
+        l,
+        &[request(&legend), request(&legend)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     assert_eq!(value(&first, 0), &HtmlSemanticValue::Known(Some(form)));
 }
 

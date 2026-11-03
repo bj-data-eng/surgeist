@@ -326,7 +326,7 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())

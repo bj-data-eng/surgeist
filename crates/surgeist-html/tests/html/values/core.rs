@@ -1,4 +1,6 @@
-use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 
 #[test]
 fn validated_attribute_backing_keeps_identity_capacity_and_exact_units() {
@@ -121,6 +123,51 @@ fn named_and_custom_namespaces_use_exact_uri_identity() {
     assert_eq!(Namespace::default().uri(), None);
     let raw_uri = DocumentString::from_utf16(vec![0x20, 0xD800, 0x20]);
     assert_eq!(Namespace::from_uri(raw_uri.clone()).uri(), Some(&raw_uri));
+}
+
+#[test]
+fn only_the_exact_html_namespace_uri_is_html() {
+    // The HTML namespace is the string below (HTML Standard 877d6146487f,
+    // "Elements in the HTML namespace" in the retained foundations capture, which
+    // defers to the Infra Standard's HTML namespace). A namespace is null or a
+    // string and compared by identity, so a differing code unit never matches.
+    const HTML: &str = "http://www.w3.org/1999/xhtml";
+    let units = |text: &str| text.encode_utf16().collect::<Vec<_>>();
+    let mutated = |index: usize, unit: u16| {
+        let mut units = units(HTML);
+        units[index] = unit;
+        Namespace::from_uri(DocumentString::from_utf16(units))
+    };
+
+    assert!(Namespace::html().is_html());
+    assert!(Namespace::from_uri(HTML).is_html());
+    assert!(Namespace::from_uri(DocumentString::from_utf16(units(HTML))).is_html());
+
+    for namespace in [
+        Namespace::svg(),
+        Namespace::mathml(),
+        Namespace::none(),
+        Namespace::default(),
+        Namespace::from_uri(""),
+        Namespace::from_uri(&HTML[..HTML.len() - 1]),
+        Namespace::from_uri(&HTML[1..]),
+        Namespace::from_uri("http://www.w3.org/1999/xhtm"),
+        Namespace::from_uri("HTTP://www.w3.org/1999/xhtml"),
+        Namespace::from_uri("http://www.w3.org/1999/XHTML"),
+        Namespace::from_uri("http://www.w3.org/1999/xhtml/"),
+        Namespace::from_uri("http://www.w3.org/1999/xhtml "),
+        Namespace::from_uri(" http://www.w3.org/1999/xhtml"),
+        Namespace::from_uri("xhtml"),
+        Namespace::from_uri(DocumentString::from_utf16(
+            units(HTML).into_iter().chain([0]).collect::<Vec<_>>(),
+        )),
+        // Same length, one differing code unit at each end and in the middle.
+        mutated(0, u16::from(b'x')),
+        mutated(HTML.len() / 2, 0xD800),
+        mutated(HTML.len() - 1, u16::from(b'L')),
+    ] {
+        assert!(!namespace.is_html(), "{:?}", namespace.uri());
+    }
 }
 
 #[test]

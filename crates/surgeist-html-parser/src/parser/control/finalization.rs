@@ -1,6 +1,6 @@
 //! Explicit terminal shared-output tickets. Mutable allocation checks stay exact.
 use super::*;
-use crate::{Attribute, DocumentString, OrderedAttributes};
+use surgeist_html::values::{Attribute, DocumentString, OrderedAttributes};
 
 #[cfg(test)]
 #[derive(Clone, Copy)]
@@ -154,27 +154,72 @@ impl ParseControl {
     }
     pub(crate) fn admit_pool_work(
         &mut self,
-        work: surgeist_html::bounded::HtmlValuePoolWork,
-    ) -> Result<(), ParseStop> {
+        work: surgeist_html::bounded::values::HtmlValuePoolWork,
+    ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::RecordVisit, work.record_visits() as u64),
-            (WorkCategory::InspectByte, work.inspected_bytes() as u64),
-            (WorkCategory::CopyByte, work.copied_bytes() as u64),
-            (WorkCategory::ProviderCall, work.provider_calls() as u64),
-            (WorkCategory::ReserveByte, work.reserve_bytes() as u64),
+            (
+                HtmlParseWorkCategory::RecordVisit,
+                work.record_visits() as u64,
+            ),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                work.inspected_bytes() as u64,
+            ),
+            (HtmlParseWorkCategory::CopyByte, work.copied_bytes() as u64),
+            (
+                HtmlParseWorkCategory::ProviderCall,
+                work.provider_calls() as u64,
+            ),
+            (
+                HtmlParseWorkCategory::ReserveByte,
+                work.reserve_bytes() as u64,
+            ),
         ])
     }
-    pub(crate) fn release_final_vector<T>(&mut self, vector: VectorCapacity<T>, attributes: u64) {
-        assert!(Arc::ptr_eq(&vector.owner, &self.identity));
-        let bytes = (vector.capacity * size_of::<T>()) as u64;
-        drop(vector);
-        self.commit_prepared_release(&[
-            (HtmlParseResource::ManagedCapacityBytes, bytes),
-            (HtmlParseResource::PeakTransientBytes, bytes),
-            (HtmlParseResource::ManagedAttributes, attributes),
-        ]);
+    /// Credits a finalized vector ticket. A ticket of another controller or a
+    /// capacity that does not fit the ledger is refused with a latched stop,
+    /// credits nothing and is handed back.
+    pub(crate) fn release_final_vector<T>(
+        &mut self,
+        vector: VectorCapacity<T>,
+        attributes: u64,
+    ) -> Result<(), FinalReleaseError<VectorCapacity<T>>> {
+        let released = (|| {
+            if !Arc::ptr_eq(&vector.owner, &self.identity) {
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
+            }
+            let Some(bytes) = vector
+                .capacity
+                .checked_mul(size_of::<T>())
+                .and_then(|bytes| u64::try_from(bytes).ok())
+            else {
+                return self.representation(HtmlParseResource::ManagedCapacityBytes);
+            };
+            self.commit_prepared_release(&[
+                (HtmlParseResource::ManagedCapacityBytes, bytes),
+                (HtmlParseResource::PeakTransientBytes, bytes),
+                (HtmlParseResource::ManagedAttributes, attributes),
+            ])
+        })();
+        match released {
+            Ok(()) => {
+                drop(vector);
+                Ok(())
+            }
+            Err(stop) => Err(FinalReleaseError {
+                stop,
+                tickets: vector,
+            }),
+        }
     }
-    fn acquire_final(&mut self, bytes: u64, units: u64, attributes: u64) -> Result<(), ParseStop> {
+    fn acquire_final(
+        &mut self,
+        bytes: u64,
+        units: u64,
+        attributes: u64,
+    ) -> Result<(), HtmlParseStop> {
         let values = self.plan_storage(&[
             (HtmlParseResource::ManagedUtf16Units, units),
             (HtmlParseResource::ManagedAttributes, attributes),
@@ -184,15 +229,12 @@ impl ParseControl {
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current
             .checked_add(bytes)
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
         self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         self.set(HtmlParseResource::ManagedCapacityBytes, total);
@@ -204,20 +246,17 @@ impl ParseControl {
     pub(crate) fn final_string_ticket(
         &mut self,
         value: &DocumentString,
-    ) -> Result<DocumentStringAllocation, ParseStop> {
+    ) -> Result<DocumentStringAllocation, HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
         let capacity = value.shared_code_units().capacity();
         let bytes = capacity
             .checked_mul(size_of::<u16>())
             .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
             .and_then(|n| u64::try_from(n).ok())
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.acquire_final(bytes, value.len() as u64, 0)?;
         Ok(DocumentStringAllocation {
             owner: self.identity.clone(),
@@ -233,20 +272,17 @@ impl ParseControl {
     pub(crate) fn final_attribute_tickets(
         &mut self,
         value: &OrderedAttributes,
-    ) -> Result<(VectorCapacity<Attribute>, SharedAllocation<Vec<Attribute>>), ParseStop> {
+    ) -> Result<(VectorCapacity<Attribute>, SharedAllocation<Vec<Attribute>>), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 2),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 2),
         ])?;
         let capacity = value.shared_attributes().capacity();
         let bytes = capacity
             .checked_mul(size_of::<Attribute>())
             .and_then(|n| n.checked_add(size_of::<Vec<Attribute>>()))
             .and_then(|n| u64::try_from(n).ok())
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.acquire_final(bytes, 0, value.len() as u64)?;
         Ok((
             VectorCapacity {
@@ -263,47 +299,125 @@ impl ParseControl {
             },
         ))
     }
-    pub(crate) fn release_final_shared<T>(&mut self, shared: SharedAllocation<T>) {
-        assert!(shared.finalized && Arc::ptr_eq(&shared.owner, &self.identity));
-        let bytes = shared.bytes;
-        drop(shared);
-        self.commit_prepared_release(&[
-            (HtmlParseResource::ManagedCapacityBytes, bytes),
-            (HtmlParseResource::PeakTransientBytes, bytes),
-        ]);
+    /// Credits a finalized shared ticket. A ticket of another controller or a
+    /// ticket that was not finalized is refused with a latched stop, credits
+    /// nothing and is handed back.
+    pub(crate) fn release_final_shared<T>(
+        &mut self,
+        shared: SharedAllocation<T>,
+    ) -> Result<(), FinalReleaseError<SharedAllocation<T>>> {
+        let released = if !Arc::ptr_eq(&shared.owner, &self.identity) {
+            self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ))
+        } else if !shared.finalized {
+            self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ))
+        } else {
+            self.commit_prepared_release(&[
+                (HtmlParseResource::ManagedCapacityBytes, shared.bytes),
+                (HtmlParseResource::PeakTransientBytes, shared.bytes),
+            ])
+        };
+        match released {
+            Ok(()) => {
+                drop(shared);
+                Ok(())
+            }
+            Err(stop) => Err(FinalReleaseError {
+                stop,
+                tickets: shared,
+            }),
+        }
     }
+    /// Credits a finalized attribute bank and both of its tickets. Tickets of
+    /// another controller, an unfinalized ticket, or tickets that do not
+    /// describe `value` are refused with a latched stop; nothing is credited
+    /// and the bank and tickets are handed back.
     pub(crate) fn release_final_attributes(
         &mut self,
         value: OrderedAttributes,
         vector: VectorCapacity<Attribute>,
         shared: SharedAllocation<Vec<Attribute>>,
-    ) {
-        assert!(
-            shared.finalized
-                && Arc::ptr_eq(&vector.owner, &self.identity)
-                && Arc::ptr_eq(&shared.owner, &self.identity)
-        );
-        assert_eq!(
-            shared.shared.as_ptr(),
-            Arc::as_ptr(value.shared_attributes())
-        );
-        assert_eq!(vector.capacity, value.shared_attributes().capacity());
-        let attributes = value.len() as u64;
-        let bytes = (vector.capacity * size_of::<Attribute>()) as u64 + shared.bytes;
-        drop(value);
-        drop(vector);
-        drop(shared);
-        self.commit_prepared_release(&[
-            (HtmlParseResource::ManagedCapacityBytes, bytes),
-            (HtmlParseResource::PeakTransientBytes, bytes),
-            (HtmlParseResource::ManagedAttributes, attributes),
-        ]);
+    ) -> Result<(), FinalReleaseError<FinalAttributes>> {
+        let released = (|| {
+            if !Arc::ptr_eq(&vector.owner, &self.identity)
+                || !Arc::ptr_eq(&shared.owner, &self.identity)
+            {
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
+            }
+            if !shared.finalized
+                || shared.shared.as_ptr() != Arc::as_ptr(value.shared_attributes())
+                || vector.capacity != value.shared_attributes().capacity()
+            {
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::CapacityMismatch,
+                ));
+            }
+            let Some(bytes) = vector
+                .capacity
+                .checked_mul(size_of::<Attribute>())
+                .and_then(|bytes| u64::try_from(bytes).ok())
+                .and_then(|bytes| bytes.checked_add(shared.bytes))
+            else {
+                return self.representation(HtmlParseResource::ManagedCapacityBytes);
+            };
+            self.commit_prepared_release(&[
+                (HtmlParseResource::ManagedCapacityBytes, bytes),
+                (HtmlParseResource::PeakTransientBytes, bytes),
+                (HtmlParseResource::ManagedAttributes, value.len() as u64),
+            ])
+        })();
+        match released {
+            Ok(()) => {
+                drop(value);
+                drop(vector);
+                drop(shared);
+                Ok(())
+            }
+            Err(stop) => Err(FinalReleaseError {
+                stop,
+                tickets: (value, vector, shared),
+            }),
+        }
+    }
+}
+
+/// An attribute bank with the tickets that account for it.
+pub(crate) type FinalAttributes = (
+    OrderedAttributes,
+    VectorCapacity<Attribute>,
+    SharedAllocation<Vec<Attribute>>,
+);
+
+/// A final release the controller refused: the stop it latched and the
+/// ticket(s) it did not take.
+#[derive(Debug)]
+pub(crate) struct FinalReleaseError<T> {
+    stop: HtmlParseStop,
+    tickets: T,
+}
+impl<T> FinalReleaseError<T> {
+    pub(crate) fn into_parts(self) -> (HtmlParseStop, T) {
+        (self.stop, self.tickets)
+    }
+    /// For a caller with nowhere to keep the refused tickets, such as a
+    /// teardown of the storage that held them: drops them and returns the stop,
+    /// which stays latched and reports the skipped credit.
+    pub(crate) fn discard(self) -> HtmlParseStop {
+        let (stop, tickets) = self.into_parts();
+        drop(tickets);
+        stop
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::{Attribute, DocumentString, OrderedAttributes};
 
     fn control() -> ParseControl {
         ParseControl::new(
@@ -328,7 +442,7 @@ mod tests {
             let result = c.final_string_ticket(&value);
             if one_short {
                 assert!(
-                    matches!(result, Err(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
+                    matches!(result, Err(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
                 );
                 assert_eq!(Arc::weak_count(value.shared_code_units()), 0);
                 assert_eq!(c.usage().actual_capacity_bytes(), 0);
@@ -361,7 +475,11 @@ mod tests {
     #[test]
     fn selected_attribute_ticket_keeps_capacity_and_cannot_reenter_mutable_editing() {
         let values = OrderedAttributes::new([Attribute::new(
-            crate::QualifiedName::new(crate::Namespace::none(), None, "class"),
+            surgeist_html::values::QualifiedName::new(
+                surgeist_html::values::Namespace::none(),
+                None,
+                "class",
+            ),
             "k",
         )])
         .unwrap();
@@ -378,10 +496,12 @@ mod tests {
         );
         assert!(matches!(
             c.prepare_attribute_edit(values.shared_attributes(), &shared, &vector),
-            Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+            Err(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch
+            ))
         ));
         let held = values.clone();
-        c.release_final_attributes(values, vector, shared);
+        c.release_final_attributes(values, vector, shared).unwrap();
         assert_eq!(held.as_slice()[0].value().code_units(), &[107]);
         assert_eq!(Arc::weak_count(held.shared_attributes()), 0);
         assert_eq!(c.usage().actual_capacity_bytes(), 0);

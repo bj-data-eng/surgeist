@@ -1,9 +1,14 @@
 //! Exact language observations from an independently stored borrowed input.
 use std::{cell::RefCell, rc::Rc, sync::Arc};
-use surgeist_html::bounded::{HtmlElementNameRead, element_classification_with};
+use surgeist_html::bounded::native::{HtmlElementNameRead, element_classification_with};
 use surgeist_html::{
-    DocumentString, HtmlAttributeInput, HtmlAttributesInput, HtmlElementClass, HtmlNameInput,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, is_html_integration_point,
+    elements::native::HtmlElementClass,
+    parsing::is_html_integration_point,
+    values::{
+        DocumentString, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput,
+        HtmlValueInterpreter,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 type Reads = Rc<RefCell<Vec<&'static str>>>;
@@ -106,7 +111,9 @@ fn refused_name_headers_precede_getters_and_classification_never_reads_prefix() 
     .unwrap();
     assert_eq!(
         class,
-        HtmlElementClass::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Input)
+        HtmlElementClass::FormAssociated(
+            surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input
+        )
     );
     let actual = reads.borrow();
     for (index, value) in actual.iter().enumerate() {
@@ -142,11 +149,11 @@ fn borrowed_vocabulary_preserves_exact_components_without_prefix_observation() {
 fn raw_limit_refusal_precedes_name_applicability_or_report_capture() {
     let element = Name::new(Some("foreign"), None, "foreign");
     let raw = Attr::new("not-id", "ab");
-    assert!(
-        HtmlValueInterpreter::new(1)
-            .id_attribute(&element, Some(&raw))
-            .is_err()
-    );
+    let refusal = HtmlValueInterpreter::new(1)
+        .id_attribute(&element, Some(&raw))
+        .err()
+        .unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (1, 2));
     assert!(element.reads.borrow().is_empty());
     assert!(raw.name.reads.borrow().is_empty());
     assert_eq!(*raw.value_reads.borrow(), 1);
@@ -226,7 +233,10 @@ fn script_type_admits_original_language_even_when_type_would_override_it() {
     ];
     let refused =
         HtmlValueInterpreter::new(7).script_type_with_attributes(&element, rows.as_slice());
-    assert!(refused.is_err());
+    // The ignored `type` value (6 units) fits; the 8-unit language value is the
+    // first one over the 7-unit capacity, though `type` would override it.
+    let refusal = refused.err().unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (7, 8));
     assert!(element.reads.borrow().is_empty());
     let admitted = HtmlValueInterpreter::new(8)
         .script_type_with_attributes(&element, rows.as_slice())
@@ -247,7 +257,7 @@ fn script_type_admits_original_language_even_when_type_would_override_it() {
 
 #[test]
 fn controlled_media_retains_borrowed_operands_and_refuses_before_namespace_read() {
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::media::{
         HtmlMediaActionError, HtmlMediaField, HtmlMediaInterpretation, match_media_field,
     };
     let element = Name::new(Some(HTML), None, "style");
@@ -279,7 +289,7 @@ fn controlled_media_retains_borrowed_operands_and_refuses_before_namespace_read(
 
 #[test]
 fn media_role_refusal_precedes_both_name_header_getters() {
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::media::{
         HtmlMediaActionError, HtmlMediaField, HtmlMediaInterpretation, match_media_field,
     };
     let element = Name::new(Some(HTML), None, "style");
@@ -304,7 +314,9 @@ fn media_role_refusal_precedes_both_name_header_getters() {
 
 #[test]
 fn media_role_prepays_local_header_and_reuses_the_admitted_namespace_length() {
-    use surgeist_html::bounded::{HtmlMediaField, HtmlMediaInterpretation, match_media_field};
+    use surgeist_html::bounded::media::{
+        HtmlMediaField, HtmlMediaInterpretation, match_media_field,
+    };
     let element = Name::new(Some(HTML), None, "style");
     let raw = Attr::new("media", "screen");
     let matched = match_media_field(&raw, HtmlMediaField::Media, |_| Ok::<_, ()>(()))
@@ -331,13 +343,13 @@ fn media_role_prepays_local_header_and_reuses_the_admitted_namespace_length() {
     assert_eq!(charges, [1, 705]);
     assert_eq!(
         owner.role().unwrap(),
-        Some(surgeist_html::HtmlMediaElementRole::Style)
+        Some(surgeist_html::attributes::media::HtmlMediaElementRole::Style)
     );
 }
 
 #[test]
 fn document_body_roles_borrow_names_and_admit_before_component_getters() {
-    use surgeist_html::{HtmlDocumentBodyRole as Role, document_body_role_with};
+    use surgeist_html::elements::style::{HtmlDocumentBodyRole as Role, document_body_role_with};
     for (namespace, local, expected) in [
         (Some(HTML), "html", Role::Html),
         (Some(HTML), "body", Role::Body),
@@ -382,7 +394,7 @@ fn document_body_roles_borrow_names_and_admit_before_component_getters() {
 
 #[test]
 fn meter_admits_all_six_original_borrowed_slots_before_element_applicability() {
-    use surgeist_html::HtmlMeterAttributeInput;
+    use surgeist_html::attributes::meter::HtmlMeterAttributeInput;
     let element = Name::new(Some("foreign"), None, "meter");
     let raw = Attr::new("optimum", "1234");
     let input = HtmlMeterAttributeInput {
@@ -393,11 +405,11 @@ fn meter_admits_all_six_original_borrowed_slots_before_element_applicability() {
         high: None,
         optimum: Some(&raw),
     };
-    assert!(
-        HtmlValueInterpreter::new(3)
-            .meter_attributes(&element, input)
-            .is_err()
-    );
+    let refusal = HtmlValueInterpreter::new(3)
+        .meter_attributes(&element, input)
+        .err()
+        .unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (3, 4));
     assert!(element.reads.borrow().is_empty());
     assert!(raw.name.reads.borrow().is_empty());
     assert_eq!(*raw.value_reads.borrow(), 1);

@@ -4,28 +4,29 @@
 //! construction establishes empty File resources and initial Image coordinates;
 //! images-disabled is explicit operation evidence, independent of scripting.
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 // A parser-phase specialization: source values are actual managed raw slots.
 // HTML owns the observation/history rules; this owner still qualifies, admits,
 // compares, copies and retires their backing strings.
-pub(super) type ImageState = surgeist_html::HtmlInputImageHistory<usize>;
+pub(super) type ImageState = surgeist_html::elements::input::HtmlInputImageHistory<usize>;
 impl SessionStorage {
     fn image_source(
         &self,
         c: &mut ParseControl,
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "src")?
             {
@@ -39,7 +40,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<&DocumentString, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::String {
             value, allocation, ..
         }) = self.payloads.values.get(source)
@@ -56,7 +57,7 @@ impl SessionStorage {
     ) -> Result<crate::HtmlImageSupport, SessionError> {
         let document = self.node_document_ref(c, node)?;
         self.validate_document_ref(c, &document)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(fragment) = &self.fragment {
             let id = match &document {
                 DocumentRef::Captured(id) => id,
@@ -64,7 +65,7 @@ impl SessionStorage {
                 // attested policy, retaining their distinct document identity.
                 DocumentRef::Owned(_) => fragment.context.target_document(),
             };
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let captured = fragment
                 .context
                 .capture()
@@ -76,11 +77,11 @@ impl SessionStorage {
             Ok(facts.parser_creation_image_support())
         } else {
             let slot = self.completion_slot(c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-                &self.payloads.values[slot]
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
+                self.payloads.values.get(slot)
             else {
-                unreachable!("checked completion fact")
+                return Err(latch_registry_row(c));
             };
             let _ = state;
             // Only the admitted fresh offline prologue issues this fact; the
@@ -94,33 +95,38 @@ impl SessionStorage {
         node: usize,
         source: Option<usize>,
     ) -> Result<(), SessionError> {
-        use surgeist_html::{HtmlInputImageUpdateGuard as Guard, HtmlInputImagesDisabled};
+        use surgeist_html::elements::input::{
+            HtmlInputImageUpdateGuard as Guard, HtmlInputImagesDisabled,
+        };
         // Preserve the source prefix: no source/empty source returns before
         // the actual creation-qualified environment lookup and URL/resource work.
         let guard = match source {
             None => Guard::for_source(None),
             Some(source) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 Guard::for_source(Some(self.image_source_value(c, source)?))
             }
         };
         match guard {
             Guard::NoSource | Guard::EmptySource => return Ok(()),
             Guard::NeedsImageEnvironment => {}
-            Guard::ImagesDisabled => unreachable!("source-only guard"),
+            // `for_source` never answers the environment-discharged state.
+            Guard::ImagesDisabled => return Err(latch_registry_row(c)),
         }
         match self.input_images_supported(c, node)? {
             crate::HtmlImageSupport::Disabled => {
-                let stopped =
-                    guard.with_disabled_images(HtmlInputImagesDisabled::ExplicitlyDisabled);
-                debug_assert_eq!(stopped, Guard::ImagesDisabled);
+                if guard.with_disabled_images(HtmlInputImagesDisabled::ExplicitlyDisabled)
+                    != Guard::ImagesDisabled
+                {
+                    return Err(latch_registry_row(c));
+                }
                 Ok(())
             }
             crate::HtmlImageSupport::Unavailable => Err(SessionError::ContextFactUnavailable(
                 crate::HtmlCaptureFact::ImageSupport,
             )),
             crate::HtmlImageSupport::Enabled => Err(SessionError::Stop(
-                c.stop_unsupported_standalone(StandaloneUnsupported::ImageResource),
+                c.stop_unsupported_standalone(HtmlParseUnsupportedState::ImageResource),
             )),
         }
     }
@@ -187,7 +193,7 @@ pub(super) fn append_native_input_value(
     state: InputState,
     destination: &mut Utf16Buffer,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let (_, raw, _) = find_input_state(payloads, c, node).map(|(raw, state)| (node, raw, state))?;
     let internal = textarea_raw(payloads, c, raw)?.code_units();
     let HtmlNodeKind::Element(element) = records
@@ -200,10 +206,11 @@ pub(super) fn append_native_input_value(
     let mut content = None;
     if matches!(
         state.flags.input_type().value_mode(),
-        crate::HtmlInputValueMode::Default | crate::HtmlInputValueMode::DefaultOn
+        surgeist_html::elements::input::HtmlInputValueMode::Default
+            | surgeist_html::elements::input::HtmlInputValueMode::DefaultOn
     ) {
         for attribute in element.attributes().as_slice() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "value")?
             {
@@ -214,7 +221,7 @@ pub(super) fn append_native_input_value(
     }
     let files = state
         .selected_files_empty
-        .then_some(crate::HtmlInputFileSelection::Empty);
+        .then_some(surgeist_html::elements::input::HtmlInputFileSelection::Empty);
     let units = state
         .flags
         .input_type()
@@ -229,6 +236,7 @@ pub(super) fn append_native_input_value(
 mod tests {
     use super::super::tests::{input_owner, limits, radio_next_attribute, storage_zero};
     use super::*;
+    use surgeist_html::construction::HtmlNodeKind;
     fn fixture<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
@@ -331,7 +339,7 @@ mod tests {
                 .unwrap()
                 .flags
                 .input_type(),
-            crate::HtmlInputType::Image
+            surgeist_html::attributes::HtmlInputType::Image
         );
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
@@ -352,7 +360,7 @@ mod tests {
             .radio_input(&mut c, node.index)
             .unwrap()
             .unwrap();
-        state.flags = crate::HtmlInputFlags::from_retained(
+        state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
             state.flags.input_type(),
             true,
             false,
@@ -404,7 +412,7 @@ mod tests {
                 .radio_input(&mut c, node.index)
                 .unwrap()
                 .unwrap();
-            state.flags = crate::HtmlInputFlags::from_retained(
+            state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
                 state.flags.input_type(),
                 true,
                 true,
@@ -566,8 +574,12 @@ mod tests {
     fn actual_captured_clone_uses_new_environment_not_original_disabled_or_target_only_policy() {
         use crate::{
             HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-            HtmlDocumentMode, HtmlFragmentContext, HtmlFragmentParseRequest, HtmlHostFactsRevision,
-            HtmlImageSupport, HtmlScriptingStatus, Namespace, OrderedAttributes, QualifiedName,
+            HtmlFragmentContext, HtmlFragmentParseRequest, HtmlHostFactsRevision, HtmlImageSupport,
+            HtmlScriptingStatus,
+        };
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
         };
         for support in [
             HtmlImageSupport::Unavailable,
@@ -630,7 +642,7 @@ mod tests {
             let mut driver = crate::parser::tree_builder::initialized_fragment_fixture(&request);
             let mut lexer = crate::parser::tokenizer::tests::LexerFixture::new(
                 request.source(),
-                crate::parser::tokenizer::states::State::Data,
+                crate::parser::tokenizer::states::HtmlTokenizerState::Data,
                 None,
                 driver.input_fixture_parts().unwrap().0,
             )
@@ -699,9 +711,11 @@ mod tests {
                 ),
                 HtmlImageSupport::Enabled => assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-                        StandaloneUnsupported::ImageResource
-                    )))
+                    Err(SessionError::Stop(
+                        HtmlParseStop::UnsupportedStandaloneState(
+                            HtmlParseUnsupportedState::ImageResource
+                        )
+                    ))
                 ),
             }
             lexer.release(c).unwrap();
@@ -732,7 +746,10 @@ mod tests {
                 &range,
                 &cap,
             );
-            assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+            assert_eq!(
+                result.err(),
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
+            );
             assert!(tag.is_none());
             assert!(
                 session
@@ -746,13 +763,13 @@ mod tests {
             let first = c.first_stop_usage().unwrap().clone();
             assert_eq!(
                 session.freeze(&mut c).err(),
-                Some(SessionError::Stop(ParseStop::Cancelled))
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert_eq!(c.first_stop_usage(), Some(&first));
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             assert_eq!(c.first_stop_usage(), Some(&first));
         }
     }

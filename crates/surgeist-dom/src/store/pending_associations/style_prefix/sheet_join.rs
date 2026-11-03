@@ -242,9 +242,10 @@ fn membership(
     let row = loop {
         meter.step(cancel)?;
         match rows.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => break row,
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     };
     let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
@@ -254,7 +255,10 @@ fn membership(
     let mut existing = 0usize;
     for i in 0..inputs.sheet_order_len() {
         meter.step(cancel)?;
-        let subject = inputs.sheet_order(i).expect("sealed original order").id();
+        let subject = inputs
+            .sheet_order(i)?
+            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
+            .id();
         if subject == *original.qualification.subject() {
             this += 1;
             meter.reserve(&mut order, 1, cancel)?;
@@ -289,6 +293,7 @@ fn membership(
             loop {
                 meter.step(cancel)?;
                 match history.advance() {
+                    Step::Fault(fault) => return Err(fault.into()),
                     Step::Occurrence(prior) if prior.subject().id() == subject => {
                         original_inputs |= prior.style().is_some();
                         if prior.requires_processing() {
@@ -296,7 +301,7 @@ fn membership(
                         }
                     }
                     Step::Complete => break,
-                    _ => (),
+                    Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
                 }
             }
             if !original_inputs {
@@ -363,13 +368,14 @@ fn form_request(
         .root()
         .kind()
     {
-        surgeist_html::HtmlNodeKind::Document(mode) => *mode,
+        surgeist_html::construction::HtmlNodeKind::Document(mode) => *mode,
         _ => return Err(DomParsedHtmlStyleError::WrongRequest),
     };
     let mut cursor = report.pending_associations();
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => {
                 let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 // The actual original list may name earlier inert Styles. Their
@@ -379,8 +385,8 @@ fn form_request(
                 for i in 0..inputs.sheet_order_len() {
                     meter.step(cancel)?;
                     let subject = inputs
-                        .sheet_order(i)
-                        .expect("qualified original order")
+                        .sheet_order(i)?
+                        .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
                         .id();
                     if subject == *original.qualification.subject() {
                         selected += 1;
@@ -419,8 +425,8 @@ fn form_request(
                     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                     Ok(Some(DocumentString::from_utf16(units)))
                 };
-                let media = attribute(surgeist_html::KnownHtmlAttribute::Media)?;
-                let title = attribute(surgeist_html::KnownHtmlAttribute::Title)?;
+                let media = attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Media)?;
+                let title = attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Title)?;
                 return Ok(DomParsedHtmlStyleCreateSheetRequest {
                     qualification: original.qualification.clone(),
                     element,
@@ -432,7 +438,7 @@ fn form_request(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
@@ -578,14 +584,16 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
 fn validate_source(
     source: Option<&surgeist_css::source::CssParseSource>,
     expected: &[u16],
-    mode: surgeist_html::HtmlDocumentMode,
+    mode: surgeist_html::construction::HtmlDocumentMode,
     meter: &Meter,
     cancel: &AtomicBool,
 ) -> Result<(), DomParsedHtmlStyleError> {
     meter.step(cancel)?;
     let source = source.ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
     let selected = match mode {
-        surgeist_html::HtmlDocumentMode::Quirks => surgeist_css::CssParserMode::Quirks,
+        surgeist_html::construction::HtmlDocumentMode::Quirks => {
+            surgeist_css::CssParserMode::Quirks
+        }
         _ => surgeist_css::CssParserMode::Standards,
     };
     if source.context().mode() != selected {

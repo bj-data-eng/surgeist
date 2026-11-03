@@ -1,21 +1,30 @@
 use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlFloatingPointNumber,
-    HtmlInputNumericAttributeReport, HtmlInputNumericAttributeValue,
-    HtmlInputNumericAuthorState as Author, HtmlInputNumericBoundOrigin as BoundOrigin,
-    HtmlInputNumericCommonReport, HtmlInputNumericConstraints, HtmlInputNumericConstraintsError,
-    HtmlInputNumericConstraintsOutcome as Outcome, HtmlInputNumericConstraintsReport,
-    HtmlInputNumericLimitAuthorState as LimitAuthor, HtmlInputNumericStepBaseOrigin as BaseOrigin,
-    HtmlInputNumericStepOrigin as StepOrigin, HtmlInputStep, HtmlInputType as State,
-    HtmlNonPositiveInputStepError, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
-    HtmlValueRecoveryState, HtmlValueReport, HtmlValueRepresentationError, HtmlValueSyntaxError,
-    KnownHtmlAttribute as A, KnownHtmlElement as E, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlInputType as State,
+        input_bounds::{
+            HtmlInputNumericAttributeReport, HtmlInputNumericAttributeValue,
+            HtmlInputNumericAuthorState as Author, HtmlInputNumericBoundOrigin as BoundOrigin,
+            HtmlInputNumericCommonReport, HtmlInputNumericConstraints,
+            HtmlInputNumericConstraintsError, HtmlInputNumericConstraintsOutcome as Outcome,
+            HtmlInputNumericConstraintsReport, HtmlInputNumericLimitAuthorState as LimitAuthor,
+            HtmlInputNumericStepBaseOrigin as BaseOrigin, HtmlInputNumericStepOrigin as StepOrigin,
+            HtmlInputStep, HtmlNonPositiveInputStepError,
+        },
+    },
+    microsyntax::numeric::HtmlFloatingPointNumber,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueReport, HtmlValueRepresentationError,
+        HtmlValueSyntaxError, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 #[test]
 fn converted_numeric_selection_preserves_defaults_recovery_and_state_domain() {
-    use surgeist_html::{
+    use surgeist_html::attributes::input_bounds::{
         HtmlInputNumericContent as Content, HtmlInputNumericStep as Step,
         select_input_numeric_constraints as select,
     };
@@ -80,7 +89,7 @@ fn converted_numeric_selection_preserves_defaults_recovery_and_state_domain() {
 
 #[test]
 fn step_any_observes_only_the_selected_ascii_keyword_position() {
-    use surgeist_html::HtmlInputNumericStep as Step;
+    use surgeist_html::attributes::input_bounds::HtmlInputNumericStep as Step;
     assert_eq!(Step::ANY_KEYWORD, "any");
     for (index, lower, upper) in [(0, 97, 65), (1, 110, 78), (2, 121, 89)] {
         assert!(Step::any_keyword_unit_matches(index, lower));
@@ -785,7 +794,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
             &E::Input.qualified_name(),
             Some(&wrong_min),
             Some(&wrong_max),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&good_value),
             State::Time,
         )
@@ -819,10 +828,10 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
         let report = interpreter
             .input_numeric_constraints(
                 &element,
-                None::<&surgeist_html::Attribute>,
-                None::<&surgeist_html::Attribute>,
-                None::<&surgeist_html::Attribute>,
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 State::Number,
             )
             .unwrap();
@@ -838,10 +847,10 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
     let report = interpreter
         .input_numeric_constraints(
             &E::Input.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&upper),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             State::Range,
         )
         .unwrap();
@@ -927,7 +936,7 @@ fn native_step_and_limits_use_existing_checked_finite_values() {
             Some(&min),
             Some(&max),
             Some(&step),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             State::Number,
         )
         .unwrap();
@@ -974,9 +983,9 @@ fn leading_isolated_surrogates_remain_raw_and_fail_the_conversion() {
         .input_numeric_constraints(
             &E::Input.qualified_name(),
             Some(&raw),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             State::Range,
         )
         .unwrap();
@@ -996,9 +1005,9 @@ fn leading_isolated_surrogates_remain_raw_and_fail_the_conversion() {
         .input_numeric_constraints(
             &E::Input.qualified_name(),
             Some(&raw),
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             State::Range,
         )
         .unwrap_err();

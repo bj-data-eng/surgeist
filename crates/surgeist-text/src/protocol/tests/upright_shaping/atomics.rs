@@ -187,8 +187,10 @@ fn allocation() -> AtomicLineAllocation {
     // Physical Central2 in a6-wide child is4 from its right line-over edge.
     // Native cell axes make physical6x14 a local14x6 allocation.
     AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 14.0,
+            normal_border_inline_size: 14.0,
             before_baseline: 4.0,
             after_baseline: 2.0,
             occupied_start: 0.0,

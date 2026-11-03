@@ -1,10 +1,24 @@
 use crate::semantics::support::{
-    builder, collection_limits as capped, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, collection_limits as capped,
+    context, result_record_bytes, semantic_limits as limits, session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeAuthorState, HtmlAttributeConformanceError, HtmlAttributeContextAuthorState,
+        HtmlAttributeObservation,
+    },
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlFormNameAuthorReport, HtmlFormNameUniqueness, HtmlScriptingStatus,
     HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
@@ -610,51 +624,29 @@ fn terminal_raw_failure_after_unknown_gap_cannot_be_rescued_by_later_duplicate()
 fn exact_and_one_short_caps_keep_actual_storage_atomic_and_cleanup_scratch() {
     let (c, m, _) = pair("x", "y");
     let cx = context(&c);
-    let usage = report(&c, &m, 1).usage();
-    assert_eq!(usage.scratch_records(), 0);
-    assert_eq!(usage.nested_output_records(), 1);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            usage.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                1,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = s.query(&[request(&m)]);
-            if cap == exact {
-                assert_eq!(
-                    value(&r.unwrap()).uniqueness(),
-                    &HtmlFormNameUniqueness::Unique
-                );
-            } else {
-                let failure = r.unwrap_err();
-                assert!(
-                    matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: r, .. } if *r == resource),
-                    "{failure:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // The uniqueness walk climbs to the document and descends: the document's
+    // child list and the subject's own (empty) list are live together, two
+    // iterator records. One report record is retained. The payload type and
+    // the walk's visit layout are private, so the byte charge must cover the
+    // result record, both frames and one payload byte, and work is required
+    // to be charged without being pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "form name",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&m)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).uniqueness(), &HtmlFormNameUniqueness::Unique);
 }
 
 #[test]
@@ -733,7 +725,7 @@ fn changed_capture_and_context_keep_old_reports_immutable_and_qualified() {
     let mut s = session(
         &a,
         &cx,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     );

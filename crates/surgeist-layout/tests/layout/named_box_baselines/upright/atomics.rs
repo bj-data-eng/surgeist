@@ -66,6 +66,7 @@ fn child_input<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
 fn child_binding(fixture: &Fixture, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
     let origin = fixture.prepared.origin_views().next().unwrap().handle();
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container,
         nodes: vec![text],
@@ -343,6 +344,7 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
         .handle();
     let line = prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end: end.view().boundary(),
@@ -357,7 +359,9 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
             atomics: vec![t::AtomicAllocation {
                 occurrence: atomic.clone(),
                 allocation: t::AtomicLineAllocation::InFlow {
+                    fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                     flow: t::AtomicFlowAllocation {
+                        normal_border_inline_size: 14.0,
                         advance: 14.0,
                         before_baseline: 4.0,
                         after_baseline: 2.0,
@@ -475,6 +479,7 @@ fn native_atomic<S: l::LayoutScalar>() {
         );
         let atomic = parent.prepared.atomic_views().next().unwrap().handle();
         let outer = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container: 0,
             nodes: vec![1, 2, 3],

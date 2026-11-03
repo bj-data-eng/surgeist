@@ -169,6 +169,7 @@ fn select_line_in_direction(
     let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
     prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end,
@@ -451,6 +452,7 @@ fn compute<S: l::LayoutScalar>(
         1
     );
     let binding = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container: 0,
         nodes: vec![1],

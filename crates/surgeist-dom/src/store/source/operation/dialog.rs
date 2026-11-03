@@ -3,7 +3,7 @@ use super::*;
 use crate::source::event::{EventWork, ExecutorBinding};
 use crate::source::*;
 use std::sync::{Mutex, Weak, atomic::AtomicU8};
-use surgeist_html::{HtmlDialogAction, HtmlDialogOutcome, HtmlDialogReply};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogOutcome, HtmlDialogReply};
 
 pub(super) struct ResumeWorkPolicy {
     work: Arc<EventWork>,
@@ -264,8 +264,8 @@ impl Operation {
         if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) } | Command::ShowModalDialog { node: NodeOperand::Existing(actual) } | Command::CloseDialog { node: NodeOperand::Existing(actual), .. } | Command::RequestCloseDialog { node: NodeOperand::Existing(actual), .. }]) if *actual == subject)
             || !matches!(
                 source,
-                surgeist_html::HtmlDialogEventSource::Null
-                    | surgeist_html::HtmlDialogEventSource::OperationSource
+                surgeist_html::elements::dialog::HtmlDialogEventSource::Null
+                    | surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource
             )
             || !self.draft.created.is_empty()
             || !self.draft.tickets.is_empty()
@@ -1529,7 +1529,7 @@ impl DomSourceLease<'_> {
                 .retry_copy()?;
             call.cursor
                 .reply(
-                    surgeist_html::HtmlCloseWatcherRequestReply::CancelActionResult(
+                    surgeist_html::elements::dialog::HtmlCloseWatcherRequestReply::CancelActionResult(
                         outcome != DomSourceEventOutcome::Canceled,
                     ),
                 )

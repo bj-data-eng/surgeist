@@ -197,16 +197,19 @@ fn fixture<S: l::LayoutScalar>() -> (
         (1, l::InlineBoundaryKind::Start),
         (5, l::InlineBoundaryKind::End),
     ] {
-        inputs[node] = l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
-            kind,
-            l::InlineMetricsOf::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
-                S::from_f64(8.0),
-                S::from_f64(10.0),
+        inputs[node] = l::LayoutInputOf::inline_boundary(
+            l::InlineBoundaryInputOf::contribution(
+                kind,
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
+                l::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
-            l::InlineBoundaryEdgeOf::ZERO,
-        ));
+        );
     }
     let bindings = capture
         .paragraphs()
@@ -263,6 +266,7 @@ fn fixture<S: l::LayoutScalar>() -> (
                 })
                 .collect();
             l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -301,6 +305,8 @@ fn wrapping(reverse: bool, captured: Option<t::CapturedScope>) -> l::WrappingInp
         })
         .collect();
     l::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![l::WrappingScopeInput::NativePair {
             start: 1,
             end: 5,

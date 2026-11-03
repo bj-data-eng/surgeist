@@ -2,6 +2,7 @@
 //! Captured owner reuse preserves the existing canonical qualification.
 use super::*;
 use DomFocusedAreaDesignation::KnownNull;
+use surgeist_html::values::Namespace;
 use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
 
@@ -168,15 +169,20 @@ fn focused_designation_contextual_auxiliary_is_qualified_and_captured_owners_are
                 HtmlSource::utf8("<style type=text/plain></style><template><b>x</b></template>"),
                 context,
                 parse_limits(),
-                surgeist_html::HtmlParserScriptingMode::Inert,
+                surgeist_html::parsing::HtmlParserScriptingMode::Inert,
                 false,
             )
             .unwrap()
             .parse()
             .unwrap(),
         );
-        assert!(report.effects().unwrap().is_empty());
-        let auxiliary = report.fragment_parser_document().unwrap().document().id();
+        assert!(report.effects().unwrap().unwrap().is_empty());
+        let auxiliary = report
+            .fragment_parser_document()
+            .unwrap()
+            .unwrap()
+            .document()
+            .id();
         let installed = dom
             .install_parsed_html_fragment(report, &captured, limits(), &AtomicBool::new(false))
             .unwrap();
@@ -328,6 +334,7 @@ fn controlled_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
     let mut documents = 0;
     loop {
         match cursor.advance() {
+            HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
             HtmlParsePendingAssociationStep::Document(row) => {
                 documents += 1;
                 assert_eq!(

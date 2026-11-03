@@ -203,12 +203,15 @@ fn fitting_ordinary_trials(
         crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
             Vec::new(),
             &[],
+            false,
         )
         .unwrap()
         .freeze(),
+        crate::text_layout::fragmentation::InlineBoxFamilies::default(),
     );
     let lines = super::super::fit(
         FitInput {
+            inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrapping: None,
             formatted: &FormattedTailSnapshot::default(),

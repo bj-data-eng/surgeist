@@ -1,5 +1,5 @@
 use crate::parser::support::{environment, fragment_context, limits, record, revision};
-use surgeist_html::{HtmlStyleTrigger, KnownHtmlAttribute};
+use surgeist_html::{elements::style::HtmlStyleTrigger, vocabulary::KnownHtmlAttribute};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -41,6 +41,7 @@ fn units(report: &HtmlParseReport, group: HtmlParseOriginGroup<'_>) -> Vec<u16> 
             HtmlParseHistoryStep::Progress => {}
             HtmlParseHistoryStep::Complete => return units,
             HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
         }
     }
 }
@@ -92,7 +93,7 @@ fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selectin
         [65]
     );
     assert_eq!(
-        units(&report, before.style().unwrap().text(0).unwrap()),
+        units(&report, before.style().unwrap().text(0).unwrap().unwrap()),
         "a{content:'&amp;'}".encode_utf16().collect::<Vec<_>>()
     );
     assert_eq!(
@@ -137,7 +138,7 @@ fn offline_style_context_is_explicitly_unbound_while_original_mode_and_body_are_
         let context = row.context();
         assert_eq!(
             context.document_mode(),
-            surgeist_html::HtmlDocumentMode::NoQuirks
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks
         );
         for role in [
             DocumentUrl,
@@ -378,7 +379,7 @@ fn captured_declarative_shadow_style_uses_original_shadow_including_root() {
         );
         let document = builder
             .add_document(
-                surgeist_html::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                 HtmlScriptingStatus::Disabled,
                 HtmlCaptureRegistryInput::Null,
             )
@@ -394,8 +395,12 @@ fn captured_declarative_shadow_style_uses_original_shadow_including_root() {
         let div = builder
             .add_element(
                 &document,
-                surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "div"),
-                surgeist_html::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "div",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
                 HtmlCapturedIsValue::Absent,
                 HtmlCaptureRegistryInput::Null,
             )
@@ -409,12 +414,12 @@ fn captured_declarative_shadow_style_uses_original_shadow_including_root() {
                 let form = builder
                     .add_element(
                         &document,
-                        surgeist_html::QualifiedName::new(
-                            surgeist_html::Namespace::html(),
+                        surgeist_html::values::QualifiedName::new(
+                            surgeist_html::values::Namespace::html(),
                             None,
                             "form",
                         ),
-                        surgeist_html::OrderedAttributes::default(),
+                        surgeist_html::values::OrderedAttributes::default(),
                         HtmlCapturedIsValue::Absent,
                         HtmlCaptureRegistryInput::Null,
                     )
@@ -428,12 +433,18 @@ fn captured_declarative_shadow_style_uses_original_shadow_including_root() {
             HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
         let result = HtmlFragmentParseRequest::with_options(HtmlSource::utf8(
             "<template shadowrootmode=open><style title=chosen>a { color: red }</style></template>"),
-            context.clone(), limits(), surgeist_html::HtmlParserScriptingMode::Inert, true).unwrap().parse();
+            context.clone(), limits(), surgeist_html::parsing::HtmlParserScriptingMode::Inert, true).unwrap().parse();
         let Some(connected) = connection else {
             let failure = result.unwrap_err();
-            assert!(matches!(
+            // The capture never established the form's parent, and the failure
+            // names that fact.
+            assert_eq!(
                 failure.reason(),
-                HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(_))
+                HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::Parent)
+            );
+            assert!(matches!(
+                failure.first_stop(),
+                Some(HtmlParseStop::UnsupportedStandaloneState(_))
             ));
             assert!(failure.cleanup_error().is_none());
             continue;
@@ -481,7 +492,7 @@ fn captured_template_contents_host_does_not_connect_pending_shadow_style() {
         HtmlSource::utf8("<template shadowrootmode=open><style title=A>x{}</style></template>"),
         context.clone(),
         limits(),
-        surgeist_html::HtmlParserScriptingMode::Inert,
+        surgeist_html::parsing::HtmlParserScriptingMode::Inert,
         true,
     )
     .unwrap()

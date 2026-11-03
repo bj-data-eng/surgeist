@@ -12,8 +12,9 @@ pub(crate) mod quality;
 pub(crate) mod tail;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
-    WrappingInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
+    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput,
+    NativeInlineBoxFamilyInput, WrapEdge, WrapEdges, WrappingInput,
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
@@ -24,6 +25,13 @@ pub(crate) use canonical_order::{
     CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
 };
 mod edge_plan;
+pub(crate) mod family;
+pub use family::{
+    NativeInlineBoxEdgeView, NativeInlineBoxFamily, NativeInlineBoxFragment,
+    NativeInlineBoxMemberView, NativeInlineBoxPieceView,
+};
+pub(crate) mod ordering;
+pub(crate) use ordering::{NativeOrderingProjection, NativeOrderingSelection, NativeRunSource};
 mod source;
 pub(crate) use crate::error::wrapping_error;
 pub(crate) use context::{
@@ -66,6 +74,7 @@ pub enum WrappingScopeInput<Node> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum WrappingScopeError {
+    Allocation,
     NodeNotReachable,
     AmbiguousNode,
     EndpointRole,
@@ -88,6 +97,22 @@ pub enum WrappingScopeError {
     MissingBoxMetrics,
     InvalidBoxMetrics,
     ConflictingBoxMetrics,
+    MissingGap,
+    AmbiguousGap,
+    InvalidGapAnchor,
+    ConflictingGap,
+    CyclicGap,
+    GapOutsideSelection,
+    /// The same formatter was requested more than once.
+    DuplicateFamily,
+    /// Supplied proof does not establish the requested complete generated closure.
+    IncompleteFamily,
+    /// A requested normal family's Contribution endpoint has nonzero flow advance.
+    IncompatibleContribution,
+    /// The fragment identities belong to different admitted families.
+    DifferentFamily,
+    /// The fragments belong to distinct bodies of the same family.
+    DifferentBody,
 }
 
 #[derive(Debug, Default)]
@@ -138,8 +163,13 @@ pub(crate) struct NativePairProjection<Node> {
     pub(crate) end: ScopeEndpoint<Node>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum NumericWrappingError {
+    Geometry {
+        value: f64,
+        reason: crate::LayoutTextNumericError,
+    },
+    Allocation,
     Baseline(crate::InlineBaselineError),
     Group(crate::group_alignment::NumericError),
     Scope(WrappingScopeError),
@@ -164,6 +194,16 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
     error: NumericWrappingError,
 ) -> crate::LayoutErrorOf<Node, S, M> {
     match error {
+        NumericWrappingError::Geometry { value, reason } => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::TextNumeric { value, reason },
+        ),
+        NumericWrappingError::Allocation => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::InlineWrapping,
+            crate::LayoutErrorKindOf::Allocation,
+        ),
         NumericWrappingError::Baseline(error) => crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),
             crate::LayoutOperation::ChildLayout,

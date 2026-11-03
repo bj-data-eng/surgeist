@@ -1,7 +1,14 @@
 use crate::semantics::support::{
-    builder, collection_limits as resource_limits, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    collection_limits as resource_limits, context, semantic_limits as limits, session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
@@ -323,53 +330,29 @@ fn template_and_shadow_associations_are_excluded_but_real_ordinary_children_rema
 fn exact_and_one_short_work_scratch_nested_output_bytes_and_batch_storage_are_terminal() {
     let (c, id) = leaf("AB");
     let cx = context(&c);
-    let r = report(&c, &id);
-    let u = r.usage();
-    assert_eq!(known(&r).code_units(), [65, 66]);
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(u.nested_output_records(), 2);
-    assert_eq!(u.peak_scratch_records(), 1);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>()
-            + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
-            + 2 * std::mem::size_of::<u16>()
+    // Two text units grow the buffer by exactly one `u16` each, and one child
+    // iterator record is live; the visit layout of the text walk is private,
+    // so work is required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "anchor text",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+                    + 2 * std::mem::size_of::<u16>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let mut exact_session = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        assert_eq!(
-            known(&exact_session.query(&[request(&id)]).unwrap()).code_units(),
-            [65, 66]
-        );
-        let selected = resource_limits(resource, exact - 1);
-        let mut short = session(&c, &cx, selected, 0, HtmlSemanticCancellation::new());
-        let failure = short.query(&[request(&id)]).unwrap_err();
-        assert!(
-            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded {resource:r,..} if *r==resource)
-        );
-        assert_eq!(short.usage().scratch_records(), 0);
-        assert_eq!(failure.qualification().unwrap().limits(), selected);
-        assert_eq!(short.query(&[]).unwrap_err(), failure);
-        assert_eq!(known(&r).code_units(), [65, 66]);
-    }
+    assert_eq!(known(&r).code_units(), [65, 66]);
 }
 
 #[test]
@@ -442,27 +425,32 @@ fn late_text_limit_discards_the_batch_prefix_and_releases_all_live_frames() {
 fn exact_batch_work_and_one_short_late_failure_keep_qualification_and_prior_reports() {
     let (c, id) = leaf("AB");
     let cx = context(&c);
-    let mut measuring = session(&c, &cx, limits(), 0, HtmlSemanticCancellation::new());
-    let measured = measuring
-        .query(&[request(&id), request(&id)])
-        .unwrap()
-        .usage()
-        .work();
-    let mut exact = session(
+    // Each request grows its own text buffer by two `u16` records and its own
+    // one-record frame stack; the text walk's visit layout is private, so work
+    // is required to be charged without being pinned. The helper proves the
+    // reported batch work is the least admitting cap before the late stop below
+    // reuses it.
+    let measured = assert_exact_and_one_short_caps(
+        "anchor text duplicate batch",
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, measured),
         0,
-        HtmlSemanticCancellation::new(),
-    );
-    assert_eq!(
-        exact
-            .query(&[request(&id), request(&id)])
-            .unwrap()
-            .results()
-            .len(),
-        2
-    );
+        limits(),
+        &[request(&id), request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(4),
+            allocated_bytes: Charge::Exactly(
+                2 * (std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+                    + 2 * std::mem::size_of::<u16>()),
+            ),
+            ..ExpectedUsage::none()
+        },
+    )
+    .usage()
+    .work();
     let mut short = session(
         &c,
         &cx,

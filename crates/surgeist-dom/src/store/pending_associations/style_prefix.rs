@@ -2,11 +2,16 @@
 use super::control::Meter;
 use super::*;
 use crate::parsed_style::*;
-use crate::{DocumentString, DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
+use crate::{DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
 use std::sync::{MutexGuard, TryLockError};
+
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    HtmlCspAssociation, HtmlStyleExecutionProfile, HtmlStyleUpdateAction as Action,
-    HtmlStyleUpdateCursor, HtmlStyleUpdateReply as Reply,
+    elements::style::{
+        HtmlStyleExecutionProfile, HtmlStyleUpdateAction as Action, HtmlStyleUpdateCursor,
+        HtmlStyleUpdateReply as Reply,
+    },
+    security::csp::HtmlCspAssociation,
 };
 use surgeist_html_parser::{
     HtmlParseAssociationContextRequirement as Requirement, HtmlParseAssociationContextRole as Role,
@@ -82,7 +87,7 @@ pub(super) enum CompletedOutcome {
 pub(super) struct Selection {
     qualification: DomParsedHtmlStyleQualification,
     origin: StylePolicyOrigin,
-    state: surgeist_html::HtmlStyleState,
+    state: surgeist_html::elements::style::HtmlStyleState,
     cursor: HtmlStyleUpdateCursor,
 }
 impl Graph {
@@ -278,7 +283,7 @@ impl Dom {
 /// authentic awaiting qualification. This does not form or evaluate a request:
 /// ```no_run
 /// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
-/// use surgeist_html::HtmlCspAssociation;
+/// use surgeist_html::security::csp::HtmlCspAssociation;
 /// use std::sync::atomic::AtomicBool;
 /// fn bind(dom: &mut Dom, id: DomParsedHtmlAssociationId,
 ///         limits: DomParsedHtmlAssociationLimits, input: &mut Option<HtmlCspAssociation>,
@@ -557,7 +562,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                 .value()
                 .value
                 .effective_scripting_mode()
-                != surgeist_html::HtmlParserScriptingMode::Disabled
+                != surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         {
             return Err(DomParsedHtmlStyleError::WrongExecutionProfile { profile });
         }
@@ -654,7 +659,7 @@ fn append_group(
     }
     let mut reader = history
         .cursor(group, &mut frames, None)
-        .map_err(crate::DomParsedHtmlAssociationAdmissionError::History)?;
+        .map_err(crate::DomParsedHtmlAssociationAdmissionError::from)?;
     loop {
         meter.step(cancel)?;
         match reader.advance() {
@@ -668,6 +673,7 @@ fn append_group(
             HtmlParseHistoryStep::Progress => (),
             HtmlParseHistoryStep::Complete => return Ok(()),
             HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
+            HtmlParseHistoryStep::Fault(fault) => return Err(fault.into()),
         }
     }
 }
@@ -721,7 +727,10 @@ fn select(
                 }
             }
             Step::Complete => break,
-            _ => (),
+            Step::Fault(fault) => {
+                return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
+            }
+            Step::Occurrence(_) | Step::Skipped => (),
         }
     }
     let mut cursor = report.pending_associations();
@@ -800,6 +809,9 @@ fn select(
             }
             Step::Occurrence(_) | Step::Skipped => (),
             Step::Complete => return Err(unsupported()),
+            Step::Fault(fault) => {
+                return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
+            }
         }
     }
 }
@@ -843,6 +855,7 @@ fn form_original_policy(
     loop {
         meter.step(cancel)?;
         match rows.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *selection.qualification.occurrence() => {
                 let context = row.context();
                 if row.subject().id() != *selection.qualification.subject()
@@ -865,7 +878,7 @@ fn form_original_policy(
                 return Ok((policy.clone(), usage, layout.disposal().atomic_bytes()));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
@@ -931,14 +944,17 @@ fn form_text_nonce(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *id => {
-                let inputs = row.style().expect("selected original Style");
+                let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 let mut units = Vec::new();
                 for i in 0..inputs.text_len() {
                     meter.step(cancel)?;
                     append_group(
                         report,
-                        inputs.text(i).expect("retained text index"),
+                        inputs
+                            .text(i)?
+                            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?,
                         &mut units,
                         meter,
                         cancel,
@@ -947,7 +963,7 @@ fn form_text_nonce(
                 meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                 let text = DocumentString::from_utf16(units);
                 let nonce = if let Some(group) =
-                    inputs.attribute(surgeist_html::KnownHtmlAttribute::Nonce)
+                    inputs.attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Nonce)
                 {
                     let mut units = Vec::new();
                     append_group(report, group, &mut units, meter, cancel)?;
@@ -959,7 +975,7 @@ fn form_text_nonce(
                 return Ok((text, nonce));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }

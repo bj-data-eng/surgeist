@@ -1,6 +1,9 @@
 use surgeist_html::{
-    DocumentString, HtmlDetailsAttribute as A, HtmlDetailsAttributeEffect as E,
-    HtmlDetailsState as S, Namespace, details_attribute_effect,
+    elements::details::{
+        HtmlDetailsAttribute as A, HtmlDetailsAttributeEffect as E, HtmlDetailsState as S,
+        details_attribute_effect,
+    },
+    values::{DocumentString, Namespace},
 };
 
 #[test]

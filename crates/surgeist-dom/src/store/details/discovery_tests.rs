@@ -65,19 +65,27 @@ fn case(unrelated: usize, matching_peer: bool) {
     let mut dom = Dom::new(limits).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let root = setup.create_element_ns(&document, crate::Namespace::html(), "div");
+    let root = setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     for _ in 0..unrelated {
         let comment = setup.create_comment(&document, "unrelated");
         setup.insert_before(&comment, &root, None);
     }
     let peer = matching_peer.then(|| {
-        let peer = setup.create_element_ns(&document, crate::Namespace::html(), "details");
+        let peer = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "details",
+        );
         setup.set_attribute(&peer, "name", "exact");
         setup.set_attribute(&peer, "open", "");
         setup.insert_before(&peer, &root, None);
         peer
     });
-    let target = setup.create_element_ns(&document, crate::Namespace::html(), "details");
+    let target = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     setup.set_attribute(&target, "name", "exact");
     setup.insert_before(&target, &root, None);
     let commit = dom.apply(setup, &cancel).unwrap();
@@ -92,7 +100,7 @@ fn case(unrelated: usize, matching_peer: bool) {
     edit.set_attribute(target, "open", "");
     dom.apply(edit, &cancel).unwrap();
     let counts = probe.finish();
-    use surgeist_html::HtmlDetailsState::{Closed, Open};
+    use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
     assert_eq!(
         before.node(target).unwrap().as_details().unwrap().state(),
         Closed

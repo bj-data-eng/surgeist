@@ -3,6 +3,7 @@
 use super::*;
 use crate::DomFocusedAreaDesignation::Unavailable;
 use crate::*;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 fn unqualified_owner_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
     unqualified_owner_with_meta(None)
@@ -488,6 +489,7 @@ fn contextual_installation_preserves_unqualified_owner_and_qualifies_only_new_au
     let mut cursor = report.metadata();
     let meta = loop {
         match cursor.advance() {
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             HtmlParseMetadataStep::Record(row) => {
                 if let Some(meta) = row.document_meta()
                     && meta.document().id() == original
@@ -537,7 +539,12 @@ fn contextual_installation_preserves_unqualified_owner_and_qualifies_only_new_au
         .parse()
         .unwrap(),
     );
-    let original_auxiliary = fragment.fragment_parser_document().unwrap().document().id();
+    let original_auxiliary = fragment
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document()
+        .id();
     let installed = dom
         .install_parsed_html_fragment(
             fragment,

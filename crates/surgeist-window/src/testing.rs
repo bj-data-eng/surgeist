@@ -27,7 +27,6 @@ use super::{context::resolve_actions_with, dsl::Event as EventScope};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
-    time::Instant,
 };
 
 // Test utilities for exercising the window contract without opening native windows.

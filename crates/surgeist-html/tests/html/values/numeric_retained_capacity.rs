@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use crate::html::support::non_negative_integer as integer;
-use surgeist_html::{DocumentString, HtmlNonNegativeInteger};
+use surgeist_html::{microsyntax::numeric::HtmlNonNegativeInteger, values::DocumentString};
 
 #[test]
 fn public_integer_construction_keeps_canonical_values_and_observes_owned_buffers() {

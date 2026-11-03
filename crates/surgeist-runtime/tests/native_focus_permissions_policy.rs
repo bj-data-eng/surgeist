@@ -8,7 +8,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
@@ -496,7 +496,7 @@ fn later_raw_attribute_changes_do_not_recompute_the_complete_constructor_policy(
 }
 #[test]
 fn enabled_permission_keeps_positive_focusing_pending_even_without_any_activation() {
-    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
+    use surgeist_html::elements::dialog::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
     let (mut session, top) = headless_top();
     let (_, child) = container(&mut session, top.document(), "iframe", None, None, false);
     let subject = dialog(&mut session, child);
@@ -654,7 +654,7 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
 
 #[test]
 fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_tail() {
-    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
+    use surgeist_html::elements::dialog::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
     for (sandbox, inert, expected) in [
         (
             Some(""),
@@ -781,7 +781,7 @@ fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_ta
 
 #[test]
 fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exact_retry() {
-    use surgeist_html::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
+    use surgeist_html::elements::dialog::{HtmlDialogFocusControl, HtmlDialogFocusingAction};
     let (mut session, top) = headless_top();
     let (_, child) = container(
         &mut session,
@@ -1490,8 +1490,14 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
         .dialog_toggle()
         .unwrap();
     assert_eq!(task.id().target(), subject);
-    assert_eq!(task.old_state(), surgeist_html::HtmlDialogState::Closed);
-    assert_eq!(task.new_state(), surgeist_html::HtmlDialogState::Open);
+    assert_eq!(
+        task.old_state(),
+        surgeist_html::elements::dialog::HtmlDialogState::Closed
+    );
+    assert_eq!(
+        task.new_state(),
+        surgeist_html::elements::dialog::HtmlDialogState::Open
+    );
     assert_eq!(task.source(), None);
     assert_eq!(task.queue_association().unwrap().document(), document);
     assert_eq!(task.queue_association().unwrap().global(), top.global());

@@ -1,16 +1,18 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources, context, semantic_limits as limits,
-    semantic_limits_without_nested_output, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    semantic_limits as limits, session,
 };
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlCustomControlClassification, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResult, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -474,14 +476,6 @@ fn exact_utf16_for_id_matching_and_original_for_raw_cap_are_preserved() {
     ));
 }
 
-fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    cap_resources(
-        semantic_limits_without_nested_output(),
-        SCALAR_AND_SCRATCH_RESOURCES,
-        resource,
-        cap,
-    )
-}
 #[test]
 fn actual_lookup_work_scratch_bytes_and_output_have_exact_one_short_sticky_boundaries() {
     let (c, l, t, f) = flat("button", &[("for", "x")], &[("id", "x"), ("form", "f")]);
@@ -490,40 +484,30 @@ fn actual_lookup_work_scratch_bytes_and_output_have_exact_one_short_sticky_bound
         &[(t, HtmlFormAssociationState::ResetAgainstCapture)],
         &[],
     );
-    let u = report(&c, &cx, &l, 1).usage();
-    assert_eq!(u.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                1,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&l)]);
-            if cap == exact {
-                assert_eq!(known(&result.unwrap()), Some(&f));
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{failure:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The labeled-control search and the reset form lookup each scan the
+    // document with their own iterator stacks; the answer is a cloned
+    // identity, so there is no nested storage. The scans' depth, visit layout
+    // and frame accounting are private, so scratch and work are required to be
+    // charged without being pinned, and the bytes must cover the result record
+    // and one frame.
+    let r = assert_exact_and_one_short_caps(
+        "label form owner",
+        &c,
+        &cx,
+        1,
+        HtmlSemanticLimits::new(10000000, 100, 1000, 0, 1000000, 0),
+        &[request(&l)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(known(&r), Some(&f));
 }
 
 #[test]

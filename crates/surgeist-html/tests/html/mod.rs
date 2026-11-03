@@ -9,6 +9,7 @@ mod construction;
 mod dialog;
 mod document;
 mod elements;
+mod errors;
 mod focus;
 mod forms;
 mod hyperlinks;

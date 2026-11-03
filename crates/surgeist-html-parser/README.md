@@ -113,10 +113,13 @@ A/Area and Meta with exact source-time base, encoding and independent full revis
 Missing URL facts leave refresh explicitly unavailable, and an unknown prior flag
 cannot be treated as false. Theme-color and authored color-scheme selection use
 the CSS owner under the original parser's finite admission and retain immutable
-per-Document results. Missing media/CSS facts and reached CSP requirements remain
-explicit; structural parse success does not certify those obligations. Language and referrer updates
-continue where their own inputs are qualified. `document_meta()` lends these
-actual Document-qualified values and the first missing operation without replay.
+per-Document results. Only a meta with the exact name and a content attribute is
+a candidate, so inserting or removing any other meta does not recompute a
+selection. Missing media/CSS facts and reached CSP requirements remain
+explicit; structural parse success does not certify those obligations. Language
+and referrer updates continue where their own inputs are qualified.
+`document_meta()` lends these actual Document-qualified values and the first
+missing operation without replay.
 
 `pending_associations()` separately lends sealed per-Document capture completeness,
 original Style lifecycle and nonempty default-style occurrences, exact historical
@@ -131,6 +134,17 @@ precise unavailable states. Occurrence order preserves original invocations, not
 asynchronous resource-completion order. The report owns and prices this immutable
 storage; `retained_construction_bytes()` and `retained_construction_utf16_units()`
 lend its whole retained physical and UTF-16 receipts for downstream custody.
+
+A published report is qualified once and is immutable afterwards, so a reference
+it holds that its own tables cannot resolve is a defect in that qualification,
+not an absent value. The metadata, pending association, history and reverse
+cursors end with a `Fault` outcome and keep reporting it. The readers that
+follow a stored index (an association row, a cause link, a history header, a
+retained diagnostic, an effect or registry binding, the parser Document) return
+`HtmlParseUnresolvedReference`. A consumer fails its operation on the fault: a
+skipped row or an absent answer would install a report that lacks what it
+names. Past-the-end indices remain absent, and a slot that holds no record
+remains a skipped step.
 
 A reached unavailable CSP invalidates later required policy-dependent URL/Base
 operations while preserving earlier cached observations. `base_state()` separates
@@ -176,12 +190,33 @@ execution banks, including their spare capacity, are released before successful
 publication. Every failure preserves the actual original request bank and its
 ownership; resource cleanup does not reconstruct it.
 
+Byte limits count real capacity, including the spare room of lists that grow one
+record at a time. Such a list, a token's text included, grows a full vector to the
+greater of the capacity it needs and double its capacity, so `n` records charge `O(n)`
+reservation work. That target depends only on the vector, never on a limit, and is
+admitted before it is allocated: a parse succeeds under a byte limit exactly when the
+limit holds the peak the same parse reports under generous limits, and a limit that holds
+the capacity needed but not the target refuses the reservation. Only an allocator refusal
+of the target falls back to the capacity that is needed, and so does a target whose layout
+would exceed `isize::MAX` bytes, which depends on the vector alone too.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-html-parser
 cargo clippy --offline --locked -j 1 -p surgeist-html-parser --all-targets -- -F unsafe-code -D warnings
 python3 crates/surgeist-html-parser/tools/generate_character_references.py --check
+```
+
+An opt-in tool prints scalar-feed phase timings and, when
+`SURGEIST_COMPARISON_ARTIFACT` names a file, writes the comparison artifact.
+It needs the crate-private progressive driver, so it is an ignored test-harness
+entry that no ordinary test run executes:
+
+```sh
+SURGEIST_COMPARISON_ARTIFACT=/absolute/path/artifact.bin \
+  cargo test --offline --locked -j 1 -p surgeist-html-parser --lib \
+  comparison_artifact_tool -- --ignored --nocapture
 ```
 
 The existing [HTML fuzz package](../surgeist-html/fuzz/README.md) consumes these

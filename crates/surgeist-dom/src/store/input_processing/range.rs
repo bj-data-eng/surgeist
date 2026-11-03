@@ -4,20 +4,29 @@ use super::{
     BankKind, DomError, Formation, InputProcessing, InputValue, Payload, RangeInput, extent,
     metadata, sum,
 };
-use crate::DocumentString;
 use std::{
     mem::{size_of, size_of_val},
     sync::atomic::AtomicBool,
 };
 use surgeist_html::bounded::{
-    BestFiniteNumberCursor, FiniteDecimalIngressCursor, FloatingPointGrammarCursor,
-    FloatingPointParseMode, HtmlInputRangeNumber, HtmlInputRangeSanitizationAction as Action,
-    HtmlInputRangeSanitizationCursor, HtmlInputRangeSanitizationReply as Reply,
-    HtmlInputRangeValue, RangeBufferHeader, RangeDecimalParts, RangeLatticeCursor,
-    RangeMidpointCursor, RangeNumericError, RangeNumericHeaders, RangeNumericLayout,
-    RangeNumericReply, RangeNumericRequest,
+    input::{
+        HtmlInputRangeNumber, HtmlInputRangeSanitizationAction as Action,
+        HtmlInputRangeSanitizationCursor, HtmlInputRangeSanitizationReply as Reply,
+        HtmlInputRangeValue,
+    },
+    numeric::{
+        HtmlBestFiniteNumberCursor, HtmlFiniteDecimalIngressCursor, HtmlFloatingPointGrammarCursor,
+        HtmlFloatingPointParseMode, HtmlRangeBufferHeader, HtmlRangeDecimalParts,
+        HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericError,
+        HtmlRangeNumericHeaders, HtmlRangeNumericLayout, HtmlRangeNumericReply,
+        HtmlRangeNumericRequest,
+    },
 };
-use surgeist_html::{HtmlFloatingPointNumber, HtmlInputNumericContent, HtmlInputNumericStep};
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    attributes::input_bounds::{HtmlInputNumericContent, HtmlInputNumericStep},
+    microsyntax::numeric::HtmlFloatingPointNumber,
+};
 
 struct Storage {
     banks: [Vec<u8>; 8],
@@ -32,13 +41,13 @@ impl Storage {
         }
     }
 
-    fn headers(&self) -> RangeNumericHeaders {
-        RangeNumericHeaders::new(
+    fn headers(&self) -> HtmlRangeNumericHeaders {
+        HtmlRangeNumericHeaders::new(
             std::array::from_fn(|i| {
-                RangeBufferHeader::new(self.banks[i].len(), self.banks[i].capacity())
+                HtmlRangeBufferHeader::new(self.banks[i].len(), self.banks[i].capacity())
                     .expect("actual byte Vec header")
             }),
-            RangeBufferHeader::new(self.output.len(), self.output.capacity())
+            HtmlRangeBufferHeader::new(self.output.len(), self.output.capacity())
                 .expect("actual UTF16 Vec header"),
         )
     }
@@ -60,11 +69,11 @@ impl Storage {
         &mut self,
         meter: &mut InputProcessing,
         input: &[u16],
-        request: RangeNumericRequest,
-        layout: RangeNumericLayout,
+        request: HtmlRangeNumericRequest,
+        layout: HtmlRangeNumericLayout,
         source: Option<&Formation>,
         cancel: &AtomicBool,
-    ) -> Result<RangeNumericReply, DomError> {
+    ) -> Result<HtmlRangeNumericReply, DomError> {
         #[cfg(test)]
         let mut written = crate::store::CopyObservation::default();
         meter.charge(
@@ -80,8 +89,8 @@ impl Storage {
             source,
             cancel,
         )?;
-        use RangeNumericReply as R;
-        use RangeNumericRequest as Q;
+        use HtmlRangeNumericReply as R;
+        use HtmlRangeNumericRequest as Q;
         Ok(match request {
             Q::SourceUnit { index } => {
                 R::Unit(*input.get(index).ok_or(DomError::InputProcessingProtocol)?)
@@ -116,7 +125,7 @@ impl Storage {
                 #[cfg(test)]
                 written.pushed::<u8>();
                 #[cfg(test)]
-                super::committed(super::Commit::RangeCell, cancel);
+                super::committed(super::Commit::HtmlRangeCell, cancel);
                 R::Ack
             }
             Q::WriteCell { cell, value } => {
@@ -163,7 +172,7 @@ impl Storage {
     }
 }
 
-fn frame(layout: RangeNumericLayout) -> Result<usize, DomError> {
+fn frame(layout: HtmlRangeNumericLayout) -> Result<usize, DomError> {
     sum(&[
         layout.register_bytes(),
         layout.headers_bytes(),
@@ -176,16 +185,16 @@ fn parse(
     meter: &mut InputProcessing,
     storage: &mut Storage,
     raw: &DocumentString,
-    mode: FloatingPointParseMode,
+    mode: HtmlFloatingPointParseMode,
     source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputRangeValue, DomError> {
     #[cfg(test)]
     let source_before = source.map(Formation::owned_payload);
-    let grammar_bytes = size_of::<FloatingPointGrammarCursor<'_>>();
+    let grammar_bytes = size_of::<HtmlFloatingPointGrammarCursor<'_>>();
     meter.fixed(grammar_bytes, grammar_bytes, source, cancel)?;
     let parsed = (|| {
-        let mut grammar = FloatingPointGrammarCursor::new(raw.code_units(), mode);
+        let mut grammar = HtmlFloatingPointGrammarCursor::new(raw.code_units(), mode);
         loop {
             meter.inspect(source, cancel)?;
             if grammar.is_finished() {
@@ -207,7 +216,7 @@ fn parse(
         }
         if let Some(source) = source {
             source
-                .retain_bytes(size_of::<RangeDecimalParts>(), cancel)
+                .retain_bytes(size_of::<HtmlRangeDecimalParts>(), cancel)
                 .map_err(|error| meter.fail(error))?;
         }
         grammar
@@ -230,13 +239,13 @@ fn parse(
         assert_eq!(source.owned_payload().units, before.units);
     }
     storage.clear(meter, source, cancel)?;
-    let layout = FiniteDecimalIngressCursor::layout();
+    let layout = HtmlFiniteDecimalIngressCursor::layout();
     let fixed = sum(&[frame(layout)?, size_of_val(&parts)])?;
     // The actual parts record was already admitted while grammar was live and
     // remains owned through clear. Only the new ingress frame is added here.
     meter.fixed(fixed, frame(layout)?, source, cancel)?;
     let result = (|| {
-        let mut cursor = FiniteDecimalIngressCursor::new(parts, raw.len(), storage.headers())
+        let mut cursor = HtmlFiniteDecimalIngressCursor::new(parts, raw.len(), storage.headers())
             .map_err(DomError::InputNumeric)?;
         loop {
             meter.inspect(source, cancel)?;
@@ -255,7 +264,7 @@ fn parse(
                 HtmlInputRangeNumber::try_from(f64::from_bits(bits))
                     .map_err(|_| DomError::InputProcessingProtocol)?,
             )),
-            Err(RangeNumericError::Overflow) => Ok(HtmlInputRangeValue::ConversionFailed),
+            Err(HtmlRangeNumericError::Overflow) => Ok(HtmlInputRangeValue::ConversionFailed),
             Err(error) => Err(DomError::InputNumeric(error)),
         }
     })();
@@ -277,7 +286,7 @@ fn content(
             meter,
             storage,
             raw,
-            FloatingPointParseMode::Recovery,
+            HtmlFloatingPointParseMode::Recovery,
             source,
             cancel,
         )? {
@@ -328,11 +337,11 @@ fn midpoint(
     source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<HtmlInputRangeNumber, DomError> {
-    let layout = RangeMidpointCursor::layout();
+    let layout = HtmlRangeMidpointCursor::layout();
     let fixed = frame(layout)?;
     meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
-        let mut cursor = RangeMidpointCursor::new(min.value().to_bits(), max.value().to_bits())
+        let mut cursor = HtmlRangeMidpointCursor::new(min.value().to_bits(), max.value().to_bits())
             .map_err(DomError::InputNumeric)?;
         loop {
             meter.inspect(source, cancel)?;
@@ -362,11 +371,11 @@ fn best(
         return Err(DomError::InputProcessingProtocol);
     }
     storage.clear(meter, source, cancel)?;
-    let layout = BestFiniteNumberCursor::layout();
+    let layout = HtmlBestFiniteNumberCursor::layout();
     let fixed = frame(layout)?;
     meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
-        let mut cursor = BestFiniteNumberCursor::new(value.value(), storage.headers())
+        let mut cursor = HtmlBestFiniteNumberCursor::new(value.value(), storage.headers())
             .map_err(DomError::InputNumeric)?;
         loop {
             meter.inspect(source, cancel)?;
@@ -405,11 +414,11 @@ fn lattice(
     source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<HtmlInputRangeNumber>, DomError> {
-    let layout = RangeLatticeCursor::layout();
+    let layout = HtmlRangeLatticeCursor::layout();
     let fixed = sum(&[frame(layout)?, size_of::<LatticeInput>()])?;
     meter.fixed(fixed, fixed, source, cancel)?;
     let result = (|| {
-        let mut cursor = RangeLatticeCursor::new(
+        let mut cursor = HtmlRangeLatticeCursor::new(
             input.current.value().to_bits(),
             input.minimum.value().to_bits(),
             input.maximum.map(|value| value.value().to_bits()),
@@ -474,7 +483,7 @@ pub(super) fn run(
         meter,
         &mut storage,
         input.current,
-        FloatingPointParseMode::Author,
+        HtmlFloatingPointParseMode::Author,
         source,
         cancel,
     )?;

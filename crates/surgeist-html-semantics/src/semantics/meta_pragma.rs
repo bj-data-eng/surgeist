@@ -1,8 +1,17 @@
 //! HTML 877d #pragma-directives: non-executing static content observations.
 //! No insertion history, encoding, URL resolution, stylesheet mutation, CSP or navigation.
 use super::*;
-use crate::bounded::is_ascii_whitespace as ascii_whitespace;
-use crate::{HtmlAttributeReport, HtmlMetaPragmaState, HtmlNonNegativeInteger};
+use surgeist_html::attributes::HtmlAttributeReport;
+use surgeist_html::bounded::lexical::{
+    ascii_case_insensitive_unit, is_ascii_whitespace as ascii_whitespace,
+};
+use surgeist_html::{
+    attributes::meta_pragma::HtmlMetaPragmaState,
+    bounded::numeric::{HtmlIntegerRecoveryError, try_parse_integer},
+    microsyntax::numeric::{HtmlInteger, HtmlNonNegativeInteger},
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 /// An exact range in retained content, produced at checked source cursor boundaries.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -297,7 +306,7 @@ impl<'a> HtmlSemanticSession<'a> {
             let Some(unit) = self.pragma_unit(units, pos + offset)? else {
                 return Ok(false);
             };
-            if !u8::try_from(unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(byte)) {
+            if !ascii_case_insensitive_unit(unit, *byte) {
                 return Ok(false);
             }
         }
@@ -321,7 +330,8 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         raw: &DocumentString,
     ) -> Result<Option<HtmlMetaContentSlice>, HtmlSemanticFailure> {
-        let range = surgeist_html::bounded::meta_language_token_with(raw, || self.charge(1))?;
+        let range =
+            surgeist_html::bounded::attributes::meta_language_token_with(raw, || self.charge(1))?;
         Ok(range.map(|range| HtmlMetaContentSlice {
             raw: raw.clone(),
             start: range.start,
@@ -388,9 +398,11 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         raw: &DocumentString,
     ) -> Result<HtmlMetaRefreshLexical, HtmlSemanticFailure> {
-        use surgeist_html::bounded::{HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget};
+        use surgeist_html::bounded::attributes::{
+            HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget,
+        };
         let mut delay = None;
-        let target = surgeist_html::bounded::meta_refresh_syntax_with(raw, |action| {
+        let target = surgeist_html::bounded::attributes::meta_refresh_syntax_with(raw, |action| {
             match action {
                 HtmlMetaRefreshAction::Step => self.charge(1),
                 HtmlMetaRefreshAction::DelayDigits(range) => {
@@ -402,10 +414,10 @@ impl<'a> HtmlSemanticSession<'a> {
                         let remaining = self.numeric_budget(raw.len())?;
                         match try_parse_integer(raw, self.limits.integer_digits, remaining) {
                             Ok(result) => self.numeric_result(Ok(result))?,
-                            Err(IntegerRecoveryError::Allocation(error)) => {
+                            Err(HtmlIntegerRecoveryError::Allocation(error)) => {
                                 return self.numeric_result(Err(error)).map(|_| ());
                             }
-                            Err(IntegerRecoveryError::Syntax(_)) => {
+                            Err(HtmlIntegerRecoveryError::Syntax(_)) => {
                                 return Err(
                                     self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                                 );

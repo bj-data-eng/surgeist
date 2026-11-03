@@ -149,7 +149,7 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(frame),
+                crate::ConditionalLineContext::Finalized(frame),
             )
             .unwrap()
     };

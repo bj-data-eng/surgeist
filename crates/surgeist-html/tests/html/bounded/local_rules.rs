@@ -1,19 +1,24 @@
 use surgeist_html::bounded::{
-    HtmlCustomNameScanAction as CustomAction, HtmlPiPseudoAttributeAction as PiAction,
-    HtmlPiPseudoAttributeCursor as PiCursor, HtmlPiPseudoAttributeError as PiError,
-    HtmlPiPseudoAttributeField as PiField, HtmlPiPseudoAttributeName as PiName,
-    HtmlPiPseudoAttributeReply as PiReply, HtmlSpaceTokenCursor, HtmlSpaceTokenStep,
-    HtmlTemplateMarkerFirst as MarkerFirst, HtmlTemplateMarkerSiblings, HtmlTemplateMarkerTarget,
-    is_ascii_whitespace, is_nonce_element, template_marker_first, validate_custom_element_name,
-    validate_custom_element_name_with,
+    lexical::{
+        HtmlCustomNameScanAction as CustomAction, HtmlPiPseudoAttributeAction as PiAction,
+        HtmlPiPseudoAttributeCursor as PiCursor, HtmlPiPseudoAttributeError as PiError,
+        HtmlPiPseudoAttributeField as PiField, HtmlPiPseudoAttributeName as PiName,
+        HtmlPiPseudoAttributeReply as PiReply, HtmlSpaceTokenCursor, HtmlSpaceTokenStep,
+        is_ascii_whitespace, validate_custom_element_name, validate_custom_element_name_with,
+    },
+    security::is_nonce_element,
+    template::{
+        HtmlTemplateMarkerFirst as MarkerFirst, HtmlTemplateMarkerSiblings,
+        HtmlTemplateMarkerTarget, template_marker_first,
+    },
 };
-use surgeist_html::{
+use surgeist_html::values::{
     DocumentString, HtmlCustomElementNameError, HtmlValueInterpreter, Namespace, QualifiedName,
 };
 
 #[test]
 fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
-    use surgeist_html::{HtmlScriptKind, bounded::HtmlScriptTypeCursor};
+    use surgeist_html::{bounded::script::HtmlScriptTypeCursor, elements::script::HtmlScriptKind};
 
     fn finish(mut cursor: HtmlScriptTypeCursor<'_>) -> Option<HtmlScriptKind> {
         while cursor.required_work().is_some() {
@@ -60,8 +65,8 @@ fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
 #[test]
 fn missing_script_type_has_a_fixed_header_action_and_stable_completion() {
     use surgeist_html::{
-        HtmlScriptKind,
-        bounded::{HtmlScriptTypeCursor, HtmlScriptTypeWork},
+        bounded::script::{HtmlScriptTypeCursor, HtmlScriptTypeWork},
+        elements::script::HtmlScriptKind,
     };
 
     let mut cursor = HtmlScriptTypeCursor::content(None);

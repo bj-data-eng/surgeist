@@ -92,7 +92,10 @@ fn assert_late_geometry<S: l::LayoutScalar>(
                         alignment: t::LineBoxAlignment::Baseline
                     })
                 );
-                assert_eq!(allocation.boundary.unwrap().advance(), ADVANCES[ordinal]);
+                assert_eq!(
+                    allocation.boundary.as_ref().unwrap().advance(),
+                    ADVANCES[ordinal]
+                );
                 ordinal
             })
             .collect::<Vec<_>>();

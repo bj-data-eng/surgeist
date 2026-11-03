@@ -117,6 +117,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1],

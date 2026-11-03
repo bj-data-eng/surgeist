@@ -104,6 +104,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -506,6 +508,8 @@ fn automatic_intrinsic_refinement_is_distinct_from_finite_manual_priority() {
                     0,
                     vec![paragraph.binding(0)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },

@@ -1,5 +1,6 @@
 //! Whole settlement is distinct from the original synchronous End.
 use super::*;
+
 #[derive(Debug)]
 pub enum DomParsedHtmlTerminalError {
     Frontier(crate::DomParsedHtmlFrontierError),
@@ -13,6 +14,11 @@ pub enum DomParsedHtmlTerminalError {
         contribution: DomParsedHtmlAssociationId,
         remaining: std::num::NonZeroU64,
     },
+}
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlTerminalError {
+    fn from(error: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Frontier(error.into())
+    }
 }
 impl From<DomError> for DomParsedHtmlTerminalError {
     fn from(error: DomError) -> Self {

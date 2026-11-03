@@ -13,14 +13,14 @@
 // diagnostic order and source reprocessing. Other input/resettable controls, templates,
 // fragments and SVG script remain actual pre-effect continuations.
 
-use super::head::{HeadCondition, HeadError, HeadState, HeadStep, InsertionMode};
+use super::head::{HeadError, HeadState, HeadStep, HtmlInsertionMode, HtmlTreeDiagnostic};
 use super::prologue::Payload;
 use super::{KernelError, Scope, copy_node, write};
 use crate::{
     HtmlParseResource, HtmlSource, HtmlSourceRange,
     construction::{BodyTextKind, partition_body_text},
     parser::{
-        control::{OwnedVec, ParseControl, WorkCategory},
+        control::{HtmlParseWorkCategory, OwnedVec, ParseControl},
         tokenizer::token::{TagKind, Text},
     },
 };
@@ -61,10 +61,10 @@ const SECTIONS: &[&str] = &["tbody", "thead", "tfoot"];
 impl HeadState<'_> {
     fn table_error(
         &mut self,
-        rule: crate::construction::evidence::DiagnosticRule,
+        rule: crate::construction::evidence::HtmlParseDiagnosticRule,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
-        self.emit(HeadCondition::UnexpectedTableToken, rule, c)
+        self.emit(HtmlTreeDiagnostic::UnexpectedTableToken, rule, c)
     }
     fn current_in(&self, names: &[&'static str], c: &mut ParseControl) -> Result<bool, HeadError> {
         let current = self.before.kernel.current(c)?;
@@ -119,7 +119,7 @@ impl HeadState<'_> {
         }
     }
     pub(super) fn reset_table_mode(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.before.kernel.stack()?.len()).rev() {
             let node = self.before.kernel.at(index, c)?;
             let context = if index == 0 {
@@ -128,13 +128,13 @@ impl HeadState<'_> {
                 None
             };
             let name = if let Some(context) = context {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let node = context
                     .capture()
                     .node(context.context_element().subject())
                     .map_err(|_| crate::construction::SessionError::ContextUnavailable)?;
                 let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                    return Err(KernelError::NotElement.into());
+                    return Err(crate::construction::SessionError::ContextUnavailable.into());
                 };
                 element.name()
             } else {
@@ -145,7 +145,7 @@ impl HeadState<'_> {
                     .ok_or(KernelError::NotElement)?
             };
             if super::tag_sets::html_named(name, "template", c)? {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let mode = *self
                     .template_modes
                     .as_slice()
@@ -157,32 +157,34 @@ impl HeadState<'_> {
                 && (super::tag_sets::html_named(name, "td", c)?
                     || super::tag_sets::html_named(name, "th", c)?)
             {
-                return self.set_mode(InsertionMode::InCell, c);
+                return self.set_mode(HtmlInsertionMode::InCell, c);
             }
-            if let Some(mode) = crate::bounded::stack_reset_insertion_mode(|local| {
-                super::tag_sets::html_named(name, local, c)
-            })? {
+            if let Some(mode) =
+                surgeist_html::bounded::parsing::stack_reset_insertion_mode(|local| {
+                    super::tag_sets::html_named(name, local, c)
+                })?
+            {
                 return self.set_mode(super::context::parser_insertion_mode(mode), c);
             }
             if index != 0 && super::tag_sets::html_named(name, "head", c)? {
-                return self.set_mode(InsertionMode::InHead, c);
+                return self.set_mode(HtmlInsertionMode::InHead, c);
             }
             if super::tag_sets::html_named(name, "html", c)? {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 return self.set_mode(
                     if self.head.is_some() {
-                        InsertionMode::AfterHead
+                        HtmlInsertionMode::AfterHead
                     } else {
-                        InsertionMode::BeforeHead
+                        HtmlInsertionMode::BeforeHead
                     },
                     c,
                 );
             }
             if index == 0 {
-                return self.set_mode(InsertionMode::InBody, c);
+                return self.set_mode(HtmlInsertionMode::InBody, c);
             }
         }
-        self.set_mode(InsertionMode::InBody, c)
+        self.set_mode(HtmlInsertionMode::InBody, c)
     }
     fn implied_table_element(
         &mut self,
@@ -220,7 +222,7 @@ impl HeadState<'_> {
     }
     fn table_insert(
         &mut self,
-        mode: InsertionMode,
+        mode: HtmlInsertionMode,
         anchor: &'static str,
         close: bool,
         c: &mut ParseControl,
@@ -229,8 +231,8 @@ impl HeadState<'_> {
         self.set_mode(mode, c)?;
         if close {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor,
                     branch: "table-structure-start/self-closing",
                 },
@@ -254,7 +256,7 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         self.classify_delegated_input(c)?;
-        self.body_rules(InsertionMode::InBody, source, c)
+        self.body_rules(HtmlInsertionMode::InBody, source, c)
     }
     fn foster_body(
         &mut self,
@@ -263,26 +265,26 @@ impl HeadState<'_> {
     ) -> Result<Option<HeadStep>, HeadError> {
         self.classify_delegated_input(c)?;
         self.table_error(
-            crate::construction::evidence::DiagnosticRule {
+            crate::construction::evidence::HtmlParseDiagnosticRule {
                 anchor: "parsing-main-intable",
                 branch: "anything-else/foster",
             },
             c,
         )?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<bool>() as u64)?;
         let previous = self.before.kernel.foster_parenting;
         self.before.kernel.set_foster_parenting(true, c)?;
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
-            if let Some(step) = self.body_rules(InsertionMode::InBody, source, c)? {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            if let Some(step) = self.body_rules(HtmlInsertionMode::InBody, source, c)? {
                 self.before.kernel.set_foster_parenting(previous, c)?;
                 return Ok(Some(step));
             }
         }
     }
     fn collect_table_text(&mut self, c: &mut ParseControl) -> Result<Option<HeadStep>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.body_runs.is_none() {
             let Payload::Text(input) = &mut self
                 .pending
@@ -302,15 +304,18 @@ impl HeadState<'_> {
                 .as_mut()
                 .ok_or(HeadError::MissingInput)?
                 .take_next(c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(run) = &self.body_run else {
                 break;
             };
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<BodyTextKind>() as u64,
+            )?;
             if run.kind == BodyTextKind::Null {
                 // Source origin records are real tokenizer-owned ranges.
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let mode = self.mode(c)?;
                 for origin in self
                     .body_run
@@ -320,28 +325,31 @@ impl HeadState<'_> {
                     .origins
                     .as_slice()
                 {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
 
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     self.before.kernel.session.evidence(c)?.append(
                         c,
-                        crate::construction::evidence::DiagnosticKind::Tree(
-                            HeadCondition::NullInTable,
+                        crate::construction::evidence::HtmlParseDiagnosticKind::Tree(
+                            HtmlTreeDiagnostic::NullInTable,
                         ),
-                        crate::construction::evidence::DiagnosticContext::Tree(mode),
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode),
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intabletext",
                             branch: "null-character/ignore",
                         },
                         crate::construction::evidence::DiagnosticLocationInput {
                             source: &origin.source,
-                            role: crate::construction::evidence::DiagnosticLocationRole::TextOrigin,
-                            token: Some(crate::construction::evidence::DiagnosticToken::Text),
+                            role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TextOrigin,
+                            token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text),
                         },
                     )?;
                 }
                 write(
-                    size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>(),
+                    const {
+                        size_of::<Option<crate::construction::TextRun>>()
+                            + size_of::<Option<Text>>()
+                    },
                     2,
                     c,
                 )?;
@@ -353,8 +361,8 @@ impl HeadState<'_> {
                 self.before.kernel.session.evidence(c)?.retain_omission(
                     c,
                     text.origins.as_slice(),
-                    crate::construction::provenance::OmissionKind::NullInTable,
-                    crate::construction::provenance::ParserRule::Tree(mode),
+                    crate::construction::provenance::HtmlParseOmissionKind::NullInTable,
+                    crate::construction::provenance::HtmlParserRule::Tree(mode),
                 )?;
                 write(size_of::<Option<Text>>(), 1, c)?;
                 self.whitespace_pending
@@ -363,9 +371,9 @@ impl HeadState<'_> {
                     .release(c)?;
             } else {
                 let kind = run.kind;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 write(size_of::<HtmlSourceRange>(), 1, c)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let source = self
                     .pending
                     .as_ref()
@@ -374,7 +382,10 @@ impl HeadState<'_> {
                     .clone();
                 let cause = self.before.kernel.session.current_parser_cause(c)?;
                 write(
-                    size_of::<TableCharacter>() + size_of::<Option<crate::construction::TextRun>>(),
+                    const {
+                        size_of::<TableCharacter>()
+                            + size_of::<Option<crate::construction::TextRun>>()
+                    },
                     5,
                     c,
                 )?;
@@ -390,7 +401,8 @@ impl HeadState<'_> {
                 }
                 write(size_of::<Option<TableCharacter>>(), 1, c)?;
                 let entry = self.table.transfer.take();
-                if let Err((stop, entry)) = self.table.entries.try_push_recover(c, entry) {
+                if let Err((stop, entry)) = self.table.entries.try_push_recover_geometric(c, entry)
+                {
                     self.table.transfer = entry;
                     return Err(stop.into());
                 }
@@ -405,34 +417,40 @@ impl HeadState<'_> {
         Ok(Some(self.finish(c)?))
     }
     fn flush_table_text(&mut self, c: &mut ParseControl) -> Result<Option<HeadStep>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
-        c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, size_of::<bool>() as u64)?;
         let nonwhite = self.table.nonwhite;
         if nonwhite {
             // One list-level error, then each character list member is processed
             // using InTable's anything-else rule (including its own error).
             let mode = self.mode(c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for entry in self.table.entries.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let entry = entry.as_ref().ok_or(HeadError::MissingInput)?;
-                c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::InspectByte,
+                    size_of::<BodyTextKind>() as u64,
+                )?;
                 if entry.kind == BodyTextKind::Other {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
-                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::evidence::DiagnosticKind::Tree(HeadCondition::NonWhitespaceInTable), crate::construction::evidence::DiagnosticContext::Tree(mode), crate::construction::evidence::DiagnosticRule { anchor: "parsing-main-intabletext", branch: "pending-characters/non-whitespace" }, crate::construction::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::evidence::DiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::evidence::DiagnosticToken::Text) })?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                    self.before.kernel.session.evidence(c)?.append(c, crate::construction::evidence::HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::NonWhitespaceInTable), crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode), crate::construction::evidence::HtmlParseDiagnosticRule { anchor: "parsing-main-intabletext", branch: "pending-characters/non-whitespace" }, crate::construction::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text) })?;
                     break;
                 }
             }
         }
         loop {
-            c.charge(WorkCategory::RecordVisit, 2)?;
-            c.charge(WorkCategory::InspectByte, size_of::<usize>() as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<usize>() as u64,
+            )?;
             let index = self.table.next;
             if index == self.table.entries.len() {
                 break;
             }
             write(
-                size_of::<Option<TableCharacter>>() * 2 + size_of::<usize>(),
+                const { size_of::<Option<TableCharacter>>() * 2 + size_of::<usize>() },
                 3,
                 c,
             )?;
@@ -442,8 +460,8 @@ impl HeadState<'_> {
                 .get_mut(index, c)?
                 .ok_or(HeadError::MissingInput)?
                 .take();
-            self.table.next += 1;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            self.table.next = self.table.next.saturating_add(1);
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let entry = self
                 .table
                 .transfer
@@ -452,17 +470,20 @@ impl HeadState<'_> {
             if nonwhite {
                 let mode = self.mode(c)?;
 
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                self.before.kernel.session.evidence(c)?.append(c, crate::construction::evidence::DiagnosticKind::Tree(HeadCondition::UnexpectedTableToken), crate::construction::evidence::DiagnosticContext::Tree(mode), crate::construction::evidence::DiagnosticRule { anchor: "parsing-main-intable", branch: "anything-else/pending-character" }, crate::construction::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::evidence::DiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::evidence::DiagnosticToken::Text) })?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                self.before.kernel.session.evidence(c)?.append(c, crate::construction::evidence::HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::UnexpectedTableToken), crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode), crate::construction::evidence::HtmlParseDiagnosticRule { anchor: "parsing-main-intable", branch: "anything-else/pending-character" }, crate::construction::evidence::DiagnosticLocationInput { source: &entry.source, role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::BufferedTableCharacter, token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text) })?;
             }
             let previous = self
                 .before
                 .kernel
                 .session
                 .begin_buffered_replay(c, entry.cause.as_ref())?;
-            c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<BodyTextKind>() as u64,
+            )?;
             let other = entry.kind == BodyTextKind::Other;
-            write(size_of::<Option<Text>>() * 2, 2, c)?;
+            write(const { size_of::<Option<Text>>() * 2 }, 2, c)?;
             self.whitespace_pending = self
                 .table
                 .transfer
@@ -471,8 +492,8 @@ impl HeadState<'_> {
                 .text
                 .take();
             if nonwhite {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::InspectByte, size_of::<bool>() as u64)?;
                 let old = self.before.kernel.foster_parenting;
                 self.before.kernel.set_foster_parenting(true, c)?;
                 self.body_character(other, c)?;
@@ -493,23 +514,23 @@ impl HeadState<'_> {
             self.table.transfer = None;
         }
         self.table.entries.clear(c)?;
-        write(size_of::<usize>() + size_of::<bool>(), 2, c)?;
+        write(const { size_of::<usize>() + size_of::<bool>() }, 2, c)?;
         self.table.next = 0;
         self.table.nonwhite = false;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
-            size_of::<Option<InsertionMode>>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            size_of::<Option<HtmlInsertionMode>>() as u64,
         )?;
         let mode = self.return_mode.ok_or(HeadError::MissingReturnMode)?;
         self.set_mode(mode, c)?;
-        write(size_of::<Option<InsertionMode>>(), 1, c)?;
+        write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
         self.return_mode = None;
         Ok(None)
     }
     fn dispose_table_transfer(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(entry) = &mut self.table.transfer {
             if c.stop().is_none() {
@@ -540,7 +561,7 @@ impl HeadState<'_> {
             }
             .flatten();
             if c.stop().is_none() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             }
             if self.table.transfer.is_none() {
                 break;
@@ -557,7 +578,7 @@ impl HeadState<'_> {
         )?;
         if !self.current_in(&["td", "th"], c)? {
             self.table_error(
-                crate::construction::evidence::DiagnosticRule {
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-intd",
                     branch: "cell-close/current-node-mismatch",
                 },
@@ -577,16 +598,16 @@ impl HeadState<'_> {
             }
         }
         self.clear_marker(c)?;
-        self.set_mode(InsertionMode::InRow, c)
+        self.set_mode(HtmlInsertionMode::InRow, c)
     }
     pub(super) fn table_rules(
         &mut self,
-        mode: InsertionMode,
+        mode: HtmlInsertionMode,
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
         let kind = self.kind(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let text = matches!(
             self.pending
                 .as_ref()
@@ -594,7 +615,7 @@ impl HeadState<'_> {
                 .payload,
             Payload::Text(_)
         );
-        if mode == InsertionMode::InTableText {
+        if mode == HtmlInsertionMode::InTableText {
             return if text {
                 self.collect_table_text(c)
             } else {
@@ -605,14 +626,14 @@ impl HeadState<'_> {
         let end = kind.is_some_and(|(kind, _)| kind == TagKind::End);
         let close = kind.is_some_and(|(_, close)| close);
         match mode {
-            InsertionMode::InCaption => {
+            HtmlInsertionMode::InCaption => {
                 let close_caption = end && self.token_in(&["caption"], c)?.is_some();
                 let reprocess = (start && self.token_in(PARTS, c)?.is_some())
                     || (end && self.token_in(&["table"], c)?.is_some());
                 if close_caption || reprocess {
                     if !self.before.kernel.scoped_name("caption", Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-incaption",
                                 branch: "caption-close/not-in-scope",
                             },
@@ -627,7 +648,7 @@ impl HeadState<'_> {
                     )?;
                     if !self.current_in(&["caption"], c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-incaption",
                                 branch: "caption-close/current-node-mismatch",
                             },
@@ -636,7 +657,7 @@ impl HeadState<'_> {
                     }
                     self.pop_table_name("caption", c)?;
                     self.clear_marker(c)?;
-                    self.set_mode(InsertionMode::InTable, c)?;
+                    self.set_mode(HtmlInsertionMode::InTable, c)?;
                     return if reprocess {
                         Ok(None)
                     } else {
@@ -655,7 +676,7 @@ impl HeadState<'_> {
                         .is_some()
                 {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-incaption",
                             branch: "disallowed-end-tag",
                         },
@@ -665,11 +686,11 @@ impl HeadState<'_> {
                 }
                 return self.delegate_body(source, c);
             }
-            InsertionMode::InColumnGroup => {
+            HtmlInsertionMode::InColumnGroup => {
                 if text && self.whitespace(c)? {
                     return Ok(Some(self.finish(c)?));
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match &self
                     .pending
                     .as_ref()
@@ -681,8 +702,8 @@ impl HeadState<'_> {
                     }
                     Payload::Doctype(_) => {
                         self.emit(
-                            HeadCondition::UnexpectedDoctype,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnexpectedDoctype,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-incolgroup",
                                 branch: "doctype/ignore",
                             },
@@ -706,7 +727,7 @@ impl HeadState<'_> {
                 if end && self.token_in(&["colgroup"], c)?.is_some() {
                     if !self.current_in(&["colgroup"], c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-incolgroup",
                                 branch: "colgroup-end/current-node-mismatch",
                             },
@@ -717,12 +738,12 @@ impl HeadState<'_> {
                     self.before
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?;
-                    self.set_mode(InsertionMode::InTable, c)?;
+                    self.set_mode(HtmlInsertionMode::InTable, c)?;
                     return Ok(Some(self.discard(c)?));
                 }
                 if end && self.token_in(&["col"], c)?.is_some() {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-incolgroup",
                             branch: "col-end/ignore",
                         },
@@ -739,7 +760,7 @@ impl HeadState<'_> {
                 }
                 if !self.current_in(&["colgroup"], c)? {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-incolgroup",
                             branch: "anything-else/current-node-mismatch",
                         },
@@ -750,14 +771,14 @@ impl HeadState<'_> {
                 self.before
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;
-                self.set_mode(InsertionMode::InTable, c)?;
+                self.set_mode(HtmlInsertionMode::InTable, c)?;
                 return Ok(None);
             }
-            InsertionMode::InTableBody => {
+            HtmlInsertionMode::InTableBody => {
                 if start && self.token_in(&["tr"], c)?.is_some() {
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
                     return self.table_insert(
-                        InsertionMode::InRow,
+                        HtmlInsertionMode::InRow,
                         "parsing-main-intbody",
                         close,
                         c,
@@ -765,7 +786,7 @@ impl HeadState<'_> {
                 }
                 if start && self.token_in(&["td", "th"], c)?.is_some() {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intbody",
                             branch: "cell-start/implied-row",
                         },
@@ -773,13 +794,13 @@ impl HeadState<'_> {
                     )?;
                     self.clear_table_context(&["tbody", "tfoot", "thead", "template", "html"], c)?;
                     self.implied_table_element("tr", c)?;
-                    self.set_mode(InsertionMode::InRow, c)?;
+                    self.set_mode(HtmlInsertionMode::InRow, c)?;
                     return Ok(None);
                 }
                 if end && let Some(name) = self.token_in(SECTIONS, c)? {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intbody",
                                 branch: "section-end/not-in-scope",
                             },
@@ -791,7 +812,7 @@ impl HeadState<'_> {
                     self.before
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?;
-                    self.set_mode(InsertionMode::InTable, c)?;
+                    self.set_mode(HtmlInsertionMode::InTable, c)?;
                     return Ok(Some(self.discard(c)?));
                 }
                 if (start
@@ -805,7 +826,7 @@ impl HeadState<'_> {
                 {
                     if !self.table_scope_any(SECTIONS, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intbody",
                                 branch: "table-structure/no-section-in-scope",
                             },
@@ -817,7 +838,7 @@ impl HeadState<'_> {
                     self.before
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?;
-                    self.set_mode(InsertionMode::InTable, c)?;
+                    self.set_mode(HtmlInsertionMode::InTable, c)?;
                     return Ok(None);
                 }
                 if end
@@ -831,7 +852,7 @@ impl HeadState<'_> {
                         .is_some()
                 {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intbody",
                             branch: "disallowed-end-tag",
                         },
@@ -840,16 +861,16 @@ impl HeadState<'_> {
                     return Ok(Some(self.discard(c)?));
                 }
             }
-            InsertionMode::InRow => {
+            HtmlInsertionMode::InRow => {
                 if start && self.token_in(&["td", "th"], c)?.is_some() {
                     self.clear_table_context(&["tr", "template", "html"], c)?;
                     self.insert_tag(c)?;
-                    self.set_mode(InsertionMode::InCell, c)?;
+                    self.set_mode(HtmlInsertionMode::InCell, c)?;
                     self.push_marker(c)?;
                     if close {
                         self.emit(
-                            HeadCondition::UnacknowledgedSelfClosing,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intr",
                                 branch: "cell-start/self-closing",
                             },
@@ -877,7 +898,7 @@ impl HeadState<'_> {
                 if let Some(name) = section {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intr",
                                 branch: "section-end/not-in-scope",
                             },
@@ -892,7 +913,7 @@ impl HeadState<'_> {
                 if end_row || outer || section.is_some() {
                     if !self.before.kernel.scoped_name("tr", Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intr",
                                 branch: "row-close/not-in-scope",
                             },
@@ -904,7 +925,7 @@ impl HeadState<'_> {
                     self.before
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?;
-                    self.set_mode(InsertionMode::InTableBody, c)?;
+                    self.set_mode(HtmlInsertionMode::InTableBody, c)?;
                     return if end_row {
                         Ok(Some(self.discard(c)?))
                     } else {
@@ -920,7 +941,7 @@ impl HeadState<'_> {
                         .is_some()
                 {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intr",
                             branch: "disallowed-end-tag",
                         },
@@ -929,11 +950,11 @@ impl HeadState<'_> {
                     return Ok(Some(self.discard(c)?));
                 }
             }
-            InsertionMode::InCell => {
+            HtmlInsertionMode::InCell => {
                 if end && let Some(name) = self.token_in(&["td", "th"], c)? {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intd",
                                 branch: "cell-end/not-in-scope",
                             },
@@ -948,7 +969,7 @@ impl HeadState<'_> {
                     )?;
                     if !self.current_in(&[name], c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intd",
                                 branch: "cell-end/current-node-mismatch",
                             },
@@ -957,7 +978,7 @@ impl HeadState<'_> {
                     }
                     self.pop_table_name(name, c)?;
                     self.clear_marker(c)?;
-                    self.set_mode(InsertionMode::InRow, c)?;
+                    self.set_mode(HtmlInsertionMode::InRow, c)?;
                     return Ok(Some(self.discard(c)?));
                 }
                 if start
@@ -980,7 +1001,7 @@ impl HeadState<'_> {
                         .is_some()
                 {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intd",
                             branch: "disallowed-end-tag",
                         },
@@ -994,7 +1015,7 @@ impl HeadState<'_> {
                 {
                     if !self.before.kernel.scoped_name(name, Scope::Table, c)? {
                         self.table_error(
-                            crate::construction::evidence::DiagnosticRule {
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "parsing-main-intd",
                                 branch: "outer-end/not-in-scope",
                             },
@@ -1012,16 +1033,16 @@ impl HeadState<'_> {
         // Remaining table-body/row rules delegate InTable without changing the
         // actual current mode. Text entry saves that real current mode.
         self.record_trigger(
-            crate::construction::provenance::ParserRule::Tree(InsertionMode::InTable),
+            crate::construction::provenance::HtmlParserRule::Tree(HtmlInsertionMode::InTable),
             c,
         )?;
         if text && self.current_in(&["table", "tbody", "template", "tfoot", "thead", "tr"], c)? {
-            write(size_of::<Option<InsertionMode>>(), 1, c)?;
+            write(size_of::<Option<HtmlInsertionMode>>(), 1, c)?;
             self.return_mode = Some(mode);
-            self.set_mode(InsertionMode::InTableText, c)?;
+            self.set_mode(HtmlInsertionMode::InTableText, c)?;
             return Ok(None);
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .pending
             .as_ref()
@@ -1031,8 +1052,8 @@ impl HeadState<'_> {
             Payload::Comment(_) | Payload::Pi(_) => return Ok(Some(self.ordinary_node(c)?)),
             Payload::Doctype(_) => {
                 self.emit(
-                    HeadCondition::UnexpectedDoctype,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedDoctype,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-intable",
                         branch: "doctype/ignore",
                     },
@@ -1048,7 +1069,7 @@ impl HeadState<'_> {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 self.push_marker(c)?;
                 return self.table_insert(
-                    InsertionMode::InCaption,
+                    HtmlInsertionMode::InCaption,
                     "parsing-main-intable",
                     close,
                     c,
@@ -1057,7 +1078,7 @@ impl HeadState<'_> {
             if self.token_in(&["colgroup"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 return self.table_insert(
-                    InsertionMode::InColumnGroup,
+                    HtmlInsertionMode::InColumnGroup,
                     "parsing-main-intable",
                     close,
                     c,
@@ -1066,13 +1087,13 @@ impl HeadState<'_> {
             if self.token_in(&["col"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 self.implied_table_element("colgroup", c)?;
-                self.set_mode(InsertionMode::InColumnGroup, c)?;
+                self.set_mode(HtmlInsertionMode::InColumnGroup, c)?;
                 return Ok(None);
             }
             if self.token_in(SECTIONS, c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 return self.table_insert(
-                    InsertionMode::InTableBody,
+                    HtmlInsertionMode::InTableBody,
                     "parsing-main-intable",
                     close,
                     c,
@@ -1081,12 +1102,12 @@ impl HeadState<'_> {
             if self.token_in(&["td", "th", "tr"], c)?.is_some() {
                 self.clear_table_context(&["table", "template", "html"], c)?;
                 self.implied_table_element("tbody", c)?;
-                self.set_mode(InsertionMode::InTableBody, c)?;
+                self.set_mode(HtmlInsertionMode::InTableBody, c)?;
                 return Ok(None);
             }
             if self.token_in(&["table"], c)?.is_some() {
                 self.table_error(
-                    crate::construction::evidence::DiagnosticRule {
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-intable",
                         branch: "table-start/nested",
                     },
@@ -1112,7 +1133,7 @@ impl HeadState<'_> {
                 }
                 self.admit_hidden_capability(c)?;
                 self.table_error(
-                    crate::construction::evidence::DiagnosticRule {
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-intable",
                         branch: "hidden-input-start",
                     },
@@ -1126,13 +1147,13 @@ impl HeadState<'_> {
             }
             if self.token_in(&["form"], c)?.is_some() {
                 self.table_error(
-                    crate::construction::evidence::DiagnosticRule {
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-intable",
                         branch: "form-start",
                     },
                     c,
                 )?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self.current_form.is_some() || self.before.kernel.contains_html_template(c)? {
                     return Ok(Some(self.discard(c)?));
                 }
@@ -1145,8 +1166,8 @@ impl HeadState<'_> {
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?;
                 if close {
                     self.emit(
-                        HeadCondition::UnacknowledgedSelfClosing,
-                        crate::construction::evidence::DiagnosticRule {
+                        HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intable",
                             branch: "form-start/self-closing",
                         },
@@ -1160,7 +1181,7 @@ impl HeadState<'_> {
             if self.token_in(&["table"], c)?.is_some() {
                 if !self.before.kernel.scoped_name("table", Scope::Table, c)? {
                     self.table_error(
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-intable",
                             branch: "table-end/not-in-scope",
                         },
@@ -1183,7 +1204,7 @@ impl HeadState<'_> {
                 .is_some()
             {
                 self.table_error(
-                    crate::construction::evidence::DiagnosticRule {
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-intable",
                         branch: "disallowed-end-tag",
                     },
@@ -1219,11 +1240,11 @@ mod owner_tests {
                 assert!(result.is_err());
             } else {
                 let table = result.unwrap();
-                assert_eq!(c.usage().work(WorkCategory::CopyByte), bytes);
-                assert_eq!(c.usage().work(WorkCategory::RecordWrite), 4);
+                assert_eq!(c.usage().work(HtmlParseWorkCategory::CopyByte), bytes);
+                assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordWrite), 4);
                 assert_eq!(table.entries.len(), 0);
                 // Exhausted normal budget cannot cause disposal to execute work.
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
                 table.entries.release(&mut c).unwrap();
             }
             assert_eq!(
@@ -1250,8 +1271,8 @@ mod owner_tests {
             .unwrap();
         let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
         assert!(TableCharacters::new(&mut c).is_err());
-        assert_eq!(c.usage().work(WorkCategory::CopyByte), 0);
-        assert_eq!(c.usage().work(WorkCategory::RecordWrite), 0);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::CopyByte), 0);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordWrite), 0);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)

@@ -58,6 +58,14 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
   and `ResolvedWrapEdges`; [source admission](../src/inline_wrapping/source.rs).
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
+Completed batches retain opaque `LayoutOutputEntryOf` values for both unrounded
+and final publication. A warm host returns the original unrounded entry through
+`LayoutTree::unrounded_layout`; storing only its visual `NodeOutputOf` or returning
+a final entry does not supply that custody. Layout checks the node, geometry
+phase, existing compute/cache context and any required actual canonical atomic
+frame before reuse. Unusable custody causes recomputation. Normal geometry and
+readback phase remain private; hosts do not construct or recover them.
+
 ### Node input
 
 Source: [node input](../src/node_input/mod.rs) and its domain modules.
@@ -290,6 +298,46 @@ completes the segments into one placed output while traversing child blocks
 independently. Independent preparations cannot split one uninterrupted native
 run; admission returns `RunMembership` for that unsupported association.
 
+Each binding explicitly chooses `inline_box_fragments` as
+`InlineBoxFragmentationDemand::NotRequested` or `CompleteBodies`. The latter
+requests one Text-owned inline-box family for the complete prepared output,
+using the admitted captured boxes and complete extra native-pair inventory.
+It requires Complete captured topology and actual complete body coverage;
+Text's precise capability errors remain Text errors at `TextCapture`.
+Association-only metadata refuses `InlineBoxFragmentsRequireFlow` in both
+checked constructors. Genuine computed-only semantic flow can carry the same
+explicit demand. The early wrap-edge receipt is still validated before final
+admission in `try_new_with_edges`.
+
+The family is shared through fitting, issued flow/conditional observations,
+retries and whole-output placement. `PlacedTextOutput::inline_box_fragments()`
+returns `None` for NotRequested and a `PlacedInlineBoxFragments` view for a
+demanded result, including a result with no placed pieces. Its `family()`
+retains the exact checked preparation and its `pieces()` borrows Text's actual
+placed pieces; Layout does not project another fragment geometry. This exposes
+fragment identities and existing geometry, not complete decoration painting or
+NCA-controlled formatting.
+
+NotRequested allocates no family-slot owner and adds no family preflight.
+Requested families share one optional binding-indexed owner; when captured
+Scope limits apply, its actual header/backing and Text's real retained family
+roots participate in admission and exact related-product census. These limits
+already fund the successful preparation; family construction does not introduce
+a separate funding mode. With no applicable ceiling, Native allocations remain
+fallible without acquiring a new global quota.
+
+Numeric formatters request a Layout-owned family through
+`WrappingInput::native_inline_boxes`. Both checked constructors authenticate its
+complete generated-child proof and actual native ordering roles.
+`CompletedLayoutBatch::native_inline_box_families()` retains formatter-wide box,
+body, fragment and ancestry identities across wrapping;
+`native_inline_box_pieces()` exposes actual selected membership and executed edge
+associations. A demanded empty result retains its family with no pieces;
+unrequested formatters have no family. These numeric observations preserve native
+custody without issuing Text's `InlineFragmentOutput`, decoration envelopes,
+paint rectangles or NCA-controlled formatting. Actual scheduled Prepared Text
+execution refuses native-family demand and uses the Prepared capability above.
+
 Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
 endpoint it tries alternatives in declaration order and uses the first that fits;
@@ -425,7 +473,7 @@ Box/control-only native runs also distinguish nominal metrics from formatted
 line existence. Empty zero-decoration endpoints retain their metrics and
 source-indexed descendant outputs with zero used height; they do not establish
 a formatted ordinal, baseline, float band or adjoining-margin separator. A real
-in-flow atomic, each individual nonzero supported inline border or padding, and
+in-flow atomic, each individual nonzero supported inline margin, border or padding, and
 an actual Forced ending remain formatted even with zero extent. A terminal
 strut-only receiver does not inherit the preceding Forced status. These native
 results use the numeric owner directly and do not manufacture Text receipts.
@@ -442,15 +490,61 @@ AssociationOnly metadata stays nonrendering, and numerical struts alone do not
 create work. Known-size and cache paths retain actual semantic baseline/metric
 work; whole-paragraph placement applies the same phantom disposition above.
 
-Native non-atomic endpoints currently carry their actual border and padding;
-they do not represent signed inline margins. That remaining geometry capability
-belongs to [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
-An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
+Native non-atomic endpoints carry finite signed margin and finite nonnegative
+border/padding. `InlineBoundaryEdgeOf::try_new(margin, border, padding)` keeps the
+components separate. Ordinary border/padding addition retains native scalar
+rounding; `border_padding_advance()` and checked signed `flow_advance()` are
+different observations.
+`InlineBoundaryInputOf::contribution(kind, metrics, edge)` supplies the existing
+endpoint operation without a full-box claim and refuses nonzero margin.
+`box_edge(kind, metrics, edge,
+parent_axes)` requests actual box-side geometry with a separately resolved
+immediate-parent basis. The existing writing-mode/direction fields remain the
+containing Block formatter and retain `InlineFlowMismatch` validation;
+`parent_edge_axes()` is present only for BoxEdge. Neither a child's direction nor
+its parent's endpoint formatter fields establish the parent's own used axes.
+
+Layout authenticates the actual captured scope/native pair and parent relation,
+then lowers checked Text contexts or uses the genuine numeric occurrence proof.
+Selected BoxEdges surround their actual indivisible packet or authentic empty gap on the
+assigned sides. Flattened native containment, equal source cuts and bidi parity
+do not establish this ownership. Original levels and non-edge payload order stay
+unchanged; context-only controls add no flow. A failed BoxEdge request refuses
+without becoming a Contribution. Captured Contribution controls remain genuine
+Contribution operations, including zero.
+
+The numeric formatter excludes actual BoxEdge operations from content L2 before
+ordering and retains their physical allocation. Ordinary Contributions remain
+supplied operands, including zero. A demanded and proven normal family can
+classify its genuine zero-component undecorated endpoints as transparent logical
+aliases while retaining their Contribution operation and supplied metrics.
+`WrappingInput::gaps` carries resolved
+neighbor/formatter/delimiter/empty-parent attachments when actual facts cannot
+determine an ordering-empty box's gap uniquely. Attachments must remain valid for
+the actual selected cut; a body-valid neighbor on another line supplies no gap.
+See the [numeric ordering contract](../../../docs/text-layout-contract.md#numeric-physical-edge-ordering)
+for anchor sides, physical tie order and precise refusals.
+
+The strip footprint stays nonnegative even when margin makes flow negative or
+zero. On a formatted line, its zero-block-extent node sits at the actual control
+baseline; supplied metrics independently determine line height. Node
+location/size/border/padding describe that strip; `NodeOutputOf::margin`
+retains actual physical margins. Individual nonzero components establish
+participation and shaping separation, so opposing margins or cancellation with
+border/padding do not turn a genuine empty pair into a phantom line. Actual
+strut/baseline evidence remains independent.
+
+Text's lane-specific component receipt preserves the used native arithmetic
+before widening. Layout consumes its separate directed-flow and strip readback
+and the [margin-edge fit observation](../../surgeist-text/docs/atomic-fit.md),
+retaining independent Native opaque geometry. Raw overflow does not replace that
+fit demand. Complete fragmentation/NCA formatting and decoration painting remain
+with [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope
-can span a whole typographic unit without physical endpoints. Physical paired
-endpoints at admitted decoded atom seams retain their genuine captured order,
+can span a whole typographic unit without physical endpoints. Paired endpoints
+at admitted decoded atom seams retain their genuine captured chronology,
 including inside a unit shared by same-font connected origins. Their used
 border/padding contributes once without separating the shared glyphs or granting
 an interior line cut. Layout validates that order and canonical pairing;
@@ -729,8 +823,18 @@ incoming native floats outside the paragraph binding remain Layout constraints.
 Physical Text baseline
 coordinates alone do not satisfy a named font-baseline request.
 
-Canonical frames, line allocations, ordered spacing allocations and float bands
-govern same-invocation retries.
+Separate actual normal and visual canonical frames, line allocations, ordered
+spacing allocations and float bands govern same-invocation retries. Normal
+frames retain normal border and content-box facts, including used padding and
+gutters, before relative visual offsets. Fitting, normal line height and exported
+operational baselines use that frame. Visual NodeOutput and placed Text geometry
+use the actual visual frame. Ordinary rounding retains both ancestry channels;
+a canonical Text atomic retains its measured and canonical normal geometry and
+its visual canonical box without snapping either canonical box again. Named
+and scroll readback finalize once before the complete final entry is installed.
+Positioned Text occurrences retain both actual static ports from the same
+accepted selection; normal placement facts use the normal port, while physical
+publication uses its visual port.
 An unchanged selection reuses its exact finalized line, including rigid
 translation; a repeated conflicting basis refuses rather than looping.
 The common physical line anchor uses nearest-CSS-pixel rounding while retaining
@@ -772,8 +876,31 @@ and overflow geometry. The adapter converts those boxes to Text's local
 inline/line-under cells before finalization, then maps the accepted geometry
 back once. A physical 6×14 child therefore uses a local 14×6 cell without
 rotating its content. Signed margins and flow advance remain separate from
-occupied bounds. Relative offsets place the physical box without being added
-to its signed flow advance; changed canonical box edges still reenter fitting.
+occupied bounds. The adapter carries explicit CSS margin-box fitting authority
+from actual used atomic margins and size. Text returns a separate
+[margin-edge admission observation](../../surgeist-text/docs/atomic-fit.md);
+finite, intrinsic and conditional fitting compose actual signed indent with
+that result once, then compare against the full preindent band while preserving
+raw occupied and rendered geometry. Block intrinsic inline demand follows the
+accepted line report; actual border/content/scroll extents remain independent.
+Native opaque requirements retain their
+own authority even beside a CSS margin box. The adapter supplies
+`AtomicFlowAllocation::normal_border_inline_size` from the actual normal
+canonical border extent in Text's local inline axis. CSS fitting uses that fact
+with the normal advance and occupied bounds; the separate visual box may have
+a different pixel extent. Relative offsets and relative ancestry affect actual
+visual placement without changing normal flow, fitting, line height or exported
+normal baselines through pixel phase. Changed normal canonical facts still
+participate in the existing feedback loop.
+
+The coupled entry is a by-value private state on the existing output owner.
+Its largest geometry state determines every entry's storage cost, including
+ordinary rows. Unrounded/final arrays, retained frames, cache restoration and
+float packets carry the actual types and capacities; they do not maintain a
+second atomic-origin authority. Existing Native geometry storage keeps its
+Native resource responsibility. Feature-owned Text buffers and Layout scope
+copies retain their actual
+[scope resource accounting](../../surgeist-text/docs/scope-alignment.md#bound-each-transaction).
 
 Named Central alignment uses the existing child first/last resolver and its
 Absent synthesis, Unknown refusal and axis checks. Numeric participants retain

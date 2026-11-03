@@ -274,6 +274,7 @@ fn captured_with_profile(
         .collect();
     Captured {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -317,7 +318,7 @@ fn text_tree<S: LayoutScalar>(
                         InlineBoundaryKind::End
                     };
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,
@@ -327,6 +328,7 @@ fn text_tree<S: LayoutScalar>(
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(direction),
                 )
             }
@@ -380,6 +382,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: policies(fixture, values),
             child_order: Vec::new(),
         },
@@ -484,6 +488,8 @@ fn outside_and_nested<S: LayoutScalar>() {
             0,
             vec![physical.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
                 child_order: Vec::new(),
             },
@@ -812,7 +818,7 @@ fn numeric_tree<S: LayoutScalar>(
             tree = tree.children(node, []).input(
                 node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,
@@ -822,6 +828,7 @@ fn numeric_tree<S: LayoutScalar>(
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(direction),
                 ),
             );
@@ -860,6 +867,8 @@ fn numeric<S: LayoutScalar>() {
                 0,
                 vec![],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes,
                     child_order: Vec::new(),
                 },
@@ -966,6 +975,8 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
             0,
             vec![],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: definitions,
                 child_order: Vec::new(),
             },
@@ -985,6 +996,8 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
         0,
         vec![],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(6, 7, WrapInside::Avoid), pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1026,6 +1039,8 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         0,
         vec![one.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: policies(&other, &[WrapInside::Avoid]),
             child_order: Vec::new(),
         },
@@ -1045,6 +1060,8 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         0,
         vec![one.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::Captured {
                 metric_contribution: None,
                 edges: Default::default(),
@@ -1069,6 +1086,8 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
         0,
         vec![],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: policies(&one, &[WrapInside::Avoid]),
             child_order: Vec::new(),
         },
@@ -1104,6 +1123,8 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(10000, 10003, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1122,6 +1143,8 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1152,6 +1175,8 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         0,
         vec![unmatched.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1163,6 +1188,8 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         0,
         vec![unmatched.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1235,7 +1262,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
                 &end,
                 text::ConditionalPurpose::MinContent,
                 &[],
-                None,
+                surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert!(search.begin(&[]).unwrap().opportunities().is_empty());
@@ -1245,6 +1272,8 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
             0,
             vec![f.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: policies(&f, &[WrapInside::Avoid; 2]),
                 child_order: Vec::new(),
             },
@@ -1492,6 +1521,8 @@ fn receiving<S: LayoutScalar>() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 // This native box owns Ahem10/absolute10, Baseline8/10,
                 // matching its actual endpoint allocations. Full receiving
                 // trials may contain neither endpoint; supply the same box fact.
@@ -1602,6 +1633,8 @@ fn receiving<S: LayoutScalar>() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 // This native box owns Ahem10/absolute10, Baseline8/10,
                 // matching its actual endpoint allocations. Full receiving
                 // trials may contain neither endpoint; supply the same box fact.
@@ -1709,6 +1742,8 @@ fn replacement_and_terminal<S: LayoutScalar>() {
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1839,6 +1874,8 @@ fn atomic_and_float<S: LayoutScalar>() {
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1900,6 +1937,8 @@ fn atomic_and_float<S: LayoutScalar>() {
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
@@ -1984,7 +2023,7 @@ fn collapsed_space_and_explicit_zwsp_keep_actual_source_seams() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    outputs: HashMap<u32, NodeOutputOf<S>>,
+    outputs: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, S>>,
 }
 
@@ -2050,7 +2089,7 @@ impl<S: LayoutScalar> LayoutTree for CachedTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
@@ -2073,7 +2112,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
         for entry in batch.unrounded_entries() {
-            next.outputs.insert(entry.node(), entry.output());
+            next.outputs.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)
@@ -2122,6 +2161,8 @@ fn warm_policy<S: LayoutScalar>() {
             100,
             vec![f.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: policies(&f, &[policy]),
                 child_order: Vec::new(),
             },
@@ -2367,6 +2408,8 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 0,
                 vec![f.binding.clone()],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
@@ -2399,6 +2442,8 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                 0,
                 vec![f.binding.clone()],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
@@ -2470,6 +2515,8 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
                 0,
                 vec![f.binding.clone()],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
@@ -2503,3 +2550,6 @@ fn unknown_topology_mixed_crossing_refuses_at_scope_construction() {
         failures.join("\n")
     );
 }
+
+#[path = "wrap_inside/signed_conditional_balance.rs"]
+mod signed_conditional_balance;

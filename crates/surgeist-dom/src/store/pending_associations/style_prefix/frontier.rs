@@ -210,11 +210,13 @@ pub(super) fn scan<'a>(
                 && s.readiness() == surgeist_html_parser::HtmlParseReadiness::Complete
                 && s.ready_for_post_load_tasks()
         })
-        && report.effective_scripting_mode() == surgeist_html::HtmlParserScriptingMode::Disabled;
+        && report.effective_scripting_mode()
+            == surgeist_html::parsing::HtmlParserScriptingMode::Disabled;
     let mut cursor = report.pending_associations();
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(DomError::ParsedReportUnresolved(fault)),
             Step::Document(row) => {
                 documents = documents
                     .checked_add(1)
@@ -263,6 +265,7 @@ pub(super) fn scan<'a>(
                 let valid = loop {
                     meter.step(cancel)?;
                     match prior_rows.advance() {
+                        Step::Fault(fault) => return Err(DomError::ParsedReportUnresolved(fault)),
                         Step::Occurrence(prior) if prior.id() == row.id() => {
                             break row.prior_document() == preceding;
                         }
@@ -289,7 +292,7 @@ pub(super) fn scan<'a>(
                 }
             }
             Step::Complete => break,
-            _ => (),
+            Step::Skipped => (),
         }
     }
     if !ordinary || documents == 0 || !reached {

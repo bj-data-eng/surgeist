@@ -1,6 +1,7 @@
 use super::{
-    Error, ErrorCode, EventKind, Id, InputEvent, Metrics, ModifierState, PhysicalPoint, Point,
-    PointerDeviceData, PointerEvent, PointerKind, PointerPhase, Theme, WindowSnapshot,
+    Error, ErrorCode, EventKind, Id, InputEvent, MagnificationEvent, Metrics, ModifierState,
+    PhysicalPoint, Point, PointerDeviceData, PointerEvent, PointerKind, PointerPhase, Theme,
+    WindowSnapshot,
 };
 
 /// Validated state change reported by a native host.
@@ -209,11 +210,23 @@ impl NativeEventTransition {
         }
     }
 
+    /// Creates magnification input from an intentional native-host observation.
+    ///
+    /// Applying this input preserves the snapshot and emits no zoom command.
+    /// The consumer chooses any subsequent application of the gesture intent.
+    #[must_use]
+    pub fn magnification(event: MagnificationEvent) -> Self {
+        Self {
+            environment: None,
+            kind: NativeEventTransitionKind::Input(InputEvent::Magnification(event)),
+        }
+    }
+
     /// Applies this transition and derives its event from the committed snapshot.
     ///
     /// A target mismatch or invalid patch returns [`ErrorCode::InvalidRequest`]
     /// without changing `snapshot`. Patch events are derived after the atomic
-    /// state update; mouse input is returned as [`EventKind::Input`].
+    /// state update; input is returned as [`EventKind::Input`].
     pub fn apply(self, snapshot: &mut WindowSnapshot) -> Result<EventKind, Error> {
         let id = self.id();
         if snapshot.id() != id {

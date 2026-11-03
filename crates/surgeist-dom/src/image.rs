@@ -1,6 +1,6 @@
 //! Native standalone image state and wholly inactive update ownership.
 use crate::{DocumentId, DomNode, NodeId};
-use surgeist_html::{HtmlImageUpdateFlags, HtmlImgFreshState};
+use surgeist_html::elements::image::{HtmlImageUpdateFlags, HtmlImgFreshState};
 
 /// An exact canonical target and its checked, nonwrapping update invocation.
 /// This metadata grants no execution or activation authority.

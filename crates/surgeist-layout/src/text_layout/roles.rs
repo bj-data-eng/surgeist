@@ -176,6 +176,7 @@ fn prospective(
         entry.query_start,
         entry.query_incoming,
         &request.termination,
+        input.inline_boxes,
     )?;
     let mut observations = Vec::new();
     let mut box_assignments: Vec<Option<super::boxes::BoxAssignment>> = Vec::new();
@@ -452,7 +453,7 @@ fn observe(
             .controls
             .iter()
             .find(|row| row.occurrence == occurrence)
-            .and_then(|row| row.boundary)
+            .and_then(|row| row.boundary.clone())
             .ok_or_else(invalid_flow)?;
         if request
             .boundary_context

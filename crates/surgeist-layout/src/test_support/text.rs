@@ -460,6 +460,7 @@ impl PreparedParagraph {
 
     pub(crate) fn binding(&self, container: u32) -> TextParagraphBinding<u32> {
         TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes: self.nodes.clone(),

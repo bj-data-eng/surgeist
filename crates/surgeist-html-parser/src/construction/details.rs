@@ -1,5 +1,9 @@
 //! HTML877d Details source-ordered hooks over the canonical ordinary tree.
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode, construction::HtmlNodeKind,
+    values::OrderedAttributes,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum NotificationDomain {
@@ -14,7 +18,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<NotificationDomain, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Details {
                 node: Some(owner),
                 notification,
@@ -22,7 +26,7 @@ impl SessionStorage {
                 && *owner == node
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<NotificationDomain>() as u64,
                 )?;
                 return Ok(*notification);
@@ -35,7 +39,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(reason) = self.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
@@ -50,7 +54,7 @@ impl SessionStorage {
             Ok(())
         } else {
             Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::DetailsNotification)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::DetailsNotification)
                 .into())
         }
     }
@@ -60,29 +64,31 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
         };
-        let attr = &element.attributes().as_slice()[position];
+        let Some(attr) = element.attributes().as_slice().get(position) else {
+            return Err(latch_registry_row(c));
+        };
         if attr.name().namespace().uri().is_some() {
             return Ok(());
         }
         let attribute = if exact_ascii(c, Some(attr.name().local_name()), "open")? {
-            crate::HtmlDetailsAttribute::Open
+            surgeist_html::elements::details::HtmlDetailsAttribute::Open
         } else if exact_ascii(c, Some(attr.name().local_name()), "name")? {
-            crate::HtmlDetailsAttribute::Name
+            surgeist_html::elements::details::HtmlDetailsAttribute::Name
         } else {
-            crate::HtmlDetailsAttribute::Other
+            surgeist_html::elements::details::HtmlDetailsAttribute::Other
         };
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        payload_write::<crate::HtmlDetailsAttributeEffect>(c, 1)?;
-        let effect = crate::details_attribute_effect(
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        payload_write::<surgeist_html::elements::details::HtmlDetailsAttributeEffect>(c, 1)?;
+        let effect = surgeist_html::elements::details::details_attribute_effect(
             attr.name().namespace(),
             attribute,
             None,
@@ -94,17 +100,27 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        effect: crate::HtmlDetailsAttributeEffect,
+        effect: surgeist_html::elements::details::HtmlDetailsAttributeEffect,
     ) -> Result<(), SessionError> {
         match effect {
-            crate::HtmlDetailsAttributeEffect::None => Ok(()),
-            crate::HtmlDetailsAttributeEffect::CloseGiven => {
-                self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)
-            }
-            crate::HtmlDetailsAttributeEffect::Notify { close_other, .. } => {
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::None => Ok(()),
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::CloseGiven => self
+                .start_details(
+                    c,
+                    node,
+                    surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven,
+                ),
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::Notify {
+                close_other,
+                ..
+            } => {
                 self.require_details_notification(c, node)?;
                 if close_other {
-                    self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseOther)?;
+                    self.start_details(
+                        c,
+                        node,
+                        surgeist_html::elements::details::HtmlDetailsExclusivity::CloseOther,
+                    )?;
                 }
                 Ok(())
             }
@@ -114,7 +130,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
     ) -> Result<(), SessionError> {
         if self.form_attribute(c, node, "open")?.is_none() {
             return Ok(());
@@ -122,17 +138,17 @@ impl SessionStorage {
         let Some(name) = self.form_attribute(c, node, "name")? else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if name.is_empty() {
             return Ok(());
         }
         let root = self.ordinary_root(c, node, None)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if root == node
             && self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
                 == 0
         {
@@ -152,7 +168,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
         root: usize,
         next: Option<usize>,
     ) -> Result<(), SessionError> {
@@ -173,8 +189,8 @@ impl SessionStorage {
         };
         if matches && self.form_attribute(c, other, "open")?.is_some() {
             let target = match close {
-                crate::HtmlDetailsExclusivity::CloseGiven => node,
-                crate::HtmlDetailsExclusivity::CloseOther => other,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven => node,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseOther => other,
             };
             self.require_details_notification(c, target)?;
             self.remove_details_open(c, target)?;
@@ -204,9 +220,9 @@ impl SessionStorage {
         self.details_change(
             c,
             node,
-            crate::HtmlDetailsAttributeEffect::Notify {
-                old: crate::HtmlDetailsState::Open,
-                new: crate::HtmlDetailsState::Closed,
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::Notify {
+                old: surgeist_html::elements::details::HtmlDetailsState::Open,
+                new: surgeist_html::elements::details::HtmlDetailsState::Closed,
                 close_other: false,
             },
         )
@@ -218,18 +234,42 @@ impl SessionStorage {
         container: usize,
         position: Option<usize>,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        self.payloads.forget_attribute_strings(node);
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<OrderedAttributes>() as u64,
         )?;
         payload_write::<usize>(c, 1)?;
         payload_write::<bool>(c, 1)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        // Everything that can refuse is checked before ownership leaves the
+        // container; the node stays an element while its attributes change.
+        if !matches!(
+            self.construction
+                .storage(c)?
+                .node_at(node)
+                .map(|record| record.kind()),
+            Some(HtmlNodeKind::Element(_))
+        ) {
+            return Err(latch_registry_row(c));
+        }
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(latch_registry_row(c));
         };
-        let AttributeStorage::Removing {
+        // The count this swap will record, settled before anything is taken so
+        // an overflow leaves the row and the edit untouched.
+        let next_shifted = match (position, &*storage) {
+            (Some(_), Some(AttributeStorage::Removing { shifted, .. })) => Some(
+                shifted
+                    .checked_add(1)
+                    .ok_or_else(|| latch_registry_row(c))?,
+            ),
+            _ => None,
+        };
+        let taken = storage.take();
+        let Some(AttributeStorage::Removing {
             values,
             mut allocation,
             mut shared,
@@ -238,9 +278,10 @@ impl SessionStorage {
             mut shifted,
             mut popped,
             rebound,
-        } = storage.take().expect("real removal")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(latch_registry_row(c));
         };
         drop(values);
         let result = (|| {
@@ -249,7 +290,7 @@ impl SessionStorage {
                 node,
                 HtmlConstructionAttributeEditMode::Slots,
             )?;
-            let group = self.construction.attribute_edit();
+            let group = self.construction.attribute_edit(c)?;
             let slot = if let Some(position) = position {
                 group.swap_adjacent(position)
             } else {
@@ -264,20 +305,27 @@ impl SessionStorage {
             Ok::<_, SessionError>(())
         })();
         if result.is_ok() {
-            if position.is_some() {
-                shifted += 1;
+            if let Some(next) = next_shifted {
+                shifted = next;
             } else {
                 popped = true;
             }
         }
-        let HtmlNodeKind::Element(element_record) = self
+        let Some(HtmlNodeKind::Element(element_record)) = self
             .construction
-            .storage()
+            .storage(c)?
             .node_at(node)
-            .expect("retained element")
-            .kind()
+            .map(|record| record.kind())
         else {
-            unreachable!()
+            // The record was an element before ownership left the row and the
+            // edit only rearranges its attributes. The shared attributes live
+            // in that record, so no Arc exists to hand back to the row; the
+            // construction owner's open edit is returned instead.
+            let invariant = latch_registry_row(c);
+            // The invariant is the reported first stop; an abort refusal is
+            // secondary and latched by its owner.
+            let _ = self.construction.abort_attributes(c);
+            return Err(invariant);
         };
         c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
         let values = element_record.attributes().clone();
@@ -322,11 +370,11 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         node: &ParserNode,
-        attribute: crate::HtmlDetailsAttribute,
+        attribute: surgeist_html::elements::details::HtmlDetailsAttribute,
     ) -> Result<(), SessionError> {
         let local = match attribute {
-            crate::HtmlDetailsAttribute::Open => "open",
-            crate::HtmlDetailsAttribute::Name => "name",
+            surgeist_html::elements::details::HtmlDetailsAttribute::Open => "open",
+            surgeist_html::elements::details::HtmlDetailsAttribute::Name => "name",
             _ => return Err(SessionError::WrongToken),
         };
         self.remove_managed_attribute(c, node, local, mutation::ManagedFamily::Details)
@@ -336,7 +384,8 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
     fn request(source: &str) -> crate::HtmlDocumentParseRequest {
         crate::HtmlDocumentParseRequest::offline(
@@ -430,7 +479,8 @@ mod tests {
         let request = request("<details a=1 open=v b=2 name=g c=3><details name=g open>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let parent = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         session
             .insert(&mut c, &parent, &first, None, Some(&proof))
@@ -444,7 +494,11 @@ mod tests {
             vec![(vec![110, 97, 109, 101], vec![103])]
         );
         session
-            .remove_details_attribute(&mut c, &first, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut c,
+                &first,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         assert_eq!(
             attributes(&session, &first),
@@ -460,7 +514,7 @@ mod tests {
             .unwrap()
             .payloads
             .check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                 &mut c,
             )
             .unwrap();
@@ -474,7 +528,8 @@ mod tests {
             request("<details name=g open><details name=h open><i name=g><i open=x><i open=y>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let parent = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         session
             .insert(&mut c, &parent, &first, None, Some(&proof))
@@ -526,7 +581,9 @@ mod tests {
             ));
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let a = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let b = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             // Detached nodes are separate ordinary trees. Connectivity itself
@@ -552,15 +609,24 @@ mod tests {
         let request = self::request(source);
         let (mut baseline, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut baseline).unwrap();
-        let mut lexer =
-            LexerFixture::new(request.source(), State::Data, None, &mut baseline).unwrap();
+        let mut lexer = LexerFixture::new(
+            request.source(),
+            HtmlTokenizerState::Data,
+            None,
+            &mut baseline,
+        )
+        .unwrap();
         let node = detail(&mut session, &mut baseline, &mut lexer, &proof, &root);
         let before = baseline
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
         session
-            .remove_details_attribute(&mut baseline, &node, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut baseline,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         let cost = baseline
             .usage()
@@ -574,20 +640,25 @@ mod tests {
             let request = self::request(source);
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, remaining - admitted)
+            c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
                 .unwrap();
-            let result =
-                session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open);
+            let result = session.remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            );
             if admitted == cost {
                 assert_eq!(result, Ok(()));
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -597,7 +668,7 @@ mod tests {
                 assert_eq!(c.stop(), stop);
             }
             if c.stop().is_none() {
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -609,15 +680,20 @@ mod tests {
         let request = request("<details open=v a=1 name=g b=2>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         // Scheduling instrumentation only: no alternate operation or minted
         // phase. Cancel the real token after the actual adjacent slot commit.
         session.active_mut().unwrap().cancel_after_details_shift =
             Some(request.cancellation().clone());
         assert_eq!(
-            session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            session.remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open
+            ),
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert!(
             session
@@ -646,13 +722,13 @@ mod tests {
         );
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         zero(&c);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             work
@@ -663,7 +739,8 @@ mod tests {
         let request = request("<details name=g><i open=v>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let mut input = attribute(&mut lexer, &mut c);
         let HtmlNodeKind::Element(element) = &session
@@ -717,7 +794,8 @@ mod tests {
         let request = request("<details name=g open a=x>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
             .insert(&mut c, &root, &node, None, Some(&proof))
@@ -744,7 +822,8 @@ mod tests {
         let request = request("<details name=g open><template><details name=g open x:open=q>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let outer = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
             .insert(&mut c, &root, &outer, None, Some(&proof))
@@ -780,10 +859,15 @@ mod tests {
         let request = request("<details a=1 open=v b=2 name=g c=3>");
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
-            .remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         // The original open/v allocations and sources are immutable history;
         // removing their current destination must not retire a surviving b/2.
@@ -825,7 +909,9 @@ mod tests {
             let request = request(&source);
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -841,12 +927,13 @@ mod tests {
                 let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
                 let root = session.root(&mut c).unwrap();
                 let mut lexer =
-                    LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+                    LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                        .unwrap();
                 let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
                 let mut input = attribute(&mut lexer, &mut c);
                 let remaining = request.limits().work_credits()
                     - c.usage().resource(HtmlParseResource::WorkCredits).current;
-                c.charge(WorkCategory::StateStep, remaining - admitted)
+                c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
                     .unwrap();
                 let result = session.set_details_attribute(&mut c, &node, &mut input, &proof);
                 if admitted == cost {
@@ -856,7 +943,7 @@ mod tests {
                     assert!(c.stop().is_some());
                 }
                 if c.stop().is_none() {
-                    assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                    assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
                 }
                 if let Some(attr) = input.take() {
                     attr.name.release(&mut c).unwrap();
@@ -939,7 +1026,8 @@ mod tests {
         );
         let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let first = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         let second = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
@@ -963,7 +1051,9 @@ mod tests {
             let request = request("<details name=g><i open=new>");
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             let pointer = input
@@ -978,7 +1068,7 @@ mod tests {
                 request.cancellation().cancel();
                 assert_eq!(
                     session.set_details_attribute(&mut c, &node, &mut input, &proof),
-                    Err(SessionError::Stop(ParseStop::Cancelled))
+                    Err(SessionError::Stop(HtmlParseStop::Cancelled))
                 );
             } else {
                 let before = c.usage().clone();
@@ -988,8 +1078,8 @@ mod tests {
                 );
                 assert!(matches!(
                     session.set_details_attribute(&mut foreign, &node, &mut input, &proof),
-                    Err(SessionError::Stop(ParseStop::InternalInvariant(
-                        crate::parser::control::Invariant::ForeignControl
+                    Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                        crate::parser::control::HtmlParseInvariant::ForeignControl
                     )))
                 ));
                 assert_eq!(c.usage(), &before);
@@ -1033,7 +1123,9 @@ mod tests {
             );
             let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
             let mut input = attribute(&mut lexer, &mut c);
             // The actual details owns one native name slot. Appending open
@@ -1063,7 +1155,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedAttributes,
                         ..
                     }))
@@ -1088,7 +1180,7 @@ mod tests {
     fn details_dispatch_keeps_ordinary_self_closing_diagnostic() {
         use crate::parser::tree_builder::{
             StandaloneDocumentDriver,
-            head::{HeadCondition, HeadStep},
+            head::{HeadStep, HtmlTreeDiagnostic},
         };
         let request = request("<!doctype html><details name=g open/></details>");
         let mut driver = Some(crate::parser::tree_builder::entry::initialized_driver(
@@ -1105,13 +1197,86 @@ mod tests {
         let mut completed = StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
         let evidence = completed.diagnostics().unwrap();
         assert_eq!(evidence.len(), 1);
-        let (record, location) = evidence.retained_record(0).unwrap();
+        let (record, location) = evidence.retained_record(0).unwrap().unwrap();
         assert_eq!(
             record.kind,
-            evidence::DiagnosticKind::Tree(HeadCondition::UnacknowledgedSelfClosing)
+            evidence::HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::UnacknowledgedSelfClosing)
         );
         assert_eq!(record.rule.branch, "ordinary-start/self-closing");
         assert_eq!((location.start(), location.end()), (15, 37));
         completed.release().unwrap();
+    }
+
+    #[test]
+    fn a_shift_count_at_the_end_of_its_range_reports_the_registry_row_and_aborts_the_edit() {
+        let request = request("<details open=v a=1>");
+        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
+        let storage = session.active_mut().unwrap();
+        let container = storage
+            .element_attribute_container(&mut c, node.index)
+            .unwrap();
+        // The state a removal installs before its first adjacent swap, with
+        // the shift count already at the end of its range.
+        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
+        else {
+            panic!("attribute container")
+        };
+        let Some(AttributeStorage::Frozen {
+            values,
+            allocation,
+            shared,
+            element,
+        }) = slot.take()
+        else {
+            panic!("frozen attributes")
+        };
+        *slot = Some(AttributeStorage::Removing {
+            values,
+            allocation,
+            shared,
+            element,
+            index: 0,
+            shifted: usize::MAX,
+            popped: false,
+            rebound: 0,
+        });
+        let result = storage.edit_removing_attribute(&mut c, node.index, container, Some(0));
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
+        assert!(!storage.construction.has_attribute_edit());
+        // The refusal came before anything was taken: the row still holds the
+        // state it was given. Put the frozen state back for the release check.
+        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
+        else {
+            panic!("attribute container")
+        };
+        let Some(AttributeStorage::Removing {
+            values,
+            allocation,
+            shared,
+            element,
+            shifted: usize::MAX,
+            popped: false,
+            ..
+        }) = slot.take()
+        else {
+            panic!("untouched removing attributes")
+        };
+        *slot = Some(AttributeStorage::Frozen {
+            values,
+            allocation,
+            shared,
+            element,
+        });
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        zero(&c);
     }
 }

@@ -11,8 +11,8 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf. The selected scope lists are
 // governed by HTML 877d6146487f15b15bc8dd0e3c625063a37b456a §13.2.4.2.
 
-use super::super::control::{ParseControl, ParseStop, WorkCategory};
-use crate::{DocumentString, QualifiedName};
+use super::super::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
+use surgeist_html::values::{DocumentString, QualifiedName};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Scope {
@@ -32,15 +32,16 @@ pub(super) fn ascii_eq(
     value: &DocumentString,
     expected: &'static str,
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+) -> Result<bool, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     if value.len() != expected.len() {
         return Ok(false);
     }
-    for (index, byte) in expected.bytes().enumerate() {
+    // The lengths are equal, so the pairs are exactly the literal's indices.
+    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         // Two stored UTF-16 bytes and one defining literal byte are inspected.
-        control.charge(WorkCategory::InspectByte, 3)?;
-        if value.code_units()[index] != u16::from(byte) {
+        control.charge_unit_literal_comparison()?;
+        if unit != u16::from(byte) {
             return Ok(false);
         }
     }
@@ -51,8 +52,8 @@ pub(super) fn namespace(
     name: &QualifiedName,
     expected: &'static str,
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    control.charge(WorkCategory::RecordVisit, 2)?;
+) -> Result<bool, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     match name.namespace().uri() {
         Some(uri) => ascii_eq(uri, expected, control),
         None => Ok(false),
@@ -63,11 +64,11 @@ pub(super) fn local_in(
     name: &QualifiedName,
     choices: &[&'static str],
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    control.charge(WorkCategory::RecordVisit, 1)?;
+) -> Result<bool, HtmlParseStop> {
+    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let local = name.local_name();
     for &choice in choices {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if ascii_eq(local, choice, control)? {
             return Ok(true);
         }
@@ -79,7 +80,7 @@ pub(super) fn html_named(
     name: &QualifiedName,
     local: &'static str,
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
+) -> Result<bool, HtmlParseStop> {
     if !namespace(name, HTML, control)? {
         return Ok(false);
     }
@@ -89,7 +90,7 @@ pub(super) fn html_named(
 pub(super) fn foster_target(
     name: &QualifiedName,
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
+) -> Result<bool, HtmlParseStop> {
     if !namespace(name, HTML, control)? {
         return Ok(false);
     }
@@ -100,7 +101,7 @@ pub(super) fn scope_boundary(
     name: &QualifiedName,
     scope: Scope,
     control: &mut ParseControl,
-) -> Result<bool, ParseStop> {
+) -> Result<bool, HtmlParseStop> {
     if namespace(name, HTML, control)? {
         if matches!(scope, Scope::Table) {
             return local_in(name, &["html", "table", "template"], control);
@@ -143,14 +144,15 @@ pub(super) fn equal_units(
     left: &DocumentString,
     right: &DocumentString,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    c.charge(WorkCategory::RecordVisit, 2)?;
+) -> Result<bool, HtmlParseStop> {
+    c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
     if left.len() != right.len() {
         return Ok(false);
     }
-    for index in 0..left.len() {
-        c.charge(WorkCategory::InspectByte, 4)?;
-        if left.code_units()[index] != right.code_units()[index] {
+    // The lengths are equal, so the pairs are exactly the shared indices.
+    for (left, right) in left.code_units().iter().zip(right.code_units()) {
+        c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
+        if left != right {
             return Ok(false);
         }
     }
@@ -171,7 +173,7 @@ pub(super) fn in_set(
     name: &QualifiedName,
     set: NodeSet,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
+) -> Result<bool, HtmlParseStop> {
     if namespace(name, HTML, c)? {
         return local_in(
             name,

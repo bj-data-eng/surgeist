@@ -1,5 +1,11 @@
 //! Independent owned nonce slot, with the original parser control and registry.
 use super::*;
+#[cfg(test)]
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    construction::{HtmlFragmentOwner, HtmlNodeKind},
+    values::{Attribute, Namespace, QualifiedName},
+};
 
 impl SessionStorage {
     pub(super) fn prepare_nonce(
@@ -11,20 +17,20 @@ impl SessionStorage {
             return Ok(None);
         };
         c.charge(
-            WorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            HtmlParseWorkCategory::InspectByte,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        if !surgeist_html::bounded::is_nonce_element(name) {
+        if !surgeist_html::bounded::security::is_nonce_element(name) {
             return Ok(None);
         }
         let empty = literal_string(c, b"")?;
         let (value, raw) = self.register_string_owned(c, empty, None)?;
         drop(value);
-        self.prepare_payload_slot_owned(c)?;
-        let slot = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::Nonce { node: None, raw });
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::Nonce { node: None, raw })
+            .map_err(|_| latch_registry_row(c))?;
         Ok(Some(slot))
     }
     pub(super) fn nonce_slot(
@@ -33,15 +39,18 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.require_identity(&self.control)?;
-        for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Nonce {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::Nonce {
                 node: Some(owner),
                 raw,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
-                c.charge(WorkCategory::CopyByte, (2 * mem::size_of::<usize>()) as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    const { (2 * mem::size_of::<usize>()) as u64 },
+                )?;
                 return Ok(Some((slot, *raw)));
             }
         }
@@ -53,13 +62,14 @@ impl SessionStorage {
         slot: usize,
         raw: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Nonce { raw: old, .. } = self.payloads.values[slot] else {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(&RetainedPayload::Nonce { raw: old, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::NonceMetadataUnavailable);
         };
         payload_write::<usize>(c, 1)?;
-        let RetainedPayload::Nonce { raw: stored, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Nonce { raw: stored, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         *stored = raw;
         self.retire_raw_field(c, old)
@@ -69,11 +79,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
@@ -90,15 +100,15 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            HtmlParseWorkCategory::InspectByte,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -109,12 +119,12 @@ impl SessionStorage {
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         if matches!(
-            crate::nonce_attribute_change(
+            surgeist_html::security::nonce::nonce_attribute_change(
                 element.name(),
                 attribute.name(),
                 Some(attribute.value())
             ),
-            crate::HtmlNonceAttributeEffect::Ignore
+            surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
         ) {
             return Ok(());
         }
@@ -146,15 +156,23 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
-        use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
+    ) -> Result<
+        (
+            surgeist_html::security::nonce::HtmlNonceConnection,
+            surgeist_html::security::nonce::HtmlHeaderDeliveredCsp,
+        ),
+        SessionError,
+    > {
+        use surgeist_html::security::nonce::{
+            HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C,
+        };
         let mut root = self.ordinary_root(c, node, None)?;
-        for _ in 0..self.construction.storage().len() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+        for _ in 0..self.construction.storage(c)?.len() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if matches!(
                 self.construction
                     .node_at(root)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             ) {
@@ -164,13 +182,13 @@ impl SessionStorage {
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -178,13 +196,13 @@ impl SessionStorage {
                 continue;
             }
             if let Some(fragment) = &self.fragment {
-                for index in 0..fragment.effects.len() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                for (index, effect) in fragment.effects.as_slice().iter().enumerate() {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let context::ContextEffect::AttachShadow {
                         contents: Some(contents),
                         host,
                         ..
-                    } = &fragment.effects.as_slice()[index]
+                    } = effect
                         && *contents == root
                     {
                         match host {
@@ -197,7 +215,7 @@ impl SessionStorage {
                             }
                         }
                     }
-                    if index + 1 == fragment.effects.len() {
+                    if index.saturating_add(1) == fragment.effects.len() {
                         return Ok((C::NotBrowsingContextConnected, P::Unavailable));
                     }
                 }
@@ -213,23 +231,36 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         host: &crate::HtmlCaptureElementId,
-    ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
-        use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
-        let node = match self.captured_shadow_including_document(c, host) {
-            Ok(Some(node)) => node,
-            Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
-            Err(SessionError::ContextUnavailable) => return Ok((C::Unavailable, P::Unavailable)),
-            Err(error) => return Err(error),
+    ) -> Result<
+        (
+            surgeist_html::security::nonce::HtmlNonceConnection,
+            surgeist_html::security::nonce::HtmlHeaderDeliveredCsp,
+        ),
+        SessionError,
+    > {
+        use surgeist_html::security::nonce::{
+            HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C,
         };
-        let crate::HtmlCapturedNodeKind::Document(document) = node.kind() else {
-            unreachable!("qualified shadow-including root")
+        let document = match self.captured_shadow_including_document(c, host) {
+            Ok(Some(document)) => document,
+            Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
+            Err(SessionError::ContextFactUnavailable(
+                crate::HtmlCaptureFact::Parent | crate::HtmlCaptureFact::FragmentHost,
+            )) => return Ok((C::Unavailable, P::Unavailable)),
+            Err(error) => return Err(error),
         };
         let environment = document.nonce_environment();
         Ok((
             match environment.browsing_context() {
-                crate::HtmlBrowsingContextPresence::Absent => C::NotBrowsingContextConnected,
-                crate::HtmlBrowsingContextPresence::Present => C::BrowsingContextConnected,
-                crate::HtmlBrowsingContextPresence::Unavailable => C::Unavailable,
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent => {
+                    C::NotBrowsingContextConnected
+                }
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present => {
+                    C::BrowsingContextConnected
+                }
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Unavailable => {
+                    C::Unavailable
+                }
             },
             environment.header_delivered_csp(),
         ))
@@ -240,32 +271,34 @@ impl SessionStorage {
         &'a self,
         c: &mut ParseControl,
         host: &crate::HtmlCaptureElementId,
-    ) -> Result<Option<crate::HtmlCapturedNode<'a>>, SessionError> {
+    ) -> Result<Option<&'a crate::HtmlCapturedDocument>, SessionError> {
         let capture = self
             .fragment
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?
             .context
             .capture();
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let mut node = capture
             .node(host.subject())
             .map_err(|_| SessionError::ForeignNode)?;
         for _ in 0..capture.usage().subjects() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
-            if matches!(node.kind(), crate::HtmlCapturedNodeKind::Document(_)) {
-                return Ok(Some(node));
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            if let crate::HtmlCapturedNodeKind::Document(document) = node.kind() {
+                return Ok(Some(document));
             }
             payload_write::<crate::HtmlCapturedParent>(c, 1)?;
             match node.parent() {
                 crate::HtmlCapturedParent::Subject(parent) => {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     node = capture
                         .node(&parent)
                         .map_err(|_| SessionError::ForeignNode)?;
                 }
                 crate::HtmlCapturedParent::Unavailable => {
-                    return Err(SessionError::ContextUnavailable);
+                    return Err(SessionError::ContextFactUnavailable(
+                        crate::HtmlCaptureFact::Parent,
+                    ));
                 }
                 crate::HtmlCapturedParent::Root => {
                     // A plain fragment's generic host may be its Template
@@ -278,13 +311,15 @@ impl SessionStorage {
                     payload_write::<Option<crate::HtmlCapturedHost>>(c, 1)?;
                     match node.host() {
                         Some(crate::HtmlCapturedHost::Element(host)) => {
-                            c.charge(WorkCategory::ProviderCall, 1)?;
+                            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                             node = capture
                                 .node(host.subject())
                                 .map_err(|_| SessionError::ForeignNode)?;
                         }
                         Some(crate::HtmlCapturedHost::Unavailable) => {
-                            return Err(SessionError::ContextUnavailable);
+                            return Err(SessionError::ContextFactUnavailable(
+                                crate::HtmlCaptureFact::FragmentHost,
+                            ));
                         }
                         _ => return Ok(None),
                     }
@@ -298,30 +333,29 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
         };
         let mut selected = None;
-        for position in 0..element.attributes().len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
-                surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+                HtmlParseWorkCategory::InspectByte,
+                surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
-            let attribute = &element.attributes().as_slice()[position];
             if !matches!(
-                crate::nonce_attribute_change(
+                surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
                     Some(attribute.value())
                 ),
-                crate::HtmlNonceAttributeEffect::Ignore
+                surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
             ) {
                 if attribute.value().is_empty() {
                     return Ok(());
@@ -335,35 +369,29 @@ impl SessionStorage {
         };
         let (connection, policy) = self.nonce_environment(c, node)?;
         c.charge(
-            WorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            HtmlParseWorkCategory::InspectByte,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .expect("retained construction position")
-            .kind()
-        else {
-            unreachable!()
-        };
-        match crate::nonce_insertion_effect(
+        let element = element_record(&self.construction, c, node)?;
+        let attribute = element_attribute(&self.construction, c, node, position)?;
+        match surgeist_html::security::nonce::nonce_insertion_effect(
             element.name(),
-            Some(element.attributes().as_slice()[position].value()),
+            Some(attribute.value()),
             connection,
             policy,
         ) {
-            crate::HtmlNonceInsertionEffect::KeepContent => Ok(()),
-            crate::HtmlNonceInsertionEffect::Unavailable(fact) => {
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::KeepContent => Ok(()),
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::Unavailable(fact) => {
                 Err(SessionError::ContextFactUnavailable(match fact {
-                    crate::HtmlNonceMissing::Connection => {
+                    surgeist_html::security::nonce::HtmlNonceMissing::Connection => {
                         crate::HtmlCaptureFact::BrowsingContextConnection
                     }
-                    crate::HtmlNonceMissing::HeaderDeliveredCsp => {
+                    surgeist_html::security::nonce::HtmlNonceMissing::HeaderDeliveredCsp => {
                         crate::HtmlCaptureFact::HeaderDeliveredCsp
                     }
                 }))
             }
-            crate::HtmlNonceInsertionEffect::HideContentPreservingSlot => {
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::HideContentPreservingSlot => {
                 let (slot, prior) = self
                     .nonce_slot(c, node)?
                     .ok_or(SessionError::NonceMetadataUnavailable)?;
@@ -396,17 +424,17 @@ impl SessionStorage {
         root: usize,
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(shadow) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             return Ok(Some(
                 self.construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(shadow.contents())
                     .map_err(|_| SessionError::ForeignNode)?
                     .position(),
@@ -415,67 +443,98 @@ impl SessionStorage {
         if let Some(child) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .child_at(0)
         {
+            c.note_sibling(node, 0);
             return Ok(Some(child.position()));
         }
         let mut cursor = node;
-        for _ in 0..self.construction.storage().len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+        for _ in 0..self.construction.storage(c)?.len() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if cursor == root {
                 return Ok(None);
             }
             if let Some(parent) = self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .parent()
                 .map(|node| node.position())
             {
-                let mut found = false;
-                for index in 0..self
+                let count = self
                     .construction
                     .node_at(parent)
-                    .expect("retained construction position")
-                    .child_count()
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .child_count();
+                // The step that reached `cursor` left its ordinal behind, so the
+                // search for it starts there and costs the siblings after it.
+                let mut ordinal = None;
+                if let Some(hinted) = c.sibling_hint(parent)
+                    && hinted < count
                 {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    if self
+                        .construction
+                        .node_at(parent)
+                        .ok_or_else(|| latch_registry_row(c))?
+                        .child_at(hinted)
+                        .map(|child| child.position())
+                        == Some(cursor)
+                    {
+                        ordinal = Some(hinted);
+                    }
+                }
+                if ordinal.is_none() {
+                    for index in 0..count {
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                        let child = self
+                            .construction
+                            .node_at(parent)
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .child_at(index)
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .position();
+                        if child == cursor {
+                            ordinal = Some(index);
+                            break;
+                        }
+                    }
+                }
+                let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
+                let following = ordinal.saturating_add(1);
+                if following < count {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(parent)
-                        .expect("retained construction position")
-                        .child_at(index)
-                        .expect("retained child ordinal")
+                        .ok_or_else(|| latch_registry_row(c))?
+                        .child_at(following)
+                        .ok_or_else(|| latch_registry_row(c))?
                         .position();
-                    if found {
-                        return Ok(Some(child));
-                    }
-                    found = child == cursor;
-                }
-                if !found {
-                    return Err(SessionError::WrongSibling);
+                    c.note_sibling(parent, following);
+                    return Ok(Some(child));
                 }
                 cursor = parent;
             } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
                 cursor = host_position;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if let Some(child) = self
                     .construction
                     .node_at(cursor)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(0)
                 {
                     return Ok(Some(child.position()));
@@ -512,7 +571,7 @@ impl SessionStorage {
         let mut previous = None;
         let result = (|| {
             c.require_identity(&self.control)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.nonce_slot(c, node)?
                 .ok_or(SessionError::NonceMetadataUnavailable)?;
             previous = Some(self.begin_attribute_change(c, node, None)?);
@@ -535,41 +594,40 @@ impl SessionStorage {
         value: &mut Option<FrozenUtf16>,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
+            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
         };
         c.charge(
-            WorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            HtmlParseWorkCategory::InspectByte,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        if !surgeist_html::bounded::is_nonce_element(element.name()) {
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
-        for index in 0..element.attributes().len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let attribute = &element.attributes().as_slice()[index];
+        for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
-                surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+                HtmlParseWorkCategory::InspectByte,
+                surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
             if !matches!(
-                crate::nonce_attribute_change(
+                surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
                     Some(attribute.value())
                 ),
-                crate::HtmlNonceAttributeEffect::Ignore
+                surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
             ) {
                 position = Some(index);
                 break;
@@ -625,12 +683,12 @@ impl ParserArenaSession {
         let (_, raw) = storage
             .nonce_slot(c, node)?
             .ok_or(SessionError::NonceMetadataUnavailable)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::String {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::String {
             value, allocation, ..
-        } = &storage.payloads.values[raw]
+        }) = storage.payloads.values.get(raw)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         c.require_document_string(allocation, value)?;
         Ok(value)
@@ -680,6 +738,10 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        construction::HtmlNodeKind,
+        values::{DocumentString, Namespace, QualifiedName},
+    };
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(super) enum NonceCancelPoint {
         Saved,
@@ -902,7 +964,7 @@ mod tests {
         let result = session.set_cryptographic_nonce(&mut c, &node, Some(value));
         assert!(matches!(
             result,
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         session.release(&mut c).unwrap();
         foreign.release(&mut other).unwrap();
@@ -911,18 +973,32 @@ mod tests {
     }
     #[test]
     fn nonce_lookup_exact_work_and_one_short_preserve_first_stop_and_cleanup() {
+        // The lookup's whole cost is measured from an unconstrained twin; the
+        // exact budget then completes it and one credit less stops it.
+        let cost = {
+            let (mut c, mut session, node, _) = fixture();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            session
+                .active()
+                .unwrap()
+                .nonce_slot(&mut c, node.index)
+                .unwrap()
+                .unwrap();
+            let cost = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            cost
+        };
         for short in [false, true] {
             let (mut c, mut session, node, cancellation) = fixture();
             let storage = session.active().unwrap();
             let slot = storage.payloads.values.iter().position(|entry| {
                 matches!(entry, RetainedPayload::Nonce { node: Some(owner), .. } if *owner == node.index)
             }).unwrap();
-            // One visit per preceding/selected record, then a fixed two-usize copy.
-            let cost = slot as u64 + 1 + (2 * mem::size_of::<usize>()) as u64;
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = super::super::tests::limits().work_credits();
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 maximum - used - cost + u64::from(short),
             )
             .unwrap();
@@ -930,11 +1006,11 @@ mod tests {
             let result = session.active().unwrap().nonce_slot(&mut c, node.index);
             if short {
                 let first = c.stop().unwrap();
-                assert!(matches!(first, ParseStop::LimitExceeded {
+                assert!(matches!(first, HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     requested_delta,
                     ..
-                } if requested_delta == (2 * mem::size_of::<usize>()) as u64));
+                } if requested_delta == const { (2 * mem::size_of::<usize>()) as u64 }));
                 assert_eq!(result, Err(SessionError::Stop(first)));
                 let snapshot = c.first_stop_usage().cloned();
                 cancellation.cancel();
@@ -946,16 +1022,12 @@ mod tests {
             } else {
                 assert_eq!(result.unwrap().unwrap().0, slot);
                 assert_eq!(
-                    c.usage().work(WorkCategory::RecordVisit)
-                        - before.work(WorkCategory::RecordVisit),
-                    slot as u64 + 1
-                );
-                assert_eq!(
-                    c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-                    (2 * mem::size_of::<usize>()) as u64
+                    c.usage().work(HtmlParseWorkCategory::CopyByte)
+                        - before.work(HtmlParseWorkCategory::CopyByte),
+                    const { (2 * mem::size_of::<usize>()) as u64 }
                 );
                 // Exact useful-work budget exhausted; stop before disposing admitted owners.
-                c.charge(WorkCategory::StateStep, 1).unwrap_err();
+                c.charge(HtmlParseWorkCategory::StateStep, 1).unwrap_err();
             }
             let first = c.stop();
             let at_stop = c.first_stop_usage().cloned();
@@ -1010,7 +1082,7 @@ mod tests {
                 let first = c.stop().unwrap();
                 assert_eq!(result, Err(SessionError::Stop(first)));
                 assert!(
-                    matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, current, requested_delta: 1 } if limit == cap && current == cap)
+                    matches!(first, HtmlParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, current, requested_delta: 1 } if limit == cap && current == cap)
                 );
                 let storage = session.active().unwrap();
                 assert_eq!(storage.payloads.values.len(), (cap - 2) as usize);
@@ -1062,6 +1134,14 @@ mod tests {
     }
     fn connected_request() -> crate::HtmlFragmentParseRequest {
         use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            parsing::HtmlParserScriptingMode,
+            security::nonce::{
+                HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+            },
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
         let mut b = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
@@ -1124,7 +1204,7 @@ mod tests {
     }
     fn p_node(c: &mut ParseControl, session: &ParserArenaSession) -> ParserNode {
         let storage = session.active().unwrap();
-        let index = (0..storage.construction.storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
+        let index = (0..storage.construction.test_storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
         storage.node(c, index).unwrap()
     }
     #[test]
@@ -1257,13 +1337,13 @@ mod tests {
                 .nonce_inserted(c, node.index)
                 .unwrap_err();
             assert!(observation.reached());
-            assert_eq!(error, SessionError::Stop(ParseStop::Cancelled));
+            assert_eq!(error, SessionError::Stop(HtmlParseStop::Cancelled));
             let first = c.stop();
             let at_stop = c.first_stop_usage().cloned();
             assert!(!session.active().unwrap().payloads.values.is_empty());
             assert_eq!(
                 session.active_mut().unwrap().nonce_inserted(c, node.index),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert_eq!(c.stop(), first);
             assert_eq!(c.first_stop_usage(), at_stop.as_ref());
@@ -1272,7 +1352,7 @@ mod tests {
                 crate::parser::tree_builder::ContextFragmentDriver::take_failed(&mut input)
                     .unwrap();
             assert!(input.is_none());
-            assert_eq!(failed.stop(), ParseStop::Cancelled);
+            assert_eq!(failed.stop(), HtmlParseStop::Cancelled);
             assert_eq!(failed.at_stop(), at_stop.as_ref().unwrap());
             for resource in [
                 HtmlParseResource::BufferedUtf16Units,

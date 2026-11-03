@@ -359,6 +359,7 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
                         .unwrap(),
                     alignment,
                     InlineBoundaryEdgeOf::ZERO,
+                    None,
                 )),
             );
             let report = layout_mixed_inline_run_with_band_source(

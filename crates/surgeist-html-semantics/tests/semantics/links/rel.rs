@@ -1,5 +1,17 @@
-use crate::semantics::support::small_builder_with_short_text as builder;
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    small_builder_with_short_text as builder,
+};
+use surgeist_html::{
+    elements::link::{
+        HtmlLinkFlags, HtmlLinkHistory, HtmlRelKeyword, HtmlRelLinks, HtmlRelSpelling,
+    },
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlRelAssociation, HtmlRelBlobEntry,
@@ -11,8 +23,8 @@ use surgeist_html_semantics::{
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlKey, HtmlRelUrlObservation,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticValue,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticValue,
 };
 use surgeist_html_semantics::{HtmlRelOriginId, HtmlRelSettingsId, HtmlRelUrlId};
 
@@ -341,10 +353,14 @@ fn closed_supported_set_known_empty_and_missing_have_distinct_results() {
     );
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let result = session(&c, &cx, 100).query(&[request(&c, &e)]).unwrap();
-    assert!(matches!(
+    // No supported-token fact was supplied for this link.
+    assert_eq!(
         read(&result, 0).supported_tokens(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::LinkRelationship {
+            subject: c.subject_id(&e).unwrap(),
+            fact: HtmlRelMissingFact::SupportedTokens,
+        })
+    );
     let input = HtmlRelFactsInput::new().with_supported_tokens(
         revision(2),
         vec![HtmlRelSupportedTokens::new(
@@ -508,6 +524,8 @@ fn noopener_ordered_dominance_and_actual_url_settings_facts_cover_all_roles() {
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Known(actual)), Some(expected)) => {
                     assert_eq!(*actual, expected, "{role} {rel} {target}")
                 }
+                // Table rows with no expected value only require that the
+                // outcome is missing evidence; the rows share no single payload.
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Missing(_)), None) => {}
                 other => panic!("{role} {rel} {target}: {other:?}"),
             };
@@ -636,8 +654,26 @@ fn noopener_exact_work_scratch_and_bytes_limits_retire_temporary_capacity_on_fai
         .query(std::slice::from_ref(&q))
         .unwrap();
     let usage = success.usage();
-    assert!(usage.peak_scratch_records() > 0);
     assert_eq!(usage.scratch_records(), 0);
+    // The independent expectation for the usage capped below: one Boolean
+    // result record, a relationship-token scan whose private layout makes
+    // work, scratch and token-buffer bytes required-to-be-charged rather than
+    // pinned, and no nested storage; the exact cap on every resource must
+    // reproduce the report and one short must fail with exactly that resource.
+    assert_exact_and_one_short_caps(
+        "noopener",
+        &c,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(20000000, 1, 1000, 0, 1000000, 0),
+        std::slice::from_ref(&q),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         usage.work(),
         1,
@@ -979,11 +1015,16 @@ fn author_bookmark_help_and_translation_follow_actual_tree_context() {
     let c = b.finish().unwrap();
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let r = session(&c, &cx, 100).query(&[request(&c, &a)]).unwrap();
+    // Each meaning's association depends on the link's tree context, and the
+    // anchor's parent was never established, so that parent is the missing
+    // evidence of every meaning.
+    let missing =
+        HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(c.subject_id(&a).unwrap()));
     assert!(
         read(&r, 0)
             .meanings()
             .iter()
-            .all(|m| matches!(m.association(), HtmlSemanticValue::Missing(_)))
+            .all(|m| m.association() == &missing)
     );
 }
 
@@ -1047,5 +1088,160 @@ fn image_preload_context_preserves_unknown_extension_and_qualified_alias() {
     assert_eq!(
         read(&r, 0).local().occurrence_units(0),
         Some("prime-image".encode_utf16().collect::<Vec<_>>().as_slice())
+    );
+}
+
+/// Checks the contract of one limit over a growing list. The allocation path of a list does not
+/// depend on any limit, so the query's peak usage `U` of the limited resource is fixed by its
+/// input and the query succeeds under a limit exactly when the limit is at least `U`.
+///
+/// `limits_at` sets the limit under test and leaves every other resource unbinding. `U` is the
+/// least limit under which the query succeeds, found by bisection, and must equal what `used`
+/// reads from the unlimited run: the record counters and the allocated bytes are only ever
+/// raised, so their final value is their peak. Then, for every limit in `candidates` and for the
+/// window `U - 64..=U + 64`: usage never exceeds the limit, a refusal is a limit refusal, and the
+/// query succeeds if and only if the limit is at least `U`.
+fn assert_limit_threshold(
+    c: &HtmlCapture,
+    cx: &HtmlSemanticContext,
+    request: &HtmlSemanticRequest,
+    candidates: impl Iterator<Item = usize>,
+    limits_at: impl Fn(usize) -> HtmlSemanticLimits,
+    used: impl Fn(&HtmlSemanticUsageView) -> usize,
+) {
+    let run = |limit: usize| {
+        let mut s = HtmlSemanticSession::new(
+            c,
+            cx,
+            HtmlValueInterpreter::new(1_000_000),
+            limits_at(limit),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let result = s.query(std::slice::from_ref(request));
+        (result, s.usage())
+    };
+    let ample = 1_000_000_000;
+    let (unlimited, usage) = run(ample);
+    unlimited.unwrap();
+    let (mut refused, mut accepted) = (0, ample);
+    while refused + 1 < accepted {
+        let middle = refused + (accepted - refused) / 2;
+        if run(middle).0.is_ok() {
+            accepted = middle;
+        } else {
+            refused = middle;
+        }
+    }
+    let threshold = accepted;
+    assert!(threshold > 0, "the query must retain something");
+    assert_eq!(
+        threshold,
+        used(&usage),
+        "the threshold is the unlimited run's usage"
+    );
+    for limit in candidates.chain(threshold.saturating_sub(64)..=threshold + 64) {
+        let (result, usage) = run(limit);
+        assert!(
+            used(&usage) <= limit,
+            "limit {limit}: usage {} exceeds it",
+            used(&usage)
+        );
+        match result {
+            Ok(_) => assert!(
+                limit >= threshold,
+                "limit {limit} succeeded below {threshold}"
+            ),
+            Err(error) => {
+                assert!(
+                    matches!(error.kind(), HtmlSemanticFailureKind::LimitExceeded { .. }),
+                    "limit {limit}: {error:?}"
+                );
+                assert!(
+                    limit < threshold,
+                    "limit {limit} refused at or above {threshold}"
+                );
+            }
+        }
+    }
+}
+type HtmlSemanticUsageView = surgeist_html_semantics::HtmlSemanticUsage;
+
+fn forty_tokens() -> String {
+    (0..40)
+        .map(|i| format!("t{i}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A relationship list of 40 distinct occurrences grows geometrically in nested output records;
+/// the capacity is admitted under the nested-record limit and under the allocated-byte limit, and
+/// never exceeds either.
+#[test]
+fn geometric_occurrence_growth_succeeds_exactly_at_its_peak_usage_under_the_nested_record_and_byte_limits()
+ {
+    let (mut b, d) = builder();
+    let raw = forty_tokens();
+    let e = element(&mut b, &d, "a", &[("rel", &raw)]);
+    let c = b.finish().unwrap();
+    let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
+    let q = request(&c, &e);
+    assert_limit_threshold(
+        &c,
+        &cx,
+        &q,
+        0..=400,
+        |nested| HtmlSemanticLimits::new(100_000_000, 1000, 1000, 0, 100_000_000, nested),
+        |usage| usage.nested_output_records(),
+    );
+    assert_limit_threshold(
+        &c,
+        &cx,
+        &q,
+        (0..=40_000).step_by(37),
+        |bytes| HtmlSemanticLimits::new(100_000_000, 1000, 1000, 0, bytes, 100_000),
+        |usage| usage.allocated_bytes(),
+    );
+}
+
+/// The same for the transient occurrence list of a noopener evaluation, which counts as scratch
+/// records and is retired when the evaluation finishes: the peak never exceeds the scratch limit
+/// or the byte limit.
+#[test]
+fn geometric_scratch_occurrence_growth_succeeds_exactly_at_its_peak_usage_under_the_scratch_record_and_byte_limits()
+ {
+    let (mut b, d) = builder();
+    let raw = format!("noopener {}", forty_tokens());
+    let e = element(&mut b, &d, "a", &[("rel", &raw)]);
+    let c = b.finish().unwrap();
+    let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
+    let rev = revision(1);
+    let q = HtmlSemanticRequest::noopener(
+        HtmlRelNoopenerInput::new(
+            &c,
+            c.host_facts_revision(),
+            c.subject_id(&e).unwrap(),
+            &rev,
+            HtmlRelUrlKey::new(HtmlRelUrlId::fresh(), rev.clone()),
+            "named".into(),
+            limits(),
+        )
+        .unwrap(),
+    );
+    assert_limit_threshold(
+        &c,
+        &cx,
+        &q,
+        0..=400,
+        |scratch| HtmlSemanticLimits::new(100_000_000, 1000, scratch, 0, 100_000_000, 100_000),
+        |usage| usage.peak_scratch_records(),
+    );
+    assert_limit_threshold(
+        &c,
+        &cx,
+        &q,
+        (0..=40_000).step_by(37),
+        |bytes| HtmlSemanticLimits::new(100_000_000, 1000, 100_000, 0, bytes, 100_000),
+        |usage| usage.allocated_bytes(),
     );
 }

@@ -2,14 +2,14 @@
 //! editorial interpretations. This adapter owns finite example chains and
 //! operand identities, not a native focus/renderer/Window implementation.
 use std::collections::{BTreeMap, BTreeSet};
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlFocusEventAction as EA, HtmlFocusEventCursor as EC, HtmlFocusEventInterface as Interface,
     HtmlFocusEventName as Name, HtmlFocusEventReply as ER,
     HtmlFocusEventTargetKind as EventTargetKind, HtmlFocusEventView as View,
     HtmlFocusUpdateAction as A, HtmlFocusUpdateChain as Chain, HtmlFocusUpdateCursor as C,
-    HtmlFocusUpdateEntryKind as Kind, HtmlFocusUpdateError as Error,
-    HtmlFocusUpdateEventTarget as TargetRole, HtmlFocusUpdateInputData as Data,
-    HtmlFocusUpdateRelatedTarget as Related, HtmlFocusUpdateReply as R,
+    HtmlFocusUpdateEntryKind as Kind, HtmlFocusUpdateEventTarget as TargetRole,
+    HtmlFocusUpdateInputData as Data, HtmlFocusUpdateRelatedTarget as Related,
+    HtmlFocusUpdateReply as R,
 };
 
 fn replies() -> Vec<R> {
@@ -86,7 +86,7 @@ fn same_domain(a: &R, b: &R) -> bool {
 fn accept(cursor: &mut C, control: &mut C, reply: R) {
     for wrong in replies() {
         if !same_domain(&wrong, &reply) {
-            assert_eq!(cursor.reply(wrong), Err(Error::WrongReply));
+            assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(cursor, control);
         }
     }
@@ -499,7 +499,7 @@ impl Fixture {
                 }
                 A::Complete => {
                     for reply in replies() {
-                        assert_eq!(cursor.reply(reply), Err(Error::Terminal));
+                        assert!(matches!(cursor.reply(reply), Err(ref e) if e.is_terminal()));
                         assert_eq!(cursor, control);
                     }
                     return;

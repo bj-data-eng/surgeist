@@ -455,16 +455,19 @@ fn fixture_with_child_topology(
         };
         inputs.insert(
             10 + ordinal,
-            layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
-                kind,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::inline_boundary(
+                layout::InlineBoundaryInput::contribution(
+                    kind,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         );
     }
     let mut children = first_nodes.clone();
@@ -493,6 +496,7 @@ fn fixture_with_child_topology(
             })
             .collect();
         layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -507,6 +511,7 @@ fn fixture_with_child_topology(
     })
     .collect();
     let empty_child = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared[1].clone(),
         container: 3,
         nodes: vec![],
@@ -518,6 +523,7 @@ fn fixture_with_child_topology(
     let additional_empty_children = prepared[2..resumed]
         .iter()
         .map(|prepared| layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 3,
             nodes: vec![],
@@ -553,6 +559,8 @@ fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -572,6 +580,8 @@ fn rejects(
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -754,6 +764,8 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -962,6 +974,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
                 layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone())),
             );
             layout::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared[index].clone(),
                 container,
                 nodes: vec![node],
@@ -979,6 +992,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         non_box: layout::NodeInput::non_box(),
     };
     let empty = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared[2].clone(),
         container: 3,
         nodes: vec![],
@@ -998,6 +1012,8 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
         0,
         fixture.flow.clone(),
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1012,6 +1028,8 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1059,6 +1077,8 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1177,6 +1197,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         non_box: layout::NodeInput::non_box(),
     };
     let paragraph = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![],
@@ -1190,6 +1211,8 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         0,
         vec![paragraph],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

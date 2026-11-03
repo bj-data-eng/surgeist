@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::{values::{HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput}};
 
 #[test]
 fn attribute_change_keeps_canonical_relationship_backing_and_untouched_records() {
@@ -8,7 +9,7 @@ fn attribute_change_keeps_canonical_relationship_backing_and_untouched_records()
     let document = batch.create_document();
     let parent = batch.create_element_ns(
         &document,
-        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
         "div",
     );
     let child = batch.create_text(&document, "child");
@@ -43,12 +44,12 @@ fn cancelled_family_publication_preserves_dimensions_marquee_slots_history_and_a
     let document = batch.create_document();
     let canvas = batch.create_element_ns(
         &document,
-        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
         "canvas",
     );
     let moving = batch.create_element_ns(
         &document,
-        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
         "marquee",
     );
     let commit = dom.apply(batch, &cancel).unwrap();
@@ -62,7 +63,7 @@ fn cancelled_family_publication_preserves_dimensions_marquee_slots_history_and_a
     batch.stop_marquee(moving);
     batch.create_element_ns(
         document,
-        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
         "canvas",
     );
     let prepared = dom.prepare(batch, &cancel).unwrap();
@@ -89,7 +90,7 @@ fn cancelled_common_nonce_publication_preserves_all_state_and_history() {
     let document = batch.create_document();
     let element = batch.create_element_ns(
         &document,
-        crate::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/1999/xhtml"),
         "div",
     );
     batch.set_attribute(&element, "nonce", "content");
@@ -103,7 +104,7 @@ fn cancelled_common_nonce_publication_preserves_all_state_and_history() {
     batch.insert_before(element, document, None);
     let transient = batch.create_element_ns(
         document,
-        crate::Namespace::from_uri("http://www.w3.org/2000/svg"),
+        surgeist_html::values::Namespace::from_uri("http://www.w3.org/2000/svg"),
         "g",
     );
     batch.set_nonce(&transient, "also-unpublished");

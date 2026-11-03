@@ -1,11 +1,12 @@
 //! HTML877d §4.10.2 native categories and §4.10.18.3/source hook triggers.
-use surgeist_html::bounded::{
+use surgeist_html::bounded::form::{
     HtmlFormOwnerResetDecision as D, HtmlFormOwnerResetTrigger as T, form_owner_reset_trigger,
     native_form_association_with,
 };
 use surgeist_html::{
-    DocumentString, HtmlNativeFormAssociationKind as K, KnownHtmlElement as E, Namespace,
-    QualifiedName,
+    elements::form::HtmlNativeFormAssociationKind as K,
+    values::{DocumentString, Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement as E,
 };
 
 #[test]

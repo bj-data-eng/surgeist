@@ -14,14 +14,14 @@
 
 use super::{
     KernelError, Scope, copy_node,
-    head::{HeadCondition, HeadError, HeadState, HeadStep},
+    head::{HeadError, HeadState, HeadStep, HtmlTreeDiagnostic},
     prologue::Payload,
     tag_sets::NodeSet,
     write,
 };
 use crate::{
     construction::{FormattingCreation, ParserNode},
-    parser::control::{ParseControl, WorkCategory},
+    parser::control::{HtmlParseWorkCategory, ParseControl},
 };
 use std::mem::size_of;
 
@@ -42,7 +42,7 @@ struct FormattingElement {
 impl FormattingEntry {
     fn release(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         if let Some(FormattingElement { creation, .. }) = &mut self.element {
             creation.release(c)?;
@@ -64,7 +64,7 @@ impl HeadState<'_> {
     ) -> Result<Option<ParserNode>, HeadError> {
         c.checkpoint()?;
         self.formatting.require_disposal_owner(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .formatting
             .as_slice()
@@ -84,7 +84,7 @@ impl HeadState<'_> {
         target: &ParserNode,
         c: &mut ParseControl,
     ) -> Result<Option<usize>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.formatting.len()).rev() {
             if let Some(node) = self.format_node(index, c)?
                 && self.before.kernel.session.same_node(c, &node, target)?
@@ -95,7 +95,7 @@ impl HeadState<'_> {
         Ok(None)
     }
     fn format_subject(&self, c: &mut ParseControl) -> Result<Option<usize>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.formatting.len()).rev() {
             let Some(node) = self.format_node(index, c)? else {
                 break;
@@ -111,7 +111,7 @@ impl HeadState<'_> {
         name: &'static str,
         c: &mut ParseControl,
     ) -> Result<Option<ParserNode>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.formatting.len()).rev() {
             let Some(node) = self.format_node(index, c)? else {
                 break;
@@ -146,7 +146,7 @@ impl HeadState<'_> {
         parent: &ParserNode,
         c: &mut ParseControl,
     ) -> Result<ParserNode, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(FormattingElement { creation, .. }) = &self
             .formatting
             .as_slice()
@@ -165,13 +165,21 @@ impl HeadState<'_> {
     /// Stable shifts keep every original recipe in an owned slot if admission
     /// stops midway. No node removal refunds an arena record.
     fn remove_format(&mut self, index: usize, c: &mut ParseControl) -> Result<(), HeadError> {
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if self.formatting_removed.is_some() || index >= self.formatting.len() {
             return Err(HeadError::InvalidFormattingState);
         }
+        let last = self
+            .formatting
+            .len()
+            .checked_sub(1)
+            .ok_or(HeadError::InvalidFormattingState)?;
         write(size_of::<Option<FormattingEntry>>(), 1, c)?;
-        for shift in index..self.formatting.len() - 1 {
-            if !self.formatting.swap_slots(shift, shift + 1, c)? {
+        for shift in index..last {
+            if !self
+                .formatting
+                .swap_slots(shift, shift.saturating_add(1), c)?
+            {
                 return Err(HeadError::InvalidFormattingState);
             }
         }
@@ -196,14 +204,14 @@ impl HeadState<'_> {
             .formatting_pending
             .take()
             .ok_or(HeadError::InvalidFormattingState)?;
-        if let Err((stop, entry)) = self.formatting.try_push_recover(c, entry) {
+        if let Err((stop, entry)) = self.formatting.try_push_recover_geometric(c, entry) {
             self.formatting_pending = Some(entry);
             return Err(stop.into());
         }
         Ok(())
     }
     pub(super) fn reconstruct_formatting(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(mut index) = self.formatting.len().checked_sub(1) else {
             return Ok(());
         };
@@ -216,14 +224,14 @@ impl HeadState<'_> {
         }
         while index > 0 {
             write(size_of::<usize>(), 1, c)?;
-            index -= 1;
+            index = index.saturating_sub(1);
             let stop = match self.format_node(index, c)? {
                 None => true,
                 Some(node) => self.before.kernel.stack_index(&node, c)?.is_some(),
             };
             if stop {
                 write(size_of::<usize>(), 1, c)?;
-                index += 1;
+                index = index.saturating_add(1);
                 break;
             }
         }
@@ -239,25 +247,32 @@ impl HeadState<'_> {
             )?;
             self.before.kernel.push(&node, c)?;
             self.format_replace_node(index, &node, c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if index == self.formatting.len() - 1 {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let last = self
+                .formatting
+                .len()
+                .checked_sub(1)
+                .ok_or(HeadError::InvalidFormattingState)?;
+            if index == last {
                 break;
             }
             write(size_of::<usize>(), 1, c)?;
-            index += 1;
+            index = index.saturating_add(1);
         }
         Ok(())
     }
     fn noah(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        write(size_of::<usize>() + size_of::<Option<usize>>(), 2, c)?;
+        write(
+            const { size_of::<usize>() + size_of::<Option<usize>>() },
+            2,
+            c,
+        )?;
         let mut matches = 0usize;
         let mut earliest = None;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        for index in (0..self.formatting.len()).rev() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
-            let Some(FormattingElement { creation, .. }) =
-                &self.formatting.as_slice()[index].element
-            else {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        for (index, entry) in self.formatting.as_slice().iter().enumerate().rev() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            let Some(FormattingElement { creation, .. }) = &entry.element else {
                 break;
             };
             let Some(FormattingElement {
@@ -276,8 +291,12 @@ impl HeadState<'_> {
                 .session
                 .same_formatting_creation(c, creation, pending)?
             {
-                write(size_of::<usize>() + size_of::<Option<usize>>(), 2, c)?;
-                matches += 1;
+                write(
+                    const { size_of::<usize>() + size_of::<Option<usize>>() },
+                    2,
+                    c,
+                )?;
+                matches = matches.saturating_add(1);
                 earliest = Some(index);
             }
         }
@@ -295,8 +314,8 @@ impl HeadState<'_> {
             && let Some(old) = self.format_named("a", c)?
         {
             self.emit(
-                HeadCondition::UnexpectedFormatting,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedFormatting,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "a-start/active-formatting-a",
                 },
@@ -319,8 +338,8 @@ impl HeadState<'_> {
             && self.before.kernel.scoped_name("nobr", Scope::Default, c)?
         {
             self.emit(
-                HeadCondition::UnexpectedFormatting,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedFormatting,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "nobr-start/nobr-in-scope",
                 },
@@ -329,12 +348,12 @@ impl HeadState<'_> {
             self.adoption(c)?;
             self.reconstruct_formatting(c)?;
         }
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let Payload::Tag(input) = &mut pending.payload else {
             return Err(HeadError::MissingInput);
         };
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let source = pending.source.clone();
         write(size_of::<Option<FormattingEntry>>(), 4, c)?;
         self.formatting_pending = Some(FormattingEntry {
@@ -348,7 +367,7 @@ impl HeadState<'_> {
             }),
         });
         let place = self.before.kernel.appropriate_place(None, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(FormattingElement {
             creation,
             node: stored,
@@ -380,8 +399,8 @@ impl HeadState<'_> {
         self.push_format_pending(c)?;
         if close {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "formatting-start/self-closing",
                 },
@@ -397,7 +416,7 @@ impl HeadState<'_> {
     }
     pub(super) fn clear_marker(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let index = self
                 .formatting
                 .len()
@@ -421,8 +440,8 @@ impl HeadState<'_> {
         self.frameset(false, c)?;
         if close {
             self.emit(
-                HeadCondition::UnacknowledgedSelfClosing,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnacknowledgedSelfClosing,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "formatting-marker-start/self-closing",
                 },
@@ -438,8 +457,8 @@ impl HeadState<'_> {
     ) -> Result<HeadStep, HeadError> {
         if !self.before.kernel.scoped_name(name, Scope::Default, c)? {
             self.emit(
-                HeadCondition::UnexpectedEndTag,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedEndTag,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "formatting-marker-end/not-in-scope",
                 },
@@ -455,8 +474,8 @@ impl HeadState<'_> {
         let current = self.before.kernel.current(c)?;
         if !self.before.kernel.named(&current, name, c)? {
             self.emit(
-                HeadCondition::UnexpectedOpenElement,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedOpenElement,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inbody",
                     branch: "formatting-marker-end/current-node-mismatch",
                 },
@@ -485,7 +504,7 @@ impl HeadState<'_> {
             return Ok(());
         }
         for _ in 0..8 {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             let Some(format_index) = self.format_subject(c)? else {
                 return self.generic_end(c);
             };
@@ -494,8 +513,8 @@ impl HeadState<'_> {
                 .ok_or(HeadError::InvalidFormattingState)?;
             let Some(open_index) = self.before.kernel.stack_index(&formatting, c)? else {
                 self.emit(
-                    HeadCondition::UnexpectedFormatting,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedFormatting,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inbody",
                         branch: "adoption/formatting-element-not-open",
                     },
@@ -510,8 +529,8 @@ impl HeadState<'_> {
                 .in_scope(&formatting, Scope::Default, c)?
             {
                 self.emit(
-                    HeadCondition::UnexpectedFormatting,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedFormatting,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inbody",
                         branch: "adoption/formatting-element-not-in-scope",
                     },
@@ -527,8 +546,8 @@ impl HeadState<'_> {
                 .same_node(c, &current, &formatting)?
             {
                 self.emit(
-                    HeadCondition::UnexpectedFormatting,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedFormatting,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inbody",
                         branch: "adoption/formatting-element-not-current",
                     },
@@ -537,8 +556,8 @@ impl HeadState<'_> {
             }
             let mut furthest = None;
             write(size_of::<Option<(usize, ParserNode)>>(), 1, c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            for index in open_index + 1..self.before.kernel.stack()?.len() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            for index in open_index.saturating_add(1)..self.before.kernel.stack()?.len() {
                 let node = self.before.kernel.at(index, c)?;
                 if self.before.kernel.node_set(&node, NodeSet::Special, c)? {
                     write(size_of::<Option<(usize, ParserNode)>>(), 2, c)?;
@@ -565,13 +584,13 @@ impl HeadState<'_> {
             let mut last = copy_node(&furthest, c)?;
             let mut inner = 0usize;
             write(
-                size_of::<Bookmark>() + size_of::<usize>() * 2 + size_of::<ParserNode>(),
+                const { size_of::<Bookmark>() + size_of::<usize>() * 2 + size_of::<ParserNode>() },
                 4,
                 c,
             )?;
             loop {
-                write(size_of::<usize>() * 2, 2, c)?;
-                inner += 1;
+                write(const { size_of::<usize>() * 2 }, 2, c)?;
+                inner = inner.saturating_add(1);
                 cursor = cursor
                     .checked_sub(1)
                     .ok_or(HeadError::InvalidFormattingState)?;
@@ -678,11 +697,10 @@ impl HeadState<'_> {
             self.remove_format(index, c)?;
             let insertion = match bookmark {
                 Bookmark::Replace => index,
-                Bookmark::After(after) => {
-                    self.format_index(&after, c)?
-                        .ok_or(HeadError::InvalidFormattingState)?
-                        + 1
-                }
+                Bookmark::After(after) => self
+                    .format_index(&after, c)?
+                    .ok_or(HeadError::InvalidFormattingState)?
+                    .saturating_add(1),
             };
             let stored = copy_node(&replacement, c)?;
             write(size_of::<Option<ParserNode>>(), 1, c)?;
@@ -700,13 +718,22 @@ impl HeadState<'_> {
                 .formatting_removed
                 .take()
                 .ok_or(HeadError::InvalidFormattingState)?;
-            if let Err((stop, entry)) = self.formatting.try_push_recover(c, entry) {
+            if let Err((stop, entry)) = self.formatting.try_push_recover_geometric(c, entry) {
                 self.formatting_removed = Some(entry);
                 return Err(stop.into());
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            for shift in (insertion..self.formatting.len() - 1).rev() {
-                if !self.formatting.swap_slots(shift, shift + 1, c)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            // The push above left the entry in the list, so it is not empty.
+            let last = self
+                .formatting
+                .len()
+                .checked_sub(1)
+                .ok_or(HeadError::InvalidFormattingState)?;
+            for shift in (insertion..last).rev() {
+                if !self
+                    .formatting
+                    .swap_slots(shift, shift.saturating_add(1), c)?
+                {
                     return Err(HeadError::InvalidFormattingState);
                 }
             }
@@ -722,14 +749,14 @@ impl HeadState<'_> {
                 .ok_or(HeadError::InvalidFormattingState)?;
             self.before
                 .kernel
-                .insert_stack(position + 1, &replacement, c)?;
+                .insert_stack(position.saturating_add(1), &replacement, c)?;
         }
         Ok(())
     }
     pub(super) fn release_formatting(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
             self.formatting.require_owner(c)?;
-            write(size_of::<Option<FormattingEntry>>() * 2, 2, c)?;
+            write(const { size_of::<Option<FormattingEntry>>() * 2 }, 2, c)?;
         }
         if let Some(entry) = &mut self.formatting_pending {
             entry.release(c)?;
@@ -741,11 +768,11 @@ impl HeadState<'_> {
         self.formatting_removed = None;
         loop {
             if c.stop().is_none() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self.formatting.len() == 0 {
                     break;
                 }
-                write(size_of::<Option<FormattingEntry>>() * 2, 2, c)?;
+                write(const { size_of::<Option<FormattingEntry>>() * 2 }, 2, c)?;
             }
             let entry = if c.stop().is_some() {
                 self.formatting.cleanup_pop(c)?
@@ -753,11 +780,7 @@ impl HeadState<'_> {
                 self.formatting.try_pop(c)?
             };
             let Some(entry) = entry else { break };
-            self.formatting_removed = Some(entry);
-            self.formatting_removed
-                .as_mut()
-                .expect("retained disposal owner")
-                .release(c)?;
+            self.formatting_removed.insert(entry).release(c)?;
             self.formatting_removed = None;
         }
         Ok(())

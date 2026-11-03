@@ -21,6 +21,12 @@ Immutable copies retain the same evidence; captured external Documents cannot
 acquire it from matching metadata. This grants no viewport, focus execution,
 system focus or completion of pending autofocus/interaction work.
 
+Public errors implement `Display` and `Error` with prose messages and keep
+their causes private or `#[non_exhaustive]`; enums are closed only where the
+pinned standard or an owner protocol enumerates them. The crate documentation
+records this error and API-evolution policy, and that errors capture no
+backtrace.
+
 The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior. [INVENTORY.md](INVENTORY.md) connects the vocabulary and local
 operations to their clauses. The [detailed HTML guide](../../docs/reference/html-operations.md)
@@ -271,7 +277,7 @@ Document history, URL facts, CSS/CSSOM, policy enforcement and affected UI.
 `default_document_referrer_policy` supplies the selected initial Document policy,
 which is separate from a fetching attribute's empty fallback.
 
-HTML also provides the [neutral Meta CSP protocol](src/csp_policy.rs) for an
+HTML also provides the [neutral Meta CSP protocol](src/internal/security/csp_policy.rs) for an
 explicitly supplied external processor. A consumer session issues qualified
 Document associations and exact UTF-16 insertion requests. The external backend
 declares supported semantic profiles under its processor authority; the caller
@@ -338,7 +344,7 @@ validation and edits retain their actual inputs on refusal, while callers admit
 work/providers and retain cancellation and allocation accounting. Generic tree
 records, allocation identities and mutable backing remain private.
 
-`bounded::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
+`bounded::values::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
 weak sharing of completed immutable values. Probe a whole validated attribute
 bank before processing component strings; offer only the final formed bank.
 Exact ordered names, prefix presence and raw UTF-16 decide equality. Public

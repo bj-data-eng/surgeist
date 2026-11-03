@@ -1,7 +1,7 @@
 //! One admitted issuer per canonical owner; immutable associations live in metadata.
 use super::*;
 use std::cell::RefCell;
-use surgeist_html::{HtmlCspError, HtmlCspOwner};
+use surgeist_html::security::csp::{HtmlCspError, HtmlCspOwner};
 
 pub(super) fn owner(
     ledger: &custody::Ledger,

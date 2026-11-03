@@ -1,7 +1,7 @@
 use super::support::{HostedFixture, cancel, source_limits};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
 use surgeist_runtime::*;
 
 // The expected kinds, names, data and identities follow DOM's creation steps.
@@ -243,8 +243,8 @@ fn immutable_text_and_element_clones_get_fresh_retired_target_identities() {
 #[test]
 fn xml_creator_reads_retained_origin_and_platform_but_creates_a_fresh_closed_document() {
     let platform = DomNativeInputPlatform::new(
-        surgeist_html::HtmlInputEmptySelectionSupport::Unsupported,
-        surgeist_html::HtmlInputNoneDirectionSupport::Supported,
+        surgeist_html::elements::input::HtmlInputEmptySelectionSupport::Unsupported,
+        surgeist_html::elements::input::HtmlInputNoneDirectionSupport::Supported,
     );
     let mut fixture = HostedFixture::active_with_platform(platform);
     fixture.retire();
@@ -280,7 +280,7 @@ fn xml_creator_reads_retained_origin_and_platform_but_creates_a_fresh_closed_doc
         assert_eq!(metadata.document_environment().input_platform(), platform);
         assert_eq!(
             metadata.document_environment().browsing_context(),
-            surgeist_html::HtmlBrowsingContextPresence::Absent
+            surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
         );
         assert!(!metadata.document_environment().has_ever_had_navigable());
         assert!(!actual.is_fully_active().unwrap());
@@ -613,7 +613,7 @@ fn retired_history_does_not_supply_the_independent_never_hosted_svg_script_proof
     assert!(matches!(
         fixture.session.dom().apply(batch, &cancel()),
         Err(DomError::NativeInitializationRequired(
-            surgeist_html::HtmlElementClass::SvgScript
+            surgeist_html::elements::native::HtmlElementClass::SvgScript
         ))
     ));
     assert_eq!(fixture.session.snapshot().stamp(), before.stamp());

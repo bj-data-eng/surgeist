@@ -2,8 +2,10 @@
 use super::*;
 use crate::{DomCommit, NodeId};
 use DomParsedHtmlStyleRenderingRequirement as Required;
+
 use surgeist_html::{
-    HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMediaValueCursor, KnownHtmlAttribute,
+    elements::media::{HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMediaValueCursor},
+    vocabulary::KnownHtmlAttribute,
 };
 use surgeist_html_semantics::HtmlDocumentClass;
 
@@ -104,6 +106,7 @@ fn facts(
     loop {
         scratch.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *q.occurrence() => {
                 if row.subject().id() != *q.subject() || row.context().epoch() != *q.context_epoch()
                 {
@@ -153,14 +156,16 @@ fn facts(
                 } else {
                     None
                 };
-                let explicit = surgeist_html::blocking_tokens_with(blocking.as_ref(), || {
-                    scratch.step(cancel)
-                })?;
-                let potential = surgeist_html::style_is_potentially_render_blocking(
-                    explicit,
-                    inputs.state(),
-                    parser_matches,
-                );
+                let explicit = surgeist_html::elements::style::blocking_tokens_with(
+                    blocking.as_ref(),
+                    || scratch.step(cancel),
+                )?;
+                let potential =
+                    surgeist_html::elements::style::style_is_potentially_render_blocking(
+                        explicit,
+                        inputs.state(),
+                        parser_matches,
+                    );
                 // A proven false potential predicate needs no media environment.
                 if !potential {
                     return Ok(Facts {
@@ -247,7 +252,7 @@ fn facts(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
@@ -348,7 +353,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         successor.reply(Reply::Blocking(potential))?;
         let add = if potential {
             let eligible = facts.html
-                && surgeist_html::document_allows_render_blocking(
+                && surgeist_html::elements::style::document_allows_render_blocking(
                     true,
                     facts.body.expect("known original body"),
                 );

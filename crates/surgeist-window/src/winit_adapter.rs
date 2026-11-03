@@ -6,7 +6,7 @@ use super::{
     capability::CapabilityProvider,
     command::Action,
     descriptor::WindowSnapshotSeed,
-    environment_native::CaptureProfile,
+    environment_native::{CaptureProfile, CaptureScope},
     event::EventKind,
     lease::{LeaseWeak, ReleaseNotifier},
     loop_::PreparedLoop,
@@ -28,7 +28,7 @@ use super::{
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[cfg(all(test, feature = "accessibility"))]
@@ -645,7 +645,7 @@ pub(crate) struct WinitRunner<H> {
     draw: DrawScheduler,
     capabilities: Option<HostCapabilities>,
     clipboard: Box<dyn Clipboard>,
-    system_theme: Option<Theme>,
+    baseline_preferences: UserPreferences,
     capture_profile: CaptureProfile,
     #[cfg(test)]
     pub(crate) commands: Vec<Command>,
@@ -716,7 +716,7 @@ impl<H> WinitRunner<H> {
             draw: window_loop.draw,
             capabilities: None,
             clipboard: window_loop.clipboard,
-            system_theme: None,
+            baseline_preferences: UserPreferences::default(),
             capture_profile: CaptureProfile::NativeContent,
             #[cfg(test)]
             commands: window_loop.commands,
@@ -1329,7 +1329,9 @@ impl<H: Handler> WinitRunner<H> {
         plan: HostCommandPlan,
         callbacks: &mut Vec<BackendCallback>,
     ) -> Result<()> {
-        self.system_theme = event_loop.system_theme().map(Into::into);
+        callbacks.extend(self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        )?);
         self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let resolved = take_resolved_host_command(plan);
         let ime_request = resolved.ime_request;
@@ -1353,6 +1355,7 @@ impl<H: Handler> WinitRunner<H> {
                     .proxy
                     .clone()
                     .expect("native runner proxy is initialized before window creation");
+                let preferences = self.baseline_preferences.clone();
                 let windows = &mut self.windows;
                 #[cfg(feature = "accessibility")]
                 let accessibility = &mut self.accessibility;
@@ -1366,12 +1369,14 @@ impl<H: Handler> WinitRunner<H> {
                         })?;
                         let profile = capture_profile_for_target(winit_target(event_loop));
                         let state = state_from_winit(id, &request, &window, profile)?;
-                        let environment = crate::environment_native::observe_environment(
+                        let mut environment = crate::environment_native::observe_environment(
                             &window,
                             state.metrics(),
-                            event_loop.system_theme().map(Into::into),
+                            preferences.clone(),
                             profile,
+                            CaptureScope::Enriched,
                         )?;
+                        crate::native_input::capture(profile).apply(&mut environment);
                         let state = state.with_environment(environment);
                         let window_id = window.id();
                         #[cfg(feature = "accessibility")]
@@ -2241,6 +2246,19 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let mut provider = WinitCapabilityProvider { event_loop };
         self.resolve_capabilities_once(&mut provider);
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
         match self.stage_first_resume() {
             Ok(true) => self.dispatch_callback(event_loop, BackendCallback::Resume),
             Ok(false) => {
@@ -2260,6 +2278,23 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
         match event {
             UserEvent::Action(action) => {
                 self.pump.enqueue_queued_action(action);
@@ -2292,7 +2327,6 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        self.system_theme = event_loop.system_theme().map(Into::into);
         let live_id = self.id_for_winit(window_id);
         let closing_id = self.id_for_closing_winit(window_id);
         if matches!(&event, winit::event::WindowEvent::Destroyed) {
@@ -2305,7 +2339,27 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             self.drain_pump(event_loop);
             return;
         }
-        let Some(id) = live_id else {
+        if live_id.is_none() {
+            return;
+        }
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
+        let Some(id) = self.id_for_winit(window_id) else {
             return;
         };
         #[cfg(feature = "accessibility")]
@@ -2543,6 +2597,18 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
                 });
                 self.deliver_input(event_loop, input);
             }
+            event @ (winit::event::WindowEvent::PinchGesture { .. }
+            | winit::event::WindowEvent::DoubleTapGesture { .. }) => {
+                let input = magnification_from_winit(
+                    id,
+                    &event,
+                    self.last_mouse_position(id),
+                    self.modifiers,
+                    Some(Instant::now()),
+                )
+                .expect("the matched native gesture has a magnification representation");
+                self.deliver_input(event_loop, InputEvent::Magnification(input));
+            }
             winit::event::WindowEvent::Touch(touch) => {
                 let point = self.logical_point(id, touch.location.x, touch.location.y);
                 let key = PointerPositionKey::touch(id, touch.id);
@@ -2594,10 +2660,15 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             return;
         }
 
-        if let Err(error) =
-            self.refresh_environment_baselines(event_loop.system_theme().map(Into::into))
-        {
-            self.fail_terminal(error);
+        match self.refresh_native_environments(crate::native_preferences::capture(
+            event_loop.system_theme().map(Into::into),
+        )) {
+            Ok(callbacks) => {
+                for callback in callbacks {
+                    self.enqueue_callback(callback);
+                }
+            }
+            Err(error) => self.fail_terminal(error),
         }
         self.drain_pump(event_loop);
         if !self.pump.is_running() {
@@ -2821,40 +2892,96 @@ impl<H: Handler> WinitRunner<H> {
             crate::environment_native::observe_environment(
                 native,
                 metrics,
-                self.system_theme,
+                self.baseline_preferences.clone(),
                 self.capture_profile,
+                CaptureScope::Basic,
             )
         })??;
+        let environment =
+            crate::environment_native::preserve_independent(environment, window.environment());
         Ok(transition.with_environment(environment))
     }
 
-    fn refresh_environment_baselines(&mut self, theme: Option<Theme>) -> Result<()> {
-        self.system_theme = theme;
+    fn refresh_native_environments(
+        &mut self,
+        preferences: UserPreferences,
+    ) -> Result<Vec<BackendCallback>> {
+        let input = crate::native_input::capture(self.capture_profile);
+        let mut observations = Vec::new();
+        for id in self.windows.values().copied() {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            let Some(handle) = window.instance.handle.as_ref() else {
+                continue;
+            };
+            let metrics = window.metrics();
+            let environment = handle.with_winit(|native| {
+                crate::environment_native::observe_environment(
+                    native,
+                    &metrics,
+                    preferences.clone(),
+                    self.capture_profile,
+                    CaptureScope::Enriched,
+                )
+            })??;
+            observations.push((id, environment));
+        }
+        self.apply_environment_observations(preferences, observations, input)
+    }
+
+    fn apply_environment_observations(
+        &mut self,
+        preferences: UserPreferences,
+        observations: Vec<(Id, HostEnvironment)>,
+        input: crate::native_input::InputCapture,
+    ) -> Result<Vec<BackendCallback>> {
+        self.baseline_preferences = preferences;
+        let mut callbacks = Vec::new();
+        for (id, observed) in observations {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            let mut environment =
+                crate::environment_native::preserve_independent(observed, window.environment());
+            input.apply(&mut environment);
+            if &environment == window.environment() {
+                continue;
+            }
+            if let Some(event) = self.apply_native_transition_state(
+                id,
+                NativeEventTransition::environment_changed(id, environment),
+            )? {
+                callbacks.push(BackendCallback::Event(event));
+            }
+        }
+        Ok(callbacks)
+    }
+
+    fn refresh_environment_baselines(
+        &mut self,
+        preferences: UserPreferences,
+    ) -> Result<Vec<BackendCallback>> {
+        self.baseline_preferences = preferences.clone();
+        let mut callbacks = Vec::new();
         let ids = self.windows.values().copied().collect::<Vec<_>>();
         for id in ids {
             let Some(window) = self.registry.get(id) else {
                 continue;
             };
-            if window
-                .instance
-                .state()
-                .environment()
-                .preferences
-                .color_scheme
-                == theme
-            {
+            if window.environment().preferences == preferences {
                 continue;
             }
-            let mut environment = window.instance.state().environment().clone();
-            environment.preferences.color_scheme = theme;
+            let mut environment = window.environment().clone();
+            environment.preferences = preferences.clone();
             if let Some(event) = self.apply_native_transition_state(
                 id,
                 NativeEventTransition::environment_changed(id, environment),
             )? {
-                self.enqueue_callback(BackendCallback::Event(event));
+                callbacks.push(BackendCallback::Event(event));
             }
         }
-        Ok(())
+        Ok(callbacks)
     }
 
     fn apply_native_transition_patch_state(
@@ -3059,6 +3186,34 @@ impl From<winit::event::MouseButton> for PointerButton {
             winit::event::MouseButton::Other(button) => Self::Other(button),
         }
     }
+}
+
+/// Lowers only native magnification gestures using captured receipt context.
+/// No native gesture position or applied scale is supplied by these events.
+pub(crate) fn magnification_from_winit(
+    id: Id,
+    event: &winit::event::WindowEvent,
+    position: Option<Point>,
+    modifiers: ModifierState,
+    timestamp: Option<Instant>,
+) -> Option<MagnificationEvent> {
+    let gesture = match event {
+        winit::event::WindowEvent::PinchGesture { delta, phase, .. } => {
+            MagnificationGesture::Pinch {
+                delta: MagnificationDelta::new(*delta),
+                phase: (*phase).into(),
+            }
+        }
+        winit::event::WindowEvent::DoubleTapGesture { .. } => MagnificationGesture::Smart,
+        _ => return None,
+    };
+    Some(MagnificationEvent {
+        id,
+        gesture,
+        position,
+        modifiers,
+        timestamp,
+    })
 }
 
 impl From<winit::event::TouchPhase> for TouchPhase {
@@ -3755,9 +3910,15 @@ mod tests {
                 theme: Some(Theme::Light),
             })
             .unwrap();
-        runner
-            .refresh_environment_baselines(Some(Theme::Dark))
+        let callbacks = runner
+            .refresh_environment_baselines(UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            })
             .unwrap();
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
         runner.drain_pump_for_test();
         assert_eq!(
             runner.handler.observed,
@@ -3776,11 +3937,478 @@ mod tests {
                 .color_scheme,
             Some(Theme::Dark)
         );
-        runner
-            .refresh_environment_baselines(Some(Theme::Dark))
+        let callbacks = runner
+            .refresh_environment_baselines(UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            })
             .unwrap();
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
         runner.drain_pump_for_test();
         assert_eq!(runner.handler.observed.len(), 1);
+    }
+
+    #[test]
+    fn preference_only_baseline_changes_publish_complete_preferences_without_reentrant_callbacks() {
+        #[derive(Default)]
+        struct Observer {
+            observations: Vec<(HostEnvironment, HostEnvironment, Option<Theme>)>,
+        }
+        impl Handler for Observer {
+            fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+                if let EventKind::EnvironmentChanged { environment, .. } = event.event() {
+                    let state = event.state().unwrap();
+                    self.observations.push((
+                        environment.clone(),
+                        state.environment().clone(),
+                        state.theme(),
+                    ));
+                }
+                Ok(())
+            }
+        }
+        let id = Id::from_u64(1);
+        let initial = UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            ..UserPreferences::default()
+        };
+        let environment = HostEnvironment {
+            native_scale: Some(ScaleFactor::ONE),
+            navigation: Some(NavigationControls::Back),
+            preferences: initial.clone(),
+            ..HostEnvironment::default()
+        };
+        let mut window_loop = Loop::new(Observer::default());
+        window_loop
+            .registry
+            .insert(Instance::new(
+                state(id).with_environment(environment.clone()),
+            ))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        runner.windows.insert(winit::window::WindowId::dummy(), id);
+        runner
+            .apply_patch(WindowStatePatch::Theme {
+                id,
+                theme: Some(Theme::Light),
+            })
+            .unwrap();
+        let observed = UserPreferences {
+            reduced_motion: Some(ReductionPreference::NoPreference),
+            reduced_transparency: Some(ReductionPreference::NoPreference),
+            contrast: Some(ContrastPreference::NoPreference),
+            ..initial
+        };
+        let reduced_motion = UserPreferences {
+            reduced_motion: Some(ReductionPreference::Reduce),
+            ..observed.clone()
+        };
+        let reduced_both = UserPreferences {
+            reduced_transparency: Some(ReductionPreference::Reduce),
+            ..reduced_motion.clone()
+        };
+        let increased = UserPreferences {
+            contrast: Some(ContrastPreference::More),
+            ..reduced_both.clone()
+        };
+        let unmetered = UserPreferences {
+            reduced_data: Some(ReductionPreference::NoPreference),
+            ..reduced_both.clone()
+        };
+        let metered = UserPreferences {
+            reduced_data: Some(ReductionPreference::Reduce),
+            ..reduced_both.clone()
+        };
+        for (index, preferences) in [
+            observed,
+            reduced_motion,
+            reduced_both.clone(),
+            increased,
+            unmetered,
+            metered,
+            reduced_both.clone(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let callbacks = runner
+                .refresh_environment_baselines(preferences.clone())
+                .unwrap();
+            assert_eq!(
+                runner.handler.observations.len(),
+                index,
+                "refresh returns callbacks without invoking the handler"
+            );
+            assert_eq!(
+                runner.registry.get(id).unwrap().environment().preferences,
+                preferences
+            );
+            assert_eq!(callbacks.len(), 1);
+            for callback in callbacks {
+                runner.enqueue_callback(callback);
+            }
+            runner.drain_pump_for_test();
+            let expected = HostEnvironment {
+                preferences: preferences.clone(),
+                ..environment.clone()
+            };
+            assert_eq!(
+                runner.handler.observations.last(),
+                Some(&(expected.clone(), expected, Some(Theme::Light)))
+            );
+            assert_eq!(runner.baseline_preferences, preferences);
+            assert!(
+                runner
+                    .refresh_environment_baselines(preferences)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        runner
+            .apply_patch(WindowStatePatch::Theme { id, theme: None })
+            .unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().preferences,
+            reduced_both
+        );
+        assert_eq!(runner.handler.observations.len(), 7);
+    }
+
+    #[derive(Default)]
+    struct EnvironmentObserver {
+        order: Vec<&'static str>,
+        snapshots: Vec<(HostEnvironment, f64, Size)>,
+    }
+    impl Handler for EnvironmentObserver {
+        fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+            if let EventKind::EnvironmentChanged { environment, .. } = event.event() {
+                let state = event.state().unwrap();
+                assert_eq!(state.environment(), environment);
+                self.order.push("environment");
+                self.snapshots.push((
+                    state.environment().clone(),
+                    state.metrics().scale_factor(),
+                    state.metrics().logical_size(),
+                ));
+            }
+            Ok(())
+        }
+        fn draw(&mut self, frame: &mut Frame<'_>) -> Result<()> {
+            self.order.push("draw");
+            self.snapshots.push((
+                frame.state().environment().clone(),
+                frame.metrics().scale_factor(),
+                frame.size(),
+            ));
+            Ok(())
+        }
+    }
+
+    fn observed_environment(
+        area: Rect,
+        available: Rect,
+        preferences: UserPreferences,
+        scale: f64,
+        viewport: Size,
+    ) -> HostEnvironment {
+        HostEnvironment {
+            native_scale: Some(ScaleFactor::new(scale).unwrap()),
+            page_zoom: Some(ScaleFactor::ONE),
+            screen: Some(
+                ScreenMetrics::new(
+                    area,
+                    Some(available),
+                    ScreenAreaSource::OutputDevice,
+                    Some(24),
+                    Some(8),
+                )
+                .unwrap(),
+            ),
+            viewport: Some(
+                ViewportMetrics::new(viewport, ViewportSizes::fixed(viewport).unwrap()).unwrap(),
+            ),
+            preferences,
+            ..HostEnvironment::default()
+        }
+    }
+
+    #[test]
+    fn idle_monitor_refresh_combines_output_and_preferences_preserves_independent_facts_and_suppresses_equal()
+     {
+        let id = Id::from_u64(1);
+        let area = Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1470.0,
+                height: 956.0,
+            },
+        };
+        let preferences = UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            ..UserPreferences::default()
+        };
+        let mut environment = observed_environment(
+            area,
+            Rect {
+                origin: Point { x: 0.0, y: 33.0 },
+                size: Size {
+                    width: 1470.0,
+                    height: 833.0,
+                },
+            },
+            preferences.clone(),
+            1.0,
+            Size {
+                width: 640.0,
+                height: 480.0,
+            },
+        );
+        environment.navigation = Some(NavigationControls::Back);
+        environment.display_mode = Some(DisplayMode::Standalone);
+        let fine = PointerCapability {
+            accuracy: PointerAccuracy::Fine,
+            hover: true,
+        };
+        environment.input = Some(InputCapabilities::new(fine, [fine]).unwrap());
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(
+                state(id).with_environment(environment.clone()),
+            ))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        let changed_preferences = UserPreferences {
+            reduced_motion: Some(ReductionPreference::Reduce),
+            ..preferences.clone()
+        };
+        for (index, preferences) in [preferences, changed_preferences].into_iter().enumerate() {
+            let available = Rect {
+                origin: Point { x: 0.0, y: 33.0 },
+                size: Size {
+                    width: 1470.0,
+                    height: 850.0 + index as f64 * 10.0,
+                },
+            };
+            let observed = observed_environment(
+                area,
+                available,
+                preferences.clone(),
+                1.0,
+                Size {
+                    width: 640.0,
+                    height: 480.0,
+                },
+            );
+            let callbacks = runner
+                .apply_environment_observations(
+                    preferences.clone(),
+                    vec![(id, observed.clone())],
+                    crate::native_input::InputCapture::Preserve,
+                )
+                .unwrap();
+            assert_eq!(
+                callbacks.len(),
+                1,
+                "one combined publication per window per idle sample"
+            );
+            assert_eq!(
+                runner.handler.order.len(),
+                index * 2,
+                "refresh never invokes a callback"
+            );
+            for callback in callbacks {
+                runner.enqueue_callback(callback);
+            }
+            runner.enqueue_callback(BackendCallback::Frame(id));
+            runner.drain_pump_for_test();
+            let expected = HostEnvironment {
+                navigation: environment.navigation,
+                display_mode: environment.display_mode,
+                input: environment.input.clone(),
+                ..observed.clone()
+            };
+            assert_eq!(
+                runner.handler.snapshots.last(),
+                Some(&(
+                    expected.clone(),
+                    1.0,
+                    Size {
+                        width: 640.0,
+                        height: 480.0
+                    }
+                ))
+            );
+            assert_eq!(expected.screen.unwrap().available_area(), Some(available));
+            assert_eq!(runner.baseline_preferences, preferences);
+            assert!(
+                runner
+                    .apply_environment_observations(
+                        preferences,
+                        vec![(id, observed)],
+                        crate::native_input::InputCapture::Preserve,
+                    )
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert_eq!(
+            runner.handler.order,
+            ["environment", "draw", "environment", "draw"]
+        );
+    }
+
+    #[test]
+    fn idle_monitor_refresh_after_move_and_scale_uses_committed_metric_basis() {
+        let id = Id::from_u64(1);
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(HostEnvironment {
+                native_scale: Some(ScaleFactor::ONE),
+                ..HostEnvironment::default()
+            })))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        let moved = runner
+            .moved_transition(id, PhysicalPoint { x: 200, y: 100 })
+            .unwrap();
+        runner.apply_native_transition_patch_state(moved).unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().native_scale,
+            None
+        );
+        let scaled = runner.scale_factor_transition(id, 2.0).unwrap();
+        runner.apply_native_transition_patch_state(scaled).unwrap();
+        let metrics = runner.registry.get(id).unwrap().metrics();
+        assert_eq!(metrics.scale_factor(), 2.0);
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 320.0,
+                height: 240.0
+            }
+        );
+        let preferences = UserPreferences::default();
+        let observed = observed_environment(
+            Rect {
+                origin: Point::default(),
+                size: Size {
+                    width: 735.0,
+                    height: 478.0,
+                },
+            },
+            Rect {
+                origin: Point { x: 0.0, y: 16.5 },
+                size: Size {
+                    width: 735.0,
+                    height: 416.5,
+                },
+            },
+            preferences.clone(),
+            2.0,
+            Size {
+                width: 320.0,
+                height: 240.0,
+            },
+        );
+        let callbacks = runner
+            .apply_environment_observations(
+                preferences,
+                vec![(id, observed.clone())],
+                crate::native_input::InputCapture::Preserve,
+            )
+            .unwrap();
+        assert_eq!(callbacks.len(), 1);
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
+        runner.drain_pump_for_test();
+        assert_eq!(
+            runner.handler.snapshots,
+            [(
+                observed,
+                2.0,
+                Size {
+                    width: 320.0,
+                    height: 240.0
+                }
+            )]
+        );
+    }
+
+    #[test]
+    fn idle_input_capture_replaces_native_facts_clears_failed_samples_and_suppresses_equal() {
+        use crate::native_input::InputCapture;
+
+        let id = Id::from_u64(1);
+        let fine = PointerCapability {
+            accuracy: PointerAccuracy::Fine,
+            hover: true,
+        };
+        let coarse = PointerCapability {
+            accuracy: PointerAccuracy::Coarse,
+            hover: false,
+        };
+        let fine = InputCapabilities::new(fine, [fine]).unwrap();
+        let coarse = InputCapabilities::new(coarse, [coarse]).unwrap();
+        let original = HostEnvironment {
+            input: Some(fine.clone()),
+            navigation: Some(NavigationControls::Back),
+            display_mode: Some(DisplayMode::Standalone),
+            ..HostEnvironment::default()
+        };
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(original.clone())))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+
+        // A raw move retains the previously committed independent input even
+        // though it invalidates geometry and output observations.
+        let moved = runner
+            .moved_transition(id, PhysicalPoint { x: 40, y: 20 })
+            .unwrap();
+        runner.apply_native_transition_patch_state(moved).unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().input,
+            original.input
+        );
+
+        for (input, expected_callbacks) in
+            [(Some(fine), 0), (Some(coarse), 1), (None, 1), (None, 0)]
+        {
+            let before = runner.registry.get(id).unwrap().environment().clone();
+            let callbacks = runner
+                .apply_environment_observations(
+                    before.preferences.clone(),
+                    vec![(id, before)],
+                    InputCapture::Observed(input.clone()),
+                )
+                .unwrap();
+            assert_eq!(callbacks.len(), expected_callbacks);
+            let committed = runner.registry.get(id).unwrap().environment().clone();
+            assert_eq!(committed.input, input);
+            assert_eq!(committed.navigation, original.navigation);
+            assert_eq!(committed.display_mode, original.display_mode);
+            assert!(
+                runner.handler.order.is_empty(),
+                "sampling does not invoke callbacks"
+            );
+            if let Some(BackendCallback::Event(event)) = callbacks.first() {
+                let EventKind::EnvironmentChanged { environment, .. } = event else {
+                    panic!("input refresh must publish an environment event");
+                };
+                assert_eq!(environment, &committed);
+            }
+        }
     }
 
     fn state(id: Id) -> WindowSnapshot {

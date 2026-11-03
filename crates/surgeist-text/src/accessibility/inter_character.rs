@@ -89,6 +89,7 @@ fn selected(orientation: LineOrientation, tracking: f64) -> (PreparedText, Selec
         .handle();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(&prepared),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),

@@ -5,7 +5,7 @@ use surgeist_text as text;
 struct CachedTree<S: LayoutScalar> {
     inner: PublicLayoutTreeOf<S>,
     caches: std::collections::HashMap<u32, CacheOf<S>>,
-    committed: std::collections::HashMap<u32, NodeOutputOf<S>>,
+    committed: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     hits: std::cell::Cell<usize>,
 }
 
@@ -49,7 +49,7 @@ impl<S: LayoutScalar> LayoutTree for CachedTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.committed.get(&node).copied()
     }
 }
@@ -76,7 +76,7 @@ impl<S: LayoutScalar> CachedTree<S> {
         self.committed = batch
             .unrounded_entries()
             .iter()
-            .map(|row| (row.node(), row.output()))
+            .map(|row| (row.node(), *row))
             .collect();
     }
 }
@@ -139,6 +139,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -354,6 +356,8 @@ fn chronology<S: LayoutScalar>() {
             0,
             vec![first.binding(0), child.binding(2), last.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -481,6 +485,8 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -500,6 +506,7 @@ fn intrinsic<S: LayoutScalar>(
         super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
@@ -755,6 +762,8 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                 0,
                 vec![p.binding(0)],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

@@ -1,8 +1,17 @@
 use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
     compact_builder_without_registries as builder,
     small_semantic_limits_with_integer_digits as limits,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -12,7 +21,7 @@ use surgeist_html_semantics::{
     HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
     HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
 };
 
 // Expectations follow HTML 877d6146487f §6.3.1–2 and the selected CSS Shadow
@@ -782,7 +791,25 @@ fn cancelled_and_resource_failed_batches_keep_exact_qualification_and_sticky_sto
     let c = b.finish().unwrap();
     let cx = context(&c, None);
     let requests = requests(&c, &[&e, &e]);
-    let report = query(&c, &cx, &[&e, &e]);
+    // An element with its own inert attribute answers true without an ancestor
+    // walk, so the duplicate batch retains exactly its two result records and
+    // no scratch or nested storage; the attribute scan's visit layout is
+    // private, so work is required to be charged without being pinned. The
+    // helper proves the measured usage is the least admitting cap per resource
+    // before the loop below reuses it.
+    let report = assert_exact_and_one_short_caps(
+        "inertness batch",
+        &c,
+        &cx,
+        10000,
+        limits(),
+        &requests,
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let usage = report.usage();
     for (limits, expected) in [
         (

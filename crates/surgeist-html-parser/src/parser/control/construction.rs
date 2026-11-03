@@ -1,6 +1,9 @@
 //! The parser's original ledger applied to actual HTML-owned allocation reports.
 use super::*;
-use crate::bounded::{HtmlConstructionAllocationSnapshot as Snapshot, HtmlConstructionRetired};
+
+use surgeist_html::bounded::construction::{
+    HtmlConstructionAllocationSnapshot as Snapshot, HtmlConstructionRetired,
+};
 
 /// One actual shared owner's bank, never a caller-supplied capacity or refund.
 #[derive(Debug)]
@@ -23,91 +26,36 @@ impl ParseControl {
         owner: &ControlIdentity,
         requests: &[(HtmlParseResource, u64)],
         edge_remove: u64,
-        scratch_entries: u64,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if requests
             .iter()
             .all(|(resource, _)| *resource == HtmlParseResource::ManagedEdges)
         {
             let mut addition = 0_u64;
             for &(_, delta) in requests {
-                addition = addition.checked_add(delta).ok_or_else(|| {
-                    self.representation::<()>(HtmlParseResource::ManagedEdges)
-                        .unwrap_err()
-                })?;
+                addition = addition
+                    .checked_add(delta)
+                    .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedEdges))?;
             }
-            return self.commit_construction_edges(owner, scratch_entries, addition, edge_remove);
+            return self.commit_construction_edges(owner, addition, edge_remove);
         }
         self.require_identity(owner)?;
         let mut values = self.plan_storage(requests)?;
-        let Some(edges) = values[HtmlParseResource::ManagedEdges as usize].checked_sub(edge_remove)
+        let Some(edges) = values
+            .copy(HtmlParseResource::ManagedEdges)
+            .checked_sub(edge_remove)
         else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ReleaseUnderflow,
+            ));
         };
-        values[HtmlParseResource::ManagedEdges as usize] = edges;
-        let Some(auxiliary) =
-            values[HtmlParseResource::AuxiliaryEntries as usize].checked_sub(scratch_entries)
-        else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        };
-        values[HtmlParseResource::AuxiliaryEntries as usize] = auxiliary;
+        *values.get_mut(HtmlParseResource::ManagedEdges) = edges;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         Ok(())
-    }
-    pub(crate) fn adopt_construction_order(
-        &mut self,
-        ticket: ConstructionAllocation,
-        transfer: crate::bounded::HtmlConstructionChildOrderTransfer,
-    ) -> ConstructionAllocation {
-        self.require_construction_snapshot(transfer.source(), Some(&ticket))
-            .expect("ready transfer retains the original control's actual pending bank");
-        let (_, _, snapshot) = transfer.into_parts();
-        ConstructionAllocation {
-            owner: ticket.owner,
-            snapshot,
-        }
-    }
-    pub(crate) fn require_order_retirement(
-        &mut self,
-        ticket: &ConstructionAllocation,
-        snapshot: &Snapshot,
-    ) -> Result<(), ParseStop> {
-        self.require_construction_retirement(ticket, snapshot)?;
-        let entries = if snapshot.pending_child_order_slot().is_some() {
-            snapshot.initialized_len() as u64
-        } else {
-            0
-        };
-        if self
-            .usage
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current
-            < entries
-        {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        }
-        Ok(())
-    }
-    pub(crate) fn retire_order_allocation(
-        &mut self,
-        ticket: ConstructionAllocation,
-        receipt: HtmlConstructionRetired,
-    ) -> Result<(), ParseStop> {
-        self.require_order_retirement(&ticket, receipt.allocation())?;
-        let entries = if receipt.allocation().pending_child_order_slot().is_some() {
-            receipt.allocation().initialized_len() as u64
-        } else {
-            0
-        };
-        self.cleanup_storage(
-            HtmlParseResource::AuxiliaryEntries,
-            entries,
-            receipt.allocation().payload_bytes() as u64,
-        )
     }
     /// Preflight the precise old/new reserve overlap before its HTML provider call.
     pub(crate) fn prepare_construction_reserve(
@@ -115,9 +63,9 @@ impl ParseControl {
         snapshot: &Snapshot,
         minimum_capacity: usize,
         ticket: Option<&ConstructionAllocation>,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
-        self.charge(WorkCategory::RecordVisit, 2)?;
+        self.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         self.require_construction_snapshot(snapshot, ticket)?;
         let Some(new_bytes) = minimum_capacity
             .checked_mul(snapshot.element_size())
@@ -131,26 +79,54 @@ impl ParseControl {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         self.charge_many(&[
-            (WorkCategory::ReserveByte, reserve_bytes),
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 1),
-            (WorkCategory::CopyByte, size_of::<usize>() as u64),
+            (HtmlParseWorkCategory::ReserveByte, reserve_bytes),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64),
         ])?;
         self.preflight_construction_capacity(old_bytes, new_bytes)
+    }
+    /// The record count to request so the HTML-owned bank grows geometrically.
+    /// `additional` is returned unchanged when the bank already holds it, and
+    /// also when its exact layout cannot be admitted, so the existing reserve
+    /// gate reports that layout's concrete limit and stop. The bank is
+    /// described by its actual ticket; no bank exists before the first reserve.
+    pub(crate) fn geometric_construction_additional(
+        &mut self,
+        ticket: Option<&ConstructionAllocation>,
+        len: usize,
+        additional: usize,
+    ) -> Result<usize, HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(ticket) = ticket else {
+            return Ok(additional);
+        };
+        let snapshot = ticket.snapshot();
+        match self.geometric_sized(
+            snapshot.element_size(),
+            len,
+            snapshot.capacity(),
+            additional,
+            usize::MAX,
+        ) {
+            Ok(Some(plan)) => Ok(plan.additional),
+            Ok(None) => Ok(additional),
+            Err(stop) => self.fail(stop),
+        }
     }
     pub(crate) fn prepare_construction_share(
         &mut self,
         payload_bytes: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         let Ok(bytes) = u64::try_from(payload_bytes) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         self.charge_many(&[
-            (WorkCategory::ReserveByte, bytes),
-            (WorkCategory::ProviderCall, 1),
-            (WorkCategory::RecordWrite, 1),
-            (WorkCategory::CopyByte, bytes),
+            (HtmlParseWorkCategory::ReserveByte, bytes),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::CopyByte, bytes),
         ])?;
         self.preflight_construction_capacity(0, bytes)
     }
@@ -158,13 +134,15 @@ impl ParseControl {
         &mut self,
         old: u64,
         new: u64,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let current = self
             .usage
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current;
         let Some(without_old) = current.checked_sub(old) else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         };
         let (Some(total), Some(overlap)) = (without_old.checked_add(new), current.checked_add(new))
         else {
@@ -186,10 +164,12 @@ impl ParseControl {
         &mut self,
         snapshot: &Snapshot,
         ticket: Option<&ConstructionAllocation>,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if let Some(ticket) = ticket {
             if !Arc::ptr_eq(&ticket.owner, &self.identity) {
-                return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
             }
             // Initialized lengths may change at a ready commit; the allocation
             // generation, actual capacity and hidden element layout cannot.
@@ -199,10 +179,14 @@ impl ParseControl {
                 || expected.element_size() != snapshot.element_size()
                 || expected.element_alignment() != snapshot.element_alignment()
             {
-                return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::CapacityMismatch,
+                ));
             }
         } else if snapshot.capacity() != 0 || snapshot.payload_bytes() != 0 {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         Ok(())
     }
@@ -213,35 +197,38 @@ impl ParseControl {
         snapshot: &Snapshot,
         ticket: &mut Option<ConstructionAllocation>,
         expected_capacity_bytes: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.record_construction_allocation(snapshot, ticket, expected_capacity_bytes)?;
         self.checkpoint()
     }
-    pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> ParseStop {
-        self.fail::<()>(ParseStop::AllocationFailed {
+    pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> HtmlParseStop {
+        self.latch_stop(HtmlParseStop::AllocationFailed {
             resource: HtmlParseResource::ManagedCapacityBytes,
             layout_bytes: layout_bytes as u64,
         })
-        .unwrap_err()
     }
     pub(crate) fn record_construction_allocation(
         &mut self,
         snapshot: &Snapshot,
         ticket: &mut Option<ConstructionAllocation>,
         expected_capacity_bytes: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let old = ticket
             .as_ref()
             .map_or(0, |value| value.snapshot.payload_bytes() as u64);
         if let Some(previous) = ticket.as_ref() {
             if !Arc::ptr_eq(&previous.owner, &self.identity) {
-                return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ForeignControl,
+                ));
             }
             if !previous.snapshot.id().same_owner_role(snapshot.id())
                 || previous.snapshot.element_size() != snapshot.element_size()
                 || previous.snapshot.element_alignment() != snapshot.element_alignment()
             {
-                return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::CapacityMismatch,
+                ));
             }
         }
         let actual = snapshot.payload_bytes() as u64;
@@ -266,7 +253,7 @@ impl ParseControl {
         self.set(HtmlParseResource::PeakTransientBytes, overlap);
         self.set(HtmlParseResource::PeakTransientBytes, total);
         if actual > expected_capacity_bytes as u64 {
-            return self.fail(ParseStop::LimitExceeded {
+            return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: expected_capacity_bytes as u64,
                 current: old,
@@ -279,7 +266,7 @@ impl ParseControl {
         &mut self,
         ticket: &ConstructionAllocation,
         snapshot: &Snapshot,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.require_construction_snapshot(snapshot, Some(ticket))?;
         if self
             .usage
@@ -287,7 +274,9 @@ impl ParseControl {
             .current
             < snapshot.payload_bytes() as u64
         {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ReleaseUnderflow,
+            ));
         }
         Ok(())
     }
@@ -295,7 +284,7 @@ impl ParseControl {
         &mut self,
         ticket: ConstructionAllocation,
         receipt: HtmlConstructionRetired,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.require_construction_retirement(&ticket, receipt.allocation())?;
         self.cleanup_capacity(receipt.allocation().payload_bytes() as u64)
     }

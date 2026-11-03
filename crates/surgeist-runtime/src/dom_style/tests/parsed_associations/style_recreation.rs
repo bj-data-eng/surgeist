@@ -6,7 +6,10 @@ use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
-use surgeist_html::{HtmlCspAssociation, HtmlCspProcessorProfile, HtmlStyleTrigger};
+use surgeist_html::{
+    elements::style::HtmlStyleTrigger,
+    security::csp::{HtmlCspAssociation, HtmlCspProcessorProfile},
+};
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
@@ -28,6 +31,7 @@ fn next_parser_pop(
     let mut seen = false;
     loop {
         match inventory.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *old.occurrence() => seen = true,
             Step::Occurrence(row) if seen && row.requires_processing() => {
                 assert_eq!(

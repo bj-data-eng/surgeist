@@ -224,30 +224,33 @@ fn select_with_policy(
         crate::engine::scope_alignment::accounting::header::<Vec<usize>>(&mut scope_plan.budget)?;
     }
     let basis = crate::engine::SelectedShape {
+        inline_boxes: None,
         shaped,
         mapping,
         characters,
         order,
     };
-    let scopes = crate::engine::scope_alignment::select(
-        &prepared.inner,
-        &presentation,
-        &basis,
-        &request,
-        &spacing_slots,
+    let mut data = SelectedData {
+        scopes: crate::engine::scope_alignment::SelectedScopes::default(),
+        prepared: Arc::clone(&prepared.inner),
+        request,
+        presentation,
+        spacing_slots,
+        metric_policy,
+        basis,
+        boundaries,
+    };
+    super::inline_box::fragments::project(&mut data, &mut scope_plan.budget)?;
+    data.scopes = crate::engine::scope_alignment::select(
+        &data.prepared,
+        &data.presentation,
+        &data.basis,
+        &data.request,
+        &data.spacing_slots,
         scope_plan,
     )?;
     Ok(SelectedLine {
-        inner: Arc::new(SelectedData {
-            scopes,
-            prepared: Arc::clone(&prepared.inner),
-            request,
-            presentation,
-            spacing_slots,
-            metric_policy,
-            basis,
-            boundaries,
-        }),
+        inner: Arc::new(data),
     })
 }
 
@@ -400,6 +403,9 @@ pub(crate) fn admit_range<'a>(
     &'a super::prepared::BoundaryData,
     &'a super::prepared::BoundaryData,
 )> {
+    if let Some(family) = request.inline_boxes {
+        family.require_prepared(&prepared.inner)?;
+    }
     super::segments::admit(prepared, request.segment)?;
     super::continuation::validate(prepared, request.segment, request.start, request.incoming)?;
     let tables = &prepared.inner.tables;
@@ -627,6 +633,11 @@ pub(crate) fn admit_geometry(
             occurrence: *occurrence,
         }));
     }
+    super::inline_box::validate_sources(
+        &prepared.inner,
+        request.controls,
+        request.boundary_context,
+    )?;
     for allocation in request.line_box_struts {
         finite("line box baseline", allocation.metrics.baseline)?;
         finite("line box extent", allocation.metrics.line_extent)?;
@@ -747,6 +758,9 @@ pub(crate) fn scope_request_roots(
     prepared: &PreparedData,
     request: &LineSelectionRequest,
 ) -> Result<()> {
+    if let Some(family) = &request.inline_boxes {
+        family.require_prepared(prepared)?;
+    }
     require_data(
         prepared,
         &request.segment.prepared,
@@ -912,13 +926,20 @@ fn validate_context(
 
 fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
     let super::AtomicLineAllocation::InFlow {
-        flow, box_geometry, ..
+        flow,
+        fit,
+        box_geometry,
+        ..
     } = allocation.allocation
     else {
         return Ok(());
     };
     for (field, value) in [
         ("atomic flow advance", flow.advance),
+        (
+            "atomic normal border inline size",
+            flow.normal_border_inline_size,
+        ),
         ("atomic before baseline", flow.before_baseline),
         ("atomic after baseline", flow.after_baseline),
         ("atomic occupied start", flow.occupied_start),
@@ -927,7 +948,7 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
     ] {
         finite(field, value)?;
     }
-    if flow.occupied_start > flow.occupied_end {
+    if flow.normal_border_inline_size < 0.0 || flow.occupied_start > flow.occupied_end {
         return Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
             occurrence: allocation.occurrence.index,
         }));
@@ -948,6 +969,13 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
                 occurrence: allocation.occurrence.index,
             }));
         }
+    }
+    if let super::AtomicFitAllocation::CssMarginBox(css) = fit
+        && !css.matches(flow)
+    {
+        return Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
+            occurrence: allocation.occurrence.index,
+        }));
     }
     Ok(())
 }
@@ -1016,6 +1044,7 @@ pub(crate) fn standalone_request(
     let participants = handle.participants().skip(from).take(to - from).collect();
     let atomics = standalone_atomics(&prepared, start, end)?;
     let request = LineSelectionRequest {
+        inline_boxes: None,
         segment: handle.source_segments().next().ok_or_else(invalid)?,
         boundary_context: Vec::new(),
         incoming: None,
@@ -1099,8 +1128,10 @@ pub(crate) fn standalone_atomics(
                 },
                 allocation: if in_flow {
                     super::AtomicLineAllocation::InFlow {
+                        fit: crate::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: size.width,
+                            normal_border_inline_size: size.width,
                             before_baseline: size.height,
                             after_baseline: 0.0,
                             occupied_start: 0.0,

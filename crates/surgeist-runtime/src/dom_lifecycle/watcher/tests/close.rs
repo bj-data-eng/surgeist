@@ -4,6 +4,7 @@ use crate::{
     DomEventCallback, DomEventListenerOptions, DomEventType, DomSourceEventServiceLimits,
     DomSourceEventServiceProgress,
 };
+use surgeist_html::{elements::dialog::HtmlDialogAction, values::DocumentString};
 
 fn close_at_removal() -> (
     DomSession,
@@ -98,9 +99,9 @@ fn close_at_removal() -> (
         assert_eq!(
             toggle.action(),
             HtmlDialogAction::QueueToggle {
-                old: surgeist_html::HtmlDialogState::Open,
-                new: surgeist_html::HtmlDialogState::Closed,
-                source: surgeist_html::HtmlDialogEventSource::OperationSource,
+                old: surgeist_html::elements::dialog::HtmlDialogState::Open,
+                new: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+                source: surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
             }
         );
         runtime.queue_dialog(&mut lease, &toggle, &cancel).unwrap();

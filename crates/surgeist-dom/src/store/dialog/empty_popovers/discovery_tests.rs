@@ -1,6 +1,7 @@
 //! Real inactive Show receives its actual native event execution receipt.
 use super::*;
 use std::cell::Cell;
+use surgeist_html::values::DocumentString;
 #[derive(Clone, Copy, Default, Debug)]
 struct Reads {
     calls: usize,
@@ -92,7 +93,11 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let dialog = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         batch.insert_before(&dialog, &document, None);
         let setup = dom.apply(batch, &cancel).unwrap();
         let document = setup.document(&document).unwrap();
@@ -104,7 +109,11 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
             let mut batch = DomBatch::new();
             let tickets: Vec<_> = (start..(start + 64).min(unrelated))
                 .map(|_| {
-                    let node = batch.create_element_ns(document, crate::Namespace::html(), "div");
+                    let node = batch.create_element_ns(
+                        document,
+                        surgeist_html::values::Namespace::html(),
+                        "div",
+                    );
                     batch.set_attribute(&node, "popover", "auto");
                     node
                 })
@@ -200,7 +209,7 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         };
         assert!(matches!(
             request.action(),
-            surgeist_html::HtmlDialogAction::QueueToggle { .. }
+            surgeist_html::elements::dialog::HtmlDialogAction::QueueToggle { .. }
         ));
         let plan = lease
             .dialog_task_queue_plan(&request, &tasks, 1, &cancel)
@@ -233,7 +242,7 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         };
         assert_eq!(
             remember.action(),
-            surgeist_html::HtmlDialogAction::RememberFocusedElement
+            surgeist_html::elements::dialog::HtmlDialogAction::RememberFocusedElement
         );
         let focus_request = crate::DomFocusRequest::RememberDialog(remember);
         let preparation = lease
@@ -268,7 +277,7 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         };
         assert_eq!(
             request.action(),
-            surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+            surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
         );
         assert_eq!(
             lease
@@ -332,10 +341,13 @@ fn actual_source_adoption_keeps_original_raw_owner_and_current_empty_popover_fac
         let mut batch = DomBatch::new();
         let first = batch.create_document();
         let second = batch.create_document();
-        let dialog = batch.create_element_ns(&first, crate::Namespace::html(), "dialog");
+        let dialog =
+            batch.create_element_ns(&first, surgeist_html::values::Namespace::html(), "dialog");
         batch.insert_before(&dialog, &first, None);
         let tickets: Vec<_> = (0..unrelated)
-            .map(|_| batch.create_element_ns(&first, crate::Namespace::html(), "div"))
+            .map(|_| {
+                batch.create_element_ns(&first, surgeist_html::values::Namespace::html(), "div")
+            })
             .collect();
         let setup = dom.apply(batch, &cancel).unwrap();
         let first = setup.document(&first).unwrap();

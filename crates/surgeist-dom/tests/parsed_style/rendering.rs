@@ -1,7 +1,8 @@
 //! Original rendering observes the insertion frontier, not final-tree predicates.
 use super::*;
 use surgeist_cssom::{CssomRevision, CssomSheetId};
-use surgeist_html::HtmlStyleExecutionProfile;
+use surgeist_html::elements::style::HtmlStyleExecutionProfile;
+use surgeist_html::values::DocumentString;
 
 pub(super) struct Ready {
     pub(super) dom: Dom,

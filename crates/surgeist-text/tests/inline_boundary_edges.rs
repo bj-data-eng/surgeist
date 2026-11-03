@@ -275,12 +275,13 @@ fn finish(
                     occurrence.view().kind(),
                     K::InlineBoundaryStart | K::InlineBoundaryEnd
                 )
-                .then_some(t::InlineBoundaryAllocation::ZERO),
+                .then_some(t::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
             }),
             _ => None,
         })
         .collect();
     let mut request = t::LineSelectionRequest {
+        inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         start,
         end: boundary,
@@ -321,7 +322,7 @@ fn finish(
             .boundary_context
             .push(t::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: t::InlineBoundaryAllocation::ZERO,
+                boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     prepared

@@ -2508,7 +2508,11 @@ mod tests {
             let mut dom = Dom::new(limits).unwrap();
             let mut setup = DomBatch::new();
             let document = setup.create_document();
-            let details = setup.create_element_ns(&document, crate::Namespace::html(), "details");
+            let details = setup.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "details",
+            );
             let commit = dom.apply(setup, &cancel).unwrap();
             let document = commit.document(&document).unwrap();
             let details = commit.created(&details).unwrap().unwrap();
@@ -2596,24 +2600,27 @@ mod tests {
         let mut setup = DomBatch::new();
         let first = setup.create_document();
         let second = setup.create_document();
-        let host = setup.create_element_ns(&first, crate::Namespace::html(), "div");
+        let host = setup.create_element_ns(&first, surgeist_html::values::Namespace::html(), "div");
         setup.insert_before(&host, &first, None);
         let shadow = setup.attach_shadow(
             &host,
-            crate::HtmlShadowRootProperties::new(
-                crate::HtmlShadowRootMode::Open,
-                crate::HtmlSlotAssignment::Manual,
+            surgeist_html::construction::HtmlShadowRootProperties::new(
+                surgeist_html::construction::HtmlShadowRootMode::Open,
+                surgeist_html::construction::HtmlSlotAssignment::Manual,
                 false,
                 false,
                 false,
             ),
         );
-        let slot = setup.create_element_ns(&first, crate::Namespace::html(), "slot");
+        let slot =
+            setup.create_element_ns(&first, surgeist_html::values::Namespace::html(), "slot");
         let text = setup.create_text(&first, "light");
         setup.insert_before(&slot, &shadow, None);
         setup.insert_before(&text, &host, None);
-        let select = setup.create_element_ns(&first, crate::Namespace::html(), "select");
-        let option = setup.create_element_ns(&first, crate::Namespace::html(), "option");
+        let select =
+            setup.create_element_ns(&first, surgeist_html::values::Namespace::html(), "select");
+        let option =
+            setup.create_element_ns(&first, surgeist_html::values::Namespace::html(), "option");
         setup.insert_before(&option, &select, None);
         let commit = dom.apply(setup, &cancel).unwrap();
         let first = commit.document(&first).unwrap();
@@ -2687,7 +2694,11 @@ mod tests {
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
         let commit = dom.apply(setup, &cancel).unwrap();
         let document = commit.document(&document).unwrap();
         let select = commit.created(&select).unwrap().unwrap();

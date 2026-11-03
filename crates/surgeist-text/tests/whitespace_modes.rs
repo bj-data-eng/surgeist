@@ -169,7 +169,7 @@ fn finish(
                         surgeist_text::ParagraphControlKind::InlineBoundaryStart
                             | surgeist_text::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(surgeist_text::InlineBoundaryAllocation::ZERO),
+                    .then_some(surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -179,6 +179,7 @@ fn finish(
         .collect();
     prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             start,

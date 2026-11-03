@@ -1,5 +1,6 @@
 //! Actual native insertion histories and the same-origin Dialog consumer.
 use super::*;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 fn fixture(candidates: usize) -> (DomSession, DomHostedTopLevel) {
     let dom = Dom::new(
         DomLimits::new(

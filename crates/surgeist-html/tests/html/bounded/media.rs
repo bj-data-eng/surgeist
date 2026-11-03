@@ -1,8 +1,16 @@
 //! Actual media operands, phased observations and guarded report publication.
 #![forbid(unsafe_code)]
 use crate::html::support::unqualified_text_attribute as attr;
-use surgeist_html::{bounded::*, *};
-type Error = HtmlMediaInterpretationError;
+use surgeist_html::{
+    attributes::media::HtmlMediaPlacementObservation,
+    bounded::media::{
+        HtmlMediaActionError, HtmlMediaField, HtmlMediaFieldMatch, HtmlMediaInterpretation,
+        HtmlMediaNameSupply, match_media_field,
+    },
+    elements::media::{HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMetaMediaPlacement},
+    values::{Attribute, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement,
+};
 fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
     match_media_field(a, field, |_| Ok::<_, ()>(()))
         .unwrap()
@@ -75,9 +83,10 @@ fn value_completion_precedes_theme_scan_and_assembly_shares_each_original_attrib
         &element,
         Some(matched(&raw, HtmlMediaField::Media)),
     ));
-    assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut slot).unwrap_err(),
-        Error::NotReady
+    assert!(
+        HtmlMediaInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_not_ready()
     );
     let owner = slot.as_mut().unwrap();
     admitted(owner);
@@ -96,15 +105,15 @@ fn value_completion_precedes_theme_scan_and_assembly_shares_each_original_attrib
         HtmlMediaValueClass::Nontrivial
     );
     assert!(!owner.value().unwrap().restrictive_picture_value());
-    assert_eq!(owner.theme_color(), Err(Error::NotReady));
+    assert!(matches!(owner.theme_color(), Err(ref e) if e.is_not_ready()));
     let mut assembled = false;
-    assert_eq!(
+    assert!(matches!(
         owner.assemble(|| {
             assembled = true;
             Ok::<_, &str>(())
         }),
-        Err(HtmlMediaActionError::Protocol(Error::NotReady))
-    );
+        Err(HtmlMediaActionError::Protocol(ref error)) if error.is_not_ready()
+    ));
     assert!(!assembled);
     let mut work = Vec::new();
     owner
@@ -162,9 +171,8 @@ fn supplied_absence_and_not_selected_name_remain_distinct_and_wrong_phase_refuse
         HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));
     admitted(&mut unchecked);
     value(&mut unchecked);
-    assert_eq!(
-        unchecked.begin_theme_color(no_error),
-        Err(HtmlMediaActionError::Protocol(Error::NameNotSupplied))
+    assert!(
+        matches!(unchecked.begin_theme_color(no_error), Err(HtmlMediaActionError::Protocol(ref e)) if e.is_name_not_supplied())
     );
     unchecked.assemble(|| Ok::<_, &str>(())).unwrap();
     let report = HtmlMediaInterpretation::try_finish(&mut Some(unchecked)).unwrap();
@@ -176,10 +184,7 @@ fn supplied_absence_and_not_selected_name_remain_distinct_and_wrong_phase_refuse
         HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));
     admitted(&mut absent);
     absent.supply_matched_name(None).unwrap();
-    assert_eq!(
-        absent.supply_matched_name(None),
-        Err(Error::NameAlreadySupplied)
-    );
+    assert!(matches!(absent.supply_matched_name(None), Err(ref e) if e.is_name_already_supplied()));
     absent
         .admit_name(|n| {
             assert!(n.is_none());
@@ -189,9 +194,8 @@ fn supplied_absence_and_not_selected_name_remain_distinct_and_wrong_phase_refuse
     value(&mut absent);
     absent.begin_theme_color(no_error).unwrap();
     assert_eq!(absent.theme_color(), Ok(false));
-    assert_eq!(
-        absent.advance_theme_color(no_error),
-        Err(HtmlMediaActionError::Protocol(Error::WrongPhase))
+    assert!(
+        matches!(absent.advance_theme_color(no_error), Err(HtmlMediaActionError::Protocol(ref e)) if e.is_wrong_phase())
     );
     absent.assemble(|| Ok::<_, &str>(())).unwrap();
     assert_eq!(
@@ -212,7 +216,7 @@ fn absent_media_allows_ordinary_placement_but_explicit_semantic_theme_scan_still
         .unwrap();
     owner.admit_name(|_| Ok::<_, &str>(())).unwrap();
     assert_eq!(value(&mut owner), [4]);
-    assert_eq!(owner.theme_color(), Err(Error::NotReady));
+    assert!(matches!(owner.theme_color(), Err(ref e) if e.is_not_ready()));
     let mut work = Vec::new();
     owner
         .begin_theme_color(|n| {
@@ -261,13 +265,10 @@ fn rejected_field_proof_and_callback_failure_preserve_owner_operands_and_forbid_
         Some(matched(&raw, HtmlMediaField::Media)),
     ));
     admitted(owner.as_mut().unwrap());
-    assert_eq!(
-        owner
+    assert!(matches!(owner
             .as_mut()
             .unwrap()
-            .supply_matched_name(Some(matched(&raw, HtmlMediaField::Media))),
-        Err(Error::WrongField)
-    );
+            .supply_matched_name(Some(matched(&raw, HtmlMediaField::Media))), Err(ref e) if e.is_wrong_field()));
     owner
         .as_mut()
         .unwrap()
@@ -280,11 +281,12 @@ fn rejected_field_proof_and_callback_failure_preserve_owner_operands_and_forbid_
             .admit_name(|_| Err("original raw refusal")),
         Err(HtmlMediaActionError::Admission("original raw refusal"))
     );
-    assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut owner).unwrap_err(),
-        Error::Stopped
+    assert!(
+        HtmlMediaInterpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_stopped()
     );
-    assert_eq!(owner.as_ref().unwrap().role(), Err(Error::Stopped));
+    assert!(matches!(owner.as_ref().unwrap().role(), Err(ref e) if e.is_stopped()));
     let inputs = owner.take().unwrap().abort();
     assert!(std::ptr::eq(inputs.element(), &element));
     assert!(std::ptr::eq(inputs.raw().unwrap(), &raw));
@@ -306,18 +308,20 @@ fn final_assembly_refusal_and_explicit_between_action_stop_never_publish_local_r
         owner.as_mut().unwrap().assemble(|| Err("write cancelled")),
         Err(HtmlMediaActionError::Admission("write cancelled"))
     );
-    assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut owner).unwrap_err(),
-        Error::Stopped
+    assert!(
+        HtmlMediaInterpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_stopped()
     );
-    assert_eq!(owner.as_ref().unwrap().value(), Err(Error::Stopped));
+    assert!(matches!(owner.as_ref().unwrap().value(), Err(ref e) if e.is_stopped()));
     let mut second = Some(HtmlMediaInterpretation::from_matched(&element, None));
     admitted(second.as_mut().unwrap());
     value(second.as_mut().unwrap());
     second.as_mut().unwrap().stop();
-    assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut second).unwrap_err(),
-        Error::Stopped
+    assert!(
+        HtmlMediaInterpretation::try_finish(&mut second)
+            .unwrap_err()
+            .is_stopped()
     );
     assert!(matches!(
         second.take().unwrap().abort().name(),
@@ -377,11 +381,12 @@ fn every_raw_namespace_role_value_theme_and_assembly_admission_refusal_is_termin
             Err(HtmlMediaActionError::Admission("original checkpoint stop"))
         );
         assert_eq!(visited, stop + 1);
-        assert_eq!(
-            HtmlMediaInterpretation::try_finish(&mut slot).unwrap_err(),
-            Error::Stopped
+        assert!(
+            HtmlMediaInterpretation::try_finish(&mut slot)
+                .unwrap_err()
+                .is_stopped()
         );
-        assert_eq!(slot.as_ref().unwrap().value(), Err(Error::Stopped));
+        assert!(matches!(slot.as_ref().unwrap().value(), Err(ref e) if e.is_stopped()));
         assert!(std::ptr::eq(
             slot.take().unwrap().abort().raw().unwrap(),
             &raw

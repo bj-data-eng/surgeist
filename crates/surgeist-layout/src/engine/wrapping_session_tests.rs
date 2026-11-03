@@ -41,16 +41,19 @@ fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
     for (node, kind) in [(1, InlineBoundaryKind::Start), (3, InlineBoundaryKind::End)] {
         tree = tree.input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                kind,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(10.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(10.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         );
     }
     if float {
@@ -108,6 +111,8 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                 0,
                 Vec::new(),
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: scopes(policy),
                     child_order: Vec::new(),
                 },
@@ -158,6 +163,8 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             0,
             Vec::new(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: scopes(WrapInside::Avoid),
                 child_order: Vec::new(),
             },
@@ -169,6 +176,8 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             0,
             Vec::new(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: scopes(WrapInside::Auto),
                 child_order: Vec::new(),
             },

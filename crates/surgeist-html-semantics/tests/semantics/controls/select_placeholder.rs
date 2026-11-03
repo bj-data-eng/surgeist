@@ -1,13 +1,19 @@
 use crate::semantics::support::{
-    builder, collection_limits as resource_limits, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    collection_limits as resource_limits, context, result_record_bytes, semantic_limits as limits,
+    session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn element(
@@ -568,47 +574,31 @@ fn text_projection_has_exact_one_short_work_output_scratch_capacity_and_byte_bou
         Some("nonempty normalized text"),
     );
     let cx = context(&c);
-    let baseline = report(&c, &cx, &s, 100);
+    // The first option has no value attribute, so its text becomes its value:
+    // "nonempty normalized text" keeps 24 units (the whitespace-collapsed
+    // text equals its source), each growing the buffer by exactly one `u16`.
+    // The select walk's frame is released before the option text walk starts,
+    // so one frame record is live at a time. Walk and text step layouts are
+    // private, so work is required to be charged but is not pinned, and the
+    // byte charge needs only cover the result record, both frames and the
+    // 24 units.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let baseline = assert_exact_and_one_short_caps(
+        "placeholder text projection",
+        &c,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 1000),
+        &[request(&s)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(24),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 24 * 2),
+            ..ExpectedUsage::none()
+        },
+    );
     assert_eq!(known(&baseline), None);
-    let u = baseline.usage();
-    assert_eq!(u.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0, "{resource:?}");
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                100,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = ss.query(&[request(&s)]);
-            if cap == exact {
-                assert_eq!(known(&r.unwrap()), None);
-            } else {
-                let f = r.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{f:?}"
-                );
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
 }
 
 #[test]

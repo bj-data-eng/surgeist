@@ -1,4 +1,9 @@
-use surgeist_html::*;
+use crate::parser::support::limits_builder;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind},
+    parsing::HtmlParserScriptingMode,
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlFragmentParseRequest, HtmlParseCancellation, HtmlParseDestination, HtmlParseEffect,
     HtmlParseEffectHost, HtmlParseField, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseReport,
@@ -11,27 +16,12 @@ use surgeist_html_semantics::{
     HtmlTemplateDocumentRole,
 };
 
+/// The generous limits with the token-attribute cap raised, and the
+/// auxiliary-entry cap lowered, to the node cap.
 fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
+    limits_builder()
         .token_attributes(100_000)
         .auxiliary_entries(100_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
         .finish()
         .unwrap()
 }
@@ -107,14 +97,16 @@ fn template(report: &HtmlParseReport) -> (HtmlNode<'_>, HtmlNode<'_>) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => panic!("actual parser template metadata"),
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
 }
 
 fn shadow(report: &HtmlParseReport) -> HtmlNode<'_> {
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
-        if let Some(HtmlParseEffect::AttachShadow { contents, .. }) = effects.effect(index) {
+        if let Some(HtmlParseEffect::AttachShadow { contents, .. }) = effects.effect(index).unwrap()
+        {
             return report.fragment().unwrap().node(&contents.id()).unwrap();
         }
     }
@@ -156,14 +148,14 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
         assert!(shadow.fragment_owner().is_none());
     }
     let mut effect_seen = false;
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
         if let Some(HtmlParseEffect::AttachShadow {
             host,
             contents,
             source,
             ..
-        }) = effects.effect(index)
+        }) = effects.effect(index).unwrap()
         {
             effect_seen = true;
             assert_eq!(contents.id(), shadow.id());
@@ -197,7 +189,7 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
     let rows = report.associations();
     let mut text_origin = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::Text,

@@ -1,7 +1,8 @@
 //! Static tabIndex getter, HTML 877d6146487f #dom-tabindex.
 //! This does not compute focusability, navigation order or focus effects.
 use super::*;
-use surgeist_html::bounded::{integer_long_work_bound, parse_integer_long};
+use surgeist_html::bounded::numeric::{integer_long_work_bound, parse_integer_long};
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// Why the getter returned its value. Defaults depend on source element role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -62,6 +62,7 @@ fn attach<S: l::LayoutScalar>(
     );
     vec![
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container,
             nodes,

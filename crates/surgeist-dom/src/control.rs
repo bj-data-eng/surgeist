@@ -1,5 +1,5 @@
 //! Shared private native association and custom-error storage.
-use crate::DocumentString;
+use surgeist_html::values::DocumentString;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeControlState {
     pub(crate) parser_inserted: bool,

@@ -542,6 +542,178 @@ fn prepared_atomic_capture_accepts_actual_box_role() {
 }
 
 #[test]
+fn prepared_atomic_break_sequence_retains_source_order_in_each_writing_mode() {
+    for writing_mode in ["horizontal-tb", "vertical-lr", "vertical-rl"] {
+        for direction in ["ltr", "rtl"] {
+            let mut fixture = prepared_atomic_fixture();
+            fixture["style"]["writingMode"] = json!(writing_mode);
+            fixture["style"]["direction"] = json!(direction);
+            let paragraph = &mut fixture["preparedParagraph"];
+            paragraph["writingMode"] = json!(writing_mode);
+            paragraph["direction"] = json!(direction);
+            paragraph["origins"] = json!([]);
+            paragraph["controls"] = json!([{"child":1,"at":0,"kind":"forced-break"}]);
+            let mut following = paragraph["atomics"][0].clone();
+            following["child"] = json!(2);
+            paragraph["atomics"].as_array_mut().unwrap().push(following);
+            paragraph["order"] = json!([
+                {"kind":"atomic","index":0,"affinity":"before"},
+                {"kind":"control","index":0,"affinity":"before"},
+                {"kind":"atomic","index":1,"affinity":"before"}
+            ]);
+            let atomic = fixture["children"][0].clone();
+            fixture["children"] =
+                json!([atomic, prepared_control_fixture()["children"][0], atomic]);
+            let measurement = supported(&fixture);
+            let captured: serde_json::Value =
+                serde_json::from_str(measurement.root.prepared_paragraph().unwrap()).unwrap();
+            assert_eq!(captured, fixture["preparedParagraph"]);
+            assert!(captured["origins"].as_array().unwrap().is_empty());
+            assert_eq!(measurement.root.children().len(), 3);
+        }
+    }
+}
+
+#[test]
+fn prepared_capture_rejects_a_different_actual_container_frame() {
+    for (field, different) in [("writingMode", "vertical-lr"), ("direction", "rtl")] {
+        let mut fixture = prepared_atomic_fixture();
+        fixture["style"][field] = json!(different);
+        assert!(
+            decode_fixture(&fixture).is_err(),
+            "a captured paragraph must not borrow a different container {field}"
+        );
+    }
+}
+
+#[test]
+fn vertical_prepared_capture_preserves_only_collapsing_formatting_source() {
+    for mode in ["vertical-lr", "vertical-rl"] {
+        let mut fixture = prepared_fixture();
+        fixture["style"]["writingMode"] = json!(mode);
+        fixture["preparedParagraph"]["writingMode"] = json!(mode);
+        fixture["preparedParagraph"]["baseStyle"]["whitespace"] = json!("collapse");
+        fixture["preparedParagraph"]["origins"][0]["style"]["whitespace"] = json!("collapse");
+        fixture["preparedParagraph"]["origins"][0]["units"] = json!([10, 32, 32, 13]);
+        fixture["preparedParagraph"]["origins"][0]["end"] = json!(4);
+        fixture["children"][0]["rangeFragments"] = json!([]);
+        let measurement = supported(&fixture);
+        let captured: serde_json::Value =
+            serde_json::from_str(measurement.root.prepared_paragraph().unwrap()).unwrap();
+        assert_eq!(captured["origins"][0]["units"], json!([10, 32, 32, 13]));
+        let mut visible = fixture.clone();
+        visible["preparedParagraph"]["origins"][0]["units"] = json!([88, 32, 32, 13]);
+        assert!(decode_fixture(&visible).is_err());
+        fixture["preparedParagraph"]["origins"][0]["style"]["whitespace"] = json!("preserve");
+        assert!(decode_fixture(&fixture).is_err());
+    }
+}
+
+fn br_band_fixture(rounding: bool, participation: bool) -> serde_json::Value {
+    let mut fixture = box_fixture();
+    fixture["useRounding"] = json!(rounding);
+    let mut child = json!({
+        "layoutInput":"box","tagName":"br","style":{"display":"inline"},
+        "browserBrObservation":"font-band",
+        "unroundedLayout":{"x":1.125,"y":5.25,"width":0.0,"height":20.125},
+        "smartRoundedLayout":{"x":1.0,"y":5.0,"width":0.0,"height":20.0},
+        "children":[]
+    });
+    if participation {
+        child["lineControlParticipation"] = json!({"kind":"forced-break"});
+    }
+    fixture["children"] = json!([child]);
+    if rounding {
+        fixture["smartRoundedLayout"] = fixture["unroundedLayout"].clone();
+    }
+    fixture
+}
+
+#[test]
+fn br_font_band_request_preserves_selected_rectangle_independently_of_input_role() {
+    for rounding in [false, true] {
+        for participation in [false, true] {
+            let fixture = br_band_fixture(rounding, participation);
+            let xml = crate::xml::generate_xml("measured-br-band", &supported(&fixture));
+            let parsed = roxmltree::Document::parse(&xml).unwrap();
+            let band = parsed
+                .descendants()
+                .find(|node| node.has_tag_name("browser-br-font-band"))
+                .unwrap();
+            let expected = if rounding {
+                [("x", "1"), ("y", "5"), ("width", "0"), ("height", "20")]
+            } else {
+                [
+                    ("x", "1.125"),
+                    ("y", "5.25"),
+                    ("width", "0"),
+                    ("height", "20.125"),
+                ]
+            };
+            for (name, value) in expected {
+                assert_eq!(band.attribute(name), Some(value));
+            }
+            assert!(
+                parsed
+                    .descendants()
+                    .any(|node| node.has_tag_name("browser-control"))
+            );
+            let input = parsed
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .unwrap();
+            let native_input = xml[input.range()].to_owned();
+            let mut relation_only = fixture;
+            relation_only["children"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("browserBrObservation");
+            let xml = crate::xml::generate_xml("no-band-demand", &supported(&relation_only));
+            let parsed = roxmltree::Document::parse(&xml).unwrap();
+            let input = parsed
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .unwrap();
+            assert_eq!(native_input, xml[input.range()]);
+            assert!(
+                !parsed
+                    .descendants()
+                    .any(|node| node.has_tag_name("browser-br-font-band"))
+            );
+        }
+    }
+}
+
+#[test]
+fn br_font_band_request_rejects_false_roles_unknown_modes_and_lost_geometry() {
+    for (field, value) in [
+        ("tagName", json!("span")),
+        ("browserBrObservation", json!("ink")),
+        ("browserBrObservation", json!(null)),
+        ("textContent", json!("not-a-BR-leaf")),
+        ("fragments", json!([])),
+        ("rangeFragments", json!([])),
+    ] {
+        let mut fixture = br_band_fixture(false, false);
+        fixture["children"][0][field] = value;
+        assert!(decode_fixture(&fixture).is_err(), "invalid {field}");
+    }
+    for display in ["none", "block"] {
+        let mut fixture = br_band_fixture(false, false);
+        fixture["children"][0]["style"]["display"] = json!(display);
+        assert!(decode_fixture(&fixture).is_err());
+    }
+    let mut fixture = br_band_fixture(false, false);
+    fixture["children"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("unroundedLayout");
+    assert!(decode_fixture(&fixture).is_err());
+    let root_br = br_band_fixture(false, false)["children"][0].clone();
+    assert!(decode_fixture(&root_br).is_err());
+}
+
+#[test]
 fn prepared_atomic_capture_rejects_actual_break_control_before_xml() {
     let mut fixture = prepared_atomic_fixture();
     // Wire Box is also the envelope role of a real BR. The captured atomic

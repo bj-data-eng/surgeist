@@ -133,6 +133,8 @@ fn fixture<S: LayoutScalar>(
         formatting_context: 0,
     };
     let inventory = WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: scopes
             .iter()
             .zip([(16.0, 20.0), (12.0, 30.0)])
@@ -171,6 +173,7 @@ fn known_size_baseline<S: LayoutScalar>() {
             _ => unreachable!("fixture declares its actual captured outer box"),
         };
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![],

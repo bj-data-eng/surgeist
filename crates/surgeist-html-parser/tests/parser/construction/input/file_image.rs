@@ -1,5 +1,10 @@
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::input::{HtmlInputFileSelection, HtmlInputValueMode},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlInputImageSource,
     HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource,
@@ -115,6 +120,7 @@ fn filename_is_empty_with_exact_raw_and_current_default_fields_and_real_form_own
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(found && owner);
@@ -176,6 +182,7 @@ fn image_initial_coordinates_and_source_are_exact_and_getter_uses_actual_content
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(found);
@@ -542,6 +549,7 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(inputs, 1);

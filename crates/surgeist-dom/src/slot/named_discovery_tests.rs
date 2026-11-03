@@ -4,10 +4,13 @@ use super::discovery_observation::{Counts, Observation};
 use crate::{
     DocumentId, Dom, DomBatch, DomChanges, DomLimits, DomNativeCheckpoint,
     DomNativeCheckpointLimits, DomSlotQueryLimits, DomSourceEdit, DomSourceLimits,
-    DomSourceProgress, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace,
-    NodeId,
+    DomSourceProgress, NodeId,
 };
 use std::sync::atomic::AtomicBool;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::Namespace,
+};
 
 const NAME_UNITS: usize = 5;
 const EXTENTS: [usize; 3] = [0, 32, 1024];

@@ -1,5 +1,6 @@
 use super::*;
-use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest, Namespace};
+use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest};
+use surgeist_html::values::Namespace;
 
 fn policy(registrations: usize, bytes: usize, work: u64) -> DomEventRecipientLimits {
     DomEventRecipientLimits::new(registrations, bytes, 4_000_000, work).unwrap()
@@ -68,7 +69,9 @@ fn park_before_svg(dom: &mut Dom, document: DocumentId) -> Parked {
     };
     assert_eq!(
         request.action(),
-        crate::DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        crate::DomStyleAction::Update(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+        )
     );
     let status = lease.status();
     assert!(status.has_published());

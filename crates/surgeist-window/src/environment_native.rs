@@ -1,6 +1,6 @@
 use crate::{
     ClientWindowMetrics, HostEnvironment, OutputDevice, OutputResolution, PhysicalPoint,
-    PhysicalSize, Point, Rect, Result, ScaleFactor, ScreenAreaSource, ScreenMetrics, Size, Theme,
+    PhysicalSize, Point, Rect, Result, ScaleFactor, ScreenAreaSource, ScreenMetrics, Size,
     UserPreferences, ViewportMetrics, ViewportSizes,
 };
 
@@ -11,17 +11,28 @@ pub(crate) enum CaptureProfile {
     BrowserCanvas,
 }
 
+/// Raw events retain the existing base capture; output enrichment needs a safe
+/// committed snapshot at creation or idle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CaptureScope {
+    Basic,
+    Enriched,
+}
+
 /// Captures the native content host: logical units are CSS pixels at page zoom
 /// one; there is no retractable UA chrome in this adapter. This does not infer
-/// primary input, color depth, work area, blending or browsing presentation.
-/// The caller supplies ActiveEventLoop::system_theme(), never the potentially
-/// overridden Window::theme(). Event metrics supply scale/size even if getters lag.
+/// primary input, blending or browsing presentation. Monitor work area and
+/// WindowServer color estimates are enriched only at creation and safe idle.
+/// The caller supplies the complete native baseline, including the independent
+/// system scheme. Event metrics supply scale/size even if getters lag.
 pub(crate) fn observe_environment(
     window: &winit::window::Window,
     metrics: &crate::Metrics,
-    baseline_theme: Option<Theme>,
+    preferences: UserPreferences,
     profile: CaptureProfile,
+    scope: CaptureScope,
 ) -> Result<HostEnvironment> {
+    let monitor = window.current_monitor();
     let native = NativeObservation {
         scale: metrics.scale_factor(),
         content: metrics.physical_size(),
@@ -29,7 +40,7 @@ pub(crate) fn observe_environment(
             .inner_position()
             .ok()
             .map(|p| PhysicalPoint { x: p.x, y: p.y }),
-        screen: window.current_monitor().map(|monitor| {
+        screen: monitor.as_ref().map(|monitor| {
             let origin = monitor.position();
             let size = monitor.size();
             (
@@ -43,9 +54,38 @@ pub(crate) fn observe_environment(
                 },
             )
         }),
-        baseline_theme,
+        preferences,
     };
-    native.into_environment(profile)
+    let mut environment = native.into_environment(profile)?;
+    if scope == CaptureScope::Enriched
+        && profile == CaptureProfile::NativeContent
+        && let (Some(monitor), Some(screen)) = (monitor, environment.screen.as_ref())
+    {
+        let facts = crate::native_monitor::observe(
+            &monitor,
+            screen.area().origin,
+            ScaleFactor::new(metrics.scale_factor())?,
+        );
+        environment.screen = Some(ScreenMetrics::new(
+            screen.area(),
+            facts.available_area,
+            screen.source(),
+            facts.color_depth,
+            facts.color_component_bits,
+        )?);
+    }
+    Ok(environment)
+}
+
+/// This native observer does not produce these independent host facts.
+pub(crate) fn preserve_independent(
+    mut observed: HostEnvironment,
+    previous: &HostEnvironment,
+) -> HostEnvironment {
+    observed.input = previous.input.clone();
+    observed.navigation = previous.navigation;
+    observed.display_mode = previous.display_mode;
+    observed
 }
 
 struct NativeObservation {
@@ -53,7 +93,7 @@ struct NativeObservation {
     content: PhysicalSize,
     client_origin: Option<PhysicalPoint>,
     screen: Option<(PhysicalPoint, PhysicalSize)>,
-    baseline_theme: Option<Theme>,
+    preferences: UserPreferences,
 }
 
 impl NativeObservation {
@@ -62,10 +102,7 @@ impl NativeObservation {
             // Canvas size/position and devicePixelRatio cannot establish browser
             // viewport, desktop coordinates, native scale or separate page zoom.
             return Ok(HostEnvironment {
-                preferences: UserPreferences {
-                    color_scheme: self.baseline_theme,
-                    ..UserPreferences::default()
-                },
+                preferences: self.preferences,
                 ..HostEnvironment::default()
             });
         }
@@ -117,10 +154,7 @@ impl NativeObservation {
                 content,
                 ViewportSizes::fixed(content)?,
             )?),
-            preferences: UserPreferences {
-                color_scheme: self.baseline_theme,
-                ..UserPreferences::default()
-            },
+            preferences: self.preferences,
             ..HostEnvironment::default()
         })
     }
@@ -129,6 +163,7 @@ impl NativeObservation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Theme;
 
     #[test]
     fn native_capture_converts_screen_and_client_origin_in_one_coordinate_space() {
@@ -146,7 +181,10 @@ mod tests {
                     height: 2160,
                 },
             )),
-            baseline_theme: Some(Theme::Dark),
+            preferences: UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            },
         }
         .into_environment(CaptureProfile::NativeContent)
         .unwrap();
@@ -199,7 +237,10 @@ mod tests {
                     height: 2160,
                 },
             )),
-            baseline_theme: Some(Theme::Dark),
+            preferences: UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            },
         }
         .into_environment(CaptureProfile::BrowserCanvas)
         .unwrap();
@@ -213,6 +254,32 @@ mod tests {
     }
 
     #[test]
+    fn geometry_capture_keeps_the_complete_independent_baseline() {
+        let preferences = UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            reduced_motion: Some(crate::ReductionPreference::Reduce),
+            reduced_transparency: Some(crate::ReductionPreference::NoPreference),
+            contrast: Some(crate::ContrastPreference::More),
+            reduced_data: None,
+        };
+        for profile in [CaptureProfile::NativeContent, CaptureProfile::BrowserCanvas] {
+            let environment = NativeObservation {
+                scale: 2.0,
+                content: PhysicalSize {
+                    width: 800,
+                    height: 600,
+                },
+                client_origin: None,
+                screen: None,
+                preferences: preferences.clone(),
+            }
+            .into_environment(profile)
+            .unwrap();
+            assert_eq!(environment.preferences, preferences);
+        }
+    }
+
+    #[test]
     fn unavailable_native_observations_do_not_become_os_facts() {
         let environment = NativeObservation {
             scale: 1.0,
@@ -222,7 +289,7 @@ mod tests {
             },
             client_origin: None,
             screen: None,
-            baseline_theme: None,
+            preferences: UserPreferences::default(),
         }
         .into_environment(CaptureProfile::NativeContent)
         .unwrap();

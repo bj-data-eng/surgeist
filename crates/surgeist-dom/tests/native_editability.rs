@@ -4,7 +4,7 @@
 use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{Dom, DomBatch, DomHtmlCaptureLimits, DomLimits, Namespace};
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,
     HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
@@ -190,7 +190,9 @@ fn every_native_document_creator_establishes_its_own_disabled_state_and_snapshot
 
 #[test]
 fn ordinary_editability_does_not_cross_shadow_or_template_boundaries_and_survives_slot_rebuild() {
-    use surgeist_html::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+    use surgeist_html::construction::{
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    };
     let cancel = AtomicBool::new(false);
     let mut dom = owner();
     let mut b = DomBatch::new();
@@ -474,7 +476,7 @@ fn actual_reports_transfer_separate_owned_document_states_and_preserve_captured_
         .parse()
         .unwrap(),
     );
-    let descriptor = fragment.fragment_parser_document().unwrap();
+    let descriptor = fragment.fragment_parser_document().unwrap().unwrap();
     assert_eq!(
         descriptor.document().document_design_mode_enabled(),
         Some(false)

@@ -16,6 +16,7 @@ fn common_named_reference<S: LayoutScalar>() {
         metrics,
         InlineControlAlignment::Baseline,
         InlineBoundaryEdgeOf::ZERO,
+        None,
     );
     let item = AtomicInlineBoxParticipant {
         baseline_reference: reference,

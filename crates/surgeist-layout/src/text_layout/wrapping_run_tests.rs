@@ -27,6 +27,8 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         0,
         vec![fixture.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::NativePair {
                 metric_contribution: None,
                 edges: Default::default(),
@@ -63,7 +65,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
                 },
                 allocation: ControlAllocation {
                     occurrence: row.occurrence.clone(),
-                    boundary: Some(InlineBoundaryAllocation::ZERO),
+                    boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     strut: Some(ControlStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
@@ -87,6 +89,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 input.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),

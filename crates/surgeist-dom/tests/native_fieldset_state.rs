@@ -1,7 +1,7 @@
 //! Literal HTML877d Fieldset state, mutation and semantic composition oracles.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlNativeFormAssociationKind, HtmlValueInterpreter};
+use surgeist_html::{elements::form::HtmlNativeFormAssociationKind, values::HtmlValueInterpreter};
 use surgeist_html_semantics::{
     HtmlCaptureLimits, HtmlDirectionality, HtmlFormOwnerOrigin, HtmlInertFactLimits,
     HtmlLanguageDirectionLimits, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,

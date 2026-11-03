@@ -3,15 +3,42 @@
 
 use super::effects::{EffectFrame, FragmentStage, IntrinsicTask, TargetStage, WorkListKind};
 use super::*;
-use crate::{HtmlOptionFlags, HtmlSelectFlags};
-use surgeist_html::bounded::{
+use surgeist_html::bounded::select::{
     HtmlSelectAction, HtmlSelectCursor, HtmlSelectFirstSelectedAction,
     HtmlSelectFirstSelectedCursor, HtmlSelectFirstSelection, HtmlSelectOperation, HtmlSelectReply,
 };
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::elements::form::{HtmlOptionFlags, HtmlSelectFlags};
+use surgeist_html::{construction::HtmlNodeKind, vocabulary::KnownHtmlElement};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
     pub(crate) flags: HtmlSelectFlags,
+    /// What the last selectedness setting run left true of the list of options,
+    /// while only appends of one more option since have changed that list.
+    settled: Option<SettledOptions>,
+}
+impl SelectState {
+    pub(super) fn fresh() -> Self {
+        Self {
+            flags: HtmlSelectFlags::default(),
+            settled: None,
+        }
+    }
+}
+/// The facts about a single-select's list of options that one more option
+/// appended at its end can change, as the selectedness setting algorithm
+/// (HTML 877d, "selectedness setting algorithm", step 5) leaves them: the last
+/// selected option, which is the only one, whether any option is enabled, and
+/// the last option the run counted. An insertion that connects several options
+/// runs the full algorithm for the first, which counts the later ones too, so
+/// the shortcut declines for an option the summary already ends with.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SettledOptions {
+    selected: Option<usize>,
+    enabled: bool,
+    last: Option<usize>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OptionState {
@@ -46,12 +73,7 @@ pub(super) fn initial_metadata(
     tag: &Tag,
 ) -> Result<Option<SelectMetadata>, SessionError> {
     for (name, state) in [
-        (
-            "select",
-            Some(SelectMetadata::Select(SelectState {
-                flags: HtmlSelectFlags::default(),
-            })),
-        ),
+        ("select", Some(SelectMetadata::Select(SelectState::fresh()))),
         (
             "option",
             Some(SelectMetadata::Option(OptionState {
@@ -94,7 +116,7 @@ impl SessionStorage {
                     Some(EffectFrame::UpdateSelect {
                         select,
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
                 let (_, SelectMetadata::Selectedcontent(state)) =
@@ -102,11 +124,11 @@ impl SessionStorage {
                 else {
                     return Err(SessionError::SelectMetadataUnavailable);
                 };
-                if surgeist_html::bounded::selectedcontent_update(
+                if surgeist_html::bounded::select::selectedcontent_update(
                     false,
                     state.disabled,
                     HtmlSelectFirstSelection::Unavailable,
-                ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+                ) == surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip
                 {
                     return Ok(());
                 }
@@ -175,11 +197,11 @@ impl SessionStorage {
                 fragment,
                 stage: TargetStage::Replace,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                     == 0
                 {
@@ -196,13 +218,13 @@ impl SessionStorage {
                         }),
                     );
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(0)
-                    .expect("retained child ordinal")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 self.remove_index(c, child)
             }
@@ -232,23 +254,23 @@ impl SessionStorage {
                 fragment,
                 cursor,
             } => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if cursor
                     == self
                         .construction
                         .node_at(option)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                 {
                     return self.write_current_effect(c, None);
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(option)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(cursor)
-                    .expect("retained child ordinal")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 let document = self.node_document_ref(c, child)?;
                 let child_document = document.try_clone(c)?;
@@ -258,7 +280,7 @@ impl SessionStorage {
                     Some(EffectFrame::CloneOptionChildren {
                         option,
                         fragment,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
                 self.start_effect(
@@ -290,11 +312,11 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(ancestor) = next else {
                 return Ok(false);
             };
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if ancestor == select {
                 return Ok(false);
             }
@@ -329,13 +351,13 @@ impl SessionStorage {
                         .map_err(|_| SessionError::WrongToken)?;
                 }
                 HtmlSelectFirstSelectedAction::Complete(selection) => {
-                    match surgeist_html::bounded::selectedcontent_update(false, false, selection) {
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
+                    match surgeist_html::bounded::select::selectedcontent_update(false, false, selection) {
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
                             break Some(self.work_list_node(c, list, ordinal)?.ok_or(SessionError::WrongToken)?);
                         }
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Clear => break None,
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Unavailable => return Err(SessionError::SelectMetadataUnavailable),
-                        surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip => return Err(SessionError::WrongToken),
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Clear => break None,
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Unavailable => return Err(SessionError::SelectMetadataUnavailable),
+                        surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip => return Err(SessionError::WrongToken),
                     }
                 }
             }
@@ -348,12 +370,22 @@ impl SessionStorage {
         c: &mut ParseControl,
         select: usize,
     ) -> Result<(), SessionError> {
-        if surgeist_html::bounded::selectedcontent_update(
+        if surgeist_html::bounded::select::selectedcontent_update(
             self.form_attribute(c, select, "multiple")?.is_some(),
             false,
             HtmlSelectFirstSelection::Unavailable,
-        ) == surgeist_html::bounded::HtmlSelectedcontentUpdate::Skip
+        ) == surgeist_html::bounded::select::HtmlSelectedcontentUpdate::Skip
         {
+            return Ok(());
+        }
+        // The update visits the select's selectedcontent descendants; with no
+        // selectedcontent row in the registry there are none to visit.
+        if self.payloads.selectedcontent_rows == 0 {
+            #[cfg(test)]
+            assert!(
+                self.uncharged_selectedcontent_descendants(select)
+                    .is_empty()
+            );
             return Ok(());
         }
         let list = self.retain_work_list(c, select, WorkListKind::SelectedTargets)?;
@@ -396,9 +428,23 @@ impl SessionStorage {
             let new = self.nearest_select(c, node, detached)?;
             state.nearest_select = new;
             self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
-            if old != new {
+            if old == new {
+                // The option moved without changing its select, so its place in
+                // the list or its disabledness may have changed unobserved.
+                if let Some(select) = old {
+                    self.unsettle_select(c, select)?;
+                }
+            } else {
                 for select in [old, new].into_iter().flatten() {
-                    let changed = self.selectedness_setting(c, select, detached)?;
+                    let appended = if !removal && detached.is_none() && old.is_none() {
+                        self.selectedness_after_append(c, select, node)?
+                    } else {
+                        None
+                    };
+                    let changed = match appended {
+                        Some(changed) => changed,
+                        None => self.selectedness_setting(c, select, detached)?,
+                    };
                     let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
@@ -430,11 +476,11 @@ impl SessionStorage {
         };
         state.disabled = false;
         self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
-        payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
-        let mut decisions = surgeist_html::bounded::HtmlSelectedcontentAncestors::default();
+        payload_write::<surgeist_html::bounded::select::HtmlSelectedcontentAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::select::HtmlSelectedcontentAncestors::default();
         let mut nearest = None;
         let mut next = self.ordinary_parent(c, node, None)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(ancestor) = next else {
                 return Ok(nearest);
             };
@@ -447,20 +493,20 @@ impl SessionStorage {
             } else {
                 None
             };
-            payload_write::<surgeist_html::bounded::HtmlSelectedcontentAncestors>(c, 1)?;
+            payload_write::<surgeist_html::bounded::select::HtmlSelectedcontentAncestors>(c, 1)?;
             match decisions.observe(kind) {
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::RememberNearestSelect => {
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::RememberNearestSelect => {
                     payload_write::<Option<usize>>(c, 1)?;
                     nearest = Some(ancestor);
                     next = self.ordinary_parent(c, ancestor, None)?;
                     continue;
                 }
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::StopDisabled => {
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::StopDisabled => {
                     state.disabled = decisions.disabled();
                     self.set_select_metadata(c, slot, SelectMetadata::Selectedcontent(state))?;
                     return Ok(nearest);
                 }
-                surgeist_html::bounded::HtmlSelectedcontentAncestorAction::Continue => {}
+                surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::Continue => {}
             }
             next = self.ordinary_parent(c, ancestor, None)?;
         }
@@ -507,11 +553,11 @@ impl SessionStorage {
         self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
         self.selectedness_setting(c, node, None)?;
         // Fresh parser-created select has no children at syntax3537 reset.
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .child_count()
             != 0
         {
@@ -525,11 +571,11 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -579,7 +625,7 @@ impl SessionStorage {
         slot: usize,
         value: SelectMetadata,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<SelectMetadata>(c, 1)?;
         let Some(RetainedPayload::SelectFamily { state, .. }) = self.payloads.values.get_mut(slot)
         else {
@@ -595,13 +641,15 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
-        let mut decisions = surgeist_html::bounded::HtmlOptionSelectAncestors::default();
-        for _ in 0..self.construction.storage().len() {
+        payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
+        let mut decisions = surgeist_html::bounded::select::HtmlOptionSelectAncestors::default();
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(node) = next else {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 return match decisions.finish_complete() {
-                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => Ok(None),
+                    surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect => {
+                        Ok(None)
+                    }
                     _ => Err(SessionError::WrongToken),
                 };
             };
@@ -611,9 +659,11 @@ impl SessionStorage {
                 KnownHtmlElement::Option,
             ] {
                 if self.html_local(c, node, barrier.local_name())? {
-                    payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                    payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(
+                        c, 1,
+                    )?;
                     return match decisions.observe(Some(barrier)) {
-                        surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect => {
+                        surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect => {
                             Ok(None)
                         }
                         _ => Err(SessionError::WrongToken),
@@ -621,17 +671,17 @@ impl SessionStorage {
                 }
             }
             if self.html_local(c, node, "optgroup")? {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 if decisions.observe(Some(KnownHtmlElement::Optgroup))
-                    == surgeist_html::bounded::HtmlOptionSelectAncestorAction::NoSelect
+                    == surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NoSelect
                 {
                     return Ok(None);
                 }
             }
             if self.html_local(c, node, "select")? {
-                payload_write::<surgeist_html::bounded::HtmlOptionSelectAncestors>(c, 1)?;
+                payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 return match decisions.observe(Some(KnownHtmlElement::Select)) {
-                    surgeist_html::bounded::HtmlOptionSelectAncestorAction::NearestSelect => {
+                    surgeist_html::bounded::select::HtmlOptionSelectAncestorAction::NearestSelect => {
                         Ok(Some(node))
                     }
                     _ => Err(SessionError::WrongToken),
@@ -651,7 +701,7 @@ impl SessionStorage {
             return Ok(true);
         }
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(node) = next else { return Ok(false) };
             for kind in [
                 KnownHtmlElement::Option,
@@ -661,12 +711,12 @@ impl SessionStorage {
                 KnownHtmlElement::Optgroup,
             ] {
                 if self.html_local(c, node, kind.local_name())? {
-                    match surgeist_html::bounded::option_disabled_ancestor(Some(kind)) {
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled => return Ok(false),
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                    match surgeist_html::bounded::select::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Enabled => return Ok(false),
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
                             return Ok(self.form_attribute(c, node, "disabled")?.is_some());
                         }
-                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue => {}
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Continue => {}
                     }
                 }
             }
@@ -680,42 +730,48 @@ impl SessionStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         let multiple = self.form_attribute(c, node, "multiple")?.is_some();
-        let fallback = usize::from(surgeist_html::bounded::select_display_size_default(
+        let fallback = usize::from(surgeist_html::bounded::select::select_display_size_default(
             multiple,
         ));
         let Some(value) = self.form_attribute(c, node, "size")? else {
             return Ok(fallback);
         };
-        payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
+        payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
         payload_write::<usize>(c, 1)?;
-        let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
-        let mut position = 0;
-        while position < value.len() {
-            c.charge(WorkCategory::InspectByte, 2)?;
-            payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
-            let unit = value.code_units()[position];
+        let mut scanner = surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner::new(true);
+        for &unit in value.code_units() {
+            c.charge_unit_inspection()?;
+            payload_write::<surgeist_html::bounded::numeric::HtmlIntegerPrefixScanner>(c, 1)?;
             if !scanner.feed(unit) {
                 break;
             }
             payload_write::<usize>(c, 1)?;
-            position += 1;
         }
         let Ok(prefix) = scanner.finish() else {
             return Ok(fallback);
         };
         payload_write::<(usize, usize)>(c, 2)?;
         let mut result = 0usize;
-        let mut position = prefix.start();
-        while position < prefix.end() {
-            c.charge(WorkCategory::InspectByte, 2)?;
-            let unit = value.code_units()[position];
+        let digits = value
+            .code_units()
+            .get(prefix.start()..prefix.end())
+            .ok_or_else(|| latch_registry_row(c))?;
+        for &unit in digits {
+            c.charge_unit_inspection()?;
             if prefix.is_negative() && unit != b'0' as u16 {
                 return Ok(fallback);
             }
             payload_write::<usize>(c, 1)?;
-            result = (result * 10 + usize::from(unit - b'0' as u16)).min(2);
+            // The scanner admits only ASCII digits in the prefix.
+            let Some(digit) = unit.checked_sub(b'0' as u16).filter(|digit| *digit <= 9) else {
+                return Err(latch_registry_row(c));
+            };
+            // `result` is at most 2 before the step, so nothing saturates.
+            result = result
+                .saturating_mul(10)
+                .saturating_add(usize::from(digit))
+                .min(2);
             payload_write::<usize>(c, 1)?;
-            position += 1;
         }
         Ok(result)
     }
@@ -726,6 +782,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         if self.form_attribute(c, select, "multiple")?.is_some() {
+            self.unsettle_select(c, select)?;
             return Ok(false);
         }
         let list = self.retain_work_list(c, select, WorkListKind::Options { detached })?;
@@ -733,6 +790,10 @@ impl SessionStorage {
         payload_write::<HtmlSelectCursor>(c, 1)?;
         let mut cursor = HtmlSelectCursor::new(HtmlSelectOperation::Normalize, false, count)
             .map_err(|_| SessionError::WrongToken)?;
+        // What the run leaves true of the list, for the settled summary.
+        let mut last_selected = None;
+        let mut selected_by_fallback = None;
+        let mut enabled = false;
         let changed = loop {
             let reply = match cursor.action() {
                 HtmlSelectAction::ReadSelectedness { ordinal } => {
@@ -742,6 +803,9 @@ impl SessionStorage {
                     let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
+                    if state.flags.selectedness() {
+                        last_selected = Some(node);
+                    }
                     HtmlSelectReply::Selectedness(state.flags.selectedness())
                 }
                 HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
@@ -755,13 +819,18 @@ impl SessionStorage {
                     };
                     state.flags.set_selectedness_for_select(selected);
                     self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+                    if selected {
+                        selected_by_fallback = Some(node);
+                    }
                     HtmlSelectReply::Applied
                 }
                 HtmlSelectAction::ReadDisabled { ordinal } => {
                     let node = self
                         .work_list_node(c, list, ordinal)?
                         .ok_or(SessionError::WrongToken)?;
-                    HtmlSelectReply::Disabled(self.option_disabled(c, node, detached)?)
+                    let disabled = self.option_disabled(c, node, detached)?;
+                    enabled |= !disabled;
+                    HtmlSelectReply::Disabled(disabled)
                 }
                 HtmlSelectAction::ReadDisplaySize => {
                     HtmlSelectReply::DisplaySizeIsOne(self.select_size(c, select)? == 1)
@@ -776,8 +845,325 @@ impl SessionStorage {
             payload_write::<HtmlSelectCursor>(c, 1)?;
             cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         };
+        let last = match count.checked_sub(1) {
+            Some(ordinal) => self.work_list_node(c, list, ordinal)?,
+            None => None,
+        };
         self.release_work_list(c, list)?;
+        // The run keeps the last option read selected, and the fallback writes
+        // selectedness only when it read none.
+        self.settle_select(
+            c,
+            select,
+            SettledOptions {
+                selected: selected_by_fallback.or(last_selected),
+                enabled,
+                last,
+            },
+        )?;
         Ok(changed)
+    }
+    fn settle_select(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+        settled: SettledOptions,
+    ) -> Result<(), SessionError> {
+        let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, select)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if state.settled != Some(settled) {
+            state.settled = Some(settled);
+            self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
+        }
+        Ok(())
+    }
+    /// Forgets the settled summary of a select whose list or options changed in
+    /// a way only a full selectedness setting run can account for.
+    fn unsettle_select(&mut self, c: &mut ParseControl, select: usize) -> Result<(), SessionError> {
+        let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, select)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if state.settled.is_some() {
+            state.settled = None;
+            self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
+        }
+        Ok(())
+    }
+    /// The selectedness setting algorithm's result after `option` was inserted
+    /// as the last option of `select`'s list, from the settled summary alone
+    /// (HTML 877d, steps 5 to 7: the earlier options keep their selectedness and
+    /// disabledness, `option` is the last selected if it is selected, and the
+    /// first enabled option matters only while none is selected). None when the
+    /// summary or the placement cannot establish that result, so the full
+    /// algorithm runs instead.
+    pub(super) fn selectedness_after_append(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+        option: usize,
+    ) -> Result<Option<bool>, SessionError> {
+        if self.form_attribute(c, select, "multiple")?.is_some() {
+            return Ok(None);
+        }
+        let (select_slot, SelectMetadata::Select(mut select_state)) =
+            self.select_metadata(c, select)?
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        let Some(settled) = select_state.settled else {
+            return Ok(None);
+        };
+        // An option's own descendants are not in the list. A summary that ends
+        // with this option already counted it, with the options that connected
+        // before its hook ran.
+        if settled.last == Some(option) || !self.ends_subtree(c, select, option)? {
+            return Ok(None);
+        }
+        let (option_slot, SelectMetadata::Option(mut option_state)) =
+            self.select_metadata(c, option)?
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        #[cfg(test)]
+        let before = self.uncharged_option_list(select)?;
+        let mut next = SettledOptions {
+            last: Some(option),
+            ..settled
+        };
+        let mut changed = false;
+        let disabled = if settled.enabled {
+            None
+        } else {
+            Some(self.option_disabled(c, option, None)?)
+        };
+        #[cfg(test)]
+        let mut size_read = None;
+        if option_state.flags.selectedness() {
+            if let Some(previous) = settled.selected {
+                let (slot, SelectMetadata::Option(mut state)) =
+                    self.select_metadata(c, previous)?
+                else {
+                    return Err(SessionError::SelectMetadataUnavailable);
+                };
+                state.flags.set_selectedness_for_select(false);
+                self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+                changed = true;
+            }
+            next.selected = Some(option);
+        } else if settled.selected.is_none() {
+            let one = match disabled {
+                // An earlier option is enabled, so the settled state with a
+                // display size of one would have selected it.
+                None | Some(false) => self.select_size(c, select)? == 1,
+                Some(true) => false,
+            };
+            #[cfg(test)]
+            {
+                size_read = (disabled != Some(true)).then_some(one);
+            }
+            if disabled.is_none() && one {
+                return Ok(None);
+            }
+            if disabled == Some(false) && one {
+                option_state.flags.set_selectedness_for_select(true);
+                self.set_select_metadata(c, option_slot, SelectMetadata::Option(option_state))?;
+                next.selected = Some(option);
+                changed = true;
+            }
+        }
+        if let Some(disabled) = disabled {
+            next.enabled |= !disabled;
+        }
+        if select_state.settled != Some(next) {
+            select_state.settled = Some(next);
+            self.set_select_metadata(c, select_slot, SelectMetadata::Select(select_state))?;
+        }
+        #[cfg(test)]
+        self.assert_matches_full_walk(select, before, size_read, changed);
+        Ok(Some(changed))
+    }
+}
+
+#[cfg(test)]
+impl SessionStorage {
+    fn uncharged_selectedness(&self, node: usize) -> bool {
+        let slot = self
+            .payloads
+            .node_joins
+            .get(node)
+            .and_then(|joins| joins.get(Join::SelectFamily))
+            .expect("an option has select metadata");
+        match self.payloads.values.get(slot) {
+            Some(RetainedPayload::SelectFamily {
+                state: SelectMetadata::Option(state),
+                ..
+            }) => state.flags.selectedness(),
+            _ => panic!("an option's select metadata row"),
+        }
+    }
+    /// Uncharged: HTML's option disabledness of `node`.
+    fn uncharged_option_disabled(&self, node: usize) -> bool {
+        if self.uncharged_attribute(node, "disabled") {
+            return true;
+        }
+        let mut next = self.uncharged_parent(node);
+        while let Some(ancestor) = next {
+            for kind in [
+                KnownHtmlElement::Option,
+                KnownHtmlElement::Select,
+                KnownHtmlElement::Datalist,
+                KnownHtmlElement::Hr,
+                KnownHtmlElement::Optgroup,
+            ] {
+                if self.uncharged_html_local(ancestor, kind.local_name()) {
+                    match surgeist_html::bounded::select::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Enabled => {
+                            return false;
+                        }
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                            return self.uncharged_attribute(ancestor, "disabled");
+                        }
+                        surgeist_html::bounded::select::HtmlOptionDisabledAncestor::Continue => {}
+                    }
+                }
+            }
+            next = self.uncharged_parent(ancestor);
+        }
+        false
+    }
+    /// Uncharged: the selectedcontent elements below `select` in tree order.
+    fn uncharged_selectedcontent_descendants(&self, select: usize) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut stack = vec![select];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if node != select && self.uncharged_html_local(node, "selectedcontent") {
+                found.push(node);
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        found
+    }
+    /// Uncharged HTML "get the list of options" of `select` in tree order, with
+    /// each option's selectedness and disabledness.
+    fn uncharged_option_list(
+        &self,
+        select: usize,
+    ) -> Result<Vec<(usize, bool, bool)>, SessionError> {
+        let mut options = Vec::new();
+        let mut stack = vec![select];
+        let mut roots = true;
+        while let Some(node) = stack.pop() {
+            let record = self
+                .construction
+                .node_at(node)
+                .ok_or(SessionError::ForeignNode)?;
+            let mut descend = roots;
+            if !roots {
+                descend = if self.uncharged_html_local(node, "option") {
+                    options.push((
+                        node,
+                        self.uncharged_selectedness(node),
+                        self.uncharged_option_disabled(node),
+                    ));
+                    false
+                } else if ["select", "hr", "datalist"]
+                    .into_iter()
+                    .any(|local| self.uncharged_html_local(node, local))
+                {
+                    false
+                } else if self.uncharged_html_local(node, "optgroup") {
+                    let mut inside = false;
+                    let mut next = self.uncharged_parent(node);
+                    while let Some(ancestor) = next.filter(|&ancestor| ancestor != select) {
+                        inside |= self.uncharged_html_local(ancestor, "optgroup");
+                        next = self.uncharged_parent(ancestor);
+                    }
+                    !inside
+                } else {
+                    true
+                };
+            }
+            roots = false;
+            if descend {
+                for position in (0..record.child_count()).rev() {
+                    stack.push(
+                        record
+                            .child_at(position)
+                            .ok_or(SessionError::ForeignNode)?
+                            .position(),
+                    );
+                }
+            }
+        }
+        Ok(options)
+    }
+    /// Test builds: the state `selectedness_after_append` left equals the state
+    /// and result of the full algorithm run on the options as they were before.
+    fn assert_matches_full_walk(
+        &self,
+        select: usize,
+        before: Vec<(usize, bool, bool)>,
+        size_is_one: Option<bool>,
+        changed: bool,
+    ) {
+        let mut selected: Vec<bool> = before.iter().map(|&(_, selected, _)| selected).collect();
+        let (mut expected_changed, mut first_enabled, mut last_selected) = (false, None, None);
+        for (index, &(_, _, disabled)) in before.iter().enumerate() {
+            if selected[index] {
+                if let Some(previous) = last_selected {
+                    selected[previous] = false;
+                    expected_changed = true;
+                }
+                last_selected = Some(index);
+            }
+            if first_enabled.is_none() && !disabled {
+                first_enabled = Some(index);
+            }
+        }
+        if last_selected.is_none()
+            && let Some(first) = first_enabled
+            && size_is_one.expect("the full walk reads the display size")
+        {
+            selected[first] = true;
+            last_selected = Some(first);
+            expected_changed = true;
+        }
+        assert_eq!(changed, expected_changed, "result of the full walk");
+        for (&(node, ..), &expected) in before.iter().zip(&selected) {
+            assert_eq!(
+                self.uncharged_selectedness(node),
+                expected,
+                "selectedness of option {node} after the full walk"
+            );
+        }
+        let slot = self
+            .payloads
+            .node_joins
+            .get(select)
+            .and_then(|joins| joins.get(Join::SelectFamily))
+            .expect("a select has select metadata");
+        let Some(RetainedPayload::SelectFamily {
+            state: SelectMetadata::Select(state),
+            ..
+        }) = self.payloads.values.get(slot)
+        else {
+            panic!("a select's select metadata row");
+        };
+        assert_eq!(
+            state.settled,
+            Some(SettledOptions {
+                selected: last_selected.map(|index| before[index].0),
+                enabled: before.iter().any(|&(.., disabled)| !disabled),
+                last: before.last().map(|&(node, ..)| node),
+            }),
+            "settled summary of the full walk"
+        );
     }
 }
 
@@ -839,16 +1225,16 @@ fn retained_select_metadata(
     c: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, SelectMetadata), SessionError> {
-    for (slot, payload) in payloads.values.iter().enumerate() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::SelectFamily {
+    if let Some(slot) = payloads.joined(c, node, Join::SelectFamily)? {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if let Some(RetainedPayload::SelectFamily {
             node: Some(owner),
             state,
-        } = payload
+        }) = payloads.values.get(slot)
             && *owner == node
         {
             c.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<SelectMetadata>() as u64,
             )?;
             return Ok((slot, *state));
@@ -867,8 +1253,8 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = &storage.view;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?

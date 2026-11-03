@@ -194,10 +194,10 @@ fn parked_live(denied: bool) -> LiveCase {
             let next = focusing_request(
                 &mut lease,
                 if denied {
-                    surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                    surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
                 } else {
-                    surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps {
-                        control: surgeist_html::HtmlDialogFocusControl::Subject,
+                    surgeist_html::elements::dialog::HtmlDialogFocusingAction::RunFocusingSteps {
+                        control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
                     }
                 },
             );
@@ -245,8 +245,8 @@ fn enabled_permission_advances_locally_to_called_focusing_wait_without_runtime_r
         assert_eq!(
             focusing_request(
                 &mut lease,
-                surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps {
-                    control: surgeist_html::HtmlDialogFocusControl::Subject
+                surgeist_html::elements::dialog::HtmlDialogFocusingAction::RunFocusingSteps {
+                    control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject
                 }
             ),
             case.request

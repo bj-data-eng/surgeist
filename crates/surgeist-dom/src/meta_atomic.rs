@@ -1,11 +1,12 @@
 //! Explicit native Meta composition against actual CSSOM owners.
 use crate::{
-    DocumentString, DomCommit, DomError, DomInlineStyleBatchContext, DomInlineStyleError,
+    DomCommit, DomError, DomInlineStyleBatchContext, DomInlineStyleError,
     DomInlineStyleRequestLimits, NodeId,
 };
 use surgeist_cssom::{
     CssomAdmission, CssomCommit, CssomContext, CssomDeclarationCandidate, CssomError,
 };
+use surgeist_html::values::DocumentString;
 
 /// Finite additional holder, UTF-16, work and output admission for one native join.
 /// This envelope does not replace canonical DOM, Source, Runtime or producer limits.

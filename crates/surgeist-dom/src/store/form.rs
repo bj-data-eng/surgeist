@@ -89,7 +89,7 @@ impl Draft {
                 }?;
                 self.input_radio_normalize(
                     key,
-                    surgeist_html::HtmlRadioTrigger::FormOwner,
+                    surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
                     cancel,
                 )?;
             }
@@ -104,6 +104,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     mod custody_tests;
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
         let mut dom = Dom::new(
@@ -122,9 +123,9 @@ mod tests {
         .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let form = b.create_element_ns(&d, crate::Namespace::html(), "form");
-        let button = b.create_element_ns(&d, crate::Namespace::html(), "button");
-        let field = b.create_element_ns(&d, crate::Namespace::html(), "fieldset");
+        let form = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "form");
+        let button = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "button");
+        let field = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "fieldset");
         b.set_attribute(&form, "id", "f");
         b.insert_before(&form, &d, None);
         b.insert_before(&button, &form, None);

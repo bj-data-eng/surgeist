@@ -239,6 +239,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             })
             .collect();
         let binding = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1, 2],
@@ -275,6 +276,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let s = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[0].clone()));
         let inner = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[1].clone()));
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: self
                 .scopes
                 .iter()

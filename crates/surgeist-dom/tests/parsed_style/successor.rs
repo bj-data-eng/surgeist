@@ -147,6 +147,9 @@ fn parser_pop_removes_real_sheet_and_forms_distinct_original_full_text_request()
         let mut rows = value.report.pending_associations();
         loop {
             match rows.advance() {
+                surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(fault) => {
+                    panic!("{fault}")
+                }
                 surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
                     if row.id() == *occurrence =>
                 {

@@ -1,4 +1,7 @@
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn rev(producer: &HtmlBaseProducerId, n: u64) -> HtmlBaseFactsRevision {

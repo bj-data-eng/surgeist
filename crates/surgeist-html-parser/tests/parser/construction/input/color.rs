@@ -1,6 +1,14 @@
 use crate::parser::support::limits;
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{HtmlInputType, input_colorspace::HtmlInputColorSpace},
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::input::{
+        HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputValueMode,
+        HtmlInputValueSanitization,
+    },
+    values::{Attribute, DocumentString},
+};
 use surgeist_html_parser::{
     HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlParseColorOperandRole,
     HtmlParseColorValueSource, HtmlParseCompletion, HtmlParseFailureReason, HtmlParseHistoryFrame,
@@ -104,6 +112,7 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((inputs, owners), (1, 1));
@@ -260,6 +269,7 @@ fn color_independent_literals_preserve_defaults_and_source_ordered_alpha_colorsp
                 }
                 HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(count, 1);
@@ -296,6 +306,7 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
             }
             HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(inputs, 1);
@@ -327,9 +338,10 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
         assert!(
             color
                 .operand_group(HtmlParseColorOperandRole::Alpha)
+                .unwrap()
                 .is_some()
         );
-        let original = color.original_group().unwrap();
+        let original = color.original_group().unwrap().unwrap();
         let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
         let mut cursor = history.cursor(original, &mut scratch, None).unwrap();
         let mut text = Vec::new();
@@ -339,6 +351,7 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
                 HtmlParseHistoryStep::Progress => {}
                 HtmlParseHistoryStep::Complete => break,
                 HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(text, [114, 101, 100]);

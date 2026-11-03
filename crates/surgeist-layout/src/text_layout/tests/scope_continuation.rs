@@ -163,12 +163,15 @@ fn continuation(
     for (node, kind) in [(1, InlineBoundaryKind::Start), (5, InlineBoundaryKind::End)] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                kind,
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     let bindings = prepared
@@ -208,6 +211,7 @@ fn continuation(
                 })
                 .collect();
             TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -232,6 +236,8 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -262,7 +268,9 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
 #[test]
 fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
     let (tree, bindings) = continuation(true, true);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput { scopes: Vec::new(), child_order: Vec::new() }, Vec::new()).unwrap_or_else(|error| {
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+        gaps: Vec::new(), scopes: Vec::new(), child_order: Vec::new() }, Vec::new()).unwrap_or_else(|error| {
         panic!("the complete global inline pair [1,5] must support its actual paragraph projections: {error:?}")
     });
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -333,6 +341,8 @@ fn missing_global_inline_boundary_capture_remains_a_refusal() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -609,16 +619,19 @@ fn segmented_fixture(
     for &node in &boundary_nodes {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                if node <= 101 {
-                    InlineBoundaryKind::Start
-                } else {
-                    InlineBoundaryKind::End
-                },
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    if node <= 101 {
+                        InlineBoundaryKind::Start
+                    } else {
+                        InlineBoundaryKind::End
+                    },
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     let mut source_node = origin_nodes.into_iter();
@@ -660,6 +673,7 @@ fn segmented_fixture(
             })
             .collect();
         bindings.push(TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container,
             nodes,
@@ -689,6 +703,8 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -746,6 +762,8 @@ fn genuine_nonemitting_endpoint_paragraphs_supply_remote_controls_without_genera
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -796,6 +814,8 @@ fn foreign_same_ordinal_capture_cannot_supply_a_remote_endpoint() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -826,6 +846,8 @@ fn multiple_actual_paths_to_a_needed_scope_node_refuse_ambiguity() {
         99,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -850,6 +872,8 @@ fn absent_nonemitting_endpoint_paragraph_is_a_missing_real_association() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -874,6 +898,8 @@ fn real_nested_block_order_must_agree_with_the_global_capture() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -898,6 +924,8 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             0,
             bindings.clone(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -913,12 +941,15 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     ] {
         tree.insert_input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                kind,
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                InlineBoundaryEdgeOf::try_new(border, padding).unwrap(),
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    InlineBoundaryEdgeOf::try_new(0.0, border, padding).unwrap(),
+                )
+                .unwrap(),
+            ),
         );
     }
     let positive = compute(&tree);

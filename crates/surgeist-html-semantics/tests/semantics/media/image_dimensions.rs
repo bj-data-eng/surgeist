@@ -1,21 +1,30 @@
-use crate::semantics::support::dimension_semantic_limits as limits;
-use surgeist_html::*;
+use crate::semantics::support::{
+    dimension_capture_limits, dimension_semantic_limits as limits, tenth_capture_limits,
+};
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlImageContentBoxObservation,
-    HtmlImageDimensionAttributeObservation, HtmlImageDimensionAxisResult, HtmlImageDimensionBranch,
-    HtmlImageDimensionCompleted, HtmlImageDimensionExpectation, HtmlImageDimensionFacts,
-    HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement,
-    HtmlImageDimensionMissingReason, HtmlImageDimensionOperationKey, HtmlImageDimensionOrigin,
-    HtmlImageDimensionReadback, HtmlImageDimensionRecovery, HtmlImageDimensionResourceObservation,
-    HtmlImageDimensionRevision, HtmlImageDimensionRole, HtmlImageDimensionSelection,
-    HtmlImageSizingRevision, HtmlImgRequestState, HtmlInputImageAvailability,
-    HtmlListParticipation, HtmlListParticipationFact, HtmlListParticipationRevision,
-    HtmlNaturalDimensionFact, HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId,
-    HtmlNaturalDimensionRevision, HtmlNaturalDimensionUnsupported, HtmlNaturalDimensions,
-    HtmlNaturalResourceId, HtmlNaturalResourceKey, HtmlParticipationProducerId,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
+    HtmlCapturedIsValue, HtmlImageContentBoxObservation, HtmlImageDimensionAttributeObservation,
+    HtmlImageDimensionAxisResult, HtmlImageDimensionBranch, HtmlImageDimensionCompleted,
+    HtmlImageDimensionExpectation, HtmlImageDimensionFacts, HtmlImageDimensionFactsError,
+    HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement, HtmlImageDimensionMissingReason,
+    HtmlImageDimensionOperationKey, HtmlImageDimensionOrigin, HtmlImageDimensionReadback,
+    HtmlImageDimensionRecovery, HtmlImageDimensionResourceObservation, HtmlImageDimensionRevision,
+    HtmlImageDimensionRole, HtmlImageDimensionSelection, HtmlImageSizingRevision,
+    HtmlImgRequestState, HtmlInputImageAvailability, HtmlListParticipation,
+    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlNaturalDimensionFact,
+    HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision,
+    HtmlNaturalDimensionUnsupported, HtmlNaturalDimensions, HtmlNaturalResourceId,
+    HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
     HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
@@ -36,10 +45,7 @@ fn fixture(local: &str, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubje
     fixture_name(QualifiedName::new(Namespace::html(), None, local), attrs)
 }
 fn fixture_name(name: QualifiedName, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubjectId) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(dimension_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -221,6 +227,17 @@ fn assert_axis(
     assert_eq!(v.css_pixels().numerator().decimal_digits(), n);
     assert_eq!(v.css_pixels().denominator().decimal_digits(), d);
     assert_eq!(v.origin(), origin);
+}
+fn assert_missing(
+    axis: &HtmlImageDimensionAxisResult,
+    subject: &HtmlCaptureSubjectId,
+    reason: HtmlImageDimensionMissingReason,
+) {
+    let HtmlImageDimensionAxisResult::Missing(missing) = axis else {
+        panic!("{axis:?}")
+    };
+    assert_eq!(missing.subject(), subject);
+    assert_eq!(missing.reason(), reason);
 }
 fn resource(
     c: &HtmlCapture,
@@ -613,10 +630,14 @@ fn common_prefix_sign_zero_and_exact_huge_integer_overrides_are_preserved() {
                 HtmlImageDimensionOrigin::ContentAttribute,
             );
         } else {
-            assert!(matches!(
+            // HTML "determine the dimensions" steps 3-4: an attribute that
+            // fails to parse leaves the natural dimensions, which are only
+            // known from an observed resource; none was supplied.
+            assert_missing(
                 v.width(),
-                HtmlImageDimensionAxisResult::Missing(_)
-            ));
+                &id,
+                HtmlImageDimensionMissingReason::ResourceObservation,
+            );
         }
         assert!(
             matches!(v.width_attribute(),HtmlImageDimensionAttributeObservation::Present { attribute,recovery:r } if attribute.value().code_units()==raw.encode_utf16().collect::<Vec<_>>() && *r==recovery)
@@ -657,10 +678,13 @@ fn exact_utf16_and_expanded_attribute_selection_use_original_slots() {
                 HtmlImageDimensionOrigin::ContentAttribute,
             );
         } else {
-            assert!(matches!(
+            // The unparsable width needs the natural dimensions, which no
+            // observed resource supplies here.
+            assert_missing(
                 v.width(),
-                HtmlImageDimensionAxisResult::Missing(_)
-            ));
+                &id,
+                HtmlImageDimensionMissingReason::ResourceObservation,
+            );
         }
     }
     let (c, id) = fixture(
@@ -1073,10 +1097,13 @@ fn known_no_selected_resource_needs_observed_unavailability_and_is_not_a_default
         100,
     )
     .unwrap();
-    assert!(matches!(
+    // A known absence of a selected resource does not by itself establish that
+    // the image is unavailable, so the natural dimensions stay unobserved.
+    assert_missing(
         result(&run(&c, &cx, &id)).width(),
-        HtmlImageDimensionAxisResult::Missing(_)
-    ));
+        &id,
+        HtmlImageDimensionMissingReason::ResourceObservation,
+    );
     let obs = HtmlImageDimensionResourceObservation::img(
         r.clone(),
         e.clone(),
@@ -1428,10 +1455,7 @@ fn incoming_measurement_digit_storage_is_admitted_in_addition_to_record_backing(
 
 #[test]
 fn non_element_subjects_do_not_require_rendering_or_resource_facts() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,

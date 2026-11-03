@@ -14,9 +14,11 @@
 
 use crate::HtmlParseResource;
 use crate::construction::evidence::{
-    DiagnosticContext, DiagnosticKind, DiagnosticRule, ParseEvidence,
+    HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticRule, ParseEvidence,
 };
-use crate::construction::provenance::{LexicalDisposition, LexicalKind, LexicalRef, LexicalRole};
+use crate::construction::provenance::{
+    HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, LexicalRef,
+};
 mod char_ref;
 mod lexical;
 mod state;
@@ -28,24 +30,30 @@ pub(crate) mod token;
 use super::{
     buffer::Utf16Buffer,
     control::{
-        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WORK_QUANTUM, WorkCategory,
+        ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, OwnedVec,
+        ParseControl, WORK_QUANTUM,
     },
     input::{AsciiComparison, AsciiMatch, InputCursor, InputRead},
 };
-use crate::{DocumentString, HtmlSource, HtmlSourceRange};
-use states::{Identifier, State};
+use crate::{HtmlSource, HtmlSourceRange};
+use states::{HtmlTokenizerIdentifier, HtmlTokenizerState};
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 use token::{
-    Attribute, DiagnosticCode, DiagnosticPhase, Doctype, DraftText, Event, OriginKind, Tag,
-    TagKind, Token, TokenEvent, TokenKind, freeze_pair,
+    Attribute, Doctype, DraftText, Event, HtmlParseOriginKind, HtmlTokenizerDiagnostic,
+    HtmlTokenizerDiagnosticPhase, Tag, TagKind, Token, TokenEvent, TokenKind, freeze_pair,
 };
 
 /// Pre-admits explicit persistent record moves/writes, independently of state
 /// dispatch. Larger indivisible fixed operations use the controller's atomic
 /// layout exception; rejected admission precedes every useful mutation.
-fn admit_record_write(bytes: usize, writes: usize, c: &mut ParseControl) -> Result<(), ParseStop> {
-    c.charge(WorkCategory::CopyByte, bytes as u64)?;
-    c.charge(WorkCategory::RecordWrite, writes as u64)?;
+fn admit_record_write(
+    bytes: usize,
+    writes: usize,
+    c: &mut ParseControl,
+) -> Result<(), HtmlParseStop> {
+    c.charge(HtmlParseWorkCategory::CopyByte, bytes as u64)?;
+    c.charge(HtmlParseWorkCategory::RecordWrite, writes as u64)?;
     if bytes.saturating_add(writes) > WORK_QUANTUM {
         c.admit_atomic_layout(bytes)?;
     }
@@ -57,18 +65,29 @@ struct Branch {
     next: [Option<usize>; 2],
     terminal: bool,
 }
+impl Branch {
+    /// The child for one decided bit; a bit has exactly two children.
+    fn child(&self, bit: bool) -> Option<usize> {
+        let [zero, one] = self.next;
+        if bit { one } else { zero }
+    }
+    fn child_mut(&mut self, bit: bool) -> &mut Option<usize> {
+        let [zero, one] = &mut self.next;
+        if bit { one } else { zero }
+    }
+}
 /// Fixed-bit radix lookup: exactly sixteen admitted decisions per UTF-16 unit,
 /// independent of previous attribute count and adversarial shared prefixes.
 struct Names {
     nodes: OwnedVec<Branch>,
 }
 impl Names {
-    fn new() -> Result<Self, ParseStop> {
+    fn new() -> Result<Self, HtmlParseStop> {
         Ok(Self {
             nodes: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
         })
     }
-    fn insert(&mut self, units: &[u16], c: &mut ParseControl) -> Result<bool, ParseStop> {
+    fn insert(&mut self, units: &[u16], c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
         if self.nodes.len() == 0 {
             self.nodes.reserve_geometric(c, 1)?;
             self.nodes.try_push(
@@ -81,17 +100,20 @@ impl Names {
         }
         let mut index = 0;
         for unit in units {
-            c.charge(WorkCategory::InspectByte, 2)?;
+            c.charge_unit_inspection()?;
             let unit = *unit;
             for shift in (0..16).rev() {
-                c.charge(WorkCategory::StateStep, 1)?;
-                let bit = usize::from((unit >> shift) & 1);
-                c.charge(WorkCategory::InspectByte, size_of::<Option<usize>>() as u64)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+                let bit = (unit >> shift) & 1 == 1;
+                c.charge(
+                    HtmlParseWorkCategory::InspectByte,
+                    size_of::<Option<usize>>() as u64,
+                )?;
                 let next = self
                     .nodes
                     .get_mut(index, c)?
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                    .next[bit];
+                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                    .child(bit);
                 index = if let Some(next) = next {
                     next
                 } else {
@@ -104,26 +126,30 @@ impl Names {
                             terminal: false,
                         },
                     )?;
-                    c.charge(WorkCategory::CopyByte, size_of::<Option<usize>>() as u64)?;
-                    c.charge(WorkCategory::RecordWrite, 1)?;
-                    self.nodes
+                    c.charge(
+                        HtmlParseWorkCategory::CopyByte,
+                        size_of::<Option<usize>>() as u64,
+                    )?;
+                    c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+                    *self
+                        .nodes
                         .get_mut(index, c)?
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                        .next[bit] = Some(next);
+                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                        .child_mut(bit) = Some(next);
                     next
                 };
             }
         }
-        c.charge(WorkCategory::InspectByte, 1)?;
+        c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
         let duplicate = self
             .nodes
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .terminal;
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.nodes
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .terminal = true;
         Ok(duplicate)
     }
@@ -161,7 +187,7 @@ impl DraftDoctype {
             force_quirks: false,
         }
     }
-    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         for text in [self.name, self.public, self.system].into_iter().flatten() {
             text.release(c)?;
         }
@@ -169,7 +195,7 @@ impl DraftDoctype {
     }
 }
 impl DraftTag {
-    fn release(mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn release(mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.name.release(c)?;
         if let Some(a) = self.attribute {
             a.name.release(c)?;
@@ -183,7 +209,7 @@ impl DraftTag {
 fn release_attributes(
     attrs: &mut OwnedVec<Attribute>,
     c: &mut ParseControl,
-) -> Result<(), ParseStop> {
+) -> Result<(), HtmlParseStop> {
     loop {
         let next = if c.stop().is_some() {
             attrs.cleanup_pop(c)?
@@ -217,9 +243,15 @@ enum StepProgress {
 enum ProofRole {
     LessThan,
     Slash,
-    PendingSyntax,
     Attribute,
     Reference,
+}
+/// Anchors that retain one boundary proof, not a start/end pair.
+#[derive(Clone, Copy)]
+enum SingleProof {
+    Start,
+    Declaration,
+    AttributeEnd,
 }
 /// Only finite grammar-owned anchors are retained, never a source-boundary map.
 struct TokenizerProofs {
@@ -255,12 +287,53 @@ struct TokenizerProofs {
         crate::source::ConsumedSourceBoundary,
     ),
 }
+impl TokenizerProofs {
+    fn find(
+        &self,
+        offset: usize,
+        c: &mut ParseControl,
+    ) -> Result<crate::source::ConsumedSourceBoundary, HtmlParseStop> {
+        for proof in [
+            &self.current.0,
+            &self.current.1,
+            &self.previous.0,
+            &self.previous.1,
+            &self.start,
+            &self.less_than.0,
+            &self.less_than.1,
+            &self.slash.0,
+            &self.slash.1,
+            &self.pending.0,
+            &self.pending.1,
+            &self.pending.2,
+            &self.declaration,
+            &self.attribute.0,
+            &self.attribute.1,
+            &self.reference.0,
+            &self.reference.1,
+        ] {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<usize>() as u64,
+            )?;
+            if proof.offset() == offset {
+                c.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    size_of::<crate::source::ConsumedSourceBoundary>() as u64,
+                )?;
+                return Ok(proof.clone());
+            }
+        }
+        Err(c.fail_invariant(HtmlParseInvariant::TokenizerState))
+    }
+}
 pub(crate) struct Tokenizer<'source> {
     owner: ControlIdentity,
     cursor: InputCursor<'source>,
-    state: State,
+    state: HtmlTokenizerState,
     current: HtmlSourceRange,
-    current_kind: OriginKind,
+    current_kind: HtmlParseOriginKind,
     start: usize,
     less_than: HtmlSourceRange,
     slash: HtmlSourceRange,
@@ -283,14 +356,14 @@ pub(crate) struct Tokenizer<'source> {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TokenizerHandoffError {
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     ForeignSource,
     NotData,
     PendingEvents,
     ActiveDraft,
 }
-impl From<ParseStop> for TokenizerHandoffError {
-    fn from(stop: ParseStop) -> Self {
+impl From<HtmlParseStop> for TokenizerHandoffError {
+    fn from(stop: HtmlParseStop) -> Self {
         Self::Stop(stop)
     }
 }
@@ -305,19 +378,19 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<(), TokenizerHandoffError> {
         c.require_identity(&self.owner)?;
         c.require_source(source)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if self.current.source() != source.identity() {
             return Err(TokenizerHandoffError::ForeignSource);
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.state != State::Data {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if self.state != HtmlTokenizerState::Data {
             return Err(TokenizerHandoffError::NotData);
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.pending_len != 0 {
             return Err(TokenizerHandoffError::PendingEvents);
         }
-        c.charge(WorkCategory::RecordVisit, 5)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 5)?;
         if self.tag.is_some()
             || self.comment.is_some()
             || self.doctype.is_some()
@@ -326,7 +399,7 @@ impl<'source> Tokenizer<'source> {
         {
             return Err(TokenizerHandoffError::ActiveDraft);
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.reference.is_some() {
             return Err(TokenizerHandoffError::ActiveDraft);
         }
@@ -342,18 +415,21 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<HtmlSourceRange, TokenizerHandoffError> {
         self.validate_head_handoff(source, c)?;
         c.admit_atomic_layout(size_of::<HtmlSourceRange>())?;
-        c.charge(WorkCategory::CopyByte, size_of::<HtmlSourceRange>() as u64)?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            size_of::<HtmlSourceRange>() as u64,
+        )?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.cursor.next_anchor(c)?)
     }
 
     pub(crate) fn new(
         source: &'source HtmlSource,
-        state: State,
+        state: HtmlTokenizerState,
         last_start: Option<&DocumentString>,
         c: &mut ParseControl,
-    ) -> Result<Self, ParseStop> {
+    ) -> Result<Self, HtmlParseStop> {
         Self::create(
             source,
             state,
@@ -366,19 +442,19 @@ impl<'source> Tokenizer<'source> {
     #[cfg(test)]
     pub(crate) fn progressive(
         source: &'source HtmlSource,
-        state: State,
+        state: HtmlTokenizerState,
         last_start: Option<&DocumentString>,
         c: &mut ParseControl,
-    ) -> Result<Self, ParseStop> {
+    ) -> Result<Self, HtmlParseStop> {
         Self::create(source, state, last_start, true, c)
     }
     fn create(
         source: &'source HtmlSource,
-        state: State,
+        state: HtmlTokenizerState,
         last_start: Option<&DocumentString>,
         #[cfg(test)] progressive: bool,
         c: &mut ParseControl,
-    ) -> Result<Self, ParseStop> {
+    ) -> Result<Self, HtmlParseStop> {
         c.require_source(source)?;
         #[cfg(test)]
         let cursor = if progressive {
@@ -443,7 +519,7 @@ impl<'source> Tokenizer<'source> {
             cursor,
             state,
             current: range.clone(),
-            current_kind: OriginKind::Literal,
+            current_kind: HtmlParseOriginKind::Literal,
             start: 0,
             less_than: range.clone(),
             slash: range.clone(),
@@ -470,10 +546,10 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
         cdata_allowed: bool,
         evidence: &mut ParseEvidence,
-    ) -> Result<TokenizerPull, ParseStop> {
+    ) -> Result<TokenizerPull, HtmlParseStop> {
         c.require_identity(&self.owner)?;
         while self.pending_len == 0 && !self.done {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             let progress = if self.reference.is_some() {
                 self.resume_reference(c, evidence)?
             } else {
@@ -488,48 +564,61 @@ impl<'source> Tokenizer<'source> {
             }
         }
         c.checkpoint()?;
-        if self.pending_len == 0 {
+        let Some(remaining) = self.pending_len.checked_sub(1) else {
             return Ok(TokenizerPull::Exhausted);
-        }
+        };
         // Each taken source slot is written to None, each subsequent event
         // replaces a destination slot, and the persistent length is updated.
         // This fixed bulk move is admitted before any slot is taken.
-        admit_record_write(
-            size_of::<Option<Event>>() * self.pending_len + size_of::<usize>(),
-            2 * self.pending_len,
-            c,
-        )?;
-        let first = self.pending[0].take();
-        for i in 1..self.pending_len {
-            self.pending[i - 1] = self.pending[i].take();
+        let (Some(bytes), Some(writes)) = (
+            size_of::<Option<Event>>()
+                .checked_mul(self.pending_len)
+                .and_then(|bytes| bytes.checked_add(size_of::<usize>())),
+            self.pending_len.checked_mul(2),
+        ) else {
+            return c.representation(HtmlParseResource::AtomicLayoutBytes);
+        };
+        admit_record_write(bytes, writes, c)?;
+        let Some(live) = self.pending.get_mut(..self.pending_len) else {
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+        };
+        let Some(front) = live.first_mut() else {
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+        };
+        let first = front.take();
+        // The emptied front moves behind the remaining events, which each
+        // advance one slot; the vacated slot is then no longer live.
+        live.rotate_left(1);
+        self.pending_len = remaining;
+        match first {
+            Some(event) => Ok(TokenizerPull::Event(event)),
+            None => Err(c.fail_invariant(HtmlParseInvariant::TokenizerState)),
         }
-        self.pending_len -= 1;
-        Ok(TokenizerPull::Event(first.expect("actual queued event")))
     }
     #[cfg(test)]
     pub(crate) fn make_available(
         &mut self,
         through: usize,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.cursor.make_available(through, c)
     }
     #[cfg(test)]
-    pub(crate) fn seal_input(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn seal_input(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.cursor.seal_input(c)
     }
     /// Applied only between pulls by the concrete tree algorithm.
     pub(crate) fn set_state(
         &mut self,
-        state: State,
+        state: HtmlTokenizerState,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         c.require_identity(&self.owner)?;
-        admit_record_write(size_of::<State>(), 1, c)?;
+        admit_record_write(size_of::<HtmlTokenizerState>(), 1, c)?;
         self.state = state;
         Ok(())
     }
-    pub(crate) fn release(mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if let Some(reference) = self.reference {
             reference.release(c)?;
         }
@@ -560,7 +649,7 @@ impl<'source> Tokenizer<'source> {
         start: usize,
         end: usize,
         c: &mut ParseControl,
-    ) -> Result<HtmlSourceRange, ParseStop> {
+    ) -> Result<HtmlSourceRange, HtmlParseStop> {
         if self.proofs.is_some() {
             let start = self.boundary_proof(start, c)?;
             let end = self.boundary_proof(end, c)?;
@@ -573,49 +662,22 @@ impl<'source> Tokenizer<'source> {
         &self,
         offset: usize,
         c: &mut ParseControl,
-    ) -> Result<crate::source::ConsumedSourceBoundary, ParseStop> {
-        let p = self
-            .proofs
+    ) -> Result<crate::source::ConsumedSourceBoundary, HtmlParseStop> {
+        self.proofs
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
-        for proof in [
-            &p.current.0,
-            &p.current.1,
-            &p.previous.0,
-            &p.previous.1,
-            &p.start,
-            &p.less_than.0,
-            &p.less_than.1,
-            &p.slash.0,
-            &p.slash.1,
-            &p.pending.0,
-            &p.pending.1,
-            &p.pending.2,
-            &p.declaration,
-            &p.attribute.0,
-            &p.attribute.1,
-            &p.reference.0,
-            &p.reference.1,
-        ] {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, size_of::<usize>() as u64)?;
-            if proof.offset() == offset {
-                c.charge(
-                    WorkCategory::CopyByte,
-                    size_of::<crate::source::ConsumedSourceBoundary>() as u64,
-                )?;
-                return Ok(proof.clone());
-            }
-        }
-        Err(c.fail_invariant(Invariant::InputCursorState))
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+            .find(offset, c)
     }
-    fn sync_proofs(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        if self.proofs.is_none() {
+    fn sync_proofs(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        let Some(p) = self.proofs.as_mut() else {
             return Ok(());
-        }
+        };
         if let Some(pair) = self.cursor.consumed_span(c)? {
-            admit_record_write(4 * size_of::<crate::source::ConsumedSourceBoundary>(), 2, c)?;
-            let p = self.proofs.as_mut().expect("progressive owner");
+            admit_record_write(
+                const { 4 * size_of::<crate::source::ConsumedSourceBoundary>() },
+                2,
+                c,
+            )?;
             p.previous = p.current.clone();
             p.current = pair;
         }
@@ -627,30 +689,67 @@ impl<'source> Tokenizer<'source> {
         start: usize,
         end: usize,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
-        if self.proofs.is_none() {
+    ) -> Result<(), HtmlParseStop> {
+        let Some(p) = self.proofs.as_mut() else {
             return Ok(());
-        }
-        let a = self.boundary_proof(start, c)?;
-        let b = self.boundary_proof(end, c)?;
-        let middle = if matches!(role, ProofRole::PendingSyntax) {
-            Some(self.boundary_proof(self.current.start(), c)?)
-        } else {
-            None
         };
-        let endpoints = if middle.is_some() { 3 } else { 2 };
+        let a = p.find(start, c)?;
+        let b = p.find(end, c)?;
         admit_record_write(
-            endpoints * size_of::<crate::source::ConsumedSourceBoundary>(),
+            const { 2 * size_of::<crate::source::ConsumedSourceBoundary>() },
             1,
             c,
         )?;
-        let p = self.proofs.as_mut().expect("progressive owner");
         match role {
             ProofRole::LessThan => p.less_than = (a, b),
             ProofRole::Slash => p.slash = (a, b),
-            ProofRole::PendingSyntax => p.pending = (a, middle.expect("syntax middle"), b),
             ProofRole::Attribute => p.attribute = (a, b),
             ProofRole::Reference => p.reference = (a, b),
+        }
+        Ok(())
+    }
+    /// Retains the pending syntax range together with the current start.
+    fn save_syntax_proof(
+        &mut self,
+        start: usize,
+        end: usize,
+        c: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
+        let Some(p) = self.proofs.as_mut() else {
+            return Ok(());
+        };
+        let a = p.find(start, c)?;
+        let b = p.find(end, c)?;
+        let middle = p.find(self.current.start(), c)?;
+        admit_record_write(
+            const { 3 * size_of::<crate::source::ConsumedSourceBoundary>() },
+            1,
+            c,
+        )?;
+        p.pending = (a, middle, b);
+        Ok(())
+    }
+    /// Retains one proved boundary of a progressive tokenizer; a complete
+    /// tokenizer keeps no proofs.
+    fn save_single_proof(
+        &mut self,
+        role: SingleProof,
+        offset: usize,
+        c: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
+        if !self.cursor.is_progressive() {
+            return Ok(());
+        }
+        let p = self
+            .proofs
+            .as_mut()
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
+        let proof = p.find(offset, c)?;
+        admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
+        match role {
+            SingleProof::Start => p.start = proof,
+            SingleProof::Declaration => p.declaration = proof,
+            SingleProof::AttributeEnd => p.attribute.1 = proof,
         }
         Ok(())
     }
@@ -658,12 +757,12 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<Option<u32>, ParseStop> {
+    ) -> Result<Option<u32>, HtmlParseStop> {
         let read = if self.cursor.is_progressive() {
             match self.cursor.poll_consume(c)? {
                 super::input::InputPoll::Ready(read) => read,
                 super::input::InputPoll::NeedInput => {
-                    return Err(c.fail_invariant(Invariant::InputCursorState));
+                    return Err(c.fail_invariant(HtmlParseInvariant::InputCursorState));
                 }
             }
         } else {
@@ -673,28 +772,22 @@ impl<'source> Tokenizer<'source> {
         match read {
             InputRead::Character(ch) => {
                 if ch.source() != &self.current {
-                    admit_record_write(size_of::<OriginKind>(), 1, c)?;
-                    self.current_kind = OriginKind::Literal;
+                    admit_record_write(size_of::<HtmlParseOriginKind>(), 1, c)?;
+                    self.current_kind = HtmlParseOriginKind::Literal;
                 }
                 admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
                 self.current = ch.source().clone();
                 if let Some(record) = ch.preprocessing() {
                     if let super::input::PreprocessingRecord::Diagnostic(code) = record {
-                        let code = match code {
-                            super::input::InputDiagnostic::Surrogate => {
-                                DiagnosticCode::SurrogateInInputStream
-                            }
-                            super::input::InputDiagnostic::Noncharacter => {
-                                DiagnosticCode::NoncharacterInInputStream
-                            }
-                            super::input::InputDiagnostic::ControlCharacter => {
-                                DiagnosticCode::ControlCharacterInInputStream
-                            }
-                        };
-                        self.error_at(code, DiagnosticPhase::InputStream, c, evidence)?;
+                        self.error_at(
+                            Self::input_stream_code(code),
+                            HtmlTokenizerDiagnosticPhase::InputStream,
+                            c,
+                            evidence,
+                        )?;
                     } else {
-                        admit_record_write(size_of::<OriginKind>(), 1, c)?;
-                        self.current_kind = OriginKind::Newline;
+                        admit_record_write(size_of::<HtmlParseOriginKind>(), 1, c)?;
+                        self.current_kind = HtmlParseOriginKind::Newline;
                         let mut retention = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
                         if let Err(stop) = retention.try_push(c, self.current.clone()) {
                             retention.release(c)?;
@@ -719,34 +812,42 @@ impl<'source> Tokenizer<'source> {
             }
         }
     }
-    fn reconsume(&mut self, state: State, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn reconsume(
+        &mut self,
+        state: HtmlTokenizerState,
+        c: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
         self.cursor.reconsume(c)?;
         self.set_state(state, c)
     }
-    fn queue(&mut self, event: Event, c: &mut ParseControl) -> Result<(), ParseStop> {
-        if self.pending_len == self.pending.len() {
+    fn queue(&mut self, event: Event, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        let Some(slot) = self.pending.get_mut(self.pending_len) else {
             event.release(c)?;
-            return Err(c.fail_invariant(Invariant::InputCursorState));
-        }
-        if let Err(stop) = admit_record_write(size_of::<Option<Event>>() + size_of::<usize>(), 2, c)
-        {
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+        };
+        if let Err(stop) = admit_record_write(
+            const { size_of::<Option<Event>>() + size_of::<usize>() },
+            2,
+            c,
+        ) {
             event.release(c)?;
             return Err(stop);
         }
-        self.pending[self.pending_len] = Some(event);
-        self.pending_len += 1;
+        *slot = Some(event);
+        // The slot exists, so its index is below the fixed slot count.
+        self.pending_len = self.pending_len.saturating_add(1);
         Ok(())
     }
     fn set_current(
         &mut self,
         source: &HtmlSourceRange,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
         self.current = source.clone();
         Ok(())
     }
-    fn remember_slash(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn remember_slash(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
         self.save_proof_range(
             ProofRole::Slash,
@@ -757,14 +858,9 @@ impl<'source> Tokenizer<'source> {
         self.slash = self.current.clone();
         Ok(())
     }
-    fn remember_current_syntax(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn remember_current_syntax(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
-        self.save_proof_range(
-            ProofRole::PendingSyntax,
-            self.current.start(),
-            self.current.end(),
-            c,
-        )?;
+        self.save_syntax_proof(self.current.start(), self.current.end(), c)?;
         self.pending_syntax = self.current.clone();
         Ok(())
     }
@@ -772,41 +868,67 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         source: HtmlSourceRange,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
-        self.save_proof_range(ProofRole::PendingSyntax, source.start(), source.end(), c)?;
+        self.save_syntax_proof(source.start(), source.end(), c)?;
         self.pending_syntax = source;
         Ok(())
     }
     fn error(
         &mut self,
-        code: DiagnosticCode,
+        code: HtmlTokenizerDiagnostic,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        self.error_at(code, DiagnosticPhase::Tokenizer, c, evidence)
+    ) -> Result<(), HtmlParseStop> {
+        self.error_at(code, HtmlTokenizerDiagnosticPhase::Tokenizer, c, evidence)
+    }
+    fn input_stream_code(diagnostic: super::input::InputDiagnostic) -> HtmlTokenizerDiagnostic {
+        match diagnostic {
+            super::input::InputDiagnostic::Surrogate => {
+                HtmlTokenizerDiagnostic::SurrogateInInputStream
+            }
+            super::input::InputDiagnostic::Noncharacter => {
+                HtmlTokenizerDiagnostic::NoncharacterInInputStream
+            }
+            super::input::InputDiagnostic::ControlCharacter => {
+                HtmlTokenizerDiagnostic::ControlCharacterInInputStream
+            }
+        }
     }
     fn error_at(
         &mut self,
-        code: DiagnosticCode,
-        phase: DiagnosticPhase,
+        code: HtmlTokenizerDiagnostic,
+        phase: HtmlTokenizerDiagnosticPhase,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
+        let source = self.current.clone();
+        self.error_at_source(code, phase, &source, c, evidence)
+    }
+    /// Reports at an explicit input frontier: the character a lookahead
+    /// examined is ahead of the last consumed one.
+    fn error_at_source(
+        &mut self,
+        code: HtmlTokenizerDiagnostic,
+        phase: HtmlTokenizerDiagnosticPhase,
+        source: &HtmlSourceRange,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), HtmlParseStop> {
         let id = evidence.append(
             c,
-            DiagnosticKind::Tokenizer(code),
-            DiagnosticContext::Tokenizer {
+            HtmlParseDiagnosticKind::Tokenizer(code),
+            HtmlParseDiagnosticContext::Tokenizer {
                 phase,
                 state: self.state,
             },
-            DiagnosticRule {
+            HtmlParseDiagnosticRule {
                 anchor: code.rule_anchor(),
                 branch: code.name(),
             },
             crate::construction::evidence::DiagnosticLocationInput {
-                source: &self.current,
-                role: crate::construction::evidence::DiagnosticLocationRole::InputFrontier,
+                source,
+                role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::InputFrontier,
                 token: None,
             },
         )?;
@@ -820,7 +942,7 @@ impl<'source> Tokenizer<'source> {
         end: usize,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let source = match self.range(start, end, c) {
             Ok(source) => source,
             Err(stop) => {
@@ -851,10 +973,10 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         point: u32,
         source: &HtmlSourceRange,
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let text = DraftText::build(c, |text, c| text.push(point, source, kind, c))?;
         self.emit(
             TokenKind::Text(text),
@@ -869,16 +991,16 @@ impl<'source> Tokenizer<'source> {
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.emit_current_point(point, self.current_kind, c, evidence)
     }
     fn emit_current_point(
         &mut self,
         point: u32,
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let text = DraftText::build(c, |text, c| text.push(point, &self.current, kind, c))?;
         self.emit(
             TokenKind::Text(text),
@@ -892,37 +1014,41 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-        self.emit_current_point(0xFFFD, OriginKind::NullReplacement, c, evidence)
+    ) -> Result<(), HtmlParseStop> {
+        self.error(
+            HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+            c,
+            evidence,
+        )?;
+        self.emit_current_point(0xFFFD, HtmlParseOriginKind::NullReplacement, c, evidence)
     }
-    fn clear_temporary(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn clear_temporary(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.temporary.value.clear(c)?;
         self.temporary.origins.clear(c)
     }
-    fn temp_matches(&self, expected: &[u8], c: &mut ParseControl) -> Result<bool, ParseStop> {
+    fn temp_matches(&self, expected: &[u8], c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
         ascii_eq(self.temporary.value.units(), expected, false, c)
     }
-    fn appropriate_end(&self, c: &mut ParseControl) -> Result<bool, ParseStop> {
+    fn appropriate_end(&self, c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
         let tag = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let a = tag.name.value.units();
         let b = self.last_start.units();
         if a.len() != b.len() {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             return Ok(false);
         }
         for (a, b) in a.iter().zip(b) {
-            c.charge(WorkCategory::InspectByte, 4)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
             if a != b {
                 return Ok(false);
             }
         }
         Ok(true)
     }
-    fn create_tag(&mut self, kind: TagKind, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn create_tag(&mut self, kind: TagKind, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         if self.tag.is_some() {
             admit_record_write(size_of::<Option<DraftTag>>(), 1, c)?;
             if let Some(old) = self.tag.take() {
@@ -946,18 +1072,22 @@ impl<'source> Tokenizer<'source> {
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-            OriginKind::NullReplacement
+            self.error(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+                c,
+                evidence,
+            )?;
+            HtmlParseOriginKind::NullReplacement
         } else if lower(point) != point {
-            OriginKind::AsciiLowercase
+            HtmlParseOriginKind::AsciiLowercase
         } else {
             self.current_kind
         };
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .name
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
@@ -970,7 +1100,7 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.finish_attribute(c, evidence)?;
         self.save_proof_range(
             ProofRole::Attribute,
@@ -981,13 +1111,13 @@ impl<'source> Tokenizer<'source> {
         let lexical = evidence.lexical_begin(
             c,
             &self.current,
-            LexicalKind::Attribute,
+            HtmlParseLexicalKind::Attribute,
             self.lexical.as_ref(),
         )?;
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .attribute = Some(DraftAttribute {
             name: DraftText::new(c)?,
             value: DraftText::new(c)?,
@@ -1004,23 +1134,27 @@ impl<'source> Tokenizer<'source> {
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.attribute_end(self.current.end(), c)?;
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-            OriginKind::NullReplacement
+            self.error(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+                c,
+                evidence,
+            )?;
+            HtmlParseOriginKind::NullReplacement
         } else if lower(point) != point {
-            OriginKind::AsciiLowercase
+            HtmlParseOriginKind::AsciiLowercase
         } else {
             self.current_kind
         };
         let tag = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         tag.attribute
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .name
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
@@ -1033,22 +1167,22 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         if let Some(a) = &mut t.attribute
             && !a.name_checked
         {
             let duplicate = t.names.insert(a.name.value.units(), c)?;
-            admit_record_write(2 * size_of::<bool>(), 2, c)?;
+            admit_record_write(const { 2 * size_of::<bool>() }, 2, c)?;
             a.duplicate = duplicate;
             a.name_checked = true;
             if a.duplicate {
                 admit_record_write(size_of::<bool>(), 1, c)?;
                 t.had_duplicates = true;
-                self.error(DiagnosticCode::DuplicateAttribute, c, evidence)?;
+                self.error(HtmlTokenizerDiagnostic::DuplicateAttribute, c, evidence)?;
             }
         }
         Ok(())
@@ -1056,18 +1190,18 @@ impl<'source> Tokenizer<'source> {
     fn attribute_value(
         &mut self,
         point: u32,
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
         source: &HtmlSourceRange,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.attribute_end(source.end(), c)?;
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         t.attribute
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .value
             .push(point, source, kind, c)
     }
@@ -1075,48 +1209,55 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.check_attribute_name(c, evidence)?;
         let t = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let Some(a) = &t.attribute else {
             return Ok(());
         };
         // Range validation may reject work admission. Retain the whole draft
         // in its owner until that checked provider call and removal admission
         // have succeeded, so terminal release can still dispose both buffers.
-        let source = Some(self.range(a.start, a.end, c)?);
+        let source = self.range(a.start, a.end, c)?;
         Self::retain_lexical_text(
             evidence,
             c,
             &a.lexical,
-            LexicalRole::Name,
+            HtmlParseLexicalRole::Name,
             a.name.origins.as_slice(),
         )?;
         Self::retain_lexical_text(
             evidence,
             c,
             &a.lexical,
-            LexicalRole::Value,
+            HtmlParseLexicalRole::Value,
             a.value.origins.as_slice(),
         )?;
         if a.value.value.len() == 0 {
             let anchor = self.range(a.end, a.end, c)?;
-            evidence.lexical_part(c, &a.lexical, LexicalRole::Value, &anchor, 0..0, None)?;
+            evidence.lexical_part(
+                c,
+                &a.lexical,
+                HtmlParseLexicalRole::Value,
+                &anchor,
+                0..0,
+                None,
+            )?;
         }
         evidence.lexical_finish(
             c,
             &a.lexical,
-            source.as_ref().expect("checked attribute"),
-            LexicalKind::Attribute,
+            &source,
+            HtmlParseLexicalKind::Attribute,
             if a.duplicate {
-                LexicalDisposition::DuplicateAttribute
+                HtmlParseLexicalDisposition::DuplicateAttribute
             } else if t.kind == TagKind::End {
-                LexicalDisposition::EndTagAttribute
+                HtmlParseLexicalDisposition::EndTagAttribute
             } else {
-                LexicalDisposition::StoredAttribute
+                HtmlParseLexicalDisposition::StoredAttribute
             },
         )?;
         if !a.duplicate {
@@ -1124,7 +1265,7 @@ impl<'source> Tokenizer<'source> {
             // A denied physical layout must not consume their cleanup tickets.
             self.tag
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
                 .attributes
                 .reserve_geometric(c, 1)?;
         }
@@ -1132,13 +1273,12 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         if let Some(a) = t.attribute.take() {
             if a.duplicate {
                 a.name.release(c)?;
                 a.value.release(c)?;
             } else {
-                let source = source.ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
                 let (name, value) = freeze_pair(a.name, a.value, c)?;
                 if let Err((stop, a)) = t.attributes.try_push_recover(
                     c,
@@ -1156,12 +1296,8 @@ impl<'source> Tokenizer<'source> {
         }
         Ok(())
     }
-    fn attribute_end(&mut self, end: usize, c: &mut ParseControl) -> Result<(), ParseStop> {
-        if self.cursor.is_progressive() {
-            let proof = self.boundary_proof(end, c)?;
-            admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
-            self.proofs.as_mut().expect("progressive").attribute.1 = proof;
-        }
+    fn attribute_end(&mut self, end: usize, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        self.save_single_proof(SingleProof::AttributeEnd, end, c)?;
         if let Some(t) = &mut self.tag
             && let Some(a) = &mut t.attribute
         {
@@ -1174,30 +1310,34 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.finish_attribute(c, evidence)?;
         if self.tag.as_ref().is_some_and(|t| t.kind == TagKind::End) {
             if self.tag.as_ref().is_some_and(|t| t.attributes.len() != 0) {
-                self.error(DiagnosticCode::EndTagWithAttributes, c, evidence)?;
+                self.error(HtmlTokenizerDiagnostic::EndTagWithAttributes, c, evidence)?;
             }
             if self.tag.as_ref().is_some_and(|t| t.self_closing) {
-                self.error(DiagnosticCode::EndTagWithTrailingSolidus, c, evidence)?;
+                self.error(
+                    HtmlTokenizerDiagnostic::EndTagWithTrailingSolidus,
+                    c,
+                    evidence,
+                )?;
             }
         }
         let t = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         if t.kind == TagKind::Start {
             self.last_start.clear(c)?;
             self.last_start.extend_units(t.name.value.units(), c)?;
         }
-        self.set_state(State::Data, c)?;
+        self.set_state(HtmlTokenizerState::Data, c)?;
         admit_record_write(size_of::<Option<DraftTag>>(), 1, c)?;
         let mut t = self
             .tag
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         t.names.nodes.release(c)?;
         let name = match t.name.freeze(c) {
             Ok(name) => name,
@@ -1222,7 +1362,7 @@ impl<'source> Tokenizer<'source> {
             evidence,
         )
     }
-    fn create_comment(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn create_comment(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
         self.comment = Some(DraftText::new(c)?);
         Ok(())
@@ -1232,16 +1372,20 @@ impl<'source> Tokenizer<'source> {
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-            OriginKind::NullReplacement
+            self.error(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+                c,
+                evidence,
+            )?;
+            HtmlParseOriginKind::NullReplacement
         } else {
             self.current_kind
         };
         self.comment
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .push(
                 if point == 0 { 0xFFFD } else { point },
                 &self.current,
@@ -1249,14 +1393,19 @@ impl<'source> Tokenizer<'source> {
                 c,
             )
     }
-    fn comment_syntax(&mut self, syntax: &[u8], c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn comment_syntax(&mut self, syntax: &[u8], c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let source = self.range(self.pending_syntax.start(), self.current.start(), c)?;
         for &p in syntax {
-            c.charge(WorkCategory::InspectByte, 1)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
             self.comment
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                .push(u32::from(p), &source, OriginKind::RecoverySyntax, c)?;
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                .push(
+                    u32::from(p),
+                    &source,
+                    HtmlParseOriginKind::RecoverySyntax,
+                    c,
+                )?;
         }
         Ok(())
     }
@@ -1264,13 +1413,13 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        self.set_state(State::Data, c)?;
+    ) -> Result<(), HtmlParseStop> {
+        self.set_state(HtmlTokenizerState::Data, c)?;
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
         let text = self
             .comment
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .freeze(c)?;
         self.emit(
             TokenKind::Comment(text),
@@ -1285,26 +1434,30 @@ impl<'source> Tokenizer<'source> {
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let kind = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-            OriginKind::NullReplacement
+            self.error(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+                c,
+                evidence,
+            )?;
+            HtmlParseOriginKind::NullReplacement
         } else if lower(point) != point {
-            OriginKind::AsciiLowercase
+            HtmlParseOriginKind::AsciiLowercase
         } else {
             self.current_kind
         };
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         if d.name.is_none() {
             admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
             d.name = Some(DraftText::new(c)?);
         }
         d.name
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
                 &self.current,
@@ -1314,43 +1467,47 @@ impl<'source> Tokenizer<'source> {
     }
     fn create_identifier(
         &mut self,
-        kind: Identifier,
+        kind: HtmlTokenizerIdentifier,
         c: &mut ParseControl,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
         *match kind {
-            Identifier::Public => &mut d.public,
-            Identifier::System => &mut d.system,
+            HtmlTokenizerIdentifier::Public => &mut d.public,
+            HtmlTokenizerIdentifier::System => &mut d.system,
         } = Some(DraftText::new(c)?);
         Ok(())
     }
     fn identifier_point(
         &mut self,
-        kind: Identifier,
+        kind: HtmlTokenizerIdentifier,
         point: u32,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let origin = if point == 0 {
-            self.error(DiagnosticCode::UnexpectedNullCharacter, c, evidence)?;
-            OriginKind::NullReplacement
+            self.error(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+                c,
+                evidence,
+            )?;
+            HtmlParseOriginKind::NullReplacement
         } else {
             self.current_kind
         };
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         match kind {
-            Identifier::Public => &mut d.public,
-            Identifier::System => &mut d.system,
+            HtmlTokenizerIdentifier::Public => &mut d.public,
+            HtmlTokenizerIdentifier::System => &mut d.system,
         }
         .as_mut()
-        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
         .push(
             if point == 0 { 0xFFFD } else { point },
             &self.current,
@@ -1358,19 +1515,19 @@ impl<'source> Tokenizer<'source> {
             c,
         )
     }
-    fn quirks(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn quirks(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .force_quirks = true;
         Ok(())
     }
-    fn mark_self_closing(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn mark_self_closing(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .self_closing = true;
         Ok(())
     }
@@ -1378,22 +1535,24 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        self.set_state(State::Data, c)?;
+    ) -> Result<(), HtmlParseStop> {
+        self.set_state(HtmlTokenizerState::Data, c)?;
         admit_record_write(size_of::<Option<DraftDoctype>>(), 1, c)?;
         let d = self
             .doctype
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
-        let mut drafts = [d.name, d.public, d.system];
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let mut frozen = std::array::from_fn::<_, 3, _>(|_| None);
-        for i in 0..3 {
-            if let Some(draft) = drafts[i].take() {
+        let mut slots = [d.name, d.public, d.system].into_iter().zip(&mut frozen);
+        while let Some((draft, slot)) = slots.next() {
+            if let Some(draft) = draft {
                 match draft.freeze(c) {
-                    Ok(text) => frozen[i] = Some(text),
+                    Ok(text) => *slot = Some(text),
                     Err(stop) => {
-                        for draft in drafts.into_iter().flatten() {
-                            draft.release(c)?;
+                        for (draft, _) in slots {
+                            if let Some(draft) = draft {
+                                draft.release(c)?;
+                            }
                         }
                         for text in frozen.into_iter().flatten() {
                             text.release(c)?;
@@ -1423,30 +1582,51 @@ impl<'source> Tokenizer<'source> {
         insensitive: bool,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<AsciiMatch, ParseStop> {
+    ) -> Result<AsciiMatch, HtmlParseStop> {
         let comparison = if insensitive {
             AsciiComparison::Insensitive
         } else {
             AsciiComparison::Sensitive
         };
-        let matched = if self.cursor.is_progressive() {
+        let lookahead = if self.cursor.is_progressive() {
             self.cursor.poll_matches_ascii(bytes, comparison, c)?
-        } else if self.cursor.matches_ascii(bytes, comparison, c)? {
-            AsciiMatch::Matched
         } else {
-            AsciiMatch::Mismatched
+            let lookahead = self.cursor.matches_ascii(bytes, comparison, c)?;
+            super::input::Lookahead {
+                result: if lookahead.result {
+                    AsciiMatch::Matched
+                } else {
+                    AsciiMatch::Mismatched
+                },
+                examined: lookahead.examined,
+            }
         };
+        // Report the next input character's stream error before the mismatch
+        // is acted on. The pinned standard sets no relative order between
+        // input-stream and tokenizer errors; this is the smallest rule
+        // consistent with html5lib test3.test case 80 and test4.test cases
+        // 60-62 (see the tokenizer ordering test).
+        if let Some(examined) = lookahead.examined {
+            self.error_at_source(
+                Self::input_stream_code(examined.diagnostic),
+                HtmlTokenizerDiagnosticPhase::InputStream,
+                &examined.source,
+                c,
+                evidence,
+            )?;
+        }
+        let matched = lookahead.result;
         if matched != AsciiMatch::Matched {
             return Ok(matched);
         }
         for _ in bytes {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             self.read(c, evidence)?;
             if let Some(occurrence) = self.lexical.as_ref() {
                 evidence.lexical_part(
                     c,
                     occurrence,
-                    LexicalRole::Syntax,
+                    HtmlParseLexicalRole::Syntax,
                     &self.current,
                     0..0,
                     None,
@@ -1459,14 +1639,14 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if let Some(tag) = self.tag.as_ref() {
             if let Some(occurrence) = self.lexical.as_ref() {
                 Self::retain_lexical_text(
                     evidence,
                     c,
                     occurrence,
-                    LexicalRole::Name,
+                    HtmlParseLexicalRole::Name,
                     tag.name.origins.as_slice(),
                 )?;
             }
@@ -1476,18 +1656,19 @@ impl<'source> Tokenizer<'source> {
             }
         }
         let text = DraftText::build(c, |text, c| {
-            text.push(0x3C, &self.less_than, OriginKind::Literal, c)?;
-            text.push(0x2F, &self.slash, OriginKind::Literal, c)?;
-            for i in 0..self.temporary.value.len() {
-                c.charge(WorkCategory::InspectByte, 2)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                let origin = &self.temporary.origins.as_slice()[i];
-                text.push(
-                    u32::from(self.temporary.value.units()[i]),
-                    &origin.source,
-                    origin.kind,
-                    c,
-                )?;
+            text.push(0x3C, &self.less_than, HtmlParseOriginKind::Literal, c)?;
+            text.push(0x2F, &self.slash, HtmlParseOriginKind::Literal, c)?;
+            self.temporary.require_paired(c)?;
+            for (&unit, origin) in self
+                .temporary
+                .value
+                .units()
+                .iter()
+                .zip(self.temporary.origins.as_slice())
+            {
+                c.charge_unit_inspection()?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                text.push(u32::from(unit), &origin.source, origin.kind, c)?;
             }
             Ok(())
         })?;
@@ -1513,34 +1694,35 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if let Some(occurrence) = self.lexical.as_ref() {
             Self::retain_lexical_text(
                 evidence,
                 c,
                 occurrence,
-                LexicalRole::Target,
+                HtmlParseLexicalRole::Target,
                 self.temporary.origins.as_slice(),
             )?;
         }
         self.create_comment(c)?;
         self.comment
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-            .push(0x3F, &self.slash, OriginKind::Literal, c)?;
-        for i in 0..self.temporary.value.len() {
-            c.charge(WorkCategory::InspectByte, 2)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let origin = &self.temporary.origins.as_slice()[i];
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+            .push(0x3F, &self.slash, HtmlParseOriginKind::Literal, c)?;
+        self.temporary.require_paired(c)?;
+        for (&unit, origin) in self
+            .temporary
+            .value
+            .units()
+            .iter()
+            .zip(self.temporary.origins.as_slice())
+        {
+            c.charge_unit_inspection()?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.comment
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
-                .push(
-                    u32::from(self.temporary.value.units()[i]),
-                    &origin.source,
-                    origin.kind,
-                    c,
-                )?;
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
+                .push(u32::from(unit), &origin.source, origin.kind, c)?;
         }
         self.clear_temporary(c)
     }
@@ -1548,18 +1730,18 @@ impl<'source> Tokenizer<'source> {
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<(), ParseStop> {
-        self.set_state(State::Data, c)?;
+    ) -> Result<(), HtmlParseStop> {
+        self.set_state(HtmlTokenizerState::Data, c)?;
         // Admit both removals before taking either nested owner.
-        admit_record_write(2 * size_of::<Option<DraftText>>(), 2, c)?;
+        admit_record_write(const { 2 * size_of::<Option<DraftText>>() }, 2, c)?;
         let target = self
             .pi_target
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let data = self
             .pi_data
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
         let (target, data) = freeze_pair(target, data, c)?;
         self.emit(
             TokenKind::ProcessingInstruction { target, data },
@@ -1569,18 +1751,33 @@ impl<'source> Tokenizer<'source> {
             evidence,
         )
     }
-    fn create_doctype(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    /// Drops the target and data drafts of an instruction that ends without a
+    /// token, once its lexical occurrence has retained their parts.
+    fn discard_pi(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        // Admit both removals before taking either nested owner.
+        admit_record_write(const { 2 * size_of::<Option<DraftText>>() }, 2, c)?;
+        let target = self.pi_target.take();
+        let data = self.pi_data.take();
+        if let Some(target) = target {
+            target.release(c)?;
+        }
+        if let Some(data) = data {
+            data.release(c)?;
+        }
+        Ok(())
+    }
+    fn create_doctype(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<Option<DraftDoctype>>(), 1, c)?;
         self.doctype = Some(DraftDoctype::empty());
         Ok(())
     }
-    fn finish_pi_target(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn finish_pi_target(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let replacement = DraftText::new(c)?;
         let data = DraftText::new(c)?;
         // Temporary removal, target insertion, and data insertion are a single
         // bounded transfer with no fallible operation after admission.
         if let Err(stop) = admit_record_write(
-            size_of::<DraftText>() + 2 * size_of::<Option<DraftText>>(),
+            const { size_of::<DraftText>() + 2 * size_of::<Option<DraftText>>() },
             3,
             c,
         ) {
@@ -1595,7 +1792,8 @@ impl<'source> Tokenizer<'source> {
 }
 fn lower(p: u32) -> u32 {
     if (0x41..=0x5A).contains(&p) {
-        p + 0x20
+        // Upper-case ASCII letters have bit 5 clear; setting it adds 0x20.
+        p | 0x20
     } else {
         p
     }
@@ -1614,13 +1812,13 @@ fn ascii_eq(
     bytes: &[u8],
     insensitive: bool,
     c: &mut ParseControl,
-) -> Result<bool, ParseStop> {
-    c.charge(WorkCategory::StateStep, 1)?;
+) -> Result<bool, HtmlParseStop> {
+    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
     if units.len() != bytes.len() {
         return Ok(false);
     }
     for (unit, byte) in units.iter().zip(bytes) {
-        c.charge(WorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         if (if insensitive {
             lower(u32::from(*unit))
         } else {

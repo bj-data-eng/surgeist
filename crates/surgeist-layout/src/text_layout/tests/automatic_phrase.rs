@@ -164,6 +164,7 @@ fn fixture_in_direction(
         },
     };
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: nodes.clone(),
@@ -203,12 +204,13 @@ fn fixture_in_direction(
         tree = tree.children(node, []).input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(
+                InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                         .unwrap(),
                     crate::InlineBoundaryEdgeOf::ZERO,
                 )
+                .unwrap()
                 .with_direction(
                     if direction == ParagraphBaseDirection::RightToLeft {
                         Direction::Rtl
@@ -236,6 +238,8 @@ fn rejects(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -257,6 +261,8 @@ fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -295,11 +301,15 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
     rejects(&f.tree, reused, TextBindingError::ControlCoverage);
     let tree = f.tree.clone().input(
         11,
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-            InlineBoundaryKind::End,
-            InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
-            crate::InlineBoundaryEdgeOf::ZERO,
-        )),
+        LayoutInputOf::inline_boundary(
+            InlineBoundaryInputOf::contribution(
+                InlineBoundaryKind::End,
+                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                    .unwrap(),
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .unwrap(),
+        ),
     );
     rejects(&tree, f.binding, TextBindingError::ParticipantRole);
 }
@@ -335,6 +345,8 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -382,7 +394,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Retained {
     caches: HashMap<u32, CacheOf<f64>>,
-    unrounded: HashMap<u32, NodeOutputOf<f64>>,
+    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, f64>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, f64>>,
 }
 
@@ -431,7 +443,7 @@ impl LayoutTree for CachedTree {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<f64>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, f64>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -456,7 +468,7 @@ impl LayoutBatchSink<u32, f64> for CachedTree {
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded.insert(entry.node(), entry.output());
+            next.unrounded.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)
@@ -475,6 +487,8 @@ fn compute(
         100,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -579,6 +593,8 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -646,6 +662,8 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
             100,
             paragraphs.to_vec(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

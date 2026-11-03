@@ -18,23 +18,19 @@
 //! only scalar values.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
-/// Why one bundled case is not asserted to match.
+/// Why one bundled case is not asserted to match: the pinned HTML edition
+/// defines different output. The case must still diverge from the corpus, and
+/// every run, in each listed initial state and both encodings, must equal the
+/// tokens (rendered as [`show_tokens`]) and ordered error codes derived from
+/// the pinned edition, so a stale record, a panic or any unrelated divergence
+/// fails.
 #[derive(Clone, Copy, Debug)]
-enum Exclusion {
-    /// The pinned HTML edition defines different output. The case must still
-    /// diverge from the corpus, and every run, in each listed initial state
-    /// and both encodings, must equal the tokens (rendered as
-    /// [`show_tokens`]) and ordered error codes derived from the pinned
-    /// edition, so a stale record, a panic or any unrelated divergence fails.
-    Spec {
-        reason: &'static str,
-        tokens: &'static str,
-        errors: &'static [&'static str],
-    },
-    /// A tracked divergence without a fix yet. Its output is not asserted
-    /// either way, but a panic still fails.
-    Defect(&'static str),
+struct Exclusion {
+    reason: &'static str,
+    tokens: &'static str,
+    errors: &'static [&'static str],
 }
 
 /// HTML877d tag open state: `<?` sets the temporary buffer to empty and enters
@@ -48,7 +44,7 @@ enum Exclusion {
 /// and `_` to whitespace, `?` or `>`; EOF in the target state also emits only
 /// end-of-file.
 const fn pi(tokens: &'static str, errors: &'static [&'static str]) -> Exclusion {
-    Exclusion::Spec {
+    Exclusion {
         reason: "HTML877d tag open state: U+003F enters processing-instruction open state",
         tokens,
         errors,
@@ -63,7 +59,8 @@ const INVALID_FIRST_THEN_NULL: &[&str] = &[
 ];
 
 /// Exclusions keyed by bundled file and one-based case ordinal. Every spec
-/// case lists only the data state. Spec renderings are [`show`] ASCII.
+/// case lists only the data state, which [`replay`] enforces through
+/// [`excluded_states_failure`]. Spec renderings are [`show`] ASCII.
 const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
     // Preprocessing normalizes CR and CRLF to LF before the PI open state.
     ("domjs.test", 1, pi(r#"Comment("?\u{a}")"#, INVALID_FIRST)),
@@ -76,13 +73,6 @@ const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
     // `>` ends the target; after-target reconsumes it in PI data, which emits.
     ("test2.test", 32, pi(r#"Pi("namespace", "")"#, &[])),
     ("test2.test", 33, pi(r#"Pi("foo--", "")"#, &[])),
-    (
-        "test3.test",
-        80,
-        Exclusion::Defect(
-            "#1345: control-character-in-input-stream for the character after `<!` is reported after incorrectly-opened-comment; the corpus reports it first",
-        ),
-    ),
     ("test3.test", 1159, pi("", EOF_IN_PI)),
     (
         "test3.test",
@@ -483,14 +473,14 @@ fn cases(raw: &str) -> Result<Vec<Case>, String> {
         .collect()
 }
 
-fn state(name: &str) -> Result<State, String> {
+fn state(name: &str) -> Result<HtmlTokenizerState, String> {
     Ok(match name {
-        "Data state" => State::Data,
-        "PLAINTEXT state" => State::Plaintext,
-        "RCDATA state" => State::Raw(Raw::Rcdata),
-        "RAWTEXT state" => State::Raw(Raw::Rawtext),
-        "Script data state" => State::Raw(Raw::Script),
-        "CDATA section state" => State::Cdata,
+        "Data state" => HtmlTokenizerState::Data,
+        "PLAINTEXT state" => HtmlTokenizerState::Plaintext,
+        "RCDATA state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata),
+        "RAWTEXT state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rawtext),
+        "Script data state" => HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script),
+        "CDATA section state" => HtmlTokenizerState::Cdata,
         other => return Err(format!("unknown initial state {other:?}")),
     })
 }
@@ -594,7 +584,7 @@ fn runs(case: &Case) -> Result<Vec<Run>, String> {
         for (encoding, source) in &sources {
             let last = case.last_start.as_deref();
             let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                collect(source, initial, last, initial == State::Cdata)
+                collect(source, initial, last, initial == HtmlTokenizerState::Cdata)
             }));
             let outcome = match run {
                 Err(panic) => Err(panic
@@ -629,6 +619,14 @@ fn differs(run: &Run, tokens: &str, errors: &[&str]) -> Option<String> {
             )
         }),
     }
+}
+
+/// Why a spec exclusion's case cannot stand on its single recorded rendering:
+/// the derivation covers the data state only, so a case that lists any other
+/// initial state needs a rendering per state first.
+fn excluded_states_failure(case: &Case) -> Option<String> {
+    (case.states != ["Data state"])
+        .then(|| format!("spec exclusion lists initial states {:?}", case.states))
 }
 
 /// The runs of one case that diverge from its corpus expectation.
@@ -673,14 +671,18 @@ fn replay(file: &str, raw: &str, count: usize) {
         match exclusion {
             None if divergences.is_empty() => {}
             None => failures.push(format!("{}\n  {}", context(), divergences.join("\n  "))),
-            Some(Exclusion::Spec { reason, .. }) if divergences.is_empty() => failures.push(
-                format!("{} now matches; stale spec exclusion: {reason}", context()),
-            ),
-            Some(Exclusion::Spec {
+            Some(Exclusion { reason, .. }) if divergences.is_empty() => failures.push(format!(
+                "{} now matches; stale spec exclusion: {reason}",
+                context()
+            )),
+            Some(Exclusion {
                 reason,
                 tokens,
                 errors,
             }) => {
+                if let Some(failure) = excluded_states_failure(case) {
+                    failures.push(format!("{}: {failure}", context()));
+                }
                 if !runs.iter().any(|run| run.utf8) {
                     failures.push(format!("{}: spec exclusion has no UTF-8 run", context()));
                 }
@@ -694,17 +696,6 @@ fn replay(file: &str, raw: &str, count: usize) {
                         context(),
                         differences.join("\n  ")
                     ));
-                }
-            }
-            Some(Exclusion::Defect(_)) => {
-                for run in &runs {
-                    if let Err(panic) = &run.outcome {
-                        failures.push(format!(
-                            "{} {}: actual tokenizer panicked: {panic}",
-                            context(),
-                            run.label
-                        ));
-                    }
                 }
             }
         }
@@ -756,7 +747,7 @@ bundled! {
 fn exclusions_name_only_bundled_files_once_with_reasons() {
     for (i, (file, ordinal, exclusion)) in EXCLUSIONS.iter().enumerate() {
         assert!(BUNDLED.contains(file), "{file}");
-        let (Exclusion::Spec { reason, .. } | Exclusion::Defect(reason)) = exclusion;
+        let Exclusion { reason, .. } = exclusion;
         assert!(!reason.is_empty(), "{file}/{ordinal} has no reason");
         assert!(
             !EXCLUSIONS[..i]
@@ -810,4 +801,30 @@ fn changed_corpus_token_or_error_order_is_reported_as_divergence() {
     case.errors.swap(0, 1);
     case.output[0] = Token::StartTag(units("a"), vec![(units("b"), units("d"))], false);
     assert_eq!(replay_case(&case).unwrap().len(), 2);
+}
+
+#[test]
+fn spec_exclusion_requires_exactly_the_data_state() {
+    let raw = |states: &str| {
+        format!(
+            r#"{{"tests": [{{"description": "x", "input": "a", "output": [["Character", "a"]]{states}}}]}}"#
+        )
+    };
+    let listed = |states: &str| cases(&raw(states)).unwrap().remove(0);
+    // An absent member means the data state, as does naming it.
+    assert_eq!(excluded_states_failure(&listed("")), None);
+    assert_eq!(
+        excluded_states_failure(&listed(r#", "initialStates": ["Data state"]"#)),
+        None
+    );
+    for states in [
+        r#", "initialStates": ["RCDATA state"]"#,
+        r#", "initialStates": ["Data state", "RCDATA state"]"#,
+        r#", "initialStates": []"#,
+    ] {
+        assert!(
+            excluded_states_failure(&listed(states)).is_some(),
+            "{states}"
+        );
+    }
 }

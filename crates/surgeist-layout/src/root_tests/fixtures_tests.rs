@@ -167,6 +167,8 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -351,6 +353,8 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -378,6 +382,8 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
         0,
         paragraphs,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -573,6 +579,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap(),
             InlineControlAlignment::Baseline,
             crate::InlineBoundaryEdgeOf::ZERO,
+            None,
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
@@ -786,7 +793,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     let second_atomic = atomic(32.0, InlineBreakOpportunity::Allowed);
     let third_atomic = atomic(36.0, InlineBreakOpportunity::Allowed);
     let fourth_atomic = atomic(40.0, InlineBreakOpportunity::Prohibited);
-    let line_strut = InlineBoundaryInputOf::new(
+    let line_strut = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(
             crate::InlineBaselineContext::Physical,
@@ -796,6 +803,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
     )
+    .unwrap()
     .with_writing_mode(WritingMode::HorizontalTb)
     .with_direction(direction);
     let root = NodeInputOf {
@@ -1135,7 +1143,7 @@ pub(super) fn fri06_c02_expected_physical_rect<S: LayoutScalar>(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Fri06C02RetainedTextState<S: LayoutScalar> {
-    pub(super) unrounded_nodes: HashMap<u32, NodeOutputOf<S>>,
+    pub(super) unrounded_nodes: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     pub(super) final_nodes: HashMap<u32, NodeOutputOf<S>>,
     pub(super) unrounded_fragments: HashMap<u32, Vec<InlineFragmentOutputOf<S>>>,
     pub(super) final_fragments: HashMap<u32, Vec<InlineFragmentOutputOf<S>>>,
@@ -1227,7 +1235,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         let text = paragraph.text_input(1);
         let binding = paragraph.binding(0);
         let atomic = prepared_atomic_style(25.25, 10.5, 0.0, 0.0);
-        let boundary = InlineBoundaryInputOf::new(
+        let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::Start,
             InlineMetricsOf::from_ascent_descent(
                 crate::InlineBaselineContext::Physical,
@@ -1236,7 +1244,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             )
             .unwrap(),
             crate::InlineBoundaryEdgeOf::ZERO,
-        );
+        )
+        .unwrap();
         let line_break = LineBreakInputOf::new().with_metrics(
             InlineMetricsOf::from_ascent_descent(
                 crate::InlineBaselineContext::Physical,
@@ -1375,6 +1384,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             0,
             vec![self.text.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1393,6 +1404,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             0,
             vec![self.text.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1502,7 +1515,10 @@ impl<S: LayoutScalar> LayoutTree for Fri06C02StatefulTextTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded_nodes.get(&node).copied()
     }
 
@@ -1546,7 +1562,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
         }
         for entry in batch.unrounded_entries() {
             let node = entry.node();
-            prepared.unrounded_nodes.insert(node, entry.output());
+            prepared.unrounded_nodes.insert(node, *entry);
             if matches!(self.inputs.get(&node), Some(LayoutInputOf::InlineText(_))) {
                 prepared.unrounded_fragments.insert(node, Vec::new());
             }

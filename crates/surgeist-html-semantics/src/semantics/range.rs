@@ -2,9 +2,12 @@
 //! Author conformance and rendering are separate from these recovered facts.
 
 use super::*;
-use crate::HtmlFloatingPointNumber;
-use surgeist_html::bounded::{
-    FloatingPointAllocationError, FloatingPointParseMode, try_floating_point_number,
+use surgeist_html::{
+    microsyntax::numeric::HtmlFloatingPointNumber, values::Attribute, vocabulary::KnownHtmlElement,
+};
+
+use surgeist_html::bounded::numeric::{
+    HtmlFloatingPointAllocationError, HtmlFloatingPointParseMode, try_floating_point_number,
 };
 
 /// The source-ordered, clamped six-point meter state.
@@ -77,10 +80,10 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let remaining = self.numeric_budget(raw.value().len())?;
         let result =
-            try_floating_point_number(raw.value(), FloatingPointParseMode::Recovery, remaining);
+            try_floating_point_number(raw.value(), HtmlFloatingPointParseMode::Recovery, remaining);
         let capacity = match &result {
             Ok(result) => result.capacity_bytes(),
-            Err(FloatingPointAllocationError::ActualCapacityLimitExceeded {
+            Err(HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded {
                 capacity_bytes,
                 ..
             }) => *capacity_bytes,
@@ -89,14 +92,15 @@ impl<'a> HtmlSemanticSession<'a> {
         self.record_allocated_bytes(capacity)?;
         let result = result.map_err(|error| {
             let kind = match error {
-                FloatingPointAllocationError::RepresentationExhausted => {
+                HtmlFloatingPointAllocationError::RepresentationExhausted => {
                     HtmlSemanticFailureKind::RepresentationExhausted
                 }
-                FloatingPointAllocationError::AllocationFailed { .. } => {
+                HtmlFloatingPointAllocationError::AllocationFailed { .. } => {
                     HtmlSemanticFailureKind::AllocationFailed
                 }
-                FloatingPointAllocationError::RequestedCapacityLimitExceeded {
-                    required, ..
+                HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
+                    required,
+                    ..
                 } => match self.usage.allocated_bytes.checked_add(required) {
                     Some(required) => HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
@@ -105,7 +109,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     },
                     None => HtmlSemanticFailureKind::RepresentationExhausted,
                 },
-                FloatingPointAllocationError::ActualCapacityLimitExceeded { .. } => {
+                HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,

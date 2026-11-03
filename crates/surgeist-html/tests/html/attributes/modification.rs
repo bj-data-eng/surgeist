@@ -1,5 +1,25 @@
 //! Literal expectations from HTML #attr-mod-datetime and §2.3.5.10.
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        modification::{
+            HtmlModificationDatetimeReport, HtmlModificationTimestamp,
+            HtmlModificationTimestampAbsence,
+        },
+    },
+    microsyntax::{
+        numeric::HtmlInteger,
+        temporal::{
+            HtmlDate, HtmlDateOrTime, HtmlDateWithOptionalTime, HtmlGlobalDateTime,
+            HtmlLocalDateTime, HtmlTime, HtmlTimeZoneOffset, HtmlYear,
+        },
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueInterpreter,
+        HtmlValueRecoveryState, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn attr(value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(KnownHtmlAttribute::Datetime.qualified_name(), value)
@@ -329,7 +349,7 @@ fn zero_capacity_admits_absence_and_empty_and_retained_reports_are_immutable() {
     let interpreter = HtmlValueInterpreter::new(0);
     let element = KnownHtmlElement::Ins.qualified_name();
     let absent = interpreter
-        .modification_datetime(&element, None::<&surgeist_html::Attribute>)
+        .modification_datetime(&element, None::<&surgeist_html::values::Attribute>)
         .unwrap();
     let empty = attr("");
     let present = interpreter

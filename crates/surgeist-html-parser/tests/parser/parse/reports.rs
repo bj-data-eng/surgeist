@@ -1,5 +1,11 @@
 use crate::parser::support::{fragment_context, limits};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::{HtmlDocumentMode, HtmlElement, HtmlNode, HtmlNodeId, HtmlNodeKind},
+    elements::input::HtmlInputValueMode,
+    parsing::HtmlParserScriptingMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlFragmentParseRequest,
     HtmlParseAssociationRelation, HtmlParseConstructionOperation, HtmlParseDestination,
@@ -118,7 +124,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), expected_errors.len());
         for (i, (code, anchor, branch, start, end)) in expected_errors.into_iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(i).unwrap();
+            let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
                 record.context(),
@@ -154,7 +160,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
         let associations = report.associations();
         let mut actual = Vec::new();
         for i in 0..associations.len() {
-            let row = associations.row(i).unwrap();
+            let row = associations.row(i).unwrap().unwrap();
             if row.relation() == HtmlParseAssociationRelation::Output
                 && let HtmlParseDestination::Field {
                     node,
@@ -211,6 +217,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
                 HtmlParseReverseStep::Cancelled => {
                     panic!("original cancellation cannot revoke immutable read")
                 }
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(complete, "one flat row per action must reach completion");
@@ -259,7 +266,7 @@ fn document_parse_owns_exact_source_native_and_complete_d1_after_cancellation() 
     assert!(!associations.is_empty());
     let mut character_reference = false;
     for index in 0..associations.len() {
-        let row = associations.row(index).unwrap();
+        let row = associations.row(index).unwrap().unwrap();
         if row.origin_kind() == Some(HtmlParseOriginKind::CharacterReference) {
             character_reference = true;
             assert_eq!(
@@ -329,6 +336,17 @@ fn public_resource_and_cancel_failures_retain_original_source_without_partial_ou
     assert_eq!(failure.cleanup_error(), None);
 }
 
+/// Observable stage of an ordinary document parse that a work stop reached.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ReachedStage {
+    /// The original request is retained but no execution owner exists yet.
+    Initialization,
+    /// Execution owns diagnostic evidence and the tree is still being built.
+    Construction,
+    /// Every node is allocated and closed; only publication work remains.
+    Transfer,
+}
+
 #[test]
 fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
     let literal =
@@ -340,48 +358,140 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
         .usage()
         .resource(HtmlParseResource::WorkCredits)
         .current();
-    // The exhaustive draft probe reached the transfer failure at 539305.
-    // Preserve both discovered boundaries and cover the short initialization
-    // prefix plus the final fixed receiver writes without repeating every
-    // previously exercised tokenizer/tree prefix on each suite run.
-    let cuts = (0..2048)
-        .chain([199_922, 199_923, 199_924, 539_304, 539_305, 539_306])
-        .chain(total.saturating_sub(32)..total);
-    for work in cuts {
-        let request = HtmlDocumentParseRequest::offline(
+    // HTML 877d tree construction yields Document, doctype, html, head, body,
+    // form, input, textarea and the textarea's one text node. The allocation
+    // count is the contract that identifies a finished tree at a work stop.
+    let tree_nodes = complete
+        .usage()
+        .resource(HtmlParseResource::ManagedNodes)
+        .current();
+    assert_eq!(tree_nodes, 9);
+
+    let reached = |failure: &surgeist_html_parser::HtmlParseFailure| {
+        let at_stop = failure
+            .at_stop()
+            .expect("every work stop keeps its snapshot");
+        if failure.diagnostics().is_none() {
+            ReachedStage::Initialization
+        } else if at_stop.resource(HtmlParseResource::ManagedNodes).current() == tree_nodes
+            && at_stop.resource(HtmlParseResource::OpenElements).current() == 0
+        {
+            ReachedStage::Transfer
+        } else {
+            ReachedStage::Construction
+        }
+    };
+    let cut = |work: u64| {
+        HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(literal),
             limits().into_builder().work_credits(work).finish().unwrap(),
-        );
-        let failure = request.parse().unwrap_err();
-        assert!(
-            matches!(
-                failure.reason(),
-                HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    ..
-                })
-            ),
-            "{work}: {:?}",
-            failure.reason()
-        );
-        assert_eq!(failure.cleanup_error(), None, "work {work}");
-        if let Some(usage) = failure.after_cleanup() {
-            for resource in [
-                HtmlParseResource::BufferedUtf16Units,
-                HtmlParseResource::TokenAttributes,
-                HtmlParseResource::ManagedEdges,
-                HtmlParseResource::ManagedAttributes,
-                HtmlParseResource::ManagedUtf16Units,
-                HtmlParseResource::OpenElements,
-            ] {
-                assert_eq!(
-                    usage.resource(resource).current(),
-                    0,
-                    "work {work}: {resource:?}"
-                );
+        )
+        .parse()
+        .unwrap_err()
+    };
+    // Locate each stage boundary at run time: the first budget whose stop
+    // reaches the stage. Stages only advance as the budget grows.
+    let first_reaching = |stage: ReachedStage| {
+        assert!(reached(&cut(0)) < stage, "{stage:?} needs work");
+        assert!(reached(&cut(total - 1)) >= stage, "{stage:?} is reachable");
+        let (mut short, mut enough) = (0, total - 1);
+        while short + 1 < enough {
+            let middle = short + (enough - short) / 2;
+            if reached(&cut(middle)) >= stage {
+                enough = middle;
+            } else {
+                short = middle;
             }
         }
+        enough
+    };
+    let construction = first_reaching(ReachedStage::Construction);
+    let transfer = first_reaching(ReachedStage::Transfer);
+    assert!(0 < construction && construction < transfer && transfer < total);
+
+    // The short initialization prefix, both stage boundaries, 32 evenly
+    // spaced cuts across initialization's remainder, construction and
+    // publication, and the final writes, without every intermediate prefix.
+    let spaced = |from: u64, to: u64| (0..32).map(move |i| from + (to - from) * i / 32);
+    let cuts = (0..2048)
+        .chain(construction.saturating_sub(2)..construction + 2)
+        .chain(transfer.saturating_sub(2)..transfer + 2)
+        .chain(spaced(2048, construction))
+        .chain(spaced(construction, transfer))
+        .chain(spaced(transfer, total))
+        .chain(total - 32..total);
+    for work in cuts {
+        let failure = cut(work);
+        let expected = if work < construction {
+            ReachedStage::Initialization
+        } else if work < transfer {
+            ReachedStage::Construction
+        } else {
+            ReachedStage::Transfer
+        };
+        assert_eq!(reached(&failure), expected, "work {work}");
+        let first = failure
+            .first_stop()
+            .expect("a work stop is an execution stop");
+        assert!(
+            matches!(
+                first,
+                HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    limit,
+                    ..
+                } if limit == work
+            ),
+            "work {work}: {first:?}"
+        );
+        assert_eq!(failure.reason(), HtmlParseFailureReason::Stop(first));
+        assert!(
+            failure
+                .at_stop()
+                .unwrap()
+                .resource(HtmlParseResource::WorkCredits)
+                .current()
+                <= work,
+            "work {work}: the budget is never overspent"
+        );
+        assert_eq!(failure.cleanup_error(), None, "work {work}");
+        // Cleanup is the contract on every cut, so its evidence must exist.
+        let after = failure
+            .after_cleanup()
+            .unwrap_or_else(|| panic!("work {work}: cleanup evidence is missing"));
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::SourceMapPayloadUnits,
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::DiagnosticPayloadUnits,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::OpenElements,
+            HtmlParseResource::ManagedCapacityBytes,
+        ] {
+            assert_eq!(
+                after.resource(resource).current(),
+                0,
+                "work {work}: {resource:?}"
+            );
+        }
     }
+    // The budget the complete parse consumed is sufficient.
+    HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(literal),
+        limits()
+            .into_builder()
+            .work_credits(total)
+            .finish()
+            .unwrap(),
+    )
+    .parse()
+    .unwrap();
 }
 
 #[test]
@@ -496,6 +606,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((input, textarea, select, option), (true, true, true, true));
@@ -509,7 +620,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
     let rows = report.associations();
     let mut attribute_rows = 0;
     for i in 0..rows.len() {
-        let row = rows.row(i).unwrap();
+        let row = rows.row(i).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::AttributeValue(slot),
@@ -523,6 +634,51 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
         }
     }
     assert!(attribute_rows >= 3);
+}
+
+#[test]
+fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
+    // The id event of the later form re-resolves the form attribute of the
+    // first input; the sixty inputs without a form attribute are not owned by
+    // the form, which is not their ancestor either.
+    let literal = format!(
+        "<!doctype html><body><input form=f>{}<form id=f></form>",
+        "<input name=a>".repeat(60)
+    );
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+        .parse()
+        .unwrap();
+    let document = report.document().unwrap();
+    let mut form = None;
+    let mut stack = vec![document.root().id()];
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("form"))
+        {
+            form = Some(id.clone());
+        }
+        stack.extend(node.children());
+    }
+    let form = form.unwrap();
+    let mut metadata = report.metadata();
+    let (mut associations, mut owned) = (0, 0);
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record) => {
+                if let Some(owner) = record.form_owner() {
+                    associations += 1;
+                    if let Some(owner) = owner {
+                        assert_eq!(owner.id(), form);
+                        owned += 1;
+                    }
+                }
+            }
+            HtmlParseMetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    assert_eq!((associations, owned), (61, 1));
 }
 
 #[test]
@@ -608,14 +764,14 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     assert!(
         matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
     );
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.len(), 2);
     let Some(HtmlParseEffect::AttachShadow {
         host: HtmlParseEffectHost::Captured(host),
         contents,
         source,
         ..
-    }) = effects.effect(0)
+    }) = effects.effect(0).unwrap()
     else {
         panic!("captured shadow attachment")
     };
@@ -631,7 +787,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     );
     assert!(matches!(
         effects.effect(1),
-        Some(HtmlParseEffect::TemplateCache { .. })
+        Ok(Some(HtmlParseEffect::TemplateCache { .. }))
     ));
     assert_eq!(report.usage(), &usage);
 }
@@ -647,7 +803,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
     let mut final_group = None;
     let mut retired = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if matches!(
             row.destination(),
             HtmlParseDestination::Field {
@@ -658,7 +814,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
         {
             final_group = row.group();
         }
-        if row.cause().retired_destination().is_some() {
+        if row.cause().retired_destination().unwrap().is_some() {
             retired = true;
         }
     }
@@ -689,6 +845,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
             }
             HtmlParseHistoryStep::Complete => break,
             HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(units, [65, 38, 66]);
@@ -708,6 +865,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
             HtmlParseReverseStep::Skipped => {}
             HtmlParseReverseStep::Complete => break,
             HtmlParseReverseStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(count > 0);
@@ -762,7 +920,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
     let history = report.history_view();
     let (mut attribute, mut pi, mut original) = (false, false, false);
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         match row.destination() {
             HtmlParseDestination::Field {
                 node,
@@ -783,9 +941,9 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
         let cause = row.cause();
         if let Some(HtmlParseRetiredDestination::StagedField {
             field: HtmlParseField::AttributeValue(0),
-        }) = cause.retired_destination()
+        }) = cause.retired_destination().unwrap()
         {
-            let group = cause.original_group().unwrap();
+            let group = cause.original_group().unwrap().unwrap();
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
             let mut units = Vec::new();
@@ -795,6 +953,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
                     HtmlParseHistoryStep::Leaf(leaf) => units.extend_from_slice(leaf.units()),
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(units, [65, 13, 66, 10, 67]);
@@ -814,6 +973,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(value, Some(&DocumentString::from("x&y")));
@@ -1110,7 +1270,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
     let mut actual_origins = Vec::new();
     let associations = report.associations();
     for i in 0..associations.len() {
-        let row = associations.row(i).unwrap();
+        let row = associations.row(i).unwrap().unwrap();
         if row.relation() != HtmlParseAssociationRelation::Output {
             continue;
         }
@@ -1178,7 +1338,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
     .into_iter()
     .enumerate()
     {
-        let (record, location) = diagnostics.retained_record(i).unwrap();
+        let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
         assert_eq!(record.kind(), kind);
         assert_eq!(record.context(), context);
         assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
@@ -1191,7 +1351,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
         assert_eq!(location.role(), role);
         assert_eq!(location.token(), token);
     }
-    assert!(diagnostics.retained_record(2).is_none());
+    assert!(diagnostics.retained_record(2).unwrap().is_none());
     assert_eq!(report.usage(), &usage);
 }
 
@@ -1232,7 +1392,7 @@ fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnosti
     }
     let diagnostics = report.diagnostics();
     assert_eq!(diagnostics.len(), 1);
-    let (record, location) = diagnostics.retained_record(0).unwrap();
+    let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind(),
         HtmlParseDiagnosticKind::Prologue(HtmlPrologueDiagnostic::MissingDoctype)
@@ -1253,7 +1413,7 @@ fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnosti
         HtmlParseDiagnosticLocationRole::TokenEnvelope
     );
     assert_eq!(location.token(), Some(HtmlParseTokenFamily::Eof));
-    assert!(diagnostics.retained_record(1).is_none());
+    assert!(diagnostics.retained_record(1).unwrap().is_none());
     assert_eq!(report.usage(), &usage);
 }
 
@@ -1288,7 +1448,7 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
     let mut historical_name = false;
     let mut current_tail = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::AttributeName(2),
@@ -1301,12 +1461,12 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
         if let Some(HtmlParseRetiredDestination::Field {
             node,
             field: HtmlParseField::AttributeName(2),
-        }) = cause.retired_destination()
+        }) = cause.retired_destination().unwrap()
         {
             assert_eq!(node.id(), details[1]);
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history
-                .cursor(cause.original_group().unwrap(), &mut scratch, None)
+                .cursor(cause.original_group().unwrap().unwrap(), &mut scratch, None)
                 .unwrap();
             let mut units = Vec::new();
             loop {
@@ -1315,6 +1475,7 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
                     HtmlParseHistoryStep::Leaf(leaf) => units.extend_from_slice(leaf.units()),
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(units, [111, 112, 101, 110]);
@@ -1397,6 +1558,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(found, 1);
@@ -1421,6 +1583,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(inputs, 2);
@@ -1500,6 +1663,7 @@ fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel(
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(inputs, 1);
@@ -1570,6 +1734,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(inputs, 1);
@@ -1582,7 +1747,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
         let history = report.history_view();
         let mut normalized = 0;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if row.origin_kind() != Some(HtmlParseOriginKind::InputValueNormalization)
                 || row.relation() != HtmlParseAssociationRelation::Output
             {
@@ -1602,7 +1767,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                 cause.operation(),
                 HtmlParseConstructionOperation::Replacement
             );
-            let original = cause.original_group().unwrap();
+            let original = cause.original_group().unwrap().unwrap();
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history.cursor(original, &mut scratch, None).unwrap();
             let mut units = Vec::new();
@@ -1615,6 +1780,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                     }
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(
@@ -1678,7 +1844,7 @@ fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_captu
     assert!(
         matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
     );
-    assert_eq!(report.effects().unwrap().len(), 0);
+    assert_eq!(report.effects().unwrap().unwrap().len(), 0);
     assert_eq!(report.usage(), &usage);
 }
 
@@ -1759,7 +1925,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), expected.len());
         for (index, (code, state, anchor, branch, start, end)) in expected.into_iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
                 record.context(),
@@ -1786,7 +1952,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         let mut data = Vec::new();
         let mut end = false;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if let HtmlParseDestination::Lexical {
                 occurrence,
                 part: Some(part),
@@ -1875,6 +2041,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
                 HtmlParseReverseStep::Cancelled => {
                     panic!("completed immutable evidence has no parse cancellation lease")
                 }
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(reverse_anchor);
@@ -2012,7 +2179,7 @@ fn assert_value_sharing_origin(
     let rows = report.associations();
     let mut actual = Vec::new();
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if row.relation() == HtmlParseAssociationRelation::Output
             && let HtmlParseDestination::Field {
                 node,
@@ -2299,7 +2466,7 @@ fn report_value_sharing_preserves_raw_surrogates_and_each_source_interval() {
     let diagnostics = report.diagnostics();
     assert_eq!(diagnostics.len(), 2);
     for index in 0..2 {
-        let (record, location) = diagnostics.retained_record(index).unwrap();
+        let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
         assert_eq!(
             record.kind(),
             HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::SurrogateInInputStream)

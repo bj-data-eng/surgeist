@@ -1,10 +1,17 @@
-use crate::semantics::support::{dimension_semantic_limits as limits, session};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, dimension_capture_limits,
+    dimension_semantic_limits as limits, result_record_bytes, session, tenth_capture_limits,
+};
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlRationalError},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlDimensionApplicability,
-    HtmlDimensionAuthorSyntax, HtmlDimensionOmission, HtmlDimensionPair, HtmlDimensionTolerance,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
+    HtmlCapturedIsValue, HtmlDimensionApplicability, HtmlDimensionAuthorSyntax,
+    HtmlDimensionOmission, HtmlDimensionPair, HtmlDimensionTolerance,
     HtmlEmbeddedDimensionAuthorReadback, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
     HtmlNaturalDimensionFactsError, HtmlNaturalDimensionLimits, HtmlNaturalDimensionMissing,
     HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision, HtmlNaturalDimensionUnsupported,
@@ -30,10 +37,7 @@ fn key() -> HtmlNaturalResourceKey {
     HtmlNaturalResourceKey::new(HtmlNaturalResourceId::fresh(), 11, 13)
 }
 fn fixture(local: &str, attrs: &[(&str, &str)]) -> (HtmlCapture, HtmlCaptureSubjectId) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(dimension_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -712,10 +716,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
             HtmlDimensionApplicability::Inapplicable,
         ),
     ] {
-        let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-            HtmlHostFactsRevision::fresh(),
-        );
+        let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
         let d = b
             .add_document(
                 HtmlDocumentMode::NoQuirks,
@@ -769,10 +770,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
 }
 #[test]
 fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -818,10 +816,7 @@ fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() 
 
 #[test]
 fn isolated_surrogate_author_value_is_preserved_invalid_and_cannot_supply_a_prefix() {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
+    let mut b = HtmlCaptureBuilder::new(tenth_capture_limits(), HtmlHostFactsRevision::fresh());
     let d = b
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -865,38 +860,29 @@ fn isolated_surrogate_author_value_is_preserved_invalid_and_cannot_supply_a_pref
 fn actual_successful_peak_and_byte_admissions_accept_exact_capacity_and_refuse_one_less() {
     let (c, id) = fixture("img", &[("width", "99"), ("height", "49")]);
     let cx = context(&c, &id, Some((rational("2", "1"), rational("1", "1"))));
-    let full = run(&c, &cx, &id);
-    let peak = full.usage().peak_scratch_records();
-    let bytes = full.usage().allocated_bytes();
-    let mut exact = session(
+    // Exact rational comparison materializes numeric values whose scratch and
+    // byte accounting are owned by the HTML numeric materializer (variable
+    // big-number storage), so those amounts are that owner's published tariff:
+    // each must be charged, and the bytes must at least cover the result
+    // record. The readback is a scalar classification, so it retains one result
+    // record and no nested records. The exact cap on every resource must
+    // reproduce the full report and one short must stop with exactly that
+    // resource.
+    let full = assert_exact_and_one_short_caps(
+        "natural dimensions",
         &c,
         &cx,
-        HtmlSemanticLimits::new(10000000, 100, peak, 10000, bytes, 100),
         100,
-        HtmlSemanticCancellation::new(),
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
     );
-    assert_eq!(
-        result(&exact.query(&[request(&id)]).unwrap()).pair(),
-        result(&full).pair()
-    );
-    assert_eq!(exact.usage().scratch_records(), 0);
-    for (l, resource) in [
-        (
-            HtmlSemanticLimits::new(10000000, 100, peak - 1, 10000, bytes, 100),
-            HtmlSemanticResource::ScratchRecords,
-        ),
-        (
-            HtmlSemanticLimits::new(10000000, 100, peak, 10000, bytes - 1, 100),
-            HtmlSemanticResource::AllocatedBytes,
-        ),
-    ] {
-        let mut s = session(&c, &cx, l, 100, HtmlSemanticCancellation::new());
-        let e = s.query(&[request(&id)]).unwrap_err();
-        assert!(
-            matches!(e.kind(),HtmlSemanticFailureKind::LimitExceeded { resource:r,.. } if *r==resource)
-        );
-        assert_eq!(s.usage().scratch_records(), 0);
-    }
+    assert_eq!(result(&full).pair(), result(&run(&c, &cx, &id)).pair());
 }
 #[test]
 fn completed_report_remains_qualified_to_its_old_resource_when_a_new_context_selects_another_resource()

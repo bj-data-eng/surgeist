@@ -121,7 +121,10 @@ fn close_queue(
             else {
                 panic!("mandatory actual final QueueClose")
             };
-            assert_eq!(close.action(), surgeist_html::HtmlDialogAction::QueueClose);
+            assert_eq!(
+                close.action(),
+                surgeist_html::elements::dialog::HtmlDialogAction::QueueClose
+            );
             close
         } else {
             toggle

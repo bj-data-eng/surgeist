@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::store::{Node, State};
-use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
+use crate::{DocumentId, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
 use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
+use surgeist_html::values::DocumentString;
 
 /// A borrowed view of a node's immutable payload in one captured snapshot.
 /// Copying this view preserves its snapshot lifetime and creates no node.
@@ -276,7 +277,7 @@ impl<'a> DomNode<'a> {
             .shadow_root(root)
             .expect("canonical root")
             .state();
-        (state.mode() == crate::HtmlShadowRootMode::Open).then_some(root)
+        (state.mode() == surgeist_html::construction::HtmlShadowRootMode::Open).then_some(root)
     }
     /// The exact ShadowRoot's host. Template contents instead use fragment_host().
     pub fn shadow_host(self) -> Option<NodeId> {
@@ -446,7 +447,7 @@ impl<'a> DomNode<'a> {
     /// Exact namespace/local-name lookup; HTML input casing does not apply.
     pub fn attribute_ns(
         self,
-        namespace: &crate::Namespace,
+        namespace: &surgeist_html::values::Namespace,
         local_name: &DocumentString,
     ) -> Option<&'a DocumentString> {
         self.as_element()?.attribute_ns(namespace, local_name)

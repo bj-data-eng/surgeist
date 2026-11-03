@@ -83,7 +83,7 @@ identifies the exact edition, upstream license and source adaptations.
 
 <a id="checked-custom-element-names"></a>
 
-[HtmlCustomElementName](../../crates/surgeist-html/src/custom_names.rs) checks the pinned
+[HtmlCustomElementName](../../crates/surgeist-html/src/internal/values/custom_names.rs) checks the pinned
 [valid-custom-element-name predicate](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#valid-custom-element-name).
 Its private value retains exact UTF-16 without trimming, case folding or
 normalization. The name must begin with a lowercase ASCII letter, contain a
@@ -96,7 +96,7 @@ serialized HTML syntax.
 
 Moving `into_qualified_name` emits an unprefixed HTML name;
 `into_is_attribute` emits a lowercase no-namespace `is` attribute. Both preserve
-the checked value. [HtmlValueInterpreter::is_attribute](../../crates/surgeist-html/src/attributes/custom_name.rs)
+the checked value. [HtmlValueInterpreter::is_attribute](../../crates/surgeist-html/src/internal/attributes/custom_name.rs)
 admits the original raw value's UTF-16 length before expanded-name applicability
 and checks this same predicate. An applicable absent attribute remains Missing;
 empty or invalid content remains raw and locally Nonconforming with a typed
@@ -216,7 +216,7 @@ preload and modulepreload author requirements independently when both tokens
 occur. Missing preload `as` fails required presence; modulepreload `as` is
 optional. Content-only interpretation leaves those context checks Unchecked.
 
-The [link-destination report](../../crates/surgeist-html/src/attributes/link_destination.rs) also gives
+The [link-destination report](../../crates/surgeist-html/src/internal/attributes/link_destination.rs) also gives
 symbolic destination decisions. Modulepreload projects script from no state,
 including invalid values, while retaining the author failure. A recognized
 image remains an out-of-domain image state. This projection does not assert that
@@ -296,7 +296,7 @@ external grammar and required contextual facts.
 
 `HtmlScriptTypeKeyword` emits the three canonical authored `type` keywords:
 module, importmap and speculationrules. The
-[script type reports](../../crates/surgeist-html/src/attributes/script_type.rs) keep current content meaning
+[script type reports](../../crates/surgeist-html/src/internal/attributes/script_type.rs) keep current content meaning
 separate from type/language preparation classification. `script_type` observes
 the exact HTML script/type role: missing, empty and any of the sixteen
 [pinned JavaScript MIME essences](../../references/mimesniff-javascript-essence--39aa53511b13.md)
@@ -322,7 +322,7 @@ the whole script element.
 These standalone reports admit each complete selected raw UTF-16 value before
 applicability or override, including language overridden by type. They use
 ordinary allocation and the per-value cap, with no aggregate physical-memory,
-controlled-work or cancellation promise. The [shared borrowed cursor](../../crates/surgeist-html/src/script_type.rs)
+controlled-work or cancellation promise. The [shared borrowed cursor](../../crates/surgeist-html/src/internal/elements/script_type.rs)
 also drives the actual private classifier through its existing controller;
 each comparison/trim read follows admission, without allocating a synthetic
 language string. Public `HtmlScriptKind` describes current classification and
@@ -384,6 +384,15 @@ processing state remain independent. Group keywords leave actual table
 anchoring Unchecked; the existing TableModel continues to own header
 associations. These local reports use ordinary allocation and admit the entire
 original UTF-16 value before applicability through the per-value cap.
+
+`bounded::attributes::th_scope_state` returns the same scope state without a report, and
+`bounded::attributes::th_scope_work_bound(n)` publishes its worst-case work for an n-unit raw
+value, computed from the keyword table. Every value costs five admitted reads
+(the value header and four keyword headers); unit comparisons occur only against
+a keyword of the value's own length. That adds at most four reads at length 3
+(`row` and `col`, nine in all) and nine at length 8 (`rowgroup` and `colgroup`,
+fourteen in all), and nothing at any other length, however long. The caller
+admits the raw length and charges the bound before the call.
 
 `textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
 conformance separately; missing and invalid content select Soft. Hard leaves
@@ -458,6 +467,14 @@ when actual col children are present, table formation uses their spans and
 ignores the group's own span. The [column clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-colgroup-element)
 and existing captured table kernel own those contextual distinctions. These
 standalone reports provide neither a resolved group width nor an IDL getter.
+
+`bounded::attributes::HtmlTableSpanRule` is the allocation-free entry point for the four span
+rules (cell colspan and rowspan, col span, colgroup span). `content_value` returns
+the same content value the matching report reader selects, from the same cap and
+zero declarations, without a report or any clone of the raw value.
+`work_bound(n)` publishes the owner's bound for an n-unit raw value: at most
+`3n + 2` units, each a raw-unit inspection, a digit projection step, or one of two
+fixed reads. The caller admits the raw length and charges the bound before the call.
 
 `select_size` combines exact size content with the actual multiple attribute.
 Native size construction requires a positive integer. Processing preserves every
@@ -632,7 +649,7 @@ and exact nonnegative-integer prefix recovery on img/iframe/embed/object/video.
 or a source element's actual parent: input requires Image, and source requires
 an HTML picture parent. Unavailable parent evidence remains distinct from an
 established other parent or no parent. Missing and failed dimensions receive no
-canvas defaults. These [local image values](../../crates/surgeist-html/src/attributes/image_values.rs) use
+canvas defaults. These [local image values](../../crates/surgeist-html/src/internal/attributes/image_values.rs) use
 ordinary allocation and per-original-value UTF-16 admission.
 
 The semantic query `EmbeddedDimensionAuthorConformance` checks resource-dependent
@@ -884,7 +901,7 @@ limits, and reports retain its exact producer/configuration revision.
 
 <a id="shared-intrinsic-control-rules"></a>
 
-The [shared input rules](../../crates/surgeist-html/src/input.rs) use `HtmlInputType` as the canonical
+The [shared input rules](../../crates/surgeist-html/src/internal/elements/input.rs) use `HtmlInputType` as the canonical
 22-state identity for attribute interpretation, `HtmlInputFlags::input_type()`
 and parser metadata. They expose fixed state and source-ordered requirements
 for Hidden, Text, Search, Telephone, Password, Checkbox, Radio, Email, URL,
@@ -964,7 +981,7 @@ The native Value setter's final cursor action requires a changed sanitized
 value and an actual cursor after generic clamping; a retained selection does
 not imply that action. These rules own no controller, tree or event queue.
 
-[Textarea, select and option flags](../../crates/surgeist-html/src/control_values.rs) similarly own fixed
+[Textarea, select and option flags](../../crates/surgeist-html/src/internal/elements/control_values.rs) similarly own fixed
 local state and transitions. Textarea child changes consult its dirty flag;
 reset clears dirty/user-validity before replacing raw text; cloning transfers
 dirty state with a separately copied raw value. Option selected-attribute
@@ -1357,10 +1374,10 @@ whole meta conformance. Closed Query/Fact additions are intentionally breaking.
 `HtmlValueInterpreter::media` preserves original media content and distinguishes
 absence, specified empty, the five ASCII whitespace characters and other UTF-16
 content. `media_for_meta` adds the actual name field for theme-color placement.
-These [local reports](../../crates/surgeist-html/src/attributes/media.rs) leave CSS grammar unchecked.
+These [local reports](../../crates/surgeist-html/src/internal/attributes/media.rs) leave CSS grammar unchecked.
 The [pinned media clause](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#mq)
 defines the HTML match branch separately from CSS parsing.
-The shared [borrowed cursor](../../crates/surgeist-html/src/media.rs) performs no allocation or normalization.
+The shared [borrowed cursor](../../crates/surgeist-html/src/internal/elements/media.rs) performs no allocation or normalization.
 
 Captured `HtmlSemanticQuery::MediaAttributeRules` separates CSS grammar evidence
 from the HTML processing condition. Empty and ASCII-whitespace-only content
@@ -1392,7 +1409,7 @@ Rust matches.
 
 <a id="captured-meta-pragma-content"></a>
 
-[HtmlValueInterpreter::meta_http_equiv](../../crates/surgeist-html/src/attributes/meta_pragma.rs) recognizes
+[HtmlValueInterpreter::meta_http_equiv](../../crates/surgeist-html/src/internal/attributes/meta_pragma.rs) recognizes
 the seven source-defined pragma states with whole ASCII-insensitive keyword
 matching, without trimming or Unicode folding. Missing, empty and unrecognized
 values select no state. The report preserves exact raw UTF-16 and keeps
@@ -1462,7 +1479,7 @@ intentionally breaking for exhaustive matches.
 
 [Form names](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#attr-form-name)
 are optional, but a specified value must be nonempty. The local
-[HtmlFormName and form_name report](../../crates/surgeist-html/src/attributes/form_name.rs) preserve exact
+[HtmlFormName and form_name report](../../crates/surgeist-html/src/internal/attributes/form_name.rs) preserve exact
 UTF-16, including whitespace, NULL and isolated surrogates, without trimming,
 tokenization or case folding. Native emission moves the checked value into
 canonical no-namespace lowercase `name`; it does not certify uniqueness.
@@ -1509,7 +1526,7 @@ remain separate.
 
 [Map names](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#attr-map-name)
 must be specified, nonempty and free of ASCII whitespace. The local
-[HtmlValueInterpreter::map_name report](../../crates/surgeist-html/src/attributes/map_name.rs) admits the
+[HtmlValueInterpreter::map_name report](../../crates/surgeist-html/src/internal/attributes/map_name.rs) admits the
 original raw value before expanded-name applicability and preserves Missing,
 Empty, invalid and Unapplied states without a default. The existing
 `HtmlSpaceToken` validator owns the syntax; `into_map_name_attribute` emits
@@ -2061,6 +2078,156 @@ Constructing a request admits no source and produces no parse result. The caps
 describe logical storage, known allocation layouts and work credits, rather than
 wall-clock time, process memory or allocator headers.
 
+<a id="semantic-query-work"></a>
+
+The `work` allowance of [HtmlSemanticLimits](../../crates/surgeist-html-semantics/src/semantics.rs)
+counts one unit per visit, unit read or write. This section states the charges
+that are stable enough for tests to pin; the work of every other query is only
+required to be charged, and its layout is not part of the contract. The shared
+primitives (result reservation, subject lookup, namespace test, vocabulary
+recognition, attribute lookup and record reservation) are summarized in the
+type's documentation; the code locations named below show where each charge is
+made and are not API.
+
+Notation: `N` is `KnownHtmlElement::ALL.len()`. `K(l)` is the recognition charge
+of an HTML element whose local name has `l` UTF-16 units, `(l + 1) * N + 28`;
+for a namespace with `u` units it is `(l + 1) * N + u`, and 0 units for no
+namespace. `D` is the 29 units of a matched HTML namespace test (1 plus 28
+compared units); a namespace test whose length differs from the expected length
+costs 1. The *query prefix* is the batch's one result reservation (1, charged
+once per non-empty batch), the request's subject lookup (1) and, for an element
+subject, the HTML namespace test of the subject (`D` when it is in the HTML
+namespace). Every query stated below pays that test. The author-context,
+media-rules, template-for, nonce, link-relationship and noopener queries, which
+handle foreign namespaces themselves, and the document-level feed, manifest and
+icon queries, which are dispatched before the subject is classified, do not, and
+none of them is stated here. Each result write adds 1. A text subject answered `Inapplicable` by an
+element-only query therefore costs the reservation, the lookup and the write: 3.
+
+- **Tree walk** (shared by the walks below; [code](../../crates/surgeist-html-semantics/src/semantics.rs)).
+  Entering an element, document or fragment charges 1 and, whether or not it
+  has children, one frame reservation (1) and one push (1). Resuming charges 1
+  per loop iteration: an iteration that finds a next child ends it, one that
+  finds an exhausted frame pops it and iterates again, and an empty stack ends
+  the walk with a final iteration. Other node kinds are not entered.
+- **Text content** (shared by the text queries; [code](../../crates/surgeist-html-semantics/src/semantics/control_text.rs)).
+  Entry is a lookup (1) and 1. In direct-child mode each child costs a loop
+  charge (1) and a lookup
+  (1), and the end of the child list costs 1; only text children contribute and
+  elements are not entered. In descendant mode a node with at least one child
+  costs one frame (reservation 1, push 1); each iteration costs 1, an exhausted
+  frame costs a further 1 for the pop, and each yielded node costs a lookup (1).
+  Every element node also costs 1 to be entered (a document or fragment cannot
+  be an ordinary child), plus a
+  frame (2) only when it has children; a childless one costs just that 1. No
+  vocabulary recognition is charged. Each text unit costs 3: a read (1), an exact
+  one-record reservation (1) and a push (1). Closing charges 1.
+- **Intrinsic envelope** ([code](../../crates/surgeist-html-semantics/src/semantics.rs)).
+  One charge of `3 * (element units + 1) * N + (attribute-name units + 1) *
+  KnownHtmlAttribute::ALL.len() + value units * keywords + 3 * (namespace units
+  + 1)`, where an absent attribute has 0 name and value units.
+- **Non-element subject.** See the notation above: 3 for an element-only query.
+- **TextareaDefaultValue, OutputValue, OutputDefaultValue** ([code](../../crates/surgeist-html-semantics/src/semantics/control_text.rs)).
+  The query prefix, then a second lookup (1), `D` and `K(l)` of `textarea` or
+  `output`, then text content: direct-child for `TextareaDefaultValue`,
+  descendant for `OutputValue`. `OutputDefaultValue` scans the supplied override
+  records at 1 per record up to and including the subject's. A text override
+  then costs 1 and returns the shared string with no further allocation; a null
+  override continues with descendant text content. An absent record is not
+  stated.
+- **TitleText** ([code](../../crates/surgeist-html-semantics/src/semantics/document_title.rs)).
+  The query prefix, the local-name test of a `title` element (1 plus its 5 compared units), then direct-child
+  text content.
+- **AdvisoryInformation** ([code](../../crates/surgeist-html-semantics/src/semantics/advisory_title.rs)).
+  The query prefix, then for each HTML element on the path from the subject:
+  the `title` attribute scan (1 per attribute scanned plus one per compared unit
+  of a length-matching name) and 1 for the presence test. A present attribute
+  charges 1 (raw admission), its normalization (1 per raw unit read plus 2 per
+  kept unit, a reservation and a push; a line feed that follows a carriage return
+  is read but not kept), a closing 1 and 1 for the record. An absent attribute
+  charges the boundary test (1, plus one per compared unit of `link` or `style`
+  for a name of 4 or 5 units, up to the first mismatch); a boundary ends the walk
+  with the empty answer (1). Otherwise the walk steps to the parent (1). With no
+  parent it ends with the empty answer (1). With a parent it charges the parent
+  lookup (1) and then 1 more whatever the parent is. A parent that is not an
+  element ends with the empty answer (1); an element parent charges its
+  namespace test (1, plus 28 compared units when its namespace has the 28 units
+  of the HTML namespace and matches) and the walk repeats, skipping the `title`
+  scan for a non-HTML element. Then the result write (1).
+- **TabIndex** ([code](../../crates/surgeist-html-semantics/src/semantics/tabindex.rs)),
+  for an HTML element with a recovered `tabindex`. The query prefix, a lookup (1),
+  `D`, the attribute scan (1 for a one-attribute element plus 8 compared units of
+  `tabindex`), the value owner's published `integer_long_work_bound` of the raw
+  units, and 1. The missing, unparsable and out-of-range defaults are not stated.
+- **Disabledness** of a parentless `button`, `input`, `select`, `textarea` or
+  `fieldset` without attributes. The query prefix, `K(l)` of the element, then a
+  lookup (1), the intrinsic envelope with 1 keyword for the absent `disabled`
+  attribute and one parent step (1).
+- **TableCaption, TableHead, TableFoot** ([code](../../crates/surgeist-html-semantics/src/semantics/table.rs))
+  on an HTML `table`. The query prefix, a lookup (1), `D`, `K(5)`, then the first
+  matching child scan: a lookup (1), 1, and per scanned child a loop charge (1)
+  and a lookup (1), plus `K(l)` when the child is an element; a scan that finds
+  no match ends with 1.
+- **Table walks** ([code](../../crates/surgeist-html-semantics/src/semantics/table/collections.rs)).
+  Listing a node's children costs a lookup and 1. Taking the next element child
+  costs, per visited child, 1 and a lookup (1), plus `K(l)` when the child is an
+  element (non-elements cost the 2 and are skipped); an exhausted list costs 1. A
+  retained id costs 2 (reservation 1, push 1); a counted or target row costs 2.
+- **TableRows.** The query prefix, a lookup (1), `D`, `K(5)`, then three passes
+  (head, body, foot). Each pass charges 1, lists the table's children and, for
+  every element child, takes it and charges 1, then takes the final exhausted
+  entry. A section matching the pass additionally lists its children and, per `tr`
+  child, takes it, charges 1 and retains its id (2), then takes the final
+  exhausted entry; a direct `tr` child charges a retained id (2) in the body pass.
+- **TableRowIndex, TableSectionRowIndex, TableCellIndex.** The query prefix, a
+  lookup (1), `D` and `K(l)` of the subject, one parent step (1), the parent's
+  lookup (1) and `K(l)` of the parent; a row in a section
+  also steps to the table (1, lookup 1, `K(5)`). The collection walk is the
+  one above, stopping at the target: every collection row costs 2, the target
+  included.
+- **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
+  for two shapes. The query prefix, a lookup (1), `D` and `K(6)` come first.
+  With a sectioning ancestor, each ancestor costs one parent step (1) and a
+  lookup (1), with `K(l)` only when the ancestor is an element, and 1 when the
+  ancestor is an `article`, `aside`, `nav` or `section`, which ends the walk.
+  When the only ancestor is the document (a non-element, so it costs the step and
+  the lookup without `K(l)`), a second parent step (1) finds no parent and the
+  walk ends; then 1, and the document-body search for a document whose only
+  child element is not `html`: a lookup (1), 1, for that one child a loop charge
+  (1), a lookup (1) and 1, the exhausted child list (1), the child's lookup (1)
+  and `K(l)` of its name, which is not `html`, so the body is absent; then 1
+  before the document-body answer. Other documents, such as an `html` root with
+  or without a `body`, a second child element or unavailable children, are not
+  stated.
+- **DatalistOptions** (not `DatalistSuggestionOptions`, which adds suggestion
+  steps that are not stated; [code](../../crates/surgeist-html-semantics/src/semantics/datalist.rs)).
+  The query prefix, a lookup (1), `D`, `K(8)`, then entry (a lookup and 1). A
+  datalist with no children returns the empty collection there, without a frame
+  or the closing charge. Otherwise a frame (2), then per iteration 1, a lookup (1)
+  per yielded node, `K(l)` for an element, 2 for a retained `option` and, for
+  every element, 1 plus a frame (2) only when it has
+  children. An exhausted frame costs 2 and the closing charge 1.
+- **MapAreas** ([code](../../crates/surgeist-html-semantics/src/semantics/image_map.rs)).
+  The query prefix, a lookup (1), `D`, `K(3)`, then the tree walk from the map:
+  per visited node a lookup (1), `K(l)` when it is an element, 2 for a retained
+  `area`, and the tree-walk charges for entering it; then a closing charge (1).
+- **OptionText** ([code](../../crates/surgeist-html-semantics/src/semantics/option_text.rs)).
+  The query prefix, a lookup (1), `D`, `K(6)`, then entry (a lookup and 1) and a
+  frame (2) only when the option has children. Per iteration 1 (an exhausted
+  frame costs 2); per yielded node a lookup (1). A text node costs 1 per unit, and
+  per kept unit a one-record reservation (1) and a push (1), with one more push
+  (1) for a pending separator; text is not entered. An element costs `K(l)`; a
+  `script` or `img` ends there. Any other element also costs the svg-script test:
+  1, then a namespace comparison of 1 (which ends there for an HTML element,
+  whose 28 units differ from the 26 of the SVG namespace) or, for a namespace
+  with the SVG namespace's 26 units, 1 plus one per compared unit up to the first
+  mismatch; a namespace that matches then adds the local-name comparison of
+  `script` (1, plus one per compared unit when the length is 6). An element that
+  is not an SVG `script` is entered: 1, plus a frame (2) only when it has
+  children. Comments and processing instructions cost only their lookup. A
+  document or fragment cannot be an ordinary child, so its entry is not stated.
+  Closing charges 1.
+
 <a id="decoded-unicode-parsing"></a>
 
 ## Decoded-Unicode parsing
@@ -2168,6 +2335,21 @@ assert_eq!(
 );
 assert_eq!(failure.source().as_utf8(), Some("<p>x"));
 ```
+
+The parser's byte limits count real capacity, spare room included. A token's text,
+the open-element stack, the formatting list, pending whitespace and table text, and the
+other lists that grow one record at a time, grow a full vector to the greater of the
+capacity it needs and double its capacity, so `n` records request `O(log n)`
+reallocations and charge `O(n)` reservation work. The target depends only on the vector,
+never on a limit, so a parse follows one allocation path under every limit. The parser
+admits the target capacity before it allocates it, and a limit that holds the capacity
+the record needs but not the target refuses the reservation. A parse therefore succeeds
+under a byte limit (`managed_capacity_bytes`, `peak_transient_bytes` or
+`atomic_layout_bytes`) exactly when the limit holds the peak that the same parse reports
+under generous limits, and a limit that sufficed while such lists grew by one slot at a
+time can now need up to twice their capacity. Only an allocator refusal of the larger
+target falls back to the capacity that is needed, and so does a target whose layout
+would exceed `isize::MAX` bytes, which depends on the vector alone too.
 
 A checked fragment context is supplied to
 `HtmlFragmentParseRequest::new(source, context, limits)`; `with_options` also
@@ -2342,7 +2524,7 @@ ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Text insertion uses the shared
-[controlled append owner](../../crates/surgeist-html/src/construction/bounded/text_append.rs):
+[controlled append owner](../../crates/surgeist-html/src/internal/construction/bounded/text_append.rs):
 immutable history leaves remain unchanged, while a uniquely held aggregate reuses
 its admitted geometric capacity. A derived current-ticket/textarea index avoids
 registry walks; source/provenance, immediate native readers and stopped cleanup
@@ -2619,7 +2801,7 @@ owners, refuse publication and perform no reset during cleanup. Repeated scans
 and copies may be quadratic and remain charged and polled. Other input families,
 hosted initialization and complete live setter integration remain separate work.
 
-Private Details construction applies the [shared attribute-effect rules](../../crates/surgeist-html/src/details_rules.rs)
+Private Details construction applies the [shared attribute-effect rules](../../crates/surgeist-html/src/internal/elements/details_rules.rs)
 during source-ordered attribute creation, cloning and insertion. A nonempty,
 exact UTF-16 name groups members in the same ordinary tree. Name changes and
 insertion close the given open member when a peer is open; adding open closes
@@ -2719,14 +2901,14 @@ through the [private completion owner](#private-ordinary-eof), before the
 [public report boundary](#decoded-unicode-parsing) can publish immutable storage.
 The [select construction owner](../../crates/surgeist-html-parser/src/construction/select.rs),
 [managed clone owner](../../crates/surgeist-html-parser/src/construction/clone.rs) and
-[independent private regression cases](../../crates/surgeist-html-parser/src/construction.rs)
+[independent private regression cases](../../crates/surgeist-html-parser/src/construction/tests.rs)
 record the consumed boundary.
 
 <a id="link-relationships"></a>
 
 `HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
 types for the distinct `link`, `a`, `area` and `form` roles. Its
-[local report](../../crates/surgeist-html/src/rel.rs) retains exact `rel`/`rev` fields, token occurrence
+[local report](../../crates/surgeist-html/src/internal/elements/rel.rs) retains exact `rel`/`rev` fields, token occurrence
 ranges and duplicate relationships. It separates recognized keywords, role
 applicability, actual relationship effects and author constraints. Token
 recognition does not establish supported browser capabilities or URL grammar.
@@ -2739,7 +2921,7 @@ Unavailable evidence remains Missing or conditional rather than becoming a
 negative observation. Unknown extensions remain available for later definition;
 standard keyword recognition does not authorize an extension alias.
 
-The [native link owner](../../crates/surgeist-html-parser/src/construction.rs) retains
+The [native link owner](../../crates/surgeist-html-parser/src/construction/payload_registry.rs) retains
 the actual creating-parser document separately from the current node document.
 Fresh construction and clone start with fresh flags. Removing an existing
 no-namespace `disabled` attribute establishes explicitly-enabled state; absent
@@ -2812,7 +2994,7 @@ controlled semantic operations use the existing session's work and storage owner
 Target selection preserves an explicit override or an own target, including
 empty, before consulting the first target-bearing base. Form submission uses the
 qualified submitter and form-owner precedence. The shared
-[target recovery](../../crates/surgeist-html/src/attributes/navigable_target.rs) maps a value to `_blank` when
+[target recovery](../../crates/surgeist-html/src/internal/attributes/navigable_target.rs) maps a value to `_blank` when
 it contains both `<` and a TAB, LF or CR. It preserves other exact UTF-16 values
 and the raw spelling. It selects a target name; navigation remains with consumers.
 
@@ -2837,7 +3019,7 @@ cleanup boundaries.
 Nonce content attributes and the cryptographic nonce slot are independent.
 The [pinned nonce clauses](../../references/html-nonce--877d6146487f.md#attr-nonce)
 apply to HTML, SVG and MathML elements, including custom or unknown local names.
-The shared [nonce decisions](../../crates/surgeist-html/src/nonce.rs) preserve exact UTF-16 without trimming
+The shared [nonce decisions](../../crates/surgeist-html/src/internal/security/nonce.rs) preserve exact UTF-16 without trimming
 or base64 validation. An actual null-namespace nonce attribute change copies its
 new value into the slot; removal clears it. A slot setter changes only the slot,
 and clone completion copies that slot independently of copied content attributes.
@@ -2877,7 +3059,7 @@ The captured `MicrodataItem`, `MicrodataProperty`, `MicrodataAuthor` and
 `MicrodataDocumentAuthor` queries interpret the
 [pinned microdata rules](../../references/html-microdata--877d6146487f.md#encoding-microdata)
 over actual ordinary tree relations. Local
-[`microdata_tokens`](../../crates/surgeist-html/src/attributes/microdata.rs) observations retain exact UTF-16
+[`microdata_tokens`](../../crates/surgeist-html/src/internal/attributes/microdata.rs) observations retain exact UTF-16
 backing, occurrence ranges and duplicate positions. Processing deduplicates
 itemprop names but retains itemref occurrences; author uniqueness is reported
 separately. Typed `HtmlMicrodataTokenList` authoring enforces local nonempty and
@@ -2945,8 +3127,8 @@ and [marker algorithm](../../references/html-language-elements-interactive-scrip
 define these separate author and processing results.
 
 Native and captured readers share one allocation-free
-[XML pseudo-attribute cursor](../../crates/surgeist-html/src/pi_pseudo_attributes.rs) and
-[marker rules](../../crates/surgeist-html/src/template_markers.rs). The cursor validates the complete map:
+[XML pseudo-attribute cursor](../../crates/surgeist-html/src/internal/microsyntax/pi_pseudo_attributes.rs) and
+[marker rules](../../crates/surgeist-html/src/internal/elements/template_markers.rs). The cursor validates the complete map:
 duplicate names or malformed unrelated fields invalidate it, including suffixes
 after a provisional matching name. XML scalar/name rules and numeric/predefined
 references apply; HTML entity recovery supplies no substitute. Original raw for

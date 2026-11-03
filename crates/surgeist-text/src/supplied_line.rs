@@ -369,6 +369,28 @@ mod tests {
         assert_eq!(order(&[]), []);
     }
     #[test]
+    fn supplied_boundary_slots_retain_their_actual_levels_in_l2() {
+        let atomic = |level| SuppliedInlineParticipant::Atomic {
+            level: BidiLevel::try_new(level).unwrap(),
+        };
+        let boundary = SuppliedInlineParticipant::Boundary {
+            level: BidiLevel::try_new(0).unwrap(),
+        };
+        assert_eq!(
+            order(&[
+                atomic(0),
+                atomic(0),
+                boundary,
+                atomic(0),
+                atomic(1),
+                boundary,
+                atomic(1),
+                atomic(1),
+            ]),
+            [0, 1, 2, 3, 4, 5, 7, 6]
+        );
+    }
+    #[test]
     fn scratch_length_errors_leave_both_short_and_long_buffers_unchanged() {
         let participants = [text(1, InlineWhitespaceEdge::Preserve)];
         for mut scratch in [vec![], vec![9, 8]] {

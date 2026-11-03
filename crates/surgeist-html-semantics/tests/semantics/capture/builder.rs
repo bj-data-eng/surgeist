@@ -1,4 +1,11 @@
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{
+        HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode,
+        HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+    },
+    parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureFact,
@@ -1790,6 +1797,143 @@ fn cycles_document_conflicts_and_complete_children_fail_atomically() {
         children(&c, &c.subject_id(&p).unwrap()),
         vec![c.subject_id(&a).unwrap()]
     );
+}
+
+#[test]
+fn children_attached_bottom_up_carry_depth_to_every_descendant_and_refuse_atomically() {
+    // A chain of four elements below a document whose depth allowance is three
+    // levels of ordinary nesting below its first element.
+    let chain = |allowance| {
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(16, 64, 0, 1000, allowance, 0, 0, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let d = document(&mut b, HtmlScriptingStatus::Disabled);
+        let e: Vec<_> = (0..4)
+            .map(|_| element(&mut b, &d, Namespace::html(), "div"))
+            .collect();
+        (b, d, e)
+    };
+    let (mut b, d, e) = chain(3);
+    // The deepest pair first: the later attachments must lift the depth of the
+    // grandchildren that were attached before their ancestors were.
+    b.establish_children(&e[2], std::slice::from_ref(&e[3]))
+        .unwrap();
+    b.establish_children(&e[1], std::slice::from_ref(&e[2]))
+        .unwrap();
+    assert_eq!(b.usage().depth(), 2);
+    b.establish_children(&e[0], std::slice::from_ref(&e[1]))
+        .unwrap();
+    assert_eq!(b.usage().depth(), 3);
+    let extra = element(&mut b, &d, Namespace::html(), "span");
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_children(&e[3], std::slice::from_ref(&extra)),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 4,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
+    let (mut b, _, e) = chain(2);
+    b.establish_children(&e[2], std::slice::from_ref(&e[3]))
+        .unwrap();
+    b.establish_children(&e[1], std::slice::from_ref(&e[2]))
+        .unwrap();
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_children(&e[0], std::slice::from_ref(&e[1])),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 3,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
+    // The refused attachment left the lower chain intact and attachable.
+    b.establish_children(&e[0], &[]).unwrap();
+    let c = b.finish().unwrap();
+    assert!(matches!(
+        c.node(&c.subject_id(&e[1]).unwrap()).unwrap().parent(),
+        HtmlCapturedParent::Unavailable
+    ));
+    assert_eq!(
+        children(&c, &c.subject_id(&e[1]).unwrap()),
+        vec![c.subject_id(&e[2]).unwrap()]
+    );
+}
+
+#[test]
+fn a_call_that_overflows_depth_and_closes_a_cycle_reports_the_record_reached_first() {
+    // `p` is below `c2`; `c1` has a chain `g1`, `g2` below it. Attaching both
+    // `c1` and `c2` to `p` revises depths breadth first from the attached
+    // children: `c1` and `c2` at depth 2, then `g1` (over a limit of 2) and `p`
+    // (the cycle) at depth 3, in the order of the attached children and their
+    // dependents. At each record the cycle is checked before the depth limit.
+    let setup = |allowance| {
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(16, 64, 0, 1000, allowance, 0, 0, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let d = document(&mut b, HtmlScriptingStatus::Disabled);
+        let [p, c1, c2, g1, g2] = [(); 5].map(|()| element(&mut b, &d, Namespace::html(), "div"));
+        b.establish_children(&c2, std::slice::from_ref(&p)).unwrap();
+        b.establish_children(&g1, std::slice::from_ref(&g2))
+            .unwrap();
+        b.establish_children(&c1, std::slice::from_ref(&g1))
+            .unwrap();
+        (b, p, c1, c2)
+    };
+    // The over-limit record comes first: the depth limit is the first refusal.
+    let (mut b, p, c1, c2) = setup(2);
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_children(&p, &[c1.clone(), c2.clone()]),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 3,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
+    // The cycle's record is reached before any record over the limit.
+    let (mut b, p, c1, c2) = setup(3);
+    let before = b.usage();
+    assert_eq!(
+        b.establish_children(&p, &[c1.clone(), c2.clone()]),
+        Err(HtmlCaptureError::Cycle)
+    );
+    assert_eq!(b.usage(), before);
+    // The cycle's record is also over the limit: it is reported as the cycle.
+    let (mut b, p, c1, c2) = setup(2);
+    let before = b.usage();
+    assert_eq!(
+        b.establish_children(&p, &[c2.clone(), c1.clone()]),
+        Err(HtmlCaptureError::Cycle)
+    );
+    assert_eq!(b.usage(), before);
+    // The depth of the new edge itself is checked before any traversal, so a
+    // cycle closed at the depth limit is reported as the limit.
+    let mut b = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(4, 16, 0, 100, 1, 0, 0, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let outer = element(&mut b, &d, Namespace::html(), "div");
+    let inner = element(&mut b, &d, Namespace::html(), "div");
+    b.establish_children(&outer, std::slice::from_ref(&inner))
+        .unwrap();
+    let before = b.usage();
+    assert!(matches!(
+        b.establish_parent(&outer, &inner),
+        Err(HtmlCaptureError::LimitExceeded {
+            resource: HtmlCaptureResource::Depth,
+            required: 2,
+            ..
+        })
+    ));
+    assert_eq!(b.usage(), before);
 }
 
 #[test]

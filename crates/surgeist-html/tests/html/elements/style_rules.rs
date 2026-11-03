@@ -1,4 +1,16 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::token_declarations::HtmlBlockingTokens,
+    elements::style::{
+        HtmlDocumentBodyRole, HtmlStyleAttributeEffect, HtmlStyleExecutionProfile,
+        HtmlStyleNotificationAction, HtmlStyleNotificationCursor, HtmlStyleNotificationReply,
+        HtmlStyleProtocolError, HtmlStyleState, HtmlStyleTrigger, HtmlStyleUpdateAction,
+        HtmlStyleUpdateCursor, HtmlStyleUpdateReply, blocking_tokens_with,
+        document_allows_render_blocking, document_body_role_with, style_attribute_effect,
+        style_is_potentially_render_blocking, style_type_allows_css_with, style_update_is_required,
+    },
+    values::{DocumentString, Namespace, QualifiedName},
+    vocabulary::KnownHtmlAttribute,
+};
 #[test]
 fn document_body_roles_use_exact_html_names_and_admit_each_name_read() {
     for (namespace, local, expected) in [
@@ -131,9 +143,14 @@ fn creation_script_and_render_blocking_preserve_source_acknowledgement_order() {
         (A::BlockRendering, R::Applied),
     ] {
         assert_eq!(c.action(), action);
+        // The projection answer belongs only to the no-executable-JavaScript
+        // profile, so it is refused at every step here and leaves the cursor equal.
         let before = c;
-        assert!(c.reply(R::Connected(false)).is_err() || action == A::ReadConnected);
-        c = before;
+        assert_eq!(
+            c.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(c, before);
         c.reply(reply).unwrap();
     }
     assert_eq!(c.action(), A::Complete);
@@ -212,7 +229,7 @@ fn networking_task_dispatch_precedes_script_removal_and_unblock() {
 
 #[test]
 fn actual_parser_creation_and_stack_transitions_are_distinct_from_fresh_clone_state() {
-    use surgeist_html::{HtmlStyleParserStateError, HtmlStyleState};
+    use surgeist_html::elements::style::{HtmlStyleParserStateError, HtmlStyleState};
     let fresh = HtmlStyleState::fresh();
     assert!(!fresh.created_by_document_parser());
     assert!(!fresh.on_parser_stack());
@@ -230,8 +247,8 @@ fn actual_parser_creation_and_stack_transitions_are_distinct_from_fresh_clone_st
     );
     parsed.parser_stack_added().unwrap();
     assert!(parsed.on_parser_stack());
-    assert!(!surgeist_html::style_update_is_required(
-        surgeist_html::HtmlStyleTrigger::ChildrenChanged {
+    assert!(!surgeist_html::elements::style::style_update_is_required(
+        surgeist_html::elements::style::HtmlStyleTrigger::ChildrenChanged {
             on_parser_stack: parsed.on_parser_stack()
         }
     ));

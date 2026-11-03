@@ -53,9 +53,11 @@ fn form_fixture(unrelated: usize, same_tree: bool) -> (Dom, NodeId, NodeId) {
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let source = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let source =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     batch.set_attribute(&source, "id", "event");
-    let subject = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+    let subject =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
     batch.set_attribute(&subject, "form", "");
     batch.insert_before(&source, &document, None);
     if same_tree {
@@ -64,7 +66,11 @@ fn form_fixture(unrelated: usize, same_tree: bool) -> (Dom, NodeId, NodeId) {
     let mut last_unrelated = None;
     for _ in 0..unrelated {
         // Still assigned to this exact Document, but not in its ordinary tree.
-        last_unrelated = Some(batch.create_element_ns(&document, crate::Namespace::html(), "div"));
+        last_unrelated = Some(batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "div",
+        ));
     }
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.document(&document).unwrap();
@@ -137,10 +143,12 @@ fn radio_fixture(unrelated: usize, other_groups: usize) -> (Dom, NodeId, NodeId,
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let parent = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let parent =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&parent, &document, None);
-    let key = batch.create_element_ns(&document, crate::Namespace::html(), "input");
-    let peer = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+    let key = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
+    let peer =
+        batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
     for radio in [&key, &peer] {
         batch.set_attribute(radio, "type", "radio");
         batch.set_attribute(radio, "name", "g");
@@ -149,7 +157,8 @@ fn radio_fixture(unrelated: usize, other_groups: usize) -> (Dom, NodeId, NodeId,
     batch.set_input_checked(&peer, true);
     let mut other = None;
     for index in 0..other_groups {
-        let radio = batch.create_element_ns(&document, crate::Namespace::html(), "input");
+        let radio =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         batch.set_attribute(&radio, "type", "radio");
         batch.set_attribute(&radio, "name", format!("other-{index}"));
         batch.insert_before(&radio, &parent, None);
@@ -160,7 +169,11 @@ fn radio_fixture(unrelated: usize, other_groups: usize) -> (Dom, NodeId, NodeId,
     }
     let mut last_unrelated = None;
     for _ in 0..unrelated {
-        last_unrelated = Some(batch.create_element_ns(&document, crate::Namespace::html(), "div"));
+        last_unrelated = Some(batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "div",
+        ));
     }
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.document(&document).unwrap();

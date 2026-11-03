@@ -1,14 +1,15 @@
 //! Public retained time interpretation, using the pinned time-element rules.
 #![forbid(unsafe_code)]
 use surgeist_html::{
-    DocumentString, HtmlMachineReadableTime, HtmlTimeElementValue, HtmlValueAuthorState,
-    HtmlValueInterpreter, HtmlValueRecoveryState,
     bounded::{
-        HtmlTimeElementInterpretation as Interpretation,
-        HtmlTimeElementInterpretationActionKind as Kind,
-        HtmlTimeElementInterpretationError as Error, IntegerUnitStepError,
-        NumericMaterializationError,
+        numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
+        temporal::{
+            HtmlTimeElementInterpretation as Interpretation,
+            HtmlTimeElementInterpretationActionKind as Kind,
+        },
     },
+    microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
+    values::{DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState},
 };
 
 fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
@@ -32,9 +33,10 @@ fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
 fn early_finish_and_refused_guard_preserve_exact_raw_and_pending_recognition() {
     let raw = DocumentString::from_utf16([49, 0xd800, 0, 50]);
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
-    assert_eq!(
-        Interpretation::try_finish(&mut owner).unwrap_err(),
-        Error::NotReady
+    assert!(
+        Interpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_not_ready()
     );
     let before = owner
         .as_mut()
@@ -56,9 +58,10 @@ fn early_finish_and_refused_guard_preserve_exact_raw_and_pending_recognition() {
     );
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
-    assert_eq!(
-        Interpretation::try_finish(&mut owner).unwrap_err(),
-        Error::Consumed
+    assert!(
+        Interpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_consumed()
     );
 }
 
@@ -81,9 +84,10 @@ fn publication_requires_admitted_report_assembly_after_all_attempts() {
         capacity += step.capacity_bytes();
         step.outcome().unwrap();
     }
-    assert_eq!(
-        Interpretation::try_finish(&mut owner).unwrap_err(),
-        Error::NotReady
+    assert!(
+        Interpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_not_ready()
     );
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
@@ -202,9 +206,9 @@ fn failed_fraction_retains_owner_and_observes_earlier_capacity_once() {
     };
     assert_eq!(observed, 1);
     assert!(matches!(
-        error,
-        Error::Processing(NumericMaterializationError::Boundary(
-            IntegerUnitStepError::RequestedCapacityLimitExceeded { required: 5, .. }
+        error.processing_failure(),
+        Some(HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required: 5, .. }
         ))
     ));
     assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
@@ -232,9 +236,10 @@ fn caller_cancellation_at_each_action_recovers_raw_without_a_partial_report() {
         }
         // The caller's stop performs no next operation; recover the retained raw.
         assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
-        assert_eq!(
-            Interpretation::try_finish(&mut owner).unwrap_err(),
-            Error::Consumed
+        assert!(
+            Interpretation::try_finish(&mut owner)
+                .unwrap_err()
+                .is_consumed()
         );
     }
 }
@@ -256,9 +261,9 @@ fn raw_admission_and_processing_digit_limits_preserve_the_original_operand() {
         }
     };
     assert!(matches!(
-        error,
-        Error::Processing(NumericMaterializationError::Boundary(
-            IntegerUnitStepError::DigitLimitExceeded {
+        error.processing_failure(),
+        Some(HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 4,
                 required: 5
             }

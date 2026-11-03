@@ -1,7 +1,14 @@
 use crate::semantics::support::{
-    COLLECTION_RESOURCES, builder, cap_resources, context, session, small_semantic_limits as limits,
+    COLLECTION_RESOURCES, Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, session, small_semantic_limits as limits,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
@@ -450,61 +457,29 @@ fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLi
 fn exact_and_one_short_actual_text_storage_work_and_batch_caps_are_terminal() {
     let (c, id) = fallback("AB");
     let cx = context(&c);
-    let r = report(&c, &id, 0);
-    let u = r.usage();
-    assert_eq!(known(&r).value().code_units(), [65, 66]);
-    assert_eq!(u.nested_output_records(), 2);
-    assert_eq!(u.peak_scratch_records(), 1);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>() * u.output_records()
-            + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
-            + 2 * std::mem::size_of::<u16>()
+    // Two text units grow the buffer by exactly one `u16` each, and one child
+    // iterator record is live; the visit layout of the fallback walk is
+    // private, so work is required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "dfn fallback text",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+                    + 2 * std::mem::size_of::<u16>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        assert_eq!(
-            known(&s.query(&[request(&id)]).unwrap())
-                .value()
-                .code_units(),
-            [65, 66]
-        );
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = s.query(&[request(&id)]).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded {resource:r,..} if *r == resource)
-        );
-        assert_eq!(s.usage().scratch_records(), 0);
-        assert_eq!(
-            f.qualification().unwrap().limits(),
-            resource_limits(resource, exact - 1)
-        );
-        assert_eq!(s.query(&[]).unwrap_err(), f);
-    }
+    assert_eq!(known(&r).value().code_units(), [65, 66]);
 }
 
 #[test]

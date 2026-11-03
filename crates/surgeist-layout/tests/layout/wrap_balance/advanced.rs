@@ -5,7 +5,7 @@ use std::cell::Cell;
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::NodeOutputOf<S>>>,
+    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<l::NodeOutputOf<S>>>,
     batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
 }
@@ -100,7 +100,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
         )
         .unwrap()))
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
@@ -121,7 +121,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
             next.caches[entry.node() as usize].clear();
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded[entry.node() as usize] = Some(entry.output());
+            next.unrounded[entry.node() as usize] = Some(*entry);
         }
         for entry in batch.final_entries() {
             next.final_output[entry.node() as usize] = Some(entry.output());
@@ -367,6 +367,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
             capture,
             prepared: prepared.clone(),
             binding: l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,

@@ -52,7 +52,7 @@ fn xml_defaults(snapshot: &DomSnapshot, doc: DocumentId, associated: DocumentId,
     let environment = metadata.document_environment();
     assert_eq!(
         environment.browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert!(!environment.has_ever_had_navigable());
     assert!(!snapshot.document(doc).unwrap().is_fully_active().unwrap());
@@ -456,7 +456,7 @@ fn atomic_style_root_refuses_actual_composition_without_moving_supplied_doctype(
     assert!(matches!(
         dom.apply(b, &AtomicBool::new(false)),
         Err(DomError::StyleCompositionRequired(
-            surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
         ))
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
@@ -503,7 +503,7 @@ fn later_invalid_command_restores_doctype_after_private_constructor_adoption() {
 #[test]
 fn associated_explicit_input_policy_is_reestablished_in_the_new_closed_environment() {
     use std::sync::Arc;
-    use surgeist_html::{
+    use surgeist_html::elements::input::{
         HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as Direction,
     };
     use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
@@ -620,7 +620,7 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
     };
-    use surgeist_html::HtmlStyleUpdateAction;
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
     let cancel = AtomicBool::new(false);
     let (mut dom, associated, old_doc) = setup(limits());
     let mut b = DomBatch::new();

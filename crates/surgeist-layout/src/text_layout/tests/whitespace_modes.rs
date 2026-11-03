@@ -45,6 +45,8 @@ fn batch<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -123,6 +125,8 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -142,6 +146,7 @@ fn intrinsic<S: LayoutScalar>(
         super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
@@ -158,8 +163,16 @@ fn intrinsic<S: LayoutScalar>(
                 if rtl { Direction::Rtl } else { Direction::Ltr },
             ),
             frame: super::super::run::Frame::Canonical {
-                origin: Point::ZERO,
-                size,
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
             },
             containing_size: size,
             content_insets: crate::Edges::ZERO,

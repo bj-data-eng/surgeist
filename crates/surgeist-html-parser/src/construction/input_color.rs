@@ -7,7 +7,9 @@
 use super::css_color::Banks;
 use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
-use provenance::{ColorComputation, ColorValueSource, InputValueComputation};
+use provenance::{
+    ColorComputation, ColorOperandTable, HtmlParseColorValueSource, InputValueComputation,
+};
 use surgeist_css::color::controlled::{
     CssColorOperationOwner, CssColorParseOutcome, CssColorTransform, CssUsedColorCheckpoint,
 };
@@ -17,6 +19,7 @@ use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
     CssColorStandardFailure, CssDeviceColorFact,
 };
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
@@ -32,7 +35,7 @@ fn css_error(c: &mut ParseControl, error: CssColorError) -> SessionError {
     c.stop_color_processing(error).into()
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
+    c.fail_invariant(crate::parser::control::HtmlParseInvariant::ColorConversionState)
         .into()
 }
 /// One total transformation; a refused admission drops it, which declines it.
@@ -62,7 +65,7 @@ fn execute(
     c: &mut ParseControl,
     input: &[u16],
     alpha: bool,
-    space: crate::HtmlInputColorSpace,
+    space: surgeist_html::attributes::input_colorspace::HtmlInputColorSpace,
 ) -> Result<(Utf16Buffer, Color, Option<CssColorStandardFailure>), SessionError> {
     let facts = CssColorFacts::new(
         environment_identity(),
@@ -90,27 +93,38 @@ fn execute(
         let mut checkpoint = match parsed {
             CssColorParseOutcome::Used(value) => value,
             CssColorParseOutcome::StandardFailure(failure) => {
-                let [red, green, blue] = crate::input_color_standard_failure_fallback().channels();
+                let [red, green, blue] =
+                    surgeist_html::elements::input::input_color_standard_failure_fallback()
+                        .channels();
                 failure.fallback(Color::from_srgba8([red, green, blue, 255]))
             }
         };
-        let mut sequence = crate::HtmlInputColorSerialization::new(alpha, space);
+        let mut sequence =
+            surgeist_html::elements::input::HtmlInputColorSerialization::new(alpha, space);
         loop {
-            payload_write::<crate::HtmlInputColorSerialization>(c, 1)?;
-            c.charge(WorkCategory::StateStep, 1)?;
+            payload_write::<surgeist_html::elements::input::HtmlInputColorSerialization>(c, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             let Some(effect) = sequence.next_effect() else {
                 break;
             };
             let effect = match effect {
-                crate::HtmlInputColorEffect::ForceOpaqueAlpha => Transformation::ForceOpaqueAlpha,
-                crate::HtmlInputColorEffect::Convert(crate::HtmlInputColorSpace::LimitedSrgb) => {
-                    Transformation::Convert(ColorSpace::Predefined(PredefinedColorSpace::Srgb))
+                surgeist_html::elements::input::HtmlInputColorEffect::ForceOpaqueAlpha => {
+                    Transformation::ForceOpaqueAlpha
                 }
-                crate::HtmlInputColorEffect::Convert(crate::HtmlInputColorSpace::DisplayP3) => {
+                surgeist_html::elements::input::HtmlInputColorEffect::Convert(
+                    surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
+                ) => Transformation::Convert(ColorSpace::Predefined(PredefinedColorSpace::Srgb)),
+                surgeist_html::elements::input::HtmlInputColorEffect::Convert(
+                    surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::DisplayP3,
+                ) => {
                     Transformation::Convert(ColorSpace::Predefined(PredefinedColorSpace::DisplayP3))
                 }
-                crate::HtmlInputColorEffect::QuantizeSrgb => Transformation::QuantizeSrgb,
-                crate::HtmlInputColorEffect::ColorFunction => Transformation::ColorFunction,
+                surgeist_html::elements::input::HtmlInputColorEffect::QuantizeSrgb => {
+                    Transformation::QuantizeSrgb
+                }
+                surgeist_html::elements::input::HtmlInputColorEffect::ColorFunction => {
+                    Transformation::ColorFunction
+                }
             };
             checkpoint = transform(c, checkpoint, &mut numerical_owner, effect)?;
         }
@@ -120,8 +134,10 @@ fn execute(
         frame(
             c,
             Serialization::register_bytes(),
-            mem::size_of::<Option<Utf16Buffer>>()
-                + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>(),
+            const {
+                mem::size_of::<Option<Utf16Buffer>>()
+                    + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>()
+            },
         )?;
         let request = if sequence.html_compatible() {
             SerializationRequest::HtmlCompatible
@@ -229,17 +245,17 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(integrity(c));
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
             {
@@ -256,7 +272,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         let state = self.read_input_state(c, slot)?;
-        if state.flags.input_type() != crate::HtmlInputType::Color {
+        if state.flags.input_type() != surgeist_html::attributes::HtmlInputType::Color {
             return Err(integrity(c));
         }
         let previous = self.input_raw_slot(c, slot)?;
@@ -269,20 +285,30 @@ impl SessionStorage {
         let colorspace_slot = colorspace_position
             .map(|position| self.attribute_value_slot(c, node, position))
             .transpose()?;
-        let value_slot = match crate::input_color_value_source(state.flags.dirty_value()) {
-            crate::HtmlInputColorValueSource::CurrentValue => Some(previous),
-            crate::HtmlInputColorValueSource::ValueAttribute => self
+        let value_slot = match surgeist_html::elements::input::input_color_value_source(
+            state.flags.dirty_value(),
+        ) {
+            surgeist_html::elements::input::HtmlInputColorValueSource::CurrentValue => {
+                Some(previous)
+            }
+            surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute => self
                 .color_attribute(c, node, "value")?
                 .map(|position| self.attribute_value_slot(c, node, position))
                 .transpose()?,
         };
-        let source = match crate::input_color_value_source(state.flags.dirty_value()) {
-            crate::HtmlInputColorValueSource::CurrentValue => ColorValueSource::CurrentValue,
-            crate::HtmlInputColorValueSource::ValueAttribute if value_slot.is_some() => {
-                ColorValueSource::InstalledValue
+        let source = match surgeist_html::elements::input::input_color_value_source(
+            state.flags.dirty_value(),
+        ) {
+            surgeist_html::elements::input::HtmlInputColorValueSource::CurrentValue => {
+                HtmlParseColorValueSource::CurrentValue
             }
-            crate::HtmlInputColorValueSource::ValueAttribute => {
-                ColorValueSource::MissingInstalledValue
+            surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute
+                if value_slot.is_some() =>
+            {
+                HtmlParseColorValueSource::InstalledValue
+            }
+            surgeist_html::elements::input::HtmlInputColorValueSource::ValueAttribute => {
+                HtmlParseColorValueSource::MissingInstalledValue
             }
         };
         let original = value_slot
@@ -298,20 +324,23 @@ impl SessionStorage {
             let value = colorspace_slot
                 .map(|slot| admitted_input_string(&self.payloads, c, slot))
                 .transpose()?;
-            let mut cursor = crate::HtmlInputColorSpaceCursor::new(value);
+            let mut cursor = surgeist_html::elements::input::HtmlInputColorSpaceCursor::new(value);
             while let Some(work) = cursor.required_work() {
-                c.charge(WorkCategory::StateStep, 1)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
-                    mem::size_of::<crate::HtmlInputColorSpaceCursor<'_>>() as u64,
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<surgeist_html::elements::input::HtmlInputColorSpaceCursor<'_>>()
+                        as u64,
                 )?;
-                payload_write::<crate::HtmlInputColorSpaceCursor<'_>>(c, 1)?;
+                payload_write::<surgeist_html::elements::input::HtmlInputColorSpaceCursor<'_>>(
+                    c, 1,
+                )?;
                 match work {
-                    crate::HtmlInputRuleWork::CompareAsciiUnit => {
-                        c.charge(WorkCategory::InspectByte, 3)?;
+                    surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit => {
+                        c.charge_unit_literal_comparison()?;
                     }
-                    crate::HtmlInputRuleWork::ReadField => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                    surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     }
                     _ => return Err(integrity(c)),
                 }
@@ -332,7 +361,7 @@ impl SessionStorage {
         let computation = InputValueComputation::Color(ColorComputation {
             source,
             original,
-            operands: [alpha_edge, space_edge],
+            operands: ColorOperandTable::new([alpha_edge, space_edge]),
             space,
             standard_failure: failure,
             environment: environment_identity(),
@@ -351,7 +380,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         payload_write::<RetainedPayload>(c, 2)?;
         self.retire_field_group(c, previous)?;
-        let RetainedPayload::Input { raw, .. } = &mut self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get_mut(slot) else {
             return Err(integrity(c));
         };
         *raw = next;
@@ -365,6 +394,18 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+
+    #[test]
+    fn a_colour_digit_fault_is_a_color_conversion_invariant() {
+        let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
+        let error = integrity(&mut c);
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ColorConversionState,
+        );
+        assert_eq!(error, SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
 
     // A thread-local observer of actual completed adapter actions. It changes
     // only the real request's cancellation flag. No production field, fee,
@@ -547,8 +588,8 @@ mod tests {
             .radio_input(&mut c, node.index)
             .unwrap()
             .unwrap();
-        state.flags = crate::HtmlInputFlags::from_retained(
-            crate::HtmlInputType::Color,
+        state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
+            surgeist_html::attributes::HtmlInputType::Color,
             true,
             true,
             true,
@@ -614,10 +655,26 @@ mod tests {
     #[test]
     fn color_type_removal_and_number_transition_keep_generated_source_whole_or_omitted() {
         for (suffix, expected_type, expected) in [
-            ("", crate::HtmlInputType::Text, "#ff0000"),
-            ("<i type=number>", crate::HtmlInputType::Number, ""),
-            ("<i type=email>", crate::HtmlInputType::Email, "#ff0000"),
-            ("<i type=file>", crate::HtmlInputType::File, ""),
+            (
+                "",
+                surgeist_html::attributes::HtmlInputType::Text,
+                "#ff0000",
+            ),
+            (
+                "<i type=number>",
+                surgeist_html::attributes::HtmlInputType::Number,
+                "",
+            ),
+            (
+                "<i type=email>",
+                surgeist_html::attributes::HtmlInputType::Email,
+                "#ff0000",
+            ),
+            (
+                "<i type=file>",
+                surgeist_html::attributes::HtmlInputType::File,
+                "",
+            ),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8(format!(
@@ -699,7 +756,7 @@ mod tests {
                 .unwrap()
                 .flags
                 .input_type(),
-            crate::HtmlInputType::Image
+            surgeist_html::attributes::HtmlInputType::Image
         );
         let mut output = Utf16Buffer::new(&mut c).unwrap();
         session
@@ -776,7 +833,7 @@ mod tests {
                             .unwrap()
                             .flags
                             .input_type(),
-                        crate::HtmlInputType::Image
+                        surgeist_html::attributes::HtmlInputType::Image
                     );
                     let eof = lexer
                         .next_in(
@@ -788,43 +845,49 @@ mod tests {
                         .unwrap();
                     assert!(
                         matches!(&eof, crate::parser::tokenizer::token::Event::Token(token)
-                        if matches!(&token.token().kind, TokenKind::Eof))
+                        if matches!(&token.token_for_tests().kind, TokenKind::Eof))
                     );
                     eof.release(&mut c).unwrap();
                     lexer.release(&mut c).unwrap();
                     session
                         .prepare_native_associations(&mut c, request.source())
                         .unwrap();
-                    let mut history = session.freeze_history(&mut c).unwrap();
-                    let view = history.view().unwrap();
+                    let history = session.freeze_history(&mut c).unwrap();
+                    let view = history.view();
                     let mut generated_name = false;
                     for index in 0..view.len() {
                         let header = view.header(view.group(index).unwrap()).unwrap();
-                        if matches!(&header.body, history::HistoryBody::Leaf(leaf) if leaf.units() == [118,97,108,117,101])
+                        if matches!(&header.body, history::HtmlParseHistoryBody::Leaf(leaf) if leaf.units() == [118,97,108,117,101])
                             && header.units == 5
                             && header.cause.original_node == Some(node.index)
                             && header.cause.operation
-                                == provenance::ConstructionOperation::Replacement
+                                == provenance::HtmlParseConstructionOperation::Replacement
                         {
                             generated_name = true;
                             assert_eq!(
                                 header.cause.source.as_ref().unwrap().source(),
                                 request.source().identity()
                             );
-                            let mut scratch = vec![history::HistoryFrame::default(); view.len()];
+                            let mut scratch =
+                                vec![history::HtmlParseHistoryFrame::default(); view.len()];
                             let mut cursor = view
                                 .cursor(view.group(index).unwrap(), &mut scratch, None)
                                 .unwrap();
                             let mut units = Vec::new();
                             loop {
                                 match cursor.advance() {
-                                    history::HistoryStep::Leaf(leaf) => {
+                                    history::HtmlParseHistoryStep::Fault(fault) => {
+                                        panic!("{fault}")
+                                    }
+                                    history::HtmlParseHistoryStep::Leaf(leaf) => {
                                         assert!(leaf.origins().is_empty());
                                         units.extend_from_slice(leaf.units());
                                     }
-                                    history::HistoryStep::Progress => {}
-                                    history::HistoryStep::Complete => break,
-                                    history::HistoryStep::Cancelled => panic!("no cancellation"),
+                                    history::HtmlParseHistoryStep::Progress => {}
+                                    history::HtmlParseHistoryStep::Complete => break,
+                                    history::HtmlParseHistoryStep::Cancelled => {
+                                        panic!("no cancellation")
+                                    }
                                 }
                             }
                             assert_eq!(units, [118, 97, 108, 117, 101]);
@@ -835,7 +898,7 @@ mod tests {
                 } else {
                     assert!(matches!(
                         result,
-                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::ManagedAttributes,
                             limit: 1,
                             current: 1,
@@ -875,7 +938,7 @@ mod tests {
             &mut c,
             &[114, 101, 100],
             false,
-            crate::HtmlInputColorSpace::LimitedSrgb,
+            surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
         )
         .unwrap();
         assert_eq!(output.units(), &[35, 102, 102, 48, 48, 48, 48]);
@@ -896,20 +959,24 @@ mod tests {
         // HTML877d update steps 3–5: a standard-invalid CSS color becomes
         // opaque black, then uses the actual alpha/colorspace serialization.
         for (alpha, space, expected) in [
-            (false, crate::HtmlInputColorSpace::LimitedSrgb, "#000000"),
+            (
+                false,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
+                "#000000",
+            ),
             (
                 true,
-                crate::HtmlInputColorSpace::LimitedSrgb,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
                 "color(srgb 0 0 0)",
             ),
             (
                 false,
-                crate::HtmlInputColorSpace::DisplayP3,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::DisplayP3,
                 "color(display-p3 0 0 0)",
             ),
             (
                 true,
-                crate::HtmlInputColorSpace::DisplayP3,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::DisplayP3,
                 "color(display-p3 0 0 0)",
             ),
         ] {
@@ -926,8 +993,8 @@ mod tests {
             assert_eq!(
                 value.space(),
                 ColorSpace::Predefined(match space {
-                    crate::HtmlInputColorSpace::LimitedSrgb => PredefinedColorSpace::Srgb,
-                    crate::HtmlInputColorSpace::DisplayP3 => PredefinedColorSpace::DisplayP3,
+                    surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb => PredefinedColorSpace::Srgb,
+                    surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::DisplayP3 => PredefinedColorSpace::DisplayP3,
                 })
             );
             assert!(failure.is_some(), "the actual standard failure is retained");
@@ -949,7 +1016,7 @@ mod tests {
             &mut c,
             &input,
             false,
-            crate::HtmlInputColorSpace::LimitedSrgb,
+            surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
         )
         .unwrap();
         assert_eq!(output.units(), "#ff00ff".encode_utf16().collect::<Vec<_>>());
@@ -981,7 +1048,10 @@ mod tests {
         );
         let node = result.unwrap();
         let state = session.input_state(&mut c, &node).unwrap();
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Color);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Color
+        );
         assert!(!state.flags.dirty_value());
         let mut value = Utf16Buffer::new(&mut c).unwrap();
         session
@@ -1003,10 +1073,18 @@ mod tests {
     fn unavailable_input_color_records_live_failed_prefix_before_private_bank_disposal() {
         let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
         let raw: Vec<_> = "Canvas".encode_utf16().collect();
-        assert!(execute(&mut c, &raw, false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
+        assert!(
+            execute(
+                &mut c,
+                &raw,
+                false,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
+            )
+            .is_err()
+        );
         assert!(matches!(
             c.stop(),
-            Some(ParseStop::ColorProcessing(
+            Some(HtmlParseStop::ColorProcessing(
                 crate::parser::control::HtmlColorProcessingError::Unavailable(_)
             ))
         ));
@@ -1058,25 +1136,33 @@ mod tests {
                 &mut c,
                 &[114, 101, 100],
                 false,
-                crate::HtmlInputColorSpace::LimitedSrgb
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
             )
             .is_err()
         );
         let first = c.stop().unwrap();
         assert_eq!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 limit: first_header - 1,
                 current: first_header - 1,
                 requested_delta: 1
             }
         );
-        assert_eq!(c.usage().work(WorkCategory::InputUnitRead), 0);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::InputUnitRead), 0);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         cancellation.cancel();
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        assert!(execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
+        assert!(
+            execute(
+                &mut c,
+                &[],
+                false,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
+            )
+            .is_err()
+        );
         assert_eq!(c.stop(), Some(first));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1094,11 +1180,11 @@ mod tests {
                 &mut c,
                 &[114, 101, 100],
                 false,
-                crate::HtmlInputColorSpace::LimitedSrgb
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
             )
             .is_err()
         );
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1118,14 +1204,14 @@ mod tests {
                 &mut c,
                 &[114, 101, 100],
                 false,
-                crate::HtmlInputColorSpace::LimitedSrgb
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
             )
             .is_err()
         );
         let first = c.stop().unwrap();
         assert_eq!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
                 limit: 0,
                 current: 0,
@@ -1145,7 +1231,15 @@ mod tests {
             0
         );
         assert_eq!(c.usage().actual_capacity_bytes, 0);
-        assert!(execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
+        assert!(
+            execute(
+                &mut c,
+                &[],
+                false,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
+            )
+            .is_err()
+        );
         assert_eq!(c.stop(), Some(first));
     }
     #[test]
@@ -1186,7 +1280,7 @@ mod tests {
                     .unwrap()
                     .flags
                     .input_type(),
-                crate::HtmlInputType::Text
+                surgeist_html::attributes::HtmlInputType::Text
             );
             assert!(
                 !session
@@ -1224,8 +1318,8 @@ mod tests {
             .radio_input(&mut c, node.index)
             .unwrap()
             .unwrap();
-        state.flags = crate::HtmlInputFlags::from_retained(
-            crate::HtmlInputType::Color,
+        state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
+            surgeist_html::attributes::HtmlInputType::Color,
             true,
             false,
             false,
@@ -1291,7 +1385,7 @@ mod tests {
                     .unwrap()
                     .flags
                     .input_type(),
-                crate::HtmlInputType::Color
+                surgeist_html::attributes::HtmlInputType::Color
             );
         }
         lexer.release(&mut c).unwrap();
@@ -1320,7 +1414,7 @@ mod tests {
                 &mut c,
                 &[114, 101, 100],
                 false,
-                crate::HtmlInputColorSpace::LimitedSrgb,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
             );
             if cap == 7 {
                 let (output, _, failure) = result.unwrap();
@@ -1330,7 +1424,7 @@ mod tests {
                 output.release(&mut c).unwrap();
             } else {
                 assert!(result.is_err());
-                let first = ParseStop::LimitExceeded {
+                let first = HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::BufferedUtf16Units,
                     limit: 6,
                     current: 6,
@@ -1347,7 +1441,7 @@ mod tests {
                 assert!(at_stop.actual_capacity_bytes > 0);
                 cancellation.cancel();
                 assert!(
-                    execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err()
+                    execute(&mut c, &[], false, surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb).is_err()
                 );
                 assert_eq!(c.stop(), Some(first));
                 assert_eq!(c.first_stop_usage(), Some(&at_stop));
@@ -1371,11 +1465,11 @@ mod tests {
                 &mut c,
                 &[114, 101, 100],
                 false,
-                crate::HtmlInputColorSpace::LimitedSrgb,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
             )
             .is_err()
         );
-        let first = ParseStop::LimitExceeded {
+        let first = HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
             limit: 1,
             current: 1,
@@ -1393,7 +1487,15 @@ mod tests {
         super::super::tests::storage_zero(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         cancellation.cancel();
-        assert!(execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
+        assert!(
+            execute(
+                &mut c,
+                &[],
+                false,
+                surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
+            )
+            .is_err()
+        );
         assert_eq!(c.stop(), Some(first));
         assert_eq!(c.first_stop_usage(), Some(&at_stop));
     }
@@ -1418,9 +1520,9 @@ mod tests {
                     &[114, 101, 100],
                     false,
                     if point == ColorCancelPoint::NumericalDigitCommit {
-                        crate::HtmlInputColorSpace::DisplayP3
+                        surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::DisplayP3
                     } else {
-                        crate::HtmlInputColorSpace::LimitedSrgb
+                        surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
                     },
                 )
                 .is_err()
@@ -1429,7 +1531,7 @@ mod tests {
                 observation.reached(),
                 "actual source action must reach {point:?}"
             );
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             let at_stop = c.first_stop_usage().unwrap().clone();
             match point {
                 ColorCancelPoint::ParseSlotCommit => {
@@ -1487,8 +1589,16 @@ mod tests {
             super::super::tests::storage_zero(&c);
             assert_eq!(c.usage().actual_capacity_bytes, 0);
             let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
-            assert!(execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert!(
+                execute(
+                    &mut c,
+                    &[],
+                    false,
+                    surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb
+                )
+                .is_err()
+            );
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             assert_eq!(c.first_stop_usage(), Some(&at_stop));
             assert_eq!(
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1512,7 +1622,7 @@ mod tests {
             &mut c,
             &[114, 101, 100],
             true,
-            crate::HtmlInputColorSpace::LimitedSrgb,
+            surgeist_html::attributes::input_colorspace::HtmlInputColorSpace::LimitedSrgb,
         )
         .unwrap();
         assert_eq!(
@@ -1528,7 +1638,7 @@ mod tests {
                 layout.current,
                 layout.high_water,
             ),
-            (446_718, 1440, 9472)
+            (446_317, 1440, 9472)
         );
         output.release(&mut c).unwrap();
     }

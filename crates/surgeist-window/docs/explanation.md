@@ -107,11 +107,74 @@ state only, with no live target or handle. The contract is implemented by
 [handle access](../src/registry.rs), [lease ownership](../src/lease.rs), and
 [native closing](../src/winit_adapter.rs).
 
+## Platform monotonic clock
+
+Use `surgeist_window::Instant` for draw deadlines and input receipt timestamps.
+Every Window scheduler, callback scope, proxy and adapter uses this same clock;
+`std::time::Duration` remains the elapsed-time unit. Native targets retain exact
+`std::time::Instant` identity, so native callers pass their existing instants
+directly without conversion.
+
+On browser Wasm targets, the shared clock is the host context's
+`Performance.now()` clock supplied by the pinned web-time implementation. This
+also matches winit's browser deadline type. It requires a `Performance` object;
+contexts such as worklets that lack one are unsupported. The clock makes no
+promise to advance while a browser context is asleep or suspended.
+
+Create deadlines in the owning event loop's clock domain. The upstream clock
+adds `Performance.timeOrigin` for atomics-enabled workers; without that mode,
+independent contexts do not establish a shared epoch. Window neither rebases
+native and browser instants nor converts them through an elapsed duration.
+Browser timestamps and deadlines use the browser type, rather than accepting
+`std::time::Instant` as a second clock.
+
+Window receipt times are host observations, not DOM performance timestamps.
+Runtime retains ownership of its separate DOM epoch, source identity and
+coarsening policy. Selecting the Window clock changes none of those contracts,
+and does not establish browser support for unrelated consumer clocks.
+
+The [scheduler](../src/scheduler.rs), [input payloads](../src/event.rs) and
+[native deadline mapping](../src/winit_mapping.rs) consume the public clock.
+Installed-target compilation qualifies their type agreement; it does not prove
+browser event-loop wakeup or runtime behavior. See the
+[verification boundary](how-to.md#verify-the-platform-clock).
+
+## Native magnification input
+
+Handle `InputEvent::Magnification` in `Handler::input` to receive native
+magnification intent. A `MagnificationGesture::Pinch` retains its native
+`TouchPhase` and raw signed fractional delta: positive means magnifying intent,
+negative means shrinking intent, and either signed zero remains unchanged.
+`MagnificationDelta` admits only finite values. A nonfinite native delta becomes
+`None` while preserving the pinch phase; it never becomes an invented zero or
+scale factor. `MagnificationGesture::Smart` is a distinct request with no
+supplied delta or phase.
+
+The event's optional position is the last observed logical mouse position,
+which can be absent. It is pointer context, not a gesture focal point. Native
+gesture payloads supply no coordinates. The adapter captures current modifiers
+and a monotonic receipt timestamp, preserving the backend's source order,
+including preceding pointer updates.
+
+Receiving this input does not change window metrics, native display scale,
+page zoom, visual viewport scale, host observations, layout or CSS, and emits no
+window command. The consumer chooses whether and how to apply magnification or
+restore an earlier view. This keeps native input separate from the
+[CSS2 magnification guidance](../../../references/css2--ui.html--ff1f72803ea0.md#magnification),
+which defines no authored zoom property.
+
+The pinned winit backend emits pinch and smart-magnification gestures on macOS
+and iOS when the native platform provides them. iOS recognition requires an
+explicit opt-in that this adapter does not enable. Other backends have no
+current producer for this input. The [native adapter](../src/winit_adapter.rs)
+owns lowering; [focused tests](../src/magnification_tests.rs) exercise conversion
+and the shared callback pump without a display or an actual native gesture.
+
 ## Host observations and consumer inputs
 
 `WindowSnapshot::environment` retains a `HostEnvironment` with the window's
-observed geometry. A native resize, scale or move transition commits its captured
-environment before delivering the corresponding callback. `EnvironmentChanged`
+observed geometry. A native resize, scale or move transition commits its basic
+environment using the event's metrics before delivering the corresponding callback. `EnvironmentChanged`
 reports changes that do not need another event kind. The native adapter observes
 the system theme independently of an application `SetTheme` request, so an
 application override does not become the baseline user preference.
@@ -138,10 +201,135 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-reduced-motion, contrast, navigation, work-area or output-blending facts. Those
-remain unavailable until a host supplies them. CSS matching, document activity,
+navigation or output-blending facts. Those remain unavailable
+until a host supplies them. Windows supplies the native input observations
+described below. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
 their consuming owners.
+
+On Windows, the native content host samples the complete Windows Runtime
+[`PointerDevice`](https://learn.microsoft.com/en-us/windows/apps/develop/input/identify-input-devices)
+collection at creation and existing safe idle opportunities. Its host policy
+chooses a mouse or touchpad first, a pen second, and touch third. Mouse and
+touchpad report fine accuracy and convenient hover; pens report fine accuracy
+with hover from `MaxPointersWithZDistance`; touch reports coarse accuracy without
+convenient hover. Among pens, a hover-capable pen takes precedence. Selection
+does not depend on enumeration order or the last input event. The union retains
+every device, so coarse and fine can both be true. A successful empty collection
+reports known no-pointer; any failed query or unknown device type leaves the
+complete input report unavailable rather than silently dropping a device.
+
+The Windows API has a documented
+[package-identity restriction](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/winrt-api-desktop-app-support#apis-that-require-package-identity).
+The adapter attempts the observation and preserves failure as unavailable; a
+successful native probe on an unpackaged desktop does not promise universal
+deployment support. Native objects stay on the sampling thread; snapshots retain
+only Rust capability values. Basic geometry events preserve committed input.
+Native creation and idle refresh explicitly own the native input sample, while
+other adapters retain ownership of supplied input, navigation and presentation
+facts. No input-device subscription, independent wakeup or hotplug delivery
+latency is promised.
+
+On macOS, the native adapter samples AppKit's reduced-motion,
+reduced-transparency and increased-contrast flags. A true reduction flag maps to
+`Reduce`, and false maps to `NoPreference`. Increased contrast maps to `More`
+when true and `NoPreference` when false; this flag does not detect `Less` or
+`Custom`. These are explicit host-policy mappings of observed settings.
+
+On Windows, safe Windows Runtime APIs sample `UISettings.AnimationsEnabled`,
+[`UISettings.AdvancedEffectsEnabled`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings.advancedeffectsenabled)
+and [`AccessibilitySettings.HighContrast`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.accessibilitysettings.highcontrast).
+Disabled animation or transparency effects map to `Reduce`; enabled effects map
+to `NoPreference`. An active contrast theme maps to `Custom`: this observer does
+not classify the selected palette as particularly high or low contrast. An
+inactive contrast theme maps to `NoPreference`. Each failed observation remains
+independently unavailable, preserving successfully sampled siblings and the
+separately supplied system color scheme. Other platforms retain unavailable
+values for these observations.
+
+Windows also reads the fresh preferred connection profile through
+[`NetworkInformation.GetInternetConnectionProfile`](https://learn.microsoft.com/en-us/uwp/api/windows.networking.connectivity.networkinformation.getinternetconnectionprofile)
+and its connection cost. The native host infers `Reduce` from a known fixed or
+variable cost, or from a known unrestricted cost with roaming, over-limit or
+approaching-limit status. A known unrestricted cost with all three flags false
+maps to `NoPreference`. This is a UA policy allowed by the selected
+[Media Queries source](../../../references/mediaqueries-5--WD-mediaqueries-5-20260219--9e761f96f6a9.md#auto-pref),
+not a Windows CSS preference. Missing profiles, unknown or future cost values,
+and any required read failure leave reduced data unavailable while preserving
+other preferences. The preferred profile is the interface Windows considers
+most likely to carry internet traffic; it need not have internet access and
+does not establish every request's route. The observer reads no network names
+and changes no network settings. Other platforms retain unavailable reduced-data
+observations.
+
+The complete preference baseline is sampled at resume, native/user events,
+command application and idle opportunities. Changed facts commit before their
+callbacks, including accessibility changes with an unchanged system color
+scheme. Application theme and origin overrides remain separate. The adapter
+installs no preference notification observer or wakeup, so an external setting
+change does not promise to wake an otherwise idle loop.
+
+On macOS, creation and safe idle capture also observe the current monitor's
+available work area and WindowServer color-depth estimate. A nonzero winit native
+monitor ID must match exactly one checked `NSNumber` under the SDK's
+`NSScreenNumber` key. Missing, invalid, unmatched or ambiguous identity leaves
+these facts unavailable; the adapter never selects a screen by its name, frame,
+main-screen status or enumeration order.
+
+The work area uses `visibleFrame` relative to that screen's own `frame`. It
+converts the Cocoa bottom-up offset to the captured screen's right/down axes,
+scaled by screen backing scale divided by the committed metrics scale. No
+primary-screen height or additional safe-area subtraction participates.
+The color estimate multiplies positive checked sample bits by color-component
+count, excluding alpha and storage padding. Recognized grayscale retains its
+total estimate without inventing a positive RGB media-feature bound; unknown
+color-space semantics retain the public fallback. This estimate does not certify
+renderer formats, HDR, or the complete media-device capability environment.
+
+On Windows, the safe typed Windows bridge enumerates native monitors. It matches
+the selected winit monitor's device name exactly against `MONITORINFOEX.szDevice`.
+[`GetMonitorInfo`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)
+supplies that monitor's screen and work rectangles in virtual-desktop units.
+An empty, missing or ambiguous device identity, an incomplete native read, or
+invalid work bounds leaves the observation unavailable. No primary-monitor,
+enumeration-order or geometry-based fallback chooses a device.
+
+Windows work rectangles already use top-left/right/down axes. Their offsets
+within the selected monitor are divided by the committed display scale and
+added to the captured logical screen origin. This preserves negative desktop
+origins and each window's scale. Work bounds must be finite, nonnegative and
+contained in a positive-area selected screen.
+
+Windows color capture uses a synchronous read-only display-state query. The
+selected device's fully enumerated PnP monitor interface must match exactly one
+fresh connected `DisplayTarget.DeviceInterfacePath`; multiple child interfaces
+remain ambiguous. The display state and selected target must remain fresh
+through the read. The snapshot is acquired before resolving the GDI mapping, so
+its freshness interval covers interface enumeration and wire queries. Failed
+queries, invalid identities, missing wire formats or
+unknown encodings leave color unavailable without discarding valid work bounds.
+The native display manager is closed after every query; no display ownership or
+configuration mutation is requested.
+
+For RGB444 wire formats, the observed positive channel precision gives a
+three-channel estimate and the matching RGB component bound. Alpha and storage
+padding do not participate. Other encodings remain unavailable. This is an
+active wire-format estimate, not a renderer format, panel precision or HDR
+qualification. Pixel-storage depth is never substituted for that observation.
+See the native contracts for
+[monitor interface identity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw),
+[target identity](https://learn.microsoft.com/en-us/uwp/api/windows.devices.display.core.displaytarget.deviceinterfacepath)
+and [wire channel precision](https://learn.microsoft.com/en-us/uwp/api/windows.devices.display.core.displaywireformat.bitsperchannel).
+
+Raw native event captures retain the existing basic geometry but defer these
+monitor facts. At `about_to_wait`, after queued metric transitions have
+committed, the adapter samples preferences once and captures each live window's
+complete native environment. One changed callback per window carries combined
+preference/output/input changes; equal samples are suppressed. Navigation and
+presentation facts, and input outside the native Windows provider, remain
+independently supplied. Refresh returns work
+to the existing callback pump and adds no notification subscription, wakeup or
+latency guarantee. See [the monitor observation owner](../src/native_monitor.rs).
 
 ## Native geometry admission
 
@@ -180,12 +368,30 @@ are needed separately for complete CSSOM View page and offset coordinates.
 
 ## Native UI fonts
 
-`SystemFontEnvironment::capture` observes actual macOS UI fonts on the main
-thread through safe AppKit APIs. The result retains family and face names, native
-weight and traits, point size and vertical metrics. Unsupported platforms and
-wrong-thread calls have explicit errors. Consumers own CSS-pixel conversion,
-CSS shorthand resolution and selecting the matching text font resource; native
-metrics do not replace shaped-text metrics.
+`SystemFontEnvironment::capture` returns an owned observation of all six native
+UI font roles. Each `SystemFont` identifies which platform supplied its facts.
+The `AppKit` payload retains family and PostScript names, native weight and
+traits, point size and vertical metrics. Capturing AppKit fonts requires the
+application's main thread.
+
+The `Windows` payload retains the logical font preference from
+[`SystemParametersInfoForDpi`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfofordpi)
+at an explicit reference DPI of 96. Caption, small-caption, menu, status-bar and
+message-box roles come from the corresponding nonclient metric fonts; icon
+comes from the icon-title font. Its typeface name, signed logical height and
+width, native weight, orientation, escapement and selection bytes retain their
+[`LOGFONTW`](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-logfontw)
+meaning. A positive height requests cell height, a negative height requests
+character height, and zero retains the native default. Zero weight and empty
+typeface names also retain native selection defaults. No physical face is
+selected, and Windows preferences do not claim a PostScript name or font
+metrics. This provider requires Windows 10 version 1607 or newer.
+
+Unsupported platforms, native query failures and wrong-thread AppKit calls have
+explicit errors. Consumers own CSS-pixel conversion, CSS shorthand resolution
+and selecting the matching text font resource; native AppKit metrics do not
+replace shaped-text metrics. Capture neither subscribes to changes nor promises
+an atomic operating-system snapshot.
 
 The selected macOS role policy uses the system UI font for caption, icon and
 message-box roles; the menu font for menu; the small system size for small

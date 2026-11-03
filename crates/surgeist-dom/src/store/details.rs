@@ -1,5 +1,6 @@
 //! HTML-owned Details decisions over one canonical staged ordinary tree.
 use super::*;
+
 #[cfg(test)]
 #[path = "details/discovery_tests.rs"]
 mod discovery_tests;
@@ -7,8 +8,10 @@ use crate::details::{
     DomDetailsToggleIntention, DomDetailsToggleIntentionId, DomDetailsToggleTransfer,
 };
 use surgeist_html::{
-    HtmlDetailsAttribute, HtmlDetailsAttributeEffect, HtmlDetailsExclusivity, HtmlDetailsState,
-    KnownHtmlAttribute,
+    elements::details::{
+        HtmlDetailsAttribute, HtmlDetailsAttributeEffect, HtmlDetailsExclusivity, HtmlDetailsState,
+    },
+    vocabulary::KnownHtmlAttribute,
 };
 
 #[derive(Clone, Copy)]
@@ -256,11 +259,13 @@ impl Draft {
         } else {
             HtmlDetailsAttribute::Other
         };
-        let namespace = name
-            .namespace_uri()
-            .cloned()
-            .map_or_else(crate::Namespace::none, crate::Namespace::from_uri);
-        match surgeist_html::details_attribute_effect(&namespace, attribute, old, new) {
+        let namespace = name.namespace_uri().cloned().map_or_else(
+            surgeist_html::values::Namespace::none,
+            surgeist_html::values::Namespace::from_uri,
+        );
+        match surgeist_html::elements::details::details_attribute_effect(
+            &namespace, attribute, old, new,
+        ) {
             HtmlDetailsAttributeEffect::None => Ok(()),
             HtmlDetailsAttributeEffect::CloseGiven => {
                 self.details_exclusivity(target, HtmlDetailsExclusivity::CloseGiven, limits, cancel)
@@ -538,6 +543,7 @@ impl Dom {
 mod source_observation {
     use super::*;
     use std::{cell::Cell, sync::atomic::Ordering};
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Growth {
         pub required: usize,
@@ -588,7 +594,8 @@ mod source_observation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Namespace;
+    use surgeist_html::values::Namespace;
+
     fn policy(pending: usize) -> DomLimits {
         DomLimits::new(
             32,
@@ -916,7 +923,9 @@ mod tests {
         };
         assert_eq!(
             request.action(),
-            crate::DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+            crate::DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+            )
         );
         assert!(lease.status().has_published());
         let operation = lease.operation();

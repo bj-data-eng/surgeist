@@ -1,11 +1,25 @@
 //! Decoded-Unicode HTML ingestion, recovery and source-owning immutable reports.
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
+// No run-time panic is reachable from parsing, so production code carries none
+// of the operations that can panic. A site that is provably total says why in a
+// narrow `#[expect]`; test code is outside the gate.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice,
+        clippy::arithmetic_side_effects
+    )
+)]
 
-use surgeist_html::bounded;
-use surgeist_html::*;
 use surgeist_html_semantics::*;
 mod construction;
+mod keyed;
 mod meta_csp;
 mod parser;
 pub use meta_csp::{HtmlParseCspFailure, HtmlParseCspFailureKind};
@@ -16,77 +30,57 @@ pub use request::*;
 pub use settings::*;
 pub use source::*;
 
-pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
-pub use construction::{
-    ConstructionCompletion as HtmlParseCompletion, ConstructionReadiness as HtmlParseReadiness,
-    StandaloneDocumentState as HtmlParseDocumentState,
+pub use construction::read::{
+    HtmlInputImageSource, HtmlParseRetiredDestination, HtmlParseUnresolvedKind,
+    HtmlParseUnresolvedReference,
 };
+pub use construction::{HtmlParseCompletion, HtmlParseDocumentState, HtmlParseReadiness};
 pub use parser::control::{
-    HtmlColorProcessingError, Invariant as HtmlParseInvariant, ParseStop as HtmlParseStop,
-    ParseUsage as HtmlParseUsage, ResourceUsage as HtmlParseResourceUsage,
-    StandaloneUnsupported as HtmlParseUnsupportedState, WorkCategory as HtmlParseWorkCategory,
+    HtmlColorProcessingError, HtmlParseInvariant, HtmlParseResourceUsage, HtmlParseStop,
+    HtmlParseUnsupportedState, HtmlParseUsage, HtmlParseWorkCategory,
 };
-pub use parser::tree_builder::head::HeadBoundary as HtmlParseConstructionBoundary;
+pub use parser::tree_builder::head::HtmlParseConstructionBoundary;
 pub use parser::tree_builder::parse::{
     HtmlParseEngineCondition, HtmlParseFailure, HtmlParseFailureReason,
 };
-pub use parser::tree_builder::report::ImmutableParseReport as HtmlParseReport;
+pub use parser::tree_builder::report::HtmlParseReport;
 
-pub use construction::SvgScriptOrigin as HtmlParseSvgScriptOrigin;
-pub use construction::associated::HyperlinkUnavailable as HtmlParseHyperlinkUnavailable;
+pub use construction::HtmlParseSvgScriptOrigin;
+pub use construction::associated::HtmlParseHyperlinkUnavailable;
 pub use construction::context::{
-    FrozenCapturedRegistry as HtmlParseCapturedRegistry, FrozenFragmentEffect as HtmlParseEffect,
-    FrozenFragmentEffects as HtmlParseEffects, FrozenFragmentHost as HtmlParseEffectHost,
-    FrozenFragmentRegistry as HtmlParseRegistry,
-    FrozenFragmentRegistryBinding as HtmlParseRegistryBinding,
+    HtmlParseCapturedRegistry, HtmlParseEffect, HtmlParseEffectHost, HtmlParseEffects,
+    HtmlParseRegistry, HtmlParseRegistryBinding,
 };
 pub use construction::evidence::{
-    DiagnosticContext as HtmlParseDiagnosticContext,
-    DiagnosticEvidenceView as HtmlParseDiagnostics, DiagnosticKind as HtmlParseDiagnosticKind,
-    DiagnosticLocation as HtmlParseDiagnosticLocation,
-    DiagnosticLocationRole as HtmlParseDiagnosticLocationRole,
-    DiagnosticRecord as HtmlParseDiagnostic, DiagnosticRule as HtmlParseDiagnosticRule,
-    DiagnosticSeverity as HtmlParseDiagnosticSeverity, DiagnosticToken as HtmlParseTokenFamily,
+    HtmlParseDiagnostic, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
+    HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole, HtmlParseDiagnosticRule,
+    HtmlParseDiagnosticSeverity, HtmlParseDiagnostics, HtmlParseTokenFamily,
 };
 pub use construction::history::{
-    HistoryBody as HtmlParseHistoryBody, HistoryCursor as HtmlParseHistoryCursor,
-    HistoryFrame as HtmlParseHistoryFrame, HistoryGroup as HtmlParseOriginGroup,
-    HistoryLeaf as HtmlParseHistoryLeaf, HistoryOrigin as HtmlParseHistoryOrigin,
-    HistoryReadError as HtmlParseHistoryError, HistoryStep as HtmlParseHistoryStep,
+    HtmlParseHistoryBody, HtmlParseHistoryCursor, HtmlParseHistoryError, HtmlParseHistoryFrame,
+    HtmlParseHistoryLeaf, HtmlParseHistoryOrigin, HtmlParseHistoryStep, HtmlParseOriginGroup,
 };
-pub use construction::meta::{
-    MetaDomain as HtmlParseMetaDomain, MetaMissingKind as HtmlParseMetaMissingKind,
-};
+pub use construction::meta::{HtmlParseMetaDomain, HtmlParseMetaMissingKind};
 pub use construction::pending_association::{
-    CaptureDisposition as HtmlParseAssociationCaptureDisposition,
-    CapturedObservation as HtmlParseAssociationCapturedObservation,
-    ContextEpochId as HtmlParseAssociationContextEpochId,
-    ContextRequirement as HtmlParseAssociationContextRequirement,
-    ContextRole as HtmlParseAssociationContextRole,
-    ContextSlotId as HtmlParseAssociationContextSlotId, ContextView as HtmlParseAssociationContext,
-    Cursor as HtmlParsePendingAssociationCursor, DocumentView as HtmlParseAssociationDocument,
-    MissingKind as HtmlParseAssociationMissingKind,
-    OccurrenceId as HtmlParseAssociationOccurrenceId,
-    OccurrenceKind as HtmlParseAssociationOccurrenceKind,
-    OccurrenceView as HtmlParseAssociationOccurrence, Step as HtmlParsePendingAssociationStep,
-    StyleInputs as HtmlParseAssociationStyleInputs,
+    HtmlParseAssociationCaptureDisposition, HtmlParseAssociationCapturedObservation,
+    HtmlParseAssociationContext, HtmlParseAssociationContextEpochId,
+    HtmlParseAssociationContextRequirement, HtmlParseAssociationContextRole,
+    HtmlParseAssociationContextSlotId, HtmlParseAssociationDocument,
+    HtmlParseAssociationMissingKind, HtmlParseAssociationOccurrence,
+    HtmlParseAssociationOccurrenceId, HtmlParseAssociationOccurrenceKind,
+    HtmlParseAssociationStyleInputs, HtmlParsePendingAssociationCursor,
+    HtmlParsePendingAssociationStep,
 };
-pub use construction::provenance::reverse::{
-    AssociationRelation as HtmlParseAssociationRelation, ReverseQueryError as HtmlParseReverseError,
+pub use construction::provenance::reverse::{HtmlParseAssociationRelation, HtmlParseReverseError};
+pub use construction::provenance::{
+    HtmlParseCapturedCauseRole, HtmlParseConstructionOperation, HtmlParseRawField, HtmlParserRule,
 };
 pub use construction::provenance::{
-    CapturedCauseRole as HtmlParseCapturedCauseRole,
-    ConstructionOperation as HtmlParseConstructionOperation, ParserRule as HtmlParserRule,
-    RawFieldKind as HtmlParseRawField,
+    HtmlParseColorOperandRole, HtmlParseColorValueSource, HtmlParseRangeBranch,
+    HtmlParseRangeOperandKind, HtmlParseRangeOperandRole,
 };
 pub use construction::provenance::{
-    ColorOperandRole as HtmlParseColorOperandRole, ColorValueSource as HtmlParseColorValueSource,
-    RangeBranch as HtmlParseRangeBranch, RangeOperandKind as HtmlParseRangeOperandKind,
-    RangeOperandRole as HtmlParseRangeOperandRole,
-};
-pub use construction::provenance::{
-    LexicalDisposition as HtmlParseLexicalDisposition, LexicalKind as HtmlParseLexicalKind,
-    LexicalRole as HtmlParseLexicalRole, OmissionKind as HtmlParseOmissionKind,
+    HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseOmissionKind,
 };
 pub use construction::read::{
     HtmlParseAssociation, HtmlParseAssociations, HtmlParseCapturedCause, HtmlParseCause,
@@ -98,42 +92,29 @@ pub use construction::read::{
     HtmlParseColorComputation, HtmlParseRangeComputation, HtmlParseRangeOperand,
 };
 pub use construction::report::{
-    MetadataBase as HtmlParseBase, MetadataCursor as HtmlParseMetadataCursor,
-    MetadataDialog as HtmlParseDialog, MetadataDialogDisposition as HtmlParseDialogDisposition,
-    MetadataDialogMissing as HtmlParseDialogMissing, MetadataDocument as HtmlParseMetadataDocument,
-    MetadataDocumentInteraction as HtmlParseDocumentInteraction, MetadataRef as HtmlParseMetadata,
-    MetadataStep as HtmlParseMetadataStep, MetadataTemplate as HtmlParseTemplate,
+    HtmlParseBase, HtmlParseDialog, HtmlParseDialogDisposition, HtmlParseDialogMissing,
+    HtmlParseDocumentInteraction, HtmlParseMetadata, HtmlParseMetadataCursor,
+    HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseTemplate,
 };
 pub use construction::report::{
-    MetadataBaseState as HtmlParseBaseState, MetadataDocumentMeta as HtmlParseDocumentMeta,
-    MetadataMetaDisposition as HtmlParseMetaDisposition,
-    MetadataMetaMissing as HtmlParseMetaMissing, MetadataMetaProfile as HtmlParseMetaProfile,
-    MetadataMetaRefresh as HtmlParseMetaRefresh,
+    HtmlParseBaseState, HtmlParseDocumentMeta, HtmlParseMetaDisposition, HtmlParseMetaMissing,
+    HtmlParseMetaProfile, HtmlParseMetaRefresh,
 };
 pub use construction::report::{
-    MetadataHyperlink as HtmlParseHyperlink, MetadataHyperlinkState as HtmlParseHyperlinkState,
-    MetadataImage as HtmlParseImage, MetadataImageUpdate as HtmlParseImageUpdate,
-    MetadataStyle as HtmlParseStyle,
+    HtmlParseHyperlink, HtmlParseHyperlinkState, HtmlParseImage, HtmlParseImageUpdate,
+    HtmlParseStyle,
 };
-pub use construction::style::StyleAssociation as HtmlParseStyleAssociation;
-pub use construction::{
-    FormAssociationEvidence as HtmlParseFormEvidence,
-    OutputDefaultValueOverride as HtmlParseOutputOverride,
-};
+pub use construction::style::HtmlParseStyleAssociation;
+pub use construction::{HtmlParseFormEvidence, HtmlParseOutputOverride};
 pub use parser::tokenizer::states::{
-    Escape as HtmlTokenizerEscape, Identifier as HtmlTokenizerIdentifier,
-    Quote as HtmlTokenizerQuote, Raw as HtmlTokenizerRawState, State as HtmlTokenizerState,
+    HtmlTokenizerEscape, HtmlTokenizerIdentifier, HtmlTokenizerQuote, HtmlTokenizerRawState,
+    HtmlTokenizerState,
 };
 pub use parser::tokenizer::token::{
-    DiagnosticCode as HtmlTokenizerDiagnostic, DiagnosticPhase as HtmlTokenizerDiagnosticPhase,
-    OriginKind as HtmlParseOriginKind, TextOrigin as HtmlParseTextOrigin,
+    HtmlParseOriginKind, HtmlParseTextOrigin, HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase,
 };
-pub use parser::tree_builder::head::{
-    HeadCondition as HtmlTreeDiagnostic, InsertionMode as HtmlInsertionMode,
-};
-pub use parser::tree_builder::prologue::{
-    PrologueCondition as HtmlPrologueDiagnostic, PrologueMode as HtmlPrologueMode,
-};
+pub use parser::tree_builder::head::{HtmlInsertionMode, HtmlTreeDiagnostic};
+pub use parser::tree_builder::prologue::{HtmlPrologueDiagnostic, HtmlPrologueMode};
 
-pub use construction::context::FragmentParserOrigin as HtmlParseOpaqueOrigin;
-pub use construction::fragment_document::FragmentParserDocument as HtmlParseFragmentParserDocument;
+pub use construction::context::HtmlParseOpaqueOrigin;
+pub use construction::fragment_document::HtmlParseFragmentParserDocument;

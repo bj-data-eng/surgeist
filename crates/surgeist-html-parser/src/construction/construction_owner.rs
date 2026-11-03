@@ -1,7 +1,14 @@
 //! Drives HTML's sole record owner through this session's original controller.
 use super::*;
-use crate::bounded::*;
 use crate::parser::control::ConstructionAllocation;
+use surgeist_html::bounded::construction::{
+    HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
+    HtmlConstructionAllocationRole, HtmlConstructionAttributeEdit, HtmlConstructionCommand,
+    HtmlConstructionCommit, HtmlConstructionGrowth, HtmlConstructionLease, HtmlConstructionNode,
+    HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRecovery,
+    HtmlConstructionResult, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
+};
+use surgeist_html::construction::{HtmlBuilderNode, HtmlConstructionError, HtmlConstructionUsage};
 mod attributes;
 #[cfg(test)]
 mod tests;
@@ -17,7 +24,12 @@ pub(super) struct ConstructionOwner {
     children: Vec<Option<ConstructionAllocation>>,
     children_allocation: VectorCapacity<Option<ConstructionAllocation>>,
     wrapper: Option<ConstructionAllocation>,
-    pending_orders: [Option<ConstructionAllocation>; 2],
+    /// Hides the attribute edit the next `begin_attributes` starts, as if its
+    /// custody slot had been emptied behind the owner's back.
+    #[cfg(test)]
+    hide_next_attribute_edit: bool,
+    #[cfg(test)]
+    hidden_attribute_edit: Option<HtmlConstructionAttributeEdit>,
 }
 
 #[derive(Clone, Copy)]
@@ -25,39 +37,296 @@ enum Bank {
     Identity,
     Records,
     Children(usize),
-    PendingOrder(usize),
     Wrapper,
 }
 
+/// What the construction owner's error violates, one fault per cause it can
+/// report today, plus the cause this parser does not yet name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerFault {
+    ForeignBuilder,
+    ParentCannotHaveChildren,
+    TemplateContentsRequired,
+    ShadowHostMustBeElement,
+    ShadowAlreadyAttached,
+    UnknownNode,
+    WrongNodeKind,
+    RootMove,
+    AssociationMove,
+    WrongSibling,
+    Cycle,
+    AssociationAlreadyOwned,
+    InvalidTemplateAssociation,
+    DuplicateAttribute,
+    AttributeNameMismatch,
+    AttributeOrderMismatch,
+    InvalidShadowAssociation,
+    InvalidContentsReference,
+    ParentChildConflict,
+    InvalidOutputRoot,
+    OperationNotReady,
+    ForeignAllocation,
+    CapacityMismatch,
+    SharedAllocationAliased,
+    ReleaseUnderflow,
+    LimitExceeded,
+    RepresentationExhausted,
+    AllocationFailed,
+    /// A cause that the owner added after this parser classified its causes.
+    Unlisted,
+}
+
+/// A predicate of the owner's error cause.
+type CausePredicate = fn(&HtmlConstructionError) -> bool;
+
+/// The owner's cause predicates, each with the fault it names.
+const OWNER_CAUSES: [(CausePredicate, OwnerFault); 28] = [
+    (
+        HtmlConstructionError::is_foreign_builder,
+        OwnerFault::ForeignBuilder,
+    ),
+    (
+        HtmlConstructionError::is_parent_cannot_have_children,
+        OwnerFault::ParentCannotHaveChildren,
+    ),
+    (
+        HtmlConstructionError::is_template_contents_required,
+        OwnerFault::TemplateContentsRequired,
+    ),
+    (
+        HtmlConstructionError::is_shadow_host_must_be_element,
+        OwnerFault::ShadowHostMustBeElement,
+    ),
+    (
+        HtmlConstructionError::is_shadow_already_attached,
+        OwnerFault::ShadowAlreadyAttached,
+    ),
+    (
+        HtmlConstructionError::is_unknown_node,
+        OwnerFault::UnknownNode,
+    ),
+    (
+        HtmlConstructionError::is_wrong_node_kind,
+        OwnerFault::WrongNodeKind,
+    ),
+    (HtmlConstructionError::is_root_move, OwnerFault::RootMove),
+    (
+        HtmlConstructionError::is_association_move,
+        OwnerFault::AssociationMove,
+    ),
+    (
+        HtmlConstructionError::is_wrong_sibling,
+        OwnerFault::WrongSibling,
+    ),
+    (HtmlConstructionError::is_cycle, OwnerFault::Cycle),
+    (
+        HtmlConstructionError::is_association_already_owned,
+        OwnerFault::AssociationAlreadyOwned,
+    ),
+    (
+        HtmlConstructionError::is_invalid_template_association,
+        OwnerFault::InvalidTemplateAssociation,
+    ),
+    (
+        HtmlConstructionError::is_duplicate_attribute,
+        OwnerFault::DuplicateAttribute,
+    ),
+    (
+        HtmlConstructionError::is_attribute_name_mismatch,
+        OwnerFault::AttributeNameMismatch,
+    ),
+    (
+        HtmlConstructionError::is_attribute_order_mismatch,
+        OwnerFault::AttributeOrderMismatch,
+    ),
+    (
+        HtmlConstructionError::is_invalid_shadow_association,
+        OwnerFault::InvalidShadowAssociation,
+    ),
+    (
+        HtmlConstructionError::is_invalid_contents_reference,
+        OwnerFault::InvalidContentsReference,
+    ),
+    (
+        HtmlConstructionError::is_parent_child_conflict,
+        OwnerFault::ParentChildConflict,
+    ),
+    (
+        HtmlConstructionError::is_invalid_output_root,
+        OwnerFault::InvalidOutputRoot,
+    ),
+    (
+        HtmlConstructionError::is_operation_not_ready,
+        OwnerFault::OperationNotReady,
+    ),
+    (
+        HtmlConstructionError::is_foreign_allocation,
+        OwnerFault::ForeignAllocation,
+    ),
+    (
+        HtmlConstructionError::is_capacity_mismatch,
+        OwnerFault::CapacityMismatch,
+    ),
+    (
+        HtmlConstructionError::is_shared_allocation_aliased,
+        OwnerFault::SharedAllocationAliased,
+    ),
+    (
+        HtmlConstructionError::is_release_underflow,
+        OwnerFault::ReleaseUnderflow,
+    ),
+    (
+        HtmlConstructionError::is_limit_exceeded,
+        OwnerFault::LimitExceeded,
+    ),
+    (
+        HtmlConstructionError::is_representation_exhausted,
+        OwnerFault::RepresentationExhausted,
+    ),
+    (
+        HtmlConstructionError::is_allocation_failed,
+        OwnerFault::AllocationFailed,
+    ),
+];
+
+/// Names the fault of an owner error through the owner's predicates.
+fn classify(error: &HtmlConstructionError) -> OwnerFault {
+    OWNER_CAUSES
+        .iter()
+        .find(|(recognizes, _)| recognizes(error))
+        .map_or(OwnerFault::Unlisted, |&(_, fault)| fault)
+}
+
+/// How a fault is reported to the session.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Disposition {
+    /// A document-shaped error that `session_class` classifies; nothing is
+    /// latched here.
+    Session(SessionError),
+    /// The class a stage error of the same kind would carry, latched through it.
+    Class(SessionClass),
+    /// A count that cannot be represented.
+    Representation,
+    /// An allocation whose layout is unknown here.
+    AllocationFailed,
+}
+
+/// Maps every fault to its report. A new fault needs a row here to compile.
+fn disposition(fault: OwnerFault) -> Disposition {
+    use crate::parser::control::HtmlParseInvariant;
+    use Disposition::{AllocationFailed, Class, Representation, Session};
+    match fault {
+        OwnerFault::ForeignBuilder | OwnerFault::UnknownNode => Session(SessionError::ForeignNode),
+        OwnerFault::RootMove => Session(SessionError::RootMove),
+        OwnerFault::AssociationMove => Session(SessionError::AssociationMove),
+        OwnerFault::ParentCannotHaveChildren => Session(SessionError::NotContainer),
+        OwnerFault::TemplateContentsRequired => Session(SessionError::TemplateContentsRequired),
+        OwnerFault::WrongSibling | OwnerFault::ParentChildConflict => {
+            Session(SessionError::WrongSibling)
+        }
+        OwnerFault::Cycle => Session(SessionError::Cycle),
+        OwnerFault::SharedAllocationAliased => Class(SessionClass::Fault(
+            HtmlParseInvariant::SharedAllocationAliased,
+        )),
+        OwnerFault::RepresentationExhausted => Representation,
+        OwnerFault::CapacityMismatch
+        | OwnerFault::ForeignAllocation
+        | OwnerFault::LimitExceeded => {
+            Class(SessionClass::Fault(HtmlParseInvariant::CapacityMismatch))
+        }
+        OwnerFault::ReleaseUnderflow => {
+            Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow))
+        }
+        // `layout_bytes: 0` means the layout is unknown here, not that none was
+        // requested. Every bounded producer of this error reports it with its
+        // real layout before it gets this far: the record and child reserves
+        // in `ConstructionOwner::perform_action_with_commit`, the name-decision
+        // and attribute-slot reserves in `attributes.rs`, and the candidate
+        // backing reserve in `text_append.rs`. This is only a failure a
+        // caller without a layout still has to report.
+        OwnerFault::AllocationFailed => AllocationFailed,
+        OwnerFault::ShadowHostMustBeElement
+        | OwnerFault::ShadowAlreadyAttached
+        | OwnerFault::WrongNodeKind
+        | OwnerFault::AssociationAlreadyOwned
+        | OwnerFault::InvalidTemplateAssociation
+        | OwnerFault::DuplicateAttribute
+        | OwnerFault::AttributeNameMismatch
+        | OwnerFault::AttributeOrderMismatch
+        | OwnerFault::InvalidShadowAssociation
+        | OwnerFault::InvalidContentsReference
+        | OwnerFault::InvalidOutputRoot
+        | OwnerFault::OperationNotReady
+        | OwnerFault::Unlisted => Class(SessionClass::Fault(
+            HtmlParseInvariant::ConstructionOwnerRefusal,
+        )),
+    }
+}
+
+/// The session error for a refusal from HTML's construction owner, with every
+/// cause of its error classified by what it violates.
+///
+/// There are two tables, and the second is built on the first.
+/// [`session_class`] classifies every session error; `OWNER_CAUSES` and
+/// [`disposition`] classify the construction owner's causes, which are not
+/// session errors until this function converts them. A document-shaped
+/// refusal converts to the [`SessionError`] that `session_class` already
+/// classifies, and nothing is latched here. Every other cause converts to the
+/// [`SessionClass`] that a stage error would carry and is latched through
+/// [`SessionClass::latch`], so the stop and the failure's reason derive from
+/// the same class (`StopCause`). Two environment stops, a count that cannot be
+/// represented and an allocation that failed, are latched directly, as their
+/// controller owners latch them. A test checks that no document-shaped
+/// disposition disagrees with `session_class`.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner keeps its error's cause private and open to later causes, so the
+/// compiler cannot make this crate classify a new one. [`classify`] names each
+/// current cause through the owner's predicates and [`disposition`] maps every
+/// named fault exhaustively. A cause neither names is a fault of the parser,
+/// never an outcome of the document: every cause that parsed input can reach
+/// (a limit, an allocation, a count) is named, so `Unlisted` reports the
+/// construction-owner invariant and cannot end a parse as a document outcome.
+/// The tests cover what they can reach: every fault's disposition, the table
+/// naming each fault once, and the errors a builder provokes classifying
+/// through exactly one predicate. That the table lists all 29 causes of the
+/// owner's error rests on the owner's own cause tests, which pin one predicate
+/// per cause, and on this table's fixed length; the parser cannot build every
+/// cause through the public API.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
-    match error {
-        HtmlConstructionError::ForeignBuilder | HtmlConstructionError::UnknownNode => {
-            SessionError::ForeignNode
+    report(control, disposition(classify(&error)))
+}
+
+/// Reports a disposition to the session, latching a stop where it names one.
+fn report(control: &mut ParseControl, disposition: Disposition) -> SessionError {
+    match disposition {
+        Disposition::Session(error) => error,
+        Disposition::Class(class) => SessionError::Stop(class.latch(control)),
+        Disposition::Representation => {
+            SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
         }
-        HtmlConstructionError::RootMove => SessionError::RootMove,
-        HtmlConstructionError::AssociationMove => SessionError::AssociationMove,
-        HtmlConstructionError::ParentCannotHaveChildren => SessionError::NotContainer,
-        HtmlConstructionError::TemplateContentsRequired => SessionError::TemplateContentsRequired,
-        HtmlConstructionError::WrongSibling | HtmlConstructionError::ParentChildConflict => {
-            SessionError::WrongSibling
+        Disposition::AllocationFailed => {
+            SessionError::Stop(control.construction_allocation_failed(0))
         }
-        HtmlConstructionError::Cycle => SessionError::Cycle,
-        HtmlConstructionError::SharedAllocationAliased => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
-        ),
-        HtmlConstructionError::RepresentationExhausted => SessionError::Stop(
-            control
-                .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err(),
-        ),
-        _ => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
-        ),
     }
 }
+
 pub(super) struct PendingConstruction {
     operation: Option<HtmlConstructionOperation>,
     before_edges: usize,
@@ -67,10 +336,11 @@ impl PendingConstruction {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<Option<HtmlConstructionAction<'_>>, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 3)?;
-        self.operation
-            .as_mut()
-            .expect("pending construction operation")
+        control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+        let Some(operation) = self.operation.as_mut() else {
+            return Err(latch_registry_row(control));
+        };
+        operation
             .next_action()
             .map_err(|error| construction_error(control, error))
     }
@@ -79,36 +349,41 @@ impl PendingConstruction {
     }
 }
 fn ticket_work(control: &mut ParseControl) -> Result<(), SessionError> {
-    control.charge(WorkCategory::ProviderCall, 2)?;
+    control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
     control.charge(
-        WorkCategory::CopyByte,
+        HtmlParseWorkCategory::CopyByte,
         mem::size_of::<ConstructionAllocation>() as u64,
     )?;
-    control.charge(WorkCategory::RecordWrite, 1)?;
+    control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
     Ok(())
 }
 impl ConstructionOwner {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
-        control.charge(WorkCategory::ProviderCall, 1)?;
-        let mut initialization = Some(HtmlConstructionStorage::begin());
-        let action = initialization
-            .as_mut()
-            .expect("initialization owner")
+        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        let mut initialization = HtmlConstructionStorage::begin();
+        let Some(action) = initialization
             .next_action()
             .map_err(|error| construction_error(control, error))?
-            .expect("real identity action");
+        else {
+            return Err(latch_owner_refusal(control));
+        };
         let HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes,
             initialized_bytes,
             provider_calls,
         } = action.description()
         else {
-            unreachable!("initialization descriptor")
+            return Err(latch_owner_refusal(control));
         };
         control.prepare_construction_share(payload_bytes)?;
-        control.charge(WorkCategory::ProviderCall, (provider_calls - 1) as u64)?;
+        // The first call was charged above; a plan that counts none differs
+        // from the work already charged for it.
+        let Some(further_calls) = provider_calls.checked_sub(1) else {
+            return Err(plan_below_charge(control));
+        };
+        control.charge(HtmlParseWorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;
-        control.charge(WorkCategory::CopyByte, initialized_bytes as u64)?;
+        control.charge(HtmlParseWorkCategory::CopyByte, initialized_bytes as u64)?;
         ticket_work(control)?;
         let observation = action.perform();
         let mut identity = None;
@@ -118,26 +393,26 @@ impl ConstructionOwner {
             payload_bytes,
         ) {
             drop(observation);
-            if let Some(receipt) = initialization
-                .take()
-                .expect("refused initialization owner")
-                .abort()
-            {
-                control.retire_construction_allocation(
-                    identity.take().expect("actual identity ticket"),
-                    receipt,
-                )?;
+            if let Some(receipt) = initialization.abort() {
+                let Some(ticket) = identity.take() else {
+                    return Err(latch_registry_row(control));
+                };
+                control.retire_construction_allocation(ticket, receipt)?;
             }
             return Err(stop.into());
         }
         observation.accept();
-        let owner = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .map_err(|error| construction_error(control, error))?
+        let owner = initialization
+            .try_ready()
+            .map_err(|refusal| construction_error(control, refusal.into_parts().1))?
             .commit();
         let (children, children_allocation) = match control.new_vector() {
             Ok(value) => value,
             Err(stop) => {
                 let mut retirement = owner.retire();
+                // Every bank is retired even after an impossible one: the
+                // walk only advances by performing its actions.
+                let mut impossible = false;
                 while let Some(action) = retirement
                     .next_action()
                     .map_err(|error| construction_error(control, error))?
@@ -145,18 +420,20 @@ impl ConstructionOwner {
                     let is_identity = matches!(action.description(),HtmlConstructionRetirementDescription::Allocation(value) if matches!(value.role(),HtmlConstructionAllocationRole::Identity));
                     if let Some(receipt) = action.perform() {
                         if is_identity {
-                            control.retire_construction_allocation(
-                                identity.take().expect("actual identity ticket"),
-                                receipt,
-                            )?;
-                        } else {
-                            assert_eq!(
-                                receipt.allocation().payload_bytes(),
-                                0,
-                                "empty initialization record bank"
-                            );
+                            match identity.take() {
+                                Some(ticket) => {
+                                    control.retire_construction_allocation(ticket, receipt)?;
+                                }
+                                None => impossible = true,
+                            }
+                        } else if receipt.allocation().payload_bytes() != 0 {
+                            // An empty initialization record bank holds nothing.
+                            impossible = true;
                         }
                     }
+                }
+                if impossible {
+                    return Err(latch_registry_row(control));
                 }
                 return Err(stop.into());
             }
@@ -171,31 +448,58 @@ impl ConstructionOwner {
             children,
             children_allocation,
             wrapper: None,
-            pending_orders: [None, None],
+            #[cfg(test)]
+            hide_next_attribute_edit: false,
+            #[cfg(test)]
+            hidden_attribute_edit: None,
         })
     }
-    pub(super) fn len(&self) -> usize {
-        self.storage().len()
+    pub(super) fn len(&self, control: &mut ParseControl) -> Result<usize, SessionError> {
+        Ok(self.storage(control)?.len())
     }
-    pub(super) fn storage(&self) -> &HtmlConstructionStorage {
-        self.owner
-            .as_ref()
-            .or_else(|| {
-                self.attribute_edit
-                    .as_ref()
-                    .map(HtmlConstructionAttributeEdit::storage_view)
-            })
-            .expect("active shared construction storage")
+    /// The storage while it is at rest or lent to an attribute edit. It is
+    /// absent only while a pending operation or a publication holds it, and a
+    /// caller that reads it then has met an impossible custody state.
+    fn resident(&self) -> Option<&HtmlConstructionStorage> {
+        self.owner.as_ref().or_else(|| {
+            self.attribute_edit
+                .as_ref()
+                .map(HtmlConstructionAttributeEdit::storage_view)
+        })
+    }
+    pub(super) fn storage(
+        &self,
+        control: &mut ParseControl,
+    ) -> Result<&HtmlConstructionStorage, SessionError> {
+        self.resident().ok_or_else(|| latch_registry_row(control))
     }
     pub(super) fn reserve_child_tickets(
         &mut self,
         control: &mut ParseControl,
         additional: usize,
     ) -> Result<(), SessionError> {
-        control.reserve_vector(
+        control.reserve_vector_geometric(
             &mut self.children,
             &mut self.children_allocation,
             additional,
+        )?;
+        Ok(())
+    }
+    /// Reserves HTML-owned record storage for `additional` new records with
+    /// geometric spare capacity, so a document of N records costs O(N) bytes of
+    /// reservation work instead of O(N^2).
+    pub(super) fn reserve_records(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+    ) -> Result<(), SessionError> {
+        let len = self.len(control)?;
+        let additional =
+            control.geometric_construction_additional(self.records.as_ref(), len, additional)?;
+        self.apply(
+            control,
+            HtmlConstructionCommand::ReserveRecords { additional },
+            &[],
         )?;
         Ok(())
     }
@@ -208,20 +512,29 @@ impl ConstructionOwner {
             .snapshot();
         (snapshot.capacity(), snapshot.element_size())
     }
-    pub(super) fn usage(&self) -> HtmlConstructionUsage {
-        self.storage().usage()
+    pub(super) fn usage(
+        &self,
+        control: &mut ParseControl,
+    ) -> Result<HtmlConstructionUsage, SessionError> {
+        Ok(self.storage(control)?.usage())
     }
+    /// The record at `position`; storage that is not at rest holds no record
+    /// a caller may name.
     pub(super) fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        self.storage().node_at(position)
+        self.resident()?.node_at(position)
     }
-    fn allocation_slot(&mut self, bank: Bank) -> &mut Option<ConstructionAllocation> {
+    fn allocation_slot(
+        &mut self,
+        control: &mut ParseControl,
+        bank: Bank,
+    ) -> Result<&mut Option<ConstructionAllocation>, SessionError> {
         match bank {
-            Bank::Identity => &mut self.identity,
-            Bank::Records => &mut self.records,
-            Bank::Children(position) => &mut self.children[position],
-            Bank::Wrapper => &mut self.wrapper,
-            Bank::PendingOrder(slot) => &mut self.pending_orders[slot],
+            Bank::Identity => Some(&mut self.identity),
+            Bank::Records => Some(&mut self.records),
+            Bank::Children(position) => self.children.get_mut(position),
+            Bank::Wrapper => Some(&mut self.wrapper),
         }
+        .ok_or_else(|| latch_registry_row(control))
     }
     pub(super) fn apply(
         &mut self,
@@ -238,55 +551,20 @@ impl ConstructionOwner {
         committed: HtmlConstructionCommit,
     ) -> Result<Option<HtmlBuilderNode>, SessionError> {
         match committed {
-            HtmlConstructionCommit::Changed {
-                storage,
-                created,
-                transfers,
-                mut retired_orders,
-            } => {
+            HtmlConstructionCommit::Changed { storage, created } => {
                 self.owner = Some(storage);
-                let mut old: [Option<(usize, ConstructionAllocation)>; 2] = [None, None];
-                for (slot, transfer) in transfers.into_iter().enumerate() {
-                    if let Some(transfer) = transfer {
-                        let position = transfer.position();
-                        let pending = self.pending_orders[slot]
-                            .take()
-                            .expect("real pending order ticket");
-                        let ticket = control.adopt_construction_order(pending, transfer);
-                        old[slot] = Some((
-                            position,
-                            self.children[position]
-                                .replace(ticket)
-                                .expect("original child bank ticket"),
-                        ));
-                    }
-                }
-                while let Some(action) = retired_orders.next_action() {
-                    let position = action
-                        .allocation()
-                        .child_position()
-                        .expect("actual retired child bank");
-                    let slot = old
-                        .iter()
-                        .position(|value| {
-                            value
-                                .as_ref()
-                                .is_some_and(|(parent, _)| *parent == position)
-                        })
-                        .expect("same real replaced bank");
-                    control.require_order_retirement(
-                        &old[slot].as_ref().expect("retained old bank ticket").1,
-                        action.allocation(),
-                    )?;
-                    control.retire_order_allocation(
-                        old[slot].take().expect("retained old bank ticket").1,
-                        action.perform(),
-                    )?;
-                }
                 Ok(created)
             }
-            HtmlConstructionCommit::Published { .. } => {
-                unreachable!("mutation command cannot publish")
+            HtmlConstructionCommit::Published { result, lease } => {
+                // A mutation never publishes. The published storage is taken
+                // back through its lease, so the owner keeps every record.
+                let invariant = latch_registry_row(control);
+                if let Ok(recovery) = HtmlConstructionLease::try_recover(result, lease) {
+                    // A refused recovery cannot displace the invariant above,
+                    // which is already the reported first stop.
+                    let _ = self.recovered(control, recovery);
+                }
+                Err(invariant)
             }
         }
     }
@@ -295,18 +573,16 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         command: HtmlConstructionCommand,
     ) -> Result<PendingConstruction, SessionError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         // Moving bounded inline control metadata is not a payload copy in the
         // parser work model. Actual retained bank/slot writes and providers are
         // admitted by the operation's actions.
-        let storage = self.owner.take().expect("retained construction owner");
+        let Some(storage) = self.owner.take() else {
+            return Err(latch_registry_row(control));
+        };
         let before_edges = storage.usage().edges();
         Ok(PendingConstruction {
-            operation: Some(
-                storage
-                    .prepare(command)
-                    .unwrap_or_else(|_| unreachable!("pending operation retains all operands")),
-            ),
+            operation: Some(storage.prepare(command)),
             before_edges,
         })
     }
@@ -329,55 +605,73 @@ impl ConstructionOwner {
     ) -> Result<bool, SessionError> {
         let mut allocation = None;
         let mut expected = 0;
+        let mut reserved_capacity = None;
         let mut final_action = false;
         match action.description() {
             HtmlConstructionActionDescription::Inspect {
                 record_visits,
                 inspected_bytes,
             } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::InspectByte, inspected_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?;
             }
             HtmlConstructionActionDescription::Compare { inspected_bytes } => {
-                control.charge(WorkCategory::InspectByte, inspected_bytes as u64)?
+                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?
             }
             HtmlConstructionActionDescription::PrepareAllocationReport {
                 record_visits,
                 provider_calls,
                 copied_bytes,
             } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
             }
             HtmlConstructionActionDescription::Reserve {
                 report_provider_calls,
                 allocation: snapshot,
+                required_len,
                 minimum_capacity,
-                ..
+                growth,
             } => {
-                control.charge(WorkCategory::RecordVisit, 2)?;
-                let bank = if let Some(slot) = snapshot.pending_child_order_slot() {
-                    Bank::PendingOrder(slot)
-                } else {
-                    snapshot
-                        .child_position()
-                        .map_or(Bank::Records, Bank::Children)
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+                let bank = snapshot
+                    .child_position()
+                    .map_or(Bank::Records, Bank::Children);
+                // A geometric bank grows by the parser's own amortized plan,
+                // which never reserves spare capacity the limits cannot hold.
+                let capacity = match growth {
+                    HtmlConstructionGrowth::Exact => minimum_capacity,
+                    HtmlConstructionGrowth::Geometric => {
+                        let slot = self.allocation_slot(control, bank)?;
+                        let additional = control.geometric_construction_additional(
+                            slot.as_ref(),
+                            snapshot.initialized_len(),
+                            required_len.saturating_sub(snapshot.initialized_len()),
+                        )?;
+                        snapshot
+                            .initialized_len()
+                            .checked_add(additional)
+                            .map(|planned| planned.max(minimum_capacity))
+                            .ok_or_else(|| {
+                                control.stop_representation(HtmlParseResource::ManagedCapacityBytes)
+                            })?
+                    }
                 };
-                expected = minimum_capacity
+                reserved_capacity =
+                    matches!(growth, HtmlConstructionGrowth::Geometric).then_some(capacity);
+                expected = capacity
                     .checked_mul(snapshot.element_size())
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedCapacityBytes)
                     })?;
-                control.prepare_construction_reserve(
-                    snapshot,
-                    minimum_capacity,
-                    self.allocation_slot(bank).as_ref(),
-                )?;
+                let slot = self.allocation_slot(control, bank)?;
+                control.prepare_construction_reserve(snapshot, capacity, slot.as_ref())?;
                 ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, report_provider_calls as u64)?;
+                control.charge(
+                    HtmlParseWorkCategory::ProviderCall,
+                    report_provider_calls as u64,
+                )?;
                 allocation = Some(bank);
             }
             HtmlConstructionActionDescription::Share {
@@ -387,15 +681,18 @@ impl ConstructionOwner {
                 expected = snapshot.element_size();
                 control.prepare_construction_share(expected)?;
                 ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, report_provider_calls as u64)?;
+                control.charge(
+                    HtmlParseWorkCategory::ProviderCall,
+                    report_provider_calls as u64,
+                )?;
                 allocation = Some(Bank::Wrapper);
             }
             HtmlConstructionActionDescription::ShareReferences {
                 provider_calls,
                 copied_bytes,
             } => {
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
             }
             HtmlConstructionActionDescription::InitializeChildren {
                 provider_calls,
@@ -404,69 +701,32 @@ impl ConstructionOwner {
                 position,
                 ..
             } => {
-                control.reserve_vector(&mut self.children, &mut self.children_allocation, 1)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
-                control.charge(
-                    WorkCategory::CopyByte,
-                    (mem::size_of::<Vec<usize>>()
-                        + mem::size_of::<Option<ConstructionAllocation>>())
-                        as u64,
+                control.reserve_vector_geometric(
+                    &mut self.children,
+                    &mut self.children_allocation,
+                    1,
                 )?;
-                control.charge(WorkCategory::RecordWrite, 2)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
+                control.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    const {
+                        (mem::size_of::<std::collections::VecDeque<usize>>()
+                            + mem::size_of::<Option<ConstructionAllocation>>())
+                            as u64
+                    },
+                )?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
                 ticket_work(control)?;
-                assert_eq!(
-                    position,
-                    self.children.len(),
-                    "real child-bank registry append"
-                );
+                // The real child-bank registry append lands at the next row.
+                if position != self.children.len() {
+                    return Err(latch_registry_row(control));
+                }
                 // The zero-capacity bank physically exists in the pending owner;
                 // retain its ticket even if a later post-call checkpoint refuses.
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
+                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
                 self.children.push(None);
                 allocation = Some(Bank::Children(position));
-            }
-            HtmlConstructionActionDescription::CopyChildOrderSource {
-                record_visits,
-                copied_bytes,
-            } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-            }
-            HtmlConstructionActionDescription::InitializeChildOrder {
-                provider_calls,
-                slot,
-                initialized_bytes,
-                ..
-            } => {
-                control.charge(WorkCategory::CopyByte, initialized_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, 2)?;
-                ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                allocation = Some(Bank::PendingOrder(slot));
-            }
-            HtmlConstructionActionDescription::PushChildOrder {
-                copied_bytes,
-                record_writes,
-                auxiliary_entries,
-                ..
-            } => {
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
-                control.acquire(
-                    HtmlParseResource::AuxiliaryEntries,
-                    auxiliary_entries as u64,
-                )?;
-            }
-            HtmlConstructionActionDescription::PrepareChildOrderTransfers {
-                record_writes,
-                provider_calls,
-                copied_bytes,
-                ..
-            } => {
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
             }
             HtmlConstructionActionDescription::Preflight { usage } => {
                 control.observe_tree_depth(usage.depth() as u64)?;
@@ -474,42 +734,44 @@ impl ConstructionOwner {
             }
             HtmlConstructionActionDescription::Commit {
                 depth_observation,
+                record_visits,
                 record_writes,
                 copied_bytes,
                 initialized_bytes,
                 usage,
-                auxiliary_entries_released,
             } => {
                 if let Some(depth) = depth_observation {
                     control.observe_tree_depth(depth as u64)?;
                 }
                 control.admit_atomic_layout(initialized_bytes)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
+                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
+                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
                 before_commit(control)?;
                 control.commit_construction_logical(
                     &self.control,
                     requests,
                     before_edges.saturating_sub(usage.edges()) as u64,
-                    auxiliary_entries_released as u64,
                 )?;
                 final_action = true;
             }
             HtmlConstructionActionDescription::InitializeIdentity { .. } => {
-                unreachable!("separate initialization owner")
+                // Identity belongs to the separate initialization owner.
+                return Err(latch_owner_refusal(control));
             }
         }
-        match action.perform() {
+        let performed = match reserved_capacity {
+            Some(capacity) => action.perform_with_capacity(capacity),
+            None => action.perform(),
+        };
+        match performed {
             Ok(observation) => {
                 if let Some(bank) = allocation {
-                    let snapshot = observation
-                        .allocation()
-                        .expect("described actual provider result");
-                    control.observe_construction_allocation(
-                        snapshot,
-                        self.allocation_slot(bank),
-                        expected,
-                    )?;
+                    let Some(snapshot) = observation.allocation() else {
+                        return Err(latch_owner_refusal(control));
+                    };
+                    let slot = self.allocation_slot(control, bank)?;
+                    control.observe_construction_allocation(snapshot, slot, expected)?;
                 }
                 observation.accept();
                 Ok(final_action)
@@ -518,14 +780,11 @@ impl ConstructionOwner {
                 if let Some(bank) = allocation
                     && let Some(snapshot) = failure.allocation()
                 {
-                    control.record_construction_allocation(
-                        snapshot,
-                        self.allocation_slot(bank),
-                        expected,
-                    )?;
+                    let slot = self.allocation_slot(control, bank)?;
+                    control.record_construction_allocation(snapshot, slot, expected)?;
                 }
                 let error = failure.into_parts().0;
-                Err(if error == HtmlConstructionError::AllocationFailed {
+                Err(if error.is_allocation_failed() {
                     SessionError::Stop(control.construction_allocation_failed(expected))
                 } else {
                     construction_error(control, error)
@@ -538,56 +797,46 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         mut pending: PendingConstruction,
     ) -> Result<(), SessionError> {
-        self.restore_aborted(
-            control,
-            pending
-                .operation
-                .take()
-                .expect("refused construction owner")
-                .abort(),
-        )
+        // An operation that is gone took its storage with it; there is none
+        // to put back, and the invariant is all that can be reported.
+        let Some(operation) = pending.operation.take() else {
+            return Err(latch_registry_row(control));
+        };
+        self.restore_aborted(control, operation.abort())
     }
     fn restore_aborted(
         &mut self,
         control: &mut ParseControl,
         aborted: HtmlConstructionAbort,
     ) -> Result<(), SessionError> {
-        let (storage, _, retired, mut orders) = aborted.into_parts();
+        let (storage, _, retired) = aborted.into_parts();
+        let mut impossible = false;
         while self.children.len() > storage.len() {
-            if let Some(ticket) = self.children.pop().expect("uncommitted child bank row") {
-                assert_eq!(
-                    ticket.snapshot().payload_bytes(),
-                    0,
-                    "uncommitted child banks cannot reserve"
-                );
+            match self.children.pop() {
+                Some(Some(ticket)) if ticket.snapshot().payload_bytes() != 0 => {
+                    // Uncommitted child banks cannot have reserved; the ticket
+                    // stays registered rather than being dropped uncredited.
+                    self.children.push(Some(ticket));
+                    impossible = true;
+                    break;
+                }
+                Some(_) => {}
+                None => {
+                    impossible = true;
+                    break;
+                }
             }
         }
         self.owner = Some(storage);
-        while let Some(action) = orders.next_action() {
-            let slot = action
-                .allocation()
-                .pending_child_order_slot()
-                .expect("aborted actual pending order");
-            control.require_order_retirement(
-                self.pending_orders[slot]
-                    .as_ref()
-                    .expect("actual pending bank ticket"),
-                action.allocation(),
-            )?;
-            control.retire_order_allocation(
-                self.pending_orders[slot]
-                    .take()
-                    .expect("actual pending bank ticket"),
-                action.perform(),
-            )?;
-        }
         if let Some(receipt) = retired {
-            control.retire_construction_allocation(
-                self.wrapper.take().expect("actual wrapper ticket"),
-                receipt,
-            )?;
+            match self.wrapper.take() {
+                Some(ticket) => control.retire_construction_allocation(ticket, receipt)?,
+                None => impossible = true,
+            }
         }
-
+        if impossible {
+            return Err(latch_registry_row(control));
+        }
         Ok(())
     }
     pub(super) fn run(
@@ -604,9 +853,28 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         mut pending: PendingConstruction,
     ) -> Result<Option<HtmlBuilderNode>, SessionError> {
-        let ready = HtmlConstructionOperation::try_ready(&mut pending.operation)
-            .unwrap_or_else(|_| unreachable!("all actual observations accepted"));
+        let ready = self.ready_pending(control, &mut pending)?;
         self.adopt_mutation(control, ready.commit())
+    }
+    /// The ready operation once every observation was accepted. An operation
+    /// that is not ready is aborted, which returns its storage.
+    fn ready_pending(
+        &mut self,
+        control: &mut ParseControl,
+        pending: &mut PendingConstruction,
+    ) -> Result<HtmlConstructionReadyOperation, SessionError> {
+        let Some(operation) = pending.operation.take() else {
+            return Err(latch_registry_row(control));
+        };
+        match operation.try_ready() {
+            Ok(ready) => Ok(ready),
+            Err(refusal) => {
+                let (operation, reason) = refusal.into_parts();
+                let error = construction_error(control, reason);
+                self.restore_aborted(control, operation.abort())?;
+                Err(error)
+            }
+        }
     }
     pub(super) fn continue_pending(
         &mut self,
@@ -638,9 +906,7 @@ impl ConstructionOwner {
             self.abort_pending(control, pending)?;
             return Err(error);
         }
-        let ready = HtmlConstructionOperation::try_ready(&mut pending.operation)
-            .unwrap_or_else(|_| unreachable!("all actual observations accepted"));
-        Ok(ready)
+        self.ready_pending(control, &mut pending)
     }
 }
 
@@ -652,7 +918,12 @@ impl ConstructionOwner {
     ) -> Result<(HtmlConstructionResult, HtmlConstructionLease), SessionError> {
         match self.run(control, HtmlConstructionCommand::Publish { root }, &[])? {
             HtmlConstructionCommit::Published { result, lease } => Ok((result, lease)),
-            _ => unreachable!("publication command"),
+            HtmlConstructionCommit::Changed { storage, .. } => {
+                // Publication never leaves the storage changed in place; what
+                // came back is the owner's storage and goes back to it.
+                self.owner = Some(storage);
+                Err(latch_registry_row(control))
+            }
         }
     }
     pub(super) fn require_recovery(
@@ -660,10 +931,10 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         lease: &HtmlConstructionLease,
     ) -> Result<(), SessionError> {
-        control.require_construction_retirement(
-            self.wrapper.as_ref().expect("actual frozen wrapper ticket"),
-            lease.allocation(),
-        )?;
+        let Some(wrapper) = self.wrapper.as_ref() else {
+            return Err(latch_registry_row(control));
+        };
+        control.require_construction_retirement(wrapper, lease.allocation())?;
         Ok(())
     }
     pub(super) fn recovered(
@@ -673,69 +944,145 @@ impl ConstructionOwner {
     ) -> Result<(), SessionError> {
         let (storage, receipt) = recovery.into_parts();
         self.owner = Some(storage);
-        control.retire_construction_allocation(
-            self.wrapper.take().expect("actual frozen wrapper ticket"),
-            receipt,
-        )?;
+        // The storage is back before anything can refuse, so the owner can
+        // still be retired whatever this reports.
+        let Some(ticket) = self.wrapper.take() else {
+            return Err(latch_registry_row(control));
+        };
+        control.retire_construction_allocation(ticket, receipt)?;
+        #[cfg(test)]
+        if control.take_construction_recovery_fault() {
+            return Err(latch_registry_row(control));
+        }
         Ok(())
     }
+    /// Retires every bank this owner holds. A refusal is remembered and the
+    /// walk continues, so each remaining bank is still credited and its ticket
+    /// released; the first refusal is returned at the end.
     pub(super) fn retire(
         mut self,
         control: &mut ParseControl,
     ) -> Result<HtmlConstructionUsage, SessionError> {
-        self.abort_attributes(control)?;
-        let usage = self.usage();
-        let storage = self
-            .owner
-            .take()
-            .expect("unique construction owner before retirement");
+        let mut refused = None;
+        keep_first(&mut refused, self.abort_attributes(control));
+        let Some(storage) = self.owner.take() else {
+            // The storage is lent to something that was not ended, so no bank
+            // can be retired here; the tickets below still go back to the
+            // controller with the children registry.
+            keep_first(&mut refused, Err(latch_registry_row(control)));
+            keep_first(
+                &mut refused,
+                control
+                    .release_vector(self.children, self.children_allocation)
+                    .map_err(|error| SessionError::Stop(error.into_parts().0)),
+            );
+            return Err(refused.unwrap_or_else(|| latch_registry_row(control)));
+        };
+        let usage = storage.usage();
         let mut retirement = storage.retire();
-        while let Some(action) = retirement
-            .next_action()
-            .map_err(|error| construction_error(control, error))?
-        {
-            let bank = match action.description() {
-                HtmlConstructionRetirementDescription::Payload { .. } => None,
-                HtmlConstructionRetirementDescription::Allocation(snapshot) => {
-                    let bank = if let Some(position) = snapshot.child_position() {
-                        Bank::Children(position)
-                    } else {
-                        match snapshot.role() {
-                            HtmlConstructionAllocationRole::Records => Bank::Records,
-                            HtmlConstructionAllocationRole::Identity => Bank::Identity,
-                            _ => unreachable!(
-                                "recovered construction owns only record/children/identity banks"
-                            ),
-                        }
-                    };
-                    if let Some(ticket) = self.allocation_slot(bank).as_ref() {
-                        control.require_construction_retirement(ticket, snapshot)?;
-                    } else {
-                        assert_eq!(snapshot.payload_bytes(), 0, "unallocated empty record bank");
-                    }
-                    Some(bank)
+        loop {
+            let action = match retirement.next_action() {
+                Ok(Some(action)) => action,
+                Ok(None) => break,
+                Err(error) => {
+                    keep_first(&mut refused, Err(construction_error(control, error)));
+                    break;
                 }
             };
-            if let Some(receipt) = action.perform() {
-                if let Some(ticket) = self
-                    .allocation_slot(bank.expect("actual allocation retirement"))
-                    .take()
-                {
-                    control.retire_construction_allocation(ticket, receipt)?;
-                } else {
-                    assert_eq!(
-                        receipt.allocation().payload_bytes(),
-                        0,
-                        "empty record bank has no physical refund"
-                    );
+            let credit = match action.description() {
+                HtmlConstructionRetirementDescription::Payload { .. } => Credit::None,
+                HtmlConstructionRetirementDescription::Allocation(snapshot) => {
+                    let bank = if let Some(position) = snapshot.child_position() {
+                        Some(Bank::Children(position))
+                    } else {
+                        match snapshot.role() {
+                            HtmlConstructionAllocationRole::Records => Some(Bank::Records),
+                            HtmlConstructionAllocationRole::Identity => Some(Bank::Identity),
+                            // A recovered owner holds only record, children
+                            // and identity banks.
+                            _ => None,
+                        }
+                    };
+                    match bank {
+                        None => {
+                            keep_first(&mut refused, Err(latch_registry_row(control)));
+                            Credit::Refused
+                        }
+                        Some(bank) => match self.allocation_slot(control, bank) {
+                            Err(error) => {
+                                keep_first(&mut refused, Err(error));
+                                Credit::Refused
+                            }
+                            Ok(slot) => match slot.as_ref() {
+                                Some(ticket) => {
+                                    match control.require_construction_retirement(ticket, snapshot)
+                                    {
+                                        Ok(()) => Credit::Bank(bank),
+                                        Err(stop) => {
+                                            keep_first(&mut refused, Err(stop));
+                                            Credit::Refused
+                                        }
+                                    }
+                                }
+                                // An unallocated record bank holds nothing.
+                                None if snapshot.payload_bytes() == 0 => Credit::Empty,
+                                None => {
+                                    keep_first(&mut refused, Err(latch_registry_row(control)));
+                                    Credit::Refused
+                                }
+                            },
+                        },
+                    }
                 }
+            };
+            // The walk advances only by performing its actions.
+            let Some(receipt) = action.perform() else {
+                continue;
+            };
+            match credit {
+                Credit::Bank(bank) => match self.allocation_slot(control, bank) {
+                    Ok(slot) => match slot.take() {
+                        Some(ticket) => {
+                            let credited = control.retire_construction_allocation(ticket, receipt);
+                            #[cfg(test)]
+                            inject_walk_refusal(control, WalkSite::ConstructionBank, &mut refused);
+                            keep_first(&mut refused, credited);
+                        }
+                        None => keep_first(&mut refused, Err(latch_registry_row(control))),
+                    },
+                    Err(error) => keep_first(&mut refused, Err(error)),
+                },
+                // An empty record bank has no physical refund.
+                Credit::Empty if receipt.allocation().payload_bytes() != 0 => {
+                    keep_first(&mut refused, Err(latch_registry_row(control)));
+                }
+                Credit::Empty | Credit::None | Credit::Refused => {}
             }
         }
-        control
-            .release_vector(self.children, self.children_allocation)
-            .map_err(|error| SessionError::Stop(error.into_parts().0))?;
-        Ok(usage)
+        keep_first(
+            &mut refused,
+            control
+                .release_vector(self.children, self.children_allocation)
+                .map_err(|error| SessionError::Stop(error.into_parts().0)),
+        );
+        #[cfg(test)]
+        if control.take_construction_retire_fault() {
+            keep_first(&mut refused, Err(latch_registry_row(control)));
+        }
+        refused.map_or(Ok(usage), Err)
     }
+}
+
+/// What a retired action's receipt is credited against.
+enum Credit {
+    /// A payload action: nothing to credit.
+    None,
+    /// An unallocated bank: its receipt must hold nothing.
+    Empty,
+    /// The ticket of this bank.
+    Bank(Bank),
+    /// The action was refused and already recorded; it is only performed.
+    Refused,
 }
 
 /// Borrows the same storage before or after publication; it owns no records or identity.
@@ -756,5 +1103,21 @@ impl<'a> ConstructionView<'a> {
             Self::Active(value) => value.len(),
             Self::Frozen(value) => value.len(),
         }
+    }
+}
+
+#[cfg(test)]
+impl ConstructionOwner {
+    /// The storage at rest, for tests that hold the owner in a known state.
+    pub(super) fn test_storage(&self) -> &HtmlConstructionStorage {
+        self.resident().expect("storage at rest")
+    }
+    /// Makes the next attribute edit begin with its custody slot emptied; the
+    /// hidden edit is returned by [`Self::restore_hidden_attribute_edit`].
+    pub(super) fn hide_next_attribute_edit(&mut self) {
+        self.hide_next_attribute_edit = true;
+    }
+    pub(super) fn restore_hidden_attribute_edit(&mut self) {
+        self.attribute_edit = self.hidden_attribute_edit.take();
     }
 }

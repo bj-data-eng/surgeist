@@ -3,6 +3,7 @@
 use super::*;
 use crate::{DomSourceProgress, DomSourceRequest};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 
 const UNRELATED: usize = 128;
@@ -573,7 +574,7 @@ fn insert_absent_src_element(f: &mut Fixture, local: &str) -> (NodeId, DomHosted
         .unwrap();
     let mut batch = DomBatch::new();
     let closed = batch.create_html_document(f.creation.document, None);
-    let ticket = batch.create_element_ns(&closed, crate::Namespace::html(), local);
+    let ticket = batch.create_element_ns(&closed, surgeist_html::values::Namespace::html(), local);
     let frame = f
         .dom
         .apply(batch, &cancel())

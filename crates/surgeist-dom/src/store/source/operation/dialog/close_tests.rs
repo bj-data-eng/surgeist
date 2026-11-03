@@ -2,6 +2,7 @@
 //! Trusted completion is the canonical owning boundary, not Runtime dispatch evidence.
 use super::tests::{attest, fixture, limits};
 use super::*;
+use surgeist_html::values::DocumentString;
 mod name_closing;
 
 fn result(units: usize) -> DocumentString {
@@ -33,8 +34,14 @@ fn close_observer(
         };
         assert!(!event.cancelable());
         let payload = event.toggle_event().unwrap();
-        assert_eq!(payload.old_state(), surgeist_html::HtmlDialogState::Open);
-        assert_eq!(payload.new_state(), surgeist_html::HtmlDialogState::Closed);
+        assert_eq!(
+            payload.old_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Open
+        );
+        assert_eq!(
+            payload.new_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Closed
+        );
         assert_eq!(payload.source(), None);
         event
     };

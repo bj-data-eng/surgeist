@@ -203,7 +203,7 @@ fn positive_native_response_reads_actual_script_results_and_identical_refreeze_i
                 .as_html_script()
                 .unwrap()
                 .result(),
-            surgeist_html::HtmlScriptResult::Uninitialized
+            surgeist_html::elements::script::HtmlScriptResult::Uninitialized
         );
     }
     let c = freeze(&mut dom, base, parent, "target");
@@ -652,7 +652,7 @@ fn clone_starts_unfrozen_then_real_removal_reveals_it_using_current_facts_and_re
 
 #[test]
 fn native_immutable_installation_runs_fresh_base_and_link_hooks_atomically() {
-    use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+    use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
     let (mut dom, doc, parent, _) = fixture();
     let r = revision();
     let uri = record(
@@ -784,7 +784,7 @@ fn native_link_trigger_inputs_remain_qualified_without_advertising_resource_mode
             .metadata()
             .document_environment()
             .browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     let mut b = DomBatch::new();
     b.set_attribute(link, "href", "another raw value");
@@ -897,7 +897,7 @@ fn csp_blocked_frozen_base_does_not_replace_the_independent_semantic_href_parse(
                 capture.subject(base).unwrap(),
                 HtmlSemanticQuery::BaseHref,
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(1_000_000, 8, 1024, 128, 1_000_000, 1024),
             HtmlSemanticCancellation::new(),
         )

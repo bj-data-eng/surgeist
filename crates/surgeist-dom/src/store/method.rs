@@ -17,7 +17,8 @@ impl Frame {
             Self::FullscreenExit(result) => result.is_none(),
             Self::Dialog(_) => true,
             Self::DesignMode(frame) => {
-                frame.cursor.action() != surgeist_html::HtmlDesignModeAction::Complete
+                frame.cursor.action()
+                    != surgeist_html::elements::native::HtmlDesignModeAction::Complete
             }
         }
     }

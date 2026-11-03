@@ -2,11 +2,19 @@
 //! These native producers do not implement the raw input-constraints adapter.
 use crate::html::support::year;
 use surgeist_html::{
-    DocumentString, HtmlDate, HtmlFloatingPointNumber, HtmlInputTemporalCoordinate,
-    HtmlInputTemporalCoordinateUnit, HtmlInputTemporalStepError, HtmlInputType, HtmlInteger,
-    HtmlMonth, HtmlNonNegativeDecimal, HtmlNonNegativeInteger, HtmlParsedLocalDateTime,
-    HtmlParsedTime, HtmlSignedDecimal, HtmlTimeZoneOffset, HtmlUtcInstant, HtmlValueAuthorState,
-    HtmlValueInterpreter, HtmlValueRecoveryState, HtmlWeek, HtmlYear,
+    attributes::HtmlInputType,
+    microsyntax::{
+        numeric::{
+            HtmlFloatingPointNumber, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
+            HtmlSignedDecimal,
+        },
+        temporal::{
+            HtmlDate, HtmlInputTemporalCoordinate, HtmlInputTemporalCoordinateUnit,
+            HtmlInputTemporalStepError, HtmlMonth, HtmlParsedLocalDateTime, HtmlParsedTime,
+            HtmlTimeZoneOffset, HtmlUtcInstant, HtmlWeek, HtmlYear,
+        },
+    },
+    values::{DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState},
 };
 
 fn date(y: u64, m: u8, d: u8) -> HtmlDate {

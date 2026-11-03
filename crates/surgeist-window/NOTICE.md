@@ -2,10 +2,13 @@
 
 ## Dependencies
 
-This notice covers the eight direct dependencies pinned in [Cargo.toml](Cargo.toml),
+This notice covers the twelve direct production dependencies and the
+`accesskit_consumer` development dependency pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
-declared platforms. These dependencies are not vendored in this source
-repository. This inventory does not cover the transitive dependencies or other
+declared platforms. The maintained consumer is bundled under
+[vendor/accesskit-consumer](../../vendor/accesskit-consumer); the other direct
+dependencies are not vendored here. The repository-owned typed Windows bridge
+has its own linked source and dependency notices below. This inventory does not cover other transitive dependencies or
 material incorporated into a particular application binary. The project's own
 license is in [LICENSE](LICENSE).
 
@@ -19,6 +22,18 @@ This product depends on accesskit, distributed by The AccessKit contributors:
 * License: [MIT](licenses/accesskit/LICENSE-MIT) OR [Apache-2.0](licenses/accesskit/LICENSE-APACHE)
 * Additional material: [Chromium BSD license](licenses/accesskit/LICENSE.chromium), [copyright and derivation notices](licenses/accesskit/NOTICE.md), and [upstream authors](licenses/accesskit/AUTHORS)
 * Homepage: [AccessKit](https://github.com/AccessKit/accesskit)
+
+### accesskit_consumer 0.36.0
+
+The native accessibility platform adapters use the workspace-selected
+maintained consumer. A direct development dependency tests original-unit word
+navigation against that same consumer. Its source, legal material and local
+correction are retained in the [maintained copy](../../vendor/accesskit-consumer/UPSTREAM.md).
+
+* License: [MIT](licenses/accesskit/LICENSE-MIT) OR [Apache-2.0](licenses/accesskit/LICENSE-APACHE)
+* Additional material: [copyright and derivation notices](licenses/accesskit/NOTICE.md), [upstream authors](licenses/accesskit/AUTHORS)
+* Homepage: [AccessKit](https://github.com/AccessKit/accesskit)
+* Legal source: [exact package revision](https://github.com/AccessKit/accesskit/tree/f40dfc01a0c0e76de535969f82fb35e19513737d)
 
 ### accesskit_winit 0.33.0
 
@@ -47,7 +62,7 @@ This product depends on keyboard-types, distributed by Pyfisch:
 ### objc2 0.6.4
 
 This product depends on objc2, distributed by Mads Marquart. It is a macOS-only
-direct dependency for native UI font observation.
+direct dependency for native UI font and monitor observation.
 
 * License: [MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
 * Homepage: [objc2](https://github.com/madsmtm/objc2)
@@ -56,9 +71,18 @@ direct dependency for native UI font observation.
 ### objc2-app-kit 0.3.2
 
 This product depends on objc2-app-kit. It is a macOS-only direct dependency for
-native UI font observation.
+native UI font, accessibility preference and monitor observation.
 
 * License: [Zlib OR Apache-2.0 OR MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
+* Homepage: [objc2](https://github.com/madsmtm/objc2)
+* Legal source: [exact package revision](https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md)
+
+### objc2-foundation 0.3.2
+
+This product depends on objc2-foundation. It is a macOS-only direct dependency
+for checked native display identifiers and Foundation values.
+
+* License: [MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
 * Homepage: [objc2](https://github.com/madsmtm/objc2)
 * Legal source: [exact package revision](https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md)
 
@@ -74,6 +98,24 @@ This product depends on raw-window-handle, distributed by Osspial:
 * License: [MIT](licenses/raw-window-handle/LICENSE-MIT.md) OR [Apache-2.0](licenses/raw-window-handle/LICENSE-APACHE.md) OR [Zlib](licenses/raw-window-handle/LICENSE-ZLIB.md)
 * Homepage: [raw-window-handle](https://github.com/rust-windowing/raw-window-handle)
 
+### web-time 1.1.0
+
+This product depends on web-time, distributed by dAxpeDDa. It supplies the
+platform monotonic clock shared by Window deadlines and receipt timestamps.
+
+* License: [MIT](licenses/web-time/LICENSE-MIT) OR [Apache-2.0](licenses/web-time/LICENSE-APACHE)
+* Homepage: [web-time](https://github.com/daxpedda/web-time)
+* Legal source: [exact package revision](https://github.com/daxpedda/web-time/tree/2d200ded30bbcab66f6a4bfa277ac546685728db)
+
+### windows 0.62.2
+
+This product depends on windows (Rust for Windows). It is a Windows-only direct
+dependency for safe native accessibility-preference, pointer-device and
+read-only display-state observations.
+
+* License: [MIT](licenses/windows-rs/license-mit) OR [Apache-2.0](licenses/windows-rs/license-apache-2.0)
+* Homepage: [Rust for Windows](https://github.com/microsoft/windows-rs)
+
 ### winit 0.30.13
 
 This product depends on winit, distributed by The winit contributors and Pierre
@@ -82,3 +124,12 @@ Krieger:
 * License: [Apache-2.0](licenses/winit/LICENSE)
 * Additional material: [W3C license and source attribution notices](licenses/winit/NOTICE.md)
 * Homepage: [winit](https://github.com/rust-windowing/winit)
+
+### surgeist-typed-winsafe 0.1.0
+
+This product depends on the repository-owned Windows bridge for typed native
+monitor, window and UI-font preference observations.
+
+* License: [MIT](../surgeist-typed-winsafe/LICENSE)
+* Dependency notices: [NOTICE.md](../surgeist-typed-winsafe/NOTICE.md)
+* Homepage: [Surgeist](https://github.com/bj-data-eng/surgeist)

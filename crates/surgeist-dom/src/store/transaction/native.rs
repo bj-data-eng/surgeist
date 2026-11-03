@@ -231,6 +231,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn fixture() -> (Dom, NodeId) {
         let cancel = AtomicBool::new(false);
@@ -250,7 +251,11 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let dialog = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         let mut raw = Vec::with_capacity(73);
         raw.extend_from_slice(&[0x41, 0xd800, 0x5a]);
         batch.set_dialog_return_value(&dialog, DocumentString::from_utf16(raw));

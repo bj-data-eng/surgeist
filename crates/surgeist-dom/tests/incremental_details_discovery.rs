@@ -1,7 +1,7 @@
 //! Literal Details groups and immediate hooks; no index-layout expectations.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlDetailsState::{Closed, Open};
+use surgeist_html::elements::details::HtmlDetailsState::{Closed, Open};
 
 #[test]
 fn exact_details_names_stay_root_scoped_and_failed_renaming_restores_the_group() {

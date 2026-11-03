@@ -1,5 +1,12 @@
 //! Actual original native graph custody, not a policy-byte estimate from source.
 use super::*;
+use surgeist_html::{
+    security::csp::{
+        HtmlCspError, HtmlCspNativePolicy, HtmlCspProcessorProfile, HtmlMetaCspOutcome,
+        HtmlMetaCspProcessor, HtmlMetaCspRequest,
+    },
+    values::DocumentString,
+};
 
 #[derive(Debug)]
 struct OriginalPolicy {
@@ -91,6 +98,7 @@ fn report() -> (Arc<HtmlParseReport>, Processor, HtmlCspAssociation) {
     let mut rows = report.pending_associations();
     let original = loop {
         match rows.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() && row.style().is_some() => {
                 break row.context().csp_association().unwrap().clone();
             }

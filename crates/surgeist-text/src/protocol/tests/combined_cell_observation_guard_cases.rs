@@ -459,12 +459,16 @@ fn provider_empty_cell_keeps_its_authentic_owned_range_without_fabricated_geomet
             .unwrap()
             .expect("original SPACE selection binding");
         let error = layout
-            .accessibility_update(&mut state, parent, parent, Point::new(0.0, 0.0))
+            .accessibility_update(&mut state, parent, parent, Point::new(f64::INFINITY, 0.0))
             .unwrap_err();
-        assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+        assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
         assert!(matches!(
             error.detail(),
-            Some(ErrorDetail::UnsupportedAccessibilityCell { line: 0, cell: 0 })
+            Some(ErrorDetail::InvalidTextNumeric {
+                phase: TextNumericPhase::Accessibility,
+                category: TextNumericError::NonFinite,
+                ..
+            })
         ));
         assert_eq!(
             analyzed.access_position(&state, start).unwrap(),

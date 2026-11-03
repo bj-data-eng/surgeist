@@ -1,5 +1,6 @@
 //! Actual parser histories retained by the canonical owner, without execution.
 use super::*;
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
@@ -13,6 +14,7 @@ fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
     let mut popped = false;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Document(row) => {
                 documents += 1;
                 assert_eq!(
@@ -27,7 +29,9 @@ fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
                 assert_ne!(row.kind(), Kind::ChangePreferred);
                 popped |= matches!(
                     row.kind(),
-                    Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+                    Kind::StyleUpdate(
+                        surgeist_html::elements::style::HtmlStyleTrigger::ParserPopped
+                    )
                 );
             }
             Step::Complete => break,
@@ -186,7 +190,9 @@ fn parsed_known_null_style_later_edits_use_actual_native_processing() {
     };
     assert_eq!(
         request.action(),
-        DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+        DomStyleAction::Update(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp
+        )
     );
     assert_eq!(request.source().element(), style);
     let blocked = DomStyleInlineCspObservation::evaluated(
@@ -235,6 +241,9 @@ fn preferred(report: &HtmlParseReport) -> Vec<Vec<u16>> {
                 let mut name = Vec::new();
                 loop {
                     match cursor.advance() {
+                        surgeist_html_parser::HtmlParseHistoryStep::Fault(fault) => {
+                            panic!("{fault}")
+                        }
                         surgeist_html_parser::HtmlParseHistoryStep::Leaf(leaf) => {
                             name.extend_from_slice(leaf.units())
                         }
@@ -325,6 +334,7 @@ fn pending_association_independent_installs_share_original_history_but_not_desti
         let mut ids = Vec::new();
         loop {
             match rows.advance() {
+                Step::Fault(fault) => panic!("{fault}"),
                 Step::Occurrence(row) => ids.push(row.id()),
                 Step::Complete => break,
                 _ => {}
@@ -599,6 +609,7 @@ fn pending_association_style_meta_style_order_and_template_documents_remain_orig
     let mut reached = Vec::new();
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => {
                 assert!(row.cause().is_some());
                 let context = row.context();
@@ -806,6 +817,7 @@ fn pending_association_captured_shadow_style_retains_exact_context_basis_after_p
     let mut captured = false;
     loop {
         match rows.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => {
                 if let surgeist_html_parser::HtmlParseMetadataDocument::Captured(original) =
                     row.document()

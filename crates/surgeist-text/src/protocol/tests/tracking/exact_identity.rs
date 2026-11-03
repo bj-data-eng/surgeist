@@ -210,7 +210,7 @@ fn rounded_equal_character_replacements_keep_exact_framed_conditional_identity()
                 &prefix.offer,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(frame),
+                crate::ConditionalLineContext::Finalized(frame),
             )
             .unwrap();
         search.begin(&[]).unwrap();

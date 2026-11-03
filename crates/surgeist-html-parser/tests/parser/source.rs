@@ -1,4 +1,4 @@
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlSource, HtmlSourceCoordinates, HtmlSourceRangeError};
 
 #[test]

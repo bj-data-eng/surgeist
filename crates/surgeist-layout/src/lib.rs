@@ -245,15 +245,20 @@ mod text_indent;
 mod text_layout;
 pub use inline_wrapping::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, ProcessedWrappingSource,
-    ResolvedWrapEdges, SourceOccurrenceAssociations, SourceScopeAssociation,
-    SourceWrappingScopeInput, WrapEdge, WrapEdgeSource, WrapEdgeSourceNodeView, WrapEdges,
-    WrapInside, WrappingInput, WrappingScopeError, WrappingScopeInput, process_wrapping_source,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
+    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput,
+    NativeInlineBoxEdgeView, NativeInlineBoxFamily, NativeInlineBoxFamilyInput,
+    NativeInlineBoxFragment, NativeInlineBoxMemberView, NativeInlineBoxPieceView,
+    ProcessedWrappingSource, ResolvedWrapEdges, SourceOccurrenceAssociations,
+    SourceScopeAssociation, SourceWrappingScopeInput, WrapEdge, WrapEdgeSource,
+    WrapEdgeSourceNodeView, WrapEdges, WrapInside, WrappingInput, WrappingScopeError,
+    WrappingScopeInput, process_wrapping_source,
 };
 pub use text_layout::{
-    LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
-    TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
-    TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation, TextScopeBinding,
+    InlineBoxFragmentationDemand, LayoutFlowInput, TextAtomicBinding, TextBindingError,
+    TextControlBinding, TextControlParticipation, TextOriginBinding, TextParagraphBinding,
+    TextParticipation, TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation,
+    TextScopeBinding,
 };
 mod scalar;
 mod scroll;
@@ -322,17 +327,18 @@ pub use node_input::{
     Float, FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
     FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
-    InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeOf,
-    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
-    InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder, LayoutInput, LayoutInputOf,
-    LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput,
-    LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin,
-    OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError,
-    ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue,
-    ScrollPaddingValueOf, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop,
-    ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
-    TextAlign, TextAlignLast, TextGroupAlign, TextIndent, TextIndentOf, TextJustification,
-    TextWrapStyle, VerticalAlign, VerticalAlignOf, WritingMode,
+    InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeError,
+    InlineBoundaryEdgeErrorOf, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
+    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
+    ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf,
+    LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput,
+    NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position,
+    RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
+    ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
+    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
+    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast,
+    TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign,
+    VerticalAlignOf, WritingMode,
 };
 pub use output::{
     BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,
@@ -344,7 +350,8 @@ pub use output::{
     LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
     LayoutRootRequestOf, LayoutRoundingMode, NamedBaselinesOf, NodeOutput, NodeOutputOf,
     ParentFormattingContext, PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf,
-    PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
+    PlacedInlineBoxFragments, PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf,
+    SourceIndex,
 };
 pub(crate) use output::{RequestedAxis, RunMode, SizingMode};
 /// Supported scalar contract for generic layout APIs.

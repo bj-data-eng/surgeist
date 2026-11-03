@@ -2,17 +2,27 @@
 use crate::{Lane, ParseKind, UnicodeCase, UnicodeSource, UnicodeTarget, error};
 use std::collections::HashSet;
 use surgeist_fuzz::*;
-use surgeist_html::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlProcessingInstruction;
+use surgeist_html::{
+    construction::{
+        ForeignHtmlResult, HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeId, HtmlNodeKind,
+        HtmlShadowRootProperties,
+    },
+    parsing::HtmlParserScriptingMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseAssociationRelation,
-    HtmlParseCause, HtmlParseConstructionOperation, HtmlParseDestination,
+    HtmlParseCancellation, HtmlParseCause, HtmlParseConstructionOperation, HtmlParseDestination,
     HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole,
-    HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity, HtmlParseDiagnostics,
+    HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity, HtmlParseDiagnostics, HtmlParseFailure,
     HtmlParseFailureReason, HtmlParseField, HtmlParseLexicalDisposition, HtmlParseLexicalKind,
-    HtmlParseLexicalRole, HtmlParseOmissionKind, HtmlParseOriginKind, HtmlParseRawField,
-    HtmlParseReport, HtmlParseRequestError, HtmlParseResource, HtmlParseStop, HtmlParseTokenFamily,
-    HtmlParseUnsupportedState, HtmlParserRule, HtmlPrologueDiagnostic, HtmlSource, HtmlSourceRange,
-    HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase, HtmlTokenizerState,
+    HtmlParseLexicalRole, HtmlParseLimits, HtmlParseOmissionKind, HtmlParseOriginKind,
+    HtmlParseRawField, HtmlParseReport, HtmlParseRequestError, HtmlParseResource, HtmlParseStop,
+    HtmlParseTokenFamily, HtmlParseUnsupportedState, HtmlParserRule, HtmlPrologueDiagnostic,
+    HtmlSource, HtmlSourceRange, HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase,
+    HtmlTokenizerState,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -24,24 +34,36 @@ use surgeist_html_semantics::{
 const MAX_NODES: usize = 100_000;
 const MAX_ROWS: usize = 100_000;
 
-fn failure(
-    target: &UnicodeTarget,
-    property: usize,
-    key: &str,
-    detail: impl Into<String>,
-) -> Result<CaseOutcome> {
-    CaseOutcome::failure(
-        FailureKey::new(
-            target.descriptor.properties()[property].clone(),
-            if key.ends_with("-limit") {
-                FailureClass::Resource
-            } else {
-                FailureClass::PropertyViolation
-            },
-            Some(key.into()),
-        )?,
-        detail,
-    )
+/// Property slots shared by every parse target: 0 source preservation,
+/// 1 native report, 2 diagnostic provenance, 3 terminal ownership and 4
+/// immutability after cancellation. Later slots belong to the target.
+pub(crate) struct Props<'a>(pub(crate) &'a TargetDescriptor);
+impl Props<'_> {
+    pub(crate) fn id(&self, property: usize) -> PropertyId {
+        self.0.properties()[property].clone()
+    }
+    pub(crate) fn ids(&self, properties: &[usize]) -> Vec<PropertyId> {
+        properties.iter().map(|i| self.id(*i)).collect()
+    }
+    pub(crate) fn failure(
+        &self,
+        property: usize,
+        key: &str,
+        detail: impl Into<String>,
+    ) -> Result<CaseOutcome> {
+        CaseOutcome::failure(
+            FailureKey::new(
+                self.id(property),
+                if key.ends_with("-limit") {
+                    FailureClass::Resource
+                } else {
+                    FailureClass::PropertyViolation
+                },
+                Some(key.into()),
+            )?,
+            detail,
+        )
+    }
 }
 fn source(case: &UnicodeCase) -> HtmlSource {
     match &case.source {
@@ -49,7 +71,17 @@ fn source(case: &UnicodeCase) -> HtmlSource {
         UnicodeSource::Utf16(s) => HtmlSource::utf16(DocumentString::from_utf16(s.clone())),
     }
 }
-fn context(missing: bool) -> Result<HtmlFragmentContext> {
+pub(crate) fn context(missing: bool) -> Result<HtmlFragmentContext> {
+    context_for(Namespace::html(), "div", missing)
+}
+/// A captured context element of the given namespace and local name in an
+/// ordinary no-quirks HTML document with disabled (or, when `missing`,
+/// unavailable) scripting and a null registry.
+pub(crate) fn context_for(
+    namespace: Namespace,
+    local: &str,
+    missing: bool,
+) -> Result<HtmlFragmentContext> {
     let mut b = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(2, 4, 0, 128, 8, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
@@ -100,7 +132,7 @@ fn context(missing: bool) -> Result<HtmlFragmentContext> {
     let e = b
         .add_element(
             &d,
-            QualifiedName::new(Namespace::html(), None, "div"),
+            QualifiedName::new(namespace, None, local),
             OrderedAttributes::default(),
             HtmlCapturedIsValue::Absent,
             HtmlCaptureRegistryInput::Null,
@@ -158,16 +190,16 @@ fn context(missing: bool) -> Result<HtmlFragmentContext> {
     })
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct NativeNode {
-    id: HtmlNodeId,
-    kind: HtmlNodeKind,
-    parent: Option<HtmlNodeId>,
-    children: Vec<HtmlNodeId>,
-    template: Option<HtmlNodeId>,
-    shadow: Option<(HtmlNodeId, HtmlShadowRootProperties)>,
-    owner: Option<HtmlFragmentOwner>,
+pub(crate) struct NativeNode {
+    pub(crate) id: HtmlNodeId,
+    pub(crate) kind: HtmlNodeKind,
+    pub(crate) parent: Option<HtmlNodeId>,
+    pub(crate) children: Vec<HtmlNodeId>,
+    pub(crate) template: Option<HtmlNodeId>,
+    pub(crate) shadow: Option<(HtmlNodeId, HtmlShadowRootProperties)>,
+    pub(crate) owner: Option<HtmlFragmentOwner>,
 }
-fn node<'a>(
+pub(crate) fn node<'a>(
     report: &'a HtmlParseReport,
     id: &HtmlNodeId,
 ) -> std::result::Result<HtmlNode<'a>, ForeignHtmlResult> {
@@ -179,7 +211,9 @@ fn node<'a>(
             .node(id),
     }
 }
-fn native(report: &HtmlParseReport) -> std::result::Result<Vec<NativeNode>, &'static str> {
+pub(crate) fn native(
+    report: &HtmlParseReport,
+) -> std::result::Result<Vec<NativeNode>, &'static str> {
     let root = if let Some(d) = report.document() {
         d.root()
     } else if let Some(f) = report.fragment() {
@@ -242,7 +276,7 @@ fn native(report: &HtmlParseReport) -> std::result::Result<Vec<NativeNode>, &'st
     Ok(out)
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Diagnostic {
+pub(crate) struct Diagnostic {
     kind: HtmlParseDiagnosticKind,
     context: HtmlParseDiagnosticContext,
     severity: HtmlParseDiagnosticSeverity,
@@ -256,7 +290,7 @@ fn range(source: &HtmlSource, range: &HtmlSourceRange) -> bool {
         .range(range.start(), range.end())
         .is_ok_and(|r| r == *range)
 }
-fn diagnostics(
+pub(crate) fn diagnostics(
     source: &HtmlSource,
     d: HtmlParseDiagnostics<'_>,
 ) -> std::result::Result<Vec<Diagnostic>, &'static str> {
@@ -265,7 +299,10 @@ fn diagnostics(
     }
     let mut out = Vec::with_capacity(d.len());
     for i in 0..d.len() {
-        let (r, l) = d.retained_record(i).ok_or("diagnostic-lending")?;
+        let (r, l) = d
+            .retained_record(i)
+            .map_err(|_| "diagnostic-unresolved")?
+            .ok_or("diagnostic-lending")?;
         if !range(source, l.source_range()) {
             return Err("diagnostic-source-range");
         }
@@ -331,7 +368,7 @@ enum Destination {
     Cause(Cause),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Association {
+pub(crate) struct Association {
     source: Option<HtmlSourceRange>,
     start: usize,
     end: usize,
@@ -391,14 +428,19 @@ fn field_units(n: HtmlNode<'_>, field: HtmlParseField) -> Option<usize> {
         _ => None,
     }
 }
-fn associations(report: &HtmlParseReport) -> std::result::Result<Vec<Association>, &'static str> {
+pub(crate) fn associations(
+    report: &HtmlParseReport,
+) -> std::result::Result<Vec<Association>, &'static str> {
     let rows = report.associations();
     if rows.len() > MAX_ROWS {
         return Err("association-limit");
     }
     let mut out = Vec::with_capacity(rows.len());
     for i in 0..rows.len() {
-        let r = rows.row(i).ok_or("association-lending")?;
+        let r = rows
+            .row(i)
+            .map_err(|_| "association-unresolved")?
+            .ok_or("association-lending")?;
         if r.source().is_some_and(|s| !range(report.source(), s)) || r.start() > r.end() {
             return Err("association-source-interval");
         }
@@ -474,9 +516,13 @@ fn associations(report: &HtmlParseReport) -> std::result::Result<Vec<Association
     }
     Ok(out)
 }
-fn same_source(case: &UnicodeCase, actual: &HtmlSource, original: &HtmlSource) -> bool {
+pub(crate) fn same_source(
+    text: &UnicodeSource,
+    actual: &HtmlSource,
+    original: &HtmlSource,
+) -> bool {
     actual.identity() == original.identity()
-        && match &case.source {
+        && match text {
             UnicodeSource::Utf8(s) => actual.as_utf8() == Some(s.as_str()),
             UnicodeSource::Utf16(s) => actual.as_utf16().is_some_and(|a| a.code_units() == s),
         }
@@ -570,7 +616,310 @@ fn literal_evidence(
     }
     true
 }
+
+/// `HtmlParseResource` in the order of the nineteen configured caps.
+const RESOURCE_ORDER: [HtmlParseResource; 19] = [
+    HtmlParseResource::SourceUnits,
+    HtmlParseResource::BufferedUtf16Units,
+    HtmlParseResource::TokenAttributes,
+    HtmlParseResource::AuxiliaryEntries,
+    HtmlParseResource::ManagedNodes,
+    HtmlParseResource::ManagedEdges,
+    HtmlParseResource::ManagedAttributes,
+    HtmlParseResource::ManagedUtf16Units,
+    HtmlParseResource::SourceMapEntries,
+    HtmlParseResource::SourceMapPayloadUnits,
+    HtmlParseResource::Diagnostics,
+    HtmlParseResource::DiagnosticPayloadUnits,
+    HtmlParseResource::ContextEffects,
+    HtmlParseResource::OpenElements,
+    HtmlParseResource::TreeDepth,
+    HtmlParseResource::ManagedCapacityBytes,
+    HtmlParseResource::PeakTransientBytes,
+    HtmlParseResource::AtomicLayoutBytes,
+    HtmlParseResource::WorkCredits,
+];
+
+/// The request-side facts a parse result must preserve.
+pub(crate) struct Spec<'a> {
+    pub(crate) fragment: bool,
+    pub(crate) text: &'a UnicodeSource,
+    pub(crate) original: &'a HtmlSource,
+    pub(crate) limits: &'a HtmlParseLimits,
+    /// The configured caps in `HtmlParseResource` order.
+    pub(crate) caps: [u64; 19],
+    pub(crate) requested: HtmlParserScriptingMode,
+    pub(crate) capture: Option<&'a surgeist_html_semantics::HtmlCaptureId>,
+    /// Declarative shadow permission selected for the fragment request.
+    pub(crate) shadow_allowed: bool,
+}
+/// Typed observations of one published result, taken once and kept for the
+/// later immutability comparison.
+pub(crate) struct Verified {
+    pub(crate) nodes: Vec<NativeNode>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) rows: Vec<Association>,
+}
+/// How a failed parse is classified when it is not an expected bounded stop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Expect {
+    /// No refusal is acceptable (an independent oracle expects success).
+    Never,
+    /// Resource, allocation and representation stops are product outcomes;
+    /// known unsupported states are unsupported, anything else is a failure.
+    General,
+    /// An independent oracle expects a tree. Only an allocation or
+    /// representation refusal, or a limit stop on a resource the case lowered
+    /// that reports the configured cap and an attempted total above it, is a
+    /// product outcome; an unsupported
+    /// state or any other stop is a failure.
+    Balanced,
+    PreCancelled,
+    SourceDenied,
+    WorkDenied,
+}
+/// Source binding, native traversal, typed diagnostic and D1 intervals of a
+/// published report.
+pub(crate) fn verify_report(
+    props: &Props<'_>,
+    spec: &Spec<'_>,
+    report: &HtmlParseReport,
+) -> Result<std::result::Result<Verified, CaseOutcome>> {
+    if !same_source(spec.text, report.source(), spec.original)
+        || report.limits() != spec.limits
+        || report.requested_scripting_mode() != spec.requested
+        || report.effective_scripting_mode() != HtmlParserScriptingMode::Disabled
+        || report.allow_declarative_shadow_roots() != spec.shadow_allowed
+        || report.image_support() != HtmlImageSupport::Disabled
+        || report.document().is_some() == spec.fragment
+        || report.fragment().is_some() != spec.fragment
+        || report.context().map(|c| c.capture().identity()) != spec.capture
+    {
+        return props
+            .failure(
+                0,
+                "source-binding",
+                "successful report changed request binding",
+            )
+            .map(Err);
+    }
+    let nodes = match native(report) {
+        Ok(n) => n,
+        Err(key) => return props.failure(1, key, "native ownership/traversal").map(Err),
+    };
+    let diagnostics = match diagnostics(report.source(), report.diagnostics()) {
+        Ok(d) => d,
+        Err(key) => return props.failure(2, key, "typed diagnostic range").map(Err),
+    };
+    let rows = match associations(report) {
+        Ok(r) => r,
+        Err(key) => return props.failure(2, key, "native D1 range").map(Err),
+    };
+    Ok(Ok(Verified {
+        nodes,
+        diagnostics,
+        rows,
+    }))
+}
+/// Late cancellation never changes a published result.
+pub(crate) fn verify_immutable(
+    props: &Props<'_>,
+    report: &HtmlParseReport,
+    seen: &Verified,
+    cancel: &HtmlParseCancellation,
+) -> Result<Option<CaseOutcome>> {
+    let usage = report.usage().clone();
+    cancel.cancel();
+    if report.usage() != &usage
+        || native(report).as_ref() != Ok(&seen.nodes)
+        || diagnostics(report.source(), report.diagnostics()).as_ref() != Ok(&seen.diagnostics)
+        || associations(report).as_ref() != Ok(&seen.rows)
+    {
+        return props
+            .failure(
+                4,
+                "published-report-mutated",
+                "cancellation changed immutable published values",
+            )
+            .map(Some);
+    }
+    Ok(None)
+}
+/// Ownership, first stop, cleanup and expected-bound classification of a
+/// failed parse.
+pub(crate) fn verify_failure(
+    props: &Props<'_>,
+    spec: &Spec<'_>,
+    f: &HtmlParseFailure,
+    cancel: &HtmlParseCancellation,
+    expect: Expect,
+) -> Result<CaseOutcome> {
+    if !same_source(spec.text, f.source(), spec.original)
+        || f.limits() != spec.limits
+        || f.requested_scripting_mode() != spec.requested
+        || f.allow_declarative_shadow_roots() != spec.shadow_allowed
+        || f.context().map(|c| c.capture().identity()) != spec.capture
+    {
+        return props.failure(
+            0,
+            "failed-source-binding",
+            "failure changed original request",
+        );
+    }
+    if f.cleanup_error().is_some() {
+        return props.failure(3, "cleanup-error", "typed cleanup engine error");
+    }
+    if let Some(d) = f.diagnostics()
+        && let Err(key) = diagnostics(f.source(), d)
+    {
+        return props.failure(2, key, "failure diagnostic range");
+    }
+    let failure_diags = f
+        .diagnostics()
+        .map(|d| diagnostics(f.source(), d))
+        .transpose()
+        .map_err(error)?;
+    let admission = f.source_admitted();
+    let reason = f.reason();
+    let first = f.first_stop();
+    let at = f.at_stop().cloned();
+    let after = f.after_cleanup().cloned();
+    let retained = f.retained_usage().cloned();
+    if let Some(ref usage) = after {
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::OpenElements,
+        ] {
+            if usage.resource(resource).current() != 0 {
+                return props.failure(
+                    3,
+                    "live-storage-after-cleanup",
+                    "disposable storage remains owned",
+                );
+            }
+        }
+    }
+    cancel.cancel();
+    if f.diagnostics()
+        .map(|d| diagnostics(f.source(), d))
+        .transpose()
+        .map_err(error)?
+        != failure_diags
+        || f.source_admitted() != admission
+        || f.reason() != reason
+        || f.first_stop() != first
+        || f.at_stop() != at.as_ref()
+        || f.after_cleanup() != after.as_ref()
+        || f.retained_usage() != retained.as_ref()
+    {
+        return props.failure(
+            4,
+            "first-stop-mutated",
+            "late cancel changed retained terminal evidence",
+        );
+    }
+    if let HtmlParseFailureReason::Stop(stop) = reason
+        && first != Some(stop)
+    {
+        return props.failure(
+            3,
+            "stop-disagrees",
+            "canonical first stop differs from terminal reason",
+        );
+    }
+    let expected = match expect {
+        Expect::PreCancelled => reason == HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled),
+        Expect::SourceDenied => {
+            matches!(
+                reason,
+                HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::SourceUnits,
+                    ..
+                })
+            ) && f.source_admitted() == Some(false)
+        }
+        Expect::WorkDenied => matches!(
+            reason,
+            HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            })
+        ),
+        Expect::Never => false,
+        Expect::Balanced => match reason {
+            HtmlParseFailureReason::Stop(
+                HtmlParseStop::RepresentationExhausted { .. }
+                | HtmlParseStop::AllocationFailed { .. },
+            ) => true,
+            HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
+                resource,
+                limit,
+                current,
+                requested_delta,
+            }) => {
+                let index = RESOURCE_ORDER.iter().position(|r| *r == resource);
+                let configured = index.and_then(|i| spec.caps.get(i));
+                // A stop is a product outcome only where the case lowered the
+                // resource below the documented envelope: a stop on an unlowered
+                // cap contradicts an oracle that expects the tree.
+                let lowered = index
+                    .and_then(|i| crate::codec::CAPS.get(i))
+                    .is_some_and(|default| *default != limit);
+                if configured != Some(&limit)
+                    || current.saturating_add(requested_delta) <= limit
+                    || !lowered
+                {
+                    return props.failure(
+                        3,
+                        "stop-limit-mismatch",
+                        format!("{reason:?} against configured caps {:?}", spec.caps),
+                    );
+                }
+                true
+            }
+            _ => false,
+        },
+        Expect::General => matches!(
+            reason,
+            HtmlParseFailureReason::Stop(
+                HtmlParseStop::LimitExceeded { .. }
+                    | HtmlParseStop::RepresentationExhausted { .. }
+                    | HtmlParseStop::AllocationFailed { .. }
+            )
+        ),
+    };
+    if expected {
+        return CaseOutcome::expected_rejection(props.ids(&[0, 3, 4]), format!("{reason:?}"));
+    }
+    if expect == Expect::General
+        && matches!(
+            reason,
+            HtmlParseFailureReason::UnsupportedConstruction(_)
+                | HtmlParseFailureReason::UnsupportedContextReactions
+                | HtmlParseFailureReason::MissingContextFact(_)
+                | HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(
+                    HtmlParseUnsupportedState::ScriptDocument
+                        | HtmlParseUnsupportedState::ScriptPause
+                        | HtmlParseUnsupportedState::PendingScript
+                        | HtmlParseUnsupportedState::DetailsNotification
+                        | HtmlParseUnsupportedState::ImageResource
+                ))
+        )
+    {
+        return CaseOutcome::unsupported(format!("{reason:?}"));
+    }
+    props.failure(
+        3,
+        "unexpected-terminal",
+        format!("{reason:?}; first={first:?}"),
+    )
+}
 pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<CaseOutcome> {
+    let props = Props(&target.descriptor);
     let original = source(case);
     let limits = case.limits()?;
     let requested = match case.kind {
@@ -597,11 +946,10 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
                         fact: HtmlCaptureFact::ScriptingStatus,
                         ..
                     })) => CaseOutcome::expected_rejection(
-                        vec![target.descriptor.properties()[3].clone()],
+                        vec![props.id(3)],
                         "explicit captured scripting fact absent",
                     ),
-                    _ => failure(
-                        target,
+                    _ => props.failure(
                         3,
                         "missing-context-fact",
                         "request failed to retain typed context rejection",
@@ -623,226 +971,60 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
             (request.parse(), cancel)
         }
     };
+    let spec = Spec {
+        fragment: case.kind == ParseKind::Fragment,
+        text: &case.source,
+        original: &original,
+        limits: &limits,
+        caps: case.caps,
+        requested,
+        capture: capture.as_ref(),
+        shadow_allowed: false,
+    };
     match parsed {
         Ok(report) => {
             if !matches!(case.lane, Lane::General | Lane::Literal(_)) {
-                return failure(
-                    target,
+                return props.failure(
                     3,
                     "missing-terminal-refusal",
                     "explicit stopped lane completed",
                 );
             }
-            if !same_source(case, report.source(), &original)
-                || report.limits() != &limits
-                || report.requested_scripting_mode() != requested
-                || report.effective_scripting_mode() != HtmlParserScriptingMode::Disabled
-                || report.allow_declarative_shadow_roots()
-                || report.image_support() != HtmlImageSupport::Disabled
-                || report.document().is_some() != (case.kind == ParseKind::Document)
-                || report.fragment().is_some() != (case.kind == ParseKind::Fragment)
-                || report.context().map(|c| c.capture().identity()) != capture.as_ref()
-            {
-                return failure(
-                    target,
-                    0,
-                    "source-binding",
-                    "successful report changed request binding",
-                );
-            }
-            let native = match native(&report) {
-                Ok(n) => n,
-                Err(key) => return failure(target, 1, key, "native ownership/traversal"),
-            };
-            let diag = match diagnostics(report.source(), report.diagnostics()) {
-                Ok(d) => d,
-                Err(key) => return failure(target, 2, key, "typed diagnostic range"),
-            };
-            let rows = match associations(&report) {
-                Ok(r) => r,
-                Err(key) => return failure(target, 2, key, "native D1 range"),
+            let seen = match verify_report(&props, &spec, &report)? {
+                Ok(v) => v,
+                Err(outcome) => return Ok(outcome),
             };
             if let Lane::Literal(id) = case.lane
-                && (!check_literal(id, &native) || !literal_evidence(id, &report, &rows, &diag))
+                && (!check_literal(id, &seen.nodes)
+                    || !literal_evidence(id, &report, &seen.rows, &seen.diagnostics))
             {
-                return failure(
-                    target,
+                return props.failure(
                     5,
                     "literal-semantics",
                     "source-derived literal observation disagrees",
                 );
             }
-            let usage = report.usage().clone();
-            cancel.cancel();
-            if report.usage() != &usage
-                || self::native(&report).as_ref() != Ok(&native)
-                || diagnostics(report.source(), report.diagnostics()).as_ref() != Ok(&diag)
-                || associations(&report).as_ref() != Ok(&rows)
-            {
-                return failure(
-                    target,
-                    4,
-                    "published-report-mutated",
-                    "cancellation changed immutable published values",
-                );
+            if let Some(outcome) = verify_immutable(&props, &report, &seen, &cancel)? {
+                return Ok(outcome);
             }
             let mut checked = vec![0, 1, 2, 4];
             if matches!(case.lane, Lane::Literal(_)) {
                 checked.push(5);
             }
-            CaseOutcome::evaluated(
-                checked
-                    .into_iter()
-                    .map(|i| target.descriptor.properties()[i].clone())
-                    .collect(),
-            )
+            CaseOutcome::evaluated(props.ids(&checked))
         }
         Err(f) => {
-            if !same_source(case, f.source(), &original)
-                || f.limits() != &limits
-                || f.requested_scripting_mode() != requested
-                || f.allow_declarative_shadow_roots()
-                || f.context().map(|c| c.capture().identity()) != capture.as_ref()
-            {
-                return failure(
-                    target,
-                    0,
-                    "failed-source-binding",
-                    "failure changed original request",
-                );
-            }
-            if f.cleanup_error().is_some() {
-                return failure(target, 3, "cleanup-error", "typed cleanup engine error");
-            }
-            if let Some(d) = f.diagnostics()
-                && let Err(key) = diagnostics(f.source(), d)
-            {
-                return failure(target, 2, key, "failure diagnostic range");
-            }
-            let failure_diags = f
-                .diagnostics()
-                .map(|d| diagnostics(f.source(), d))
-                .transpose()
-                .map_err(error)?;
-            let admission = f.source_admitted();
-            let reason = f.reason();
-            let first = f.first_stop();
-            let at = f.at_stop().cloned();
-            let after = f.after_cleanup().cloned();
-            let retained = f.retained_usage().cloned();
-            if let Some(ref usage) = after {
-                for resource in [
-                    HtmlParseResource::BufferedUtf16Units,
-                    HtmlParseResource::TokenAttributes,
-                    HtmlParseResource::ManagedEdges,
-                    HtmlParseResource::ManagedAttributes,
-                    HtmlParseResource::ManagedUtf16Units,
-                    HtmlParseResource::OpenElements,
-                ] {
-                    if usage.resource(resource).current() != 0 {
-                        return failure(
-                            target,
-                            3,
-                            "live-storage-after-cleanup",
-                            "disposable storage remains owned",
-                        );
-                    }
-                }
-            }
-            cancel.cancel();
-            if f.diagnostics()
-                .map(|d| diagnostics(f.source(), d))
-                .transpose()
-                .map_err(error)?
-                != failure_diags
-                || f.source_admitted() != admission
-                || f.reason() != reason
-                || f.first_stop() != first
-                || f.at_stop() != at.as_ref()
-                || f.after_cleanup() != after.as_ref()
-                || f.retained_usage() != retained.as_ref()
-            {
-                return failure(
-                    target,
-                    4,
-                    "first-stop-mutated",
-                    "late cancel changed retained terminal evidence",
-                );
-            }
-            if let HtmlParseFailureReason::Stop(stop) = reason
-                && first != Some(stop)
-            {
-                return failure(
-                    target,
-                    3,
-                    "stop-disagrees",
-                    "canonical first stop differs from terminal reason",
-                );
-            }
-            let expected = match case.lane {
-                Lane::PreCancelled => {
-                    reason == HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
-                }
-                Lane::SourceDenied => {
-                    matches!(
-                        reason,
-                        HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
-                            resource: HtmlParseResource::SourceUnits,
-                            ..
-                        })
-                    ) && f.source_admitted() == Some(false)
-                }
-                Lane::WorkDenied => matches!(
-                    reason,
-                    HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
-                        resource: HtmlParseResource::WorkCredits,
-                        ..
-                    })
-                ),
-                Lane::Literal(_) | Lane::MissingScripting => false,
-                Lane::General => matches!(
-                    reason,
-                    HtmlParseFailureReason::Stop(
-                        HtmlParseStop::LimitExceeded { .. }
-                            | HtmlParseStop::RepresentationExhausted { .. }
-                            | HtmlParseStop::AllocationFailed { .. }
-                    )
-                ),
+            let expect = match case.lane {
+                Lane::PreCancelled => Expect::PreCancelled,
+                Lane::SourceDenied => Expect::SourceDenied,
+                Lane::WorkDenied => Expect::WorkDenied,
+                Lane::Literal(_) | Lane::MissingScripting => Expect::Never,
+                Lane::General => Expect::General,
             };
-            if expected {
-                return CaseOutcome::expected_rejection(
-                    [0, 3, 4]
-                        .into_iter()
-                        .map(|i| target.descriptor.properties()[i].clone())
-                        .collect(),
-                    format!("{reason:?}"),
-                );
-            }
-            if case.lane == Lane::General
-                && matches!(
-                    reason,
-                    HtmlParseFailureReason::UnsupportedConstruction(_)
-                        | HtmlParseFailureReason::UnsupportedContextReactions
-                        | HtmlParseFailureReason::MissingContextFact(_)
-                        | HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(
-                            HtmlParseUnsupportedState::ScriptDocument
-                                | HtmlParseUnsupportedState::ScriptPause
-                                | HtmlParseUnsupportedState::PendingScript
-                                | HtmlParseUnsupportedState::DetailsNotification
-                                | HtmlParseUnsupportedState::ImageResource
-                        ))
-                )
-            {
-                return CaseOutcome::unsupported(format!("{reason:?}"));
-            }
-            failure(
-                target,
-                3,
-                "unexpected-terminal",
-                format!("{reason:?}; first={first:?}"),
-            )
+            verify_failure(&props, &spec, &f, &cancel, expect)
         }
     }
 }
+
 #[cfg(test)]
 mod tests;

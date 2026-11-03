@@ -1,6 +1,10 @@
 use crate::parser::support::limits;
 
-use surgeist_html::{DocumentString, HtmlCustomElementState, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::{
+    construction::{HtmlNodeId, HtmlNodeKind},
+    elements::native::HtmlCustomElementState,
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseMetadataStep, HtmlParseReport,
     HtmlSource,
@@ -26,7 +30,7 @@ fn element(report: &HtmlParseReport, local: &str) -> HtmlNodeId {
     while let Some(subject) = pending.pop() {
         let node = document.node(&subject).unwrap();
         if matches!(node.kind(), HtmlNodeKind::Element(element)
-            if element.name().namespace() == &surgeist_html::Namespace::html()
+            if element.name().namespace() == &surgeist_html::values::Namespace::html()
                 && element.name().local_name() == &DocumentString::from(local))
         {
             assert!(found.replace(subject.clone()).is_none());
@@ -53,6 +57,7 @@ fn creation(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     found.expect("completed ordinary element must lend its actual creation state and saved is")

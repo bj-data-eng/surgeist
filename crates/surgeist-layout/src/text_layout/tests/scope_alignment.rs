@@ -433,6 +433,7 @@ impl Case {
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let prepared = prepare(&analyzed, scale);
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             origins: prepared
                 .origin_views()
                 .zip(&runs)
@@ -505,6 +506,7 @@ impl Case {
             let prepared = prepare(&child, 1.0);
             let origin = prepared.origin_views().next().unwrap().handle();
             Some(TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 origins: vec![TextOriginBinding { origin, node: 91 }],
                 prepared,
                 container: 90,
@@ -585,18 +587,21 @@ impl Case {
                         .with_vertical_align(edge),
                 )
             } else {
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                    if matches!(
-                        control.occurrence.view().kind(),
-                        ParagraphControlKind::InlineBoundaryStart
-                    ) {
-                        InlineBoundaryKind::Start
-                    } else {
-                        InlineBoundaryKind::End
-                    },
-                    metrics,
-                    InlineBoundaryEdgeOf::ZERO,
-                ))
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        if matches!(
+                            control.occurrence.view().kind(),
+                            ParagraphControlKind::InlineBoundaryStart
+                        ) {
+                            InlineBoundaryKind::Start
+                        } else {
+                            InlineBoundaryKind::End
+                        },
+                        metrics,
+                        InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                )
             };
             tree = tree.children(control.node, []).input(control.node, input);
         }
@@ -1193,6 +1198,7 @@ fn edges<S: LayoutScalar>() {
                     flow,
                     box_geometry,
                     alignment: actual_alignment,
+                    ..
                 } = slot.allocation
                 else {
                     panic!("actual in-flow atomic")
@@ -1405,6 +1411,8 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 });
             }
             WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes,
                 child_order: vec![],
             }

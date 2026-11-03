@@ -1,8 +1,16 @@
-use crate::semantics::support::{ALL_RESOURCES, builder, cap_resources, context, session};
-use surgeist_html::*;
+use crate::semantics::support::{
+    ALL_RESOURCES, Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, cap_resources,
+    context, result_record_bytes, session,
+};
+use surgeist_html::{
+    attributes::{HtmlAttributeAuthorState, HtmlAttributeConformanceError},
+    construction::HtmlDocumentMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlMetaContentSlice,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlMetaContentSlice,
     HtmlMetaEncodingCharsetConflict, HtmlMetaPragmaContent, HtmlMetaPragmaContentAuthor,
     HtmlMetaPragmaContentReport, HtmlMetaPragmaUniqueness, HtmlMetaRefreshLexical,
     HtmlMetaRefreshTarget, HtmlMetaRefreshValue, HtmlScriptingStatus, HtmlSemanticCancellation,
@@ -735,49 +743,57 @@ fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
 fn refresh_exact_resources_and_one_short_caps_are_sticky_and_cleanup_scratch() {
     let (c, id) = single(&[("http-equiv", "refresh"), ("content", "12345; URL=x")]);
     let cx = context(&c);
-    let usage = report(&c, &id, 30).usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            usage.nested_output_records(),
-        ),
-        (HtmlSemanticResource::IntegerDigits, 5),
-    ] {
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                30,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = s.query(&[request(&id)]);
-            if cap == exact {
-                assert_eq!(
-                    parsed(&r.unwrap()).delay_seconds().decimal_digits(),
-                    "12345"
-                );
-            } else {
-                let fail = r.unwrap_err();
-                assert!(
-                    matches!(fail.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource),
-                    "{fail:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), fail);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
+    // The uniqueness walk keeps the document's child list and the meta's own
+    // (empty) list live together: two iterator records. The parsed refresh
+    // payload and the pragma checks' visit layout are private, so nested
+    // records, bytes and work are required to be charged without being
+    // pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "meta refresh",
+        &c,
+        &cx,
+        30,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(parsed(&r).delay_seconds().decimal_digits(), "12345");
+    // The delay's five decimal digits are the output of the integer-digit
+    // allowance, which usage does not report: exactly five admit and four stop.
+    let digits = |cap: usize| {
+        let l = cap_resources(
+            limits(),
+            ALL_RESOURCES,
+            HtmlSemanticResource::IntegerDigits,
+            cap,
+        );
+        let mut s = session(&c, &cx, l, 30, HtmlSemanticCancellation::new());
+        (s.query(&[request(&id)]), s)
+    };
+    let (exact, _) = digits(5);
+    assert_eq!(
+        parsed(&exact.unwrap()).delay_seconds().decimal_digits(),
+        "12345"
+    );
+    let (short, mut s) = digits(4);
+    let fail = short.unwrap_err();
+    assert!(matches!(
+        fail.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::IntegerDigits,
+            limit: 4,
+            ..
         }
-    }
+    ));
+    assert_eq!(s.query(&[]).unwrap_err(), fail);
+    assert_eq!(s.usage().scratch_records(), 0);
 }
 #[test]
 fn late_raw_failure_is_atomic_and_never_rescued_by_later_state_witness() {

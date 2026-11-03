@@ -458,6 +458,7 @@ fn mixed_variable_ordinary_rows_and_two_width_cells_keep_canonical_payloads_thro
     assert!(segments.next().is_none());
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

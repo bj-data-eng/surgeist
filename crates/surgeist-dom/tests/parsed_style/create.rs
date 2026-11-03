@@ -4,6 +4,7 @@ use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
+use surgeist_html::values::DocumentString;
 
 pub(super) fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
     let (mut dom, env) = setup();
@@ -271,6 +272,9 @@ fn root_style_first_and_pop_creation_preserve_auxiliary_inert_inventory_without_
     let mut inventory = report.pending_associations();
     loop {
         match inventory.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(fault) => {
+                panic!("{fault}")
+            }
             surgeist_html_parser::HtmlParsePendingAssociationStep::Document(_) => documents += 1,
             surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => break,
             _ => (),
@@ -303,7 +307,7 @@ fn root_style_first_and_pop_creation_preserve_auxiliary_inert_inventory_without_
         drop(retired);
         hold.exclude_script_bookkeeping(
             &q,
-            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
             &flag(),
         )
         .unwrap();
@@ -352,7 +356,7 @@ fn producer_proved_prior_type_ineligible_style_preserves_later_first_and_pop_cre
         drop(retired);
         hold.exclude_script_bookkeeping(
             &q,
-            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
             &flag(),
         )
         .unwrap();

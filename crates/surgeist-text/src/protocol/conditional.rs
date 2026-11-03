@@ -223,6 +223,13 @@ impl PreparedConditionalOpportunity {
                 purpose: self.purpose,
             }));
         }
+        if self
+            .search
+            .as_ref()
+            .is_some_and(|s| s.frame.inline_boxes != request.inline_boxes)
+        {
+            return Err(invalid());
+        }
         if let Some(search) = &self.search
             && !search.selection_context.is_empty()
             && selection_context(&request.context) != search.selection_context
@@ -686,11 +693,26 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
                 flow,
                 box_geometry,
                 alignment,
+                fit,
             } => {
                 values.push(1);
+                match fit {
+                    super::AtomicFitAllocation::NativeOccupied => values.push(0),
+                    super::AtomicFitAllocation::CssMarginBox(css) => {
+                        values.push(1);
+                        for value in [
+                            css.margin_start(),
+                            css.border_inline_size(),
+                            css.margin_end(),
+                        ] {
+                            number(&mut values, value);
+                        }
+                    }
+                }
                 allocation_alignment(&mut values, alignment);
                 for value in [
                     flow.advance,
+                    flow.normal_border_inline_size,
                     flow.before_baseline,
                     flow.after_baseline,
                     flow.occupied_start,
@@ -714,7 +736,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     for allocation in request.controls {
         values.push(allocation.occurrence.index as u64);
         values.push(u64::from(allocation.boundary.is_some()));
-        if let Some(boundary) = allocation.boundary {
+        if let Some(boundary) = &allocation.boundary {
             number(&mut values, boundary.advance());
         }
         values.push(u64::from(allocation.strut.is_some()));
@@ -742,18 +764,42 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values
 }
-/// The native numeric proof remains unchanged. New scope identity borrows the
+/// Native numeric proof includes the actual atomic fitting authority. Scope identity borrows the
 /// actual completed immutable owner, rather than copying a shadow transcript.
 /// Completed frames precede each search/request: Prepared has no reverse cache.
+/// Coupled phase authority for one conditional query.
+#[derive(Clone, Copy, Debug)]
+pub enum ConditionalLineContext<'a> {
+    Unframed {
+        inline_boxes: Option<&'a super::PreparedInlineBoxFamily>,
+    },
+    Finalized(&'a FinalizedLine),
+}
 #[derive(Clone, Debug, Default)]
 struct PolicyContext {
     native: Vec<u64>,
     source_segment: Option<super::PreparedSourceSegment>,
-    scope_frame: Option<FinalizedLine>,
+    frame: Option<FinalizedLine>,
+    inline_boxes: Option<super::PreparedInlineBoxFamily>,
 }
 impl PolicyContext {
+    fn box_contexts(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            bool,
+            &super::PreparedControl,
+            &super::InlineBoxEdgeContext,
+            &super::InlineBoxEdgeComponents,
+        ),
+    > {
+        self.frame.iter().flat_map(|frame| {
+            let request = &frame.inner.selected.request;
+            super::inline_box::context_identity(&request.controls, &request.boundary_context)
+        })
+    }
     fn scopes(&self) -> &[crate::ScopeFrameAllocation] {
-        self.scope_frame
+        self.frame
             .as_ref()
             .map_or(&[], |frame| frame.scope_allocations())
     }
@@ -763,6 +809,8 @@ impl PartialEq for PolicyContext {
         self.native == other.native
             && self.source_segment == other.source_segment
             && self.scopes() == other.scopes()
+            && self.box_contexts().eq(other.box_contexts())
+            && self.inline_boxes == other.inline_boxes
     }
 }
 impl Eq for PolicyContext {}
@@ -770,6 +818,10 @@ impl Hash for PolicyContext {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.native.hash(state);
         self.source_segment.hash(state);
+        self.inline_boxes.hash(state);
+        for context in self.box_contexts() {
+            context.hash(state);
+        }
         self.scopes().len().hash(state);
         for row in self.scopes() {
             row.scope.hash(state);
@@ -788,8 +840,17 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
     }
     PolicyContext {
         native: values,
+        inline_boxes: selected.request().inline_boxes.clone(),
         source_segment: Some(selected.request().segment.clone()),
-        scope_frame: (!line.scope_allocations().is_empty()).then(|| line.clone()),
+        frame: (selected.request().inline_boxes.is_some()
+            || !line.scope_allocations().is_empty()
+            || super::inline_box::contexts(
+                &selected.request().controls,
+                &selected.request().boundary_context,
+            )
+            .next()
+            .is_some())
+        .then(|| line.clone()),
     }
 }
 
@@ -797,13 +858,25 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
 pub(crate) enum ScopeProofVisit<'a> {
     Work(usize),
     Frame(&'a FinalizedLine),
+    Family(&'a super::PreparedInlineBoxFamily),
 }
 fn visit_scope_policy<'a>(
     context: &'a PolicyContext,
     emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
 ) -> crate::Result<()> {
     emit(ScopeProofVisit::Work(1))?;
-    if let Some(frame) = &context.scope_frame {
+    if let Some(family) = &context.inline_boxes {
+        emit(ScopeProofVisit::Family(family))?;
+    }
+    if let Some(frame) = &context.frame {
+        let request = &frame.inner.selected.request;
+        if super::inline_box::contexts(&request.controls, &request.boundary_context)
+            .next()
+            .is_some()
+        {
+            emit(ScopeProofVisit::Work(request.controls.len()))?;
+            emit(ScopeProofVisit::Work(request.boundary_context.len()))?;
+        }
         emit(ScopeProofVisit::Frame(frame))?;
     }
     Ok(())
@@ -874,6 +947,9 @@ pub(crate) fn visit_request_scope_frames<'a>(
     request: &'a LineSelectionRequest,
     emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
 ) -> crate::Result<()> {
+    if let Some(family) = &request.inline_boxes {
+        emit(ScopeProofVisit::Family(family))?;
+    }
     visit_termination_scope_frames(&request.termination, emit)
 }
 
@@ -973,8 +1049,15 @@ impl super::PreparedSourceSegment {
         ceiling: &PreparedOpportunity,
         purpose: ConditionalPurpose,
         skipped: &[ConditionalDisposition],
-        frame: Option<&FinalizedLine>,
+        context: ConditionalLineContext<'_>,
     ) -> crate::Result<PreparedConditionalSearch> {
+        let (frame, inline_boxes) = match context {
+            ConditionalLineContext::Unframed { inline_boxes } => (None, inline_boxes),
+            ConditionalLineContext::Finalized(frame) => (Some(frame), frame.inline_box_family()),
+        };
+        if let Some(family) = inline_boxes {
+            family.require_prepared(&self.prepared)?;
+        }
         let prepared = self.prepared_text();
         let (frontier, ordinary) =
             validate_query(&prepared, self, start, incoming, ceiling, purpose, skipped)?;
@@ -1002,7 +1085,10 @@ impl super::PreparedSourceSegment {
             selection = selection_context(&request.context);
             policy_context(frame)
         } else {
-            PolicyContext::default()
+            PolicyContext {
+                inline_boxes: inline_boxes.cloned(),
+                ..PolicyContext::default()
+            }
         };
         Ok(PreparedConditionalSearch {
             identity: SearchIdentity {
@@ -1032,8 +1118,10 @@ impl PreparedConditionalSearch {
         segment: &super::PreparedSourceSegment,
         start: usize,
         incoming: Option<&super::HyphenationContinuation>,
+        inline_boxes: Option<&super::PreparedInlineBoxFamily>,
     ) -> bool {
-        self.identity.prepared == *prepared
+        self.identity.frame.inline_boxes.as_ref() == inline_boxes
+            && self.identity.prepared == *prepared
             && self.identity.segment == *segment
             && self.identity.start == start
             && self.identity.incoming.as_ref() == incoming

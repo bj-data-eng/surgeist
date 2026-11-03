@@ -1,6 +1,16 @@
 //! Authentic original CSP artifacts transfer; DOM never invokes the processor.
 use super::*;
-use surgeist_html::*;
+use surgeist_html::{
+    elements::style::HtmlStyleUpdateAction,
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspAssociationCause, HtmlCspDisposalWork,
+        HtmlCspError, HtmlCspLayout, HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact,
+        HtmlCspProcessorAuthority, HtmlCspProcessorProfile, HtmlCspStorage, HtmlMetaCspOutcome,
+        HtmlMetaCspProcessor, HtmlMetaCspRequest,
+    },
+    values::DocumentString,
+};
+
 use surgeist_html_parser::HtmlParseMetadataStep;
 
 #[derive(Debug)]
@@ -101,6 +111,7 @@ fn original(report: &HtmlParseReport) -> &HtmlCspAssociation {
     let mut rows = report.metadata();
     loop {
         match rows.advance() {
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             HtmlParseMetadataStep::Record(row) => {
                 if let Some(meta) = row.document_meta()
                     && meta.document().id() == root
@@ -245,6 +256,9 @@ fn qualified_original_style_uses_its_policy_without_offline_binding_or_final_pol
     let mut records = report.pending_associations();
     let policy_a = loop {
         match records.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(fault) => {
+                panic!("{fault}")
+            }
             surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
                 if row.requires_processing() && row.style().is_some() =>
             {
@@ -361,6 +375,9 @@ fn unchanged_original_policy_keeps_artifact_a_at_new_generation_for_style_before
     let mut rows = report.pending_associations();
     let policy_a = loop {
         match rows.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(fault) => {
+                panic!("{fault}")
+            }
             surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
                 if row.requires_processing() && row.style().is_some() =>
             {
@@ -742,6 +759,7 @@ fn occurrence_policy_history_is_not_replaced_by_final_document_policy() {
     let mut reader = report.pending_associations();
     loop {
         match reader.advance() {
+            HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
             HtmlParsePendingAssociationStep::Occurrence(row) => {
                 if matches!(
                     row.kind(),

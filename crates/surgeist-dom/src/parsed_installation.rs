@@ -7,10 +7,11 @@
 use std::sync::Arc;
 
 use crate::{
-    DocumentId, DocumentString, DomChanges, DomDocumentStamp, DomError, DomNativeInputPlatform,
-    DomOpaqueOrigin, DomSnapshot, DomStamp, NodeId,
+    DocumentId, DomChanges, DomDocumentStamp, DomError, DomNativeInputPlatform, DomOpaqueOrigin,
+    DomSnapshot, DomStamp, NodeId,
 };
-use surgeist_html::HtmlNodeId;
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlParseReport, HtmlSourceId};
 use surgeist_html_semantics::{HtmlBaseEncoding, HtmlBaseUrlRecord};
 
@@ -142,9 +143,13 @@ pub enum DomParsedHtmlInstallError {
     },
     NotCompletedOrdinaryReport,
     NotCompletedFragmentReport,
+    /// The report holds a reference to a record its own tables cannot resolve.
+    /// The report is not installed: a defect in the parser's qualification of
+    /// it must fail the installation, never change what is installed.
+    UnresolvedReport(surgeist_html_parser::HtmlParseUnresolvedReference),
     ForeignContext,
     CurrentPolicyUnavailable,
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspIssuerBusy,
     CapturedStateUnavailable,
     EnvironmentMismatch,
@@ -156,7 +161,7 @@ pub enum DomParsedHtmlInstallError {
     },
     FamilyStateUnavailable {
         subject: HtmlNodeId,
-        class: surgeist_html::HtmlElementClass,
+        class: surgeist_html::elements::native::HtmlElementClass,
     },
     BaseStateUnavailable {
         subject: HtmlNodeId,
@@ -181,11 +186,11 @@ pub enum DomParsedHtmlInstallError {
     /// remain available from the qualified immutable report metadata.
     DialogStateUnavailable {
         subject: HtmlNodeId,
-        action: surgeist_html::HtmlDialogAction,
+        action: surgeist_html::elements::dialog::HtmlDialogAction,
     },
     SourceLookup {
         subject: HtmlNodeId,
-        error: surgeist_html::ForeignHtmlResult,
+        error: surgeist_html::construction::ForeignHtmlResult,
     },
     ResourceLimit {
         resource: DomParsedHtmlInstallResource,
@@ -206,8 +211,15 @@ impl std::error::Error for DomParsedHtmlInstallError {
             Self::Target(error) => Some(error),
             Self::SourceLookup { error, .. } => Some(error),
             Self::CspProtocol(error) => Some(error),
+            Self::UnresolvedReport(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlInstallError {
+    fn from(error: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::UnresolvedReport(error)
     }
 }
 

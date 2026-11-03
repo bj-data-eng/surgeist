@@ -1,6 +1,10 @@
 //! HTML877d document base, base.href and target selection over one capture.
 use super::*;
-use crate::bounded::TargetRecovery;
+use surgeist_html::{
+    bounded::attributes::HtmlTargetRecovery,
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlDocumentBaseUrl {
@@ -407,7 +411,7 @@ impl<'a> HtmlSemanticSession<'a> {
         raw: Option<&DocumentString>,
         origin: HtmlTargetOrigin,
     ) -> Result<HtmlElementTarget, HtmlSemanticFailure> {
-        let mut recovery = TargetRecovery::default();
+        let mut recovery = HtmlTargetRecovery::default();
         if let Some(raw) = raw {
             for (offset, unit) in raw.code_units().iter().enumerate() {
                 self.charge(1)?;

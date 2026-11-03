@@ -1,8 +1,8 @@
 //! Independent literal traces from HTML877d raw46458–46460,46585–46615.
-use surgeist_html::{
-    HtmlDialogAction as A, HtmlDialogCursor as C, HtmlDialogCursorError as E,
-    HtmlDialogEventSource as Source, HtmlDialogOperation as O, HtmlDialogOutcome as Outcome,
-    HtmlDialogReply as R, HtmlDialogState as State,
+use surgeist_html::elements::dialog::{
+    HtmlDialogAction as A, HtmlDialogCursor as C, HtmlDialogEventSource as Source,
+    HtmlDialogOperation as O, HtmlDialogOutcome as Outcome, HtmlDialogReply as R,
+    HtmlDialogState as State,
 };
 
 fn step(c: &mut C, action: A, reply: R) {
@@ -13,7 +13,7 @@ fn step(c: &mut C, action: A, reply: R) {
     } else {
         R::Open(false)
     };
-    assert_eq!(c.reply(wrong), Err(E::WrongReply));
+    assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     c.reply(reply).unwrap();
 }
@@ -21,7 +21,7 @@ fn complete(c: &mut C, outcome: Outcome) {
     assert_eq!(c.action(), A::Complete(outcome));
     let before = *c;
     for reply in [R::Applied, R::Open(false), R::EventCanceled(false)] {
-        assert_eq!(c.reply(reply), Err(E::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -43,7 +43,7 @@ fn dispatch(c: &mut C, canceled: bool) {
     );
     let before = *c;
     // Dispatch must return its actual cancellation result, not an effect ack.
-    assert_eq!(c.reply(R::Applied), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     step(
         c,
@@ -121,7 +121,7 @@ fn successful_show_finishes_open_hook_assertion_blocking_and_conditional_layer_b
         // No second fully-active read after dispatch, even if activity changed.
         assert_eq!(c.action(), A::ReadConnected);
         let before = c;
-        assert_eq!(c.reply(R::FullyActive(false)), Err(E::WrongReply));
+        assert!(matches!(c.reply(R::FullyActive(false)), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
         step(&mut c, A::ReadConnected, R::Connected(true));
         step(&mut c, A::ReadPopoverShowing, R::PopoverShowing(false));
@@ -137,7 +137,7 @@ fn successful_show_finishes_open_hook_assertion_blocking_and_conditional_layer_b
         step(&mut c, A::AddOpen, R::Applied);
         // Assertion is distinct from requestClose's invocation-local capture.
         let before = c;
-        assert_eq!(c.reply(R::WatcherPresent(false)), Err(E::WrongReply));
+        assert!(matches!(c.reply(R::WatcherPresent(false)), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
         step(&mut c, A::AssertCloseWatcherPresent, R::Applied);
         step(&mut c, A::SetModal, R::Applied);

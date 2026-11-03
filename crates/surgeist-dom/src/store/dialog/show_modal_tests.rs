@@ -1,5 +1,6 @@
 //! Actual current HTML common-state reads, independent of authored popover text.
 use super::*;
+use surgeist_html::values::DocumentString;
 #[test]
 fn authored_popover_attributes_do_not_change_the_native_hidden_common_state() {
     let cancel = AtomicBool::new(false);
@@ -19,9 +20,13 @@ fn authored_popover_attributes_do_not_change_the_native_hidden_common_state() {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let dialog = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     batch.set_attribute(&dialog, "popover", "auto");
-    let div = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let div = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     let created = dom.apply(batch, &cancel).unwrap();
     let dialog = created.created(&dialog).unwrap().unwrap();
     let div = created.created(&div).unwrap().unwrap();

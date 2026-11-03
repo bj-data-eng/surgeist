@@ -64,7 +64,7 @@ fn create_and_render(
     drop(prep.commit(&flag()).unwrap().into_parts());
     hold.exclude_script_bookkeeping(
         q,
-        surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+        surgeist_html::elements::style::HtmlStyleExecutionProfile::NoExecutableJavaScript,
         &flag(),
     )
     .unwrap();
@@ -220,6 +220,7 @@ fn diagnostic_mapping_preserves_actual_original_work_refusal() {
         .pending_associations();
     let row = loop {
         match rows.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *q.occurrence() => break row,
             Step::Complete => panic!("authentic original occurrence"),
             _ => (),

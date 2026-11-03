@@ -78,9 +78,23 @@ uses the same selected-line and placement machinery.
    retains its separate character-owned opportunity under its containing style.
    Transparent occurrences add no permission: existing internal cuts borrow the
    same relation, while semantic beginning and end do not acquire soft breaks.
+   For wrap-independent inline-box identity, call
+   `PreparedText::inline_box_family(native_boxes, allowance)` once after preparation.
+   It requires complete captured topology and ownership of the actual body;
+   supply genuine extra NativePair declarations, including undecorated Native ancestors.
+   Captured Inline boxes and ancestry are retained from their existing owner.
+   Share the family through `LineSelectionRequest::inline_boxes: Some(family)`
+   on every selected line; explicit `None` keeps the bounded local operation.
+   Actual selected/finalized/placed pieces expose fragment identity, parents, nearest
+   common ancestors, members and executed edges without reconstructing geometry. A shared packet
+   does not give one box another box's source or exclusive ink. See the
+   [complete-body contract](../../../docs/text-layout-contract.md#complete-body-bidi-fragments)
+   for precise refusals, funding and the separate formatting/painting capabilities.
 3. Supply a `LineSelectionRequest` with issued start/end boundaries, every selected
    mixed participant in order, an actual terminating opportunity, complete context
-   and occurrence-qualified atomic/control allocations. Signed atomic flow and
+   and occurrence-qualified atomic/control allocations. In-flow atomics explicitly
+   distinguish Native occupied fitting from actual CSS margin-box authority; see
+   [atomic fitting](atomic-fit.md). Signed atomic flow and
    canonical border/content geometry remain distinct. `LineBoxAlignment` captures
    actual baseline/top/bottom metric participation for in-flow atomics and controls;
    their final slot and baseline relation are returned by the finalizer. Out-of-flow
@@ -185,7 +199,9 @@ uses the same selected-line and placement machinery.
    min/max-content contributions of this exact selection. These signed flow
    observations exclude indentation; their ordered occupied intervals are in
    the prealignment line frame. The consumer supplies indentation once and
-   still decides fit. `metric_bounds()` observes the actual Text metric frame,
+   still decides fit. The separate margin-edge admission observations preserve
+   explicit CSS versus Native authority without redefining these raw intervals;
+   see [atomic fitting](atomic-fit.md). `metric_bounds()` observes the actual Text metric frame,
    independently of a consumer's intrinsic allocation.
    `edge_units()` distinguishes natural eligibility and terminal grouping from
    final allocated exclusion and physical outward overlap, with genuine issued
@@ -236,6 +252,21 @@ issued mixed participant. Foreign preparations, positions outside the admitted
 origin and occurrences outside this selected line refuse. The returned
 `FinalizedPrefixView` borrows this exact line and retains the original seam
 independently of the descriptor's lifetime.
+
+Its receipts belong to the complete frozen execution. When checked BoxEdges move
+to their actual parent sides, the query still follows original logical source
+cuts, including whole-unit closure and the TAB advances that actually executed.
+Signed margin flow belongs to those receipts independently of border/padding
+strip geometry; a backwards pen move is not a negative-width rectangle.
+It does not sum a prefix of the physical insertion order. Selecting a shorter
+recipe is a different operation: its TAB pen can change, and unselected closing
+edges add no flow. See [endpoint operations](reference.md#native-inline-endpoint-geometry)
+for explicit Contribution versus checked BoxEdge construction.
+
+Raw line feedback and purpose-specific advances follow the canonical selected
+execution for checked BoxEdges. Finite sums can round differently from the
+original-logical prefix receipts when parent-side placement changes traversal,
+including at a seam after the complete line.
 
 An interior seam counts the whole smallest unit closed under both selected
 graphemes and actual provider-cluster associations. `interior_unit()` lends its

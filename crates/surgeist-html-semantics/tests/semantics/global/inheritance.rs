@@ -1,5 +1,14 @@
-use crate::semantics::support::compact_builder_without_registries as builder;
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    compact_builder_without_registries as builder,
+};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -9,8 +18,9 @@ use surgeist_html_semantics::{
     HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlSemanticCancellation,
     HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
-    HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact, HtmlTranslationMode,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue, HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact,
+    HtmlTranslationMode,
 };
 
 // Expected predicates follow HTML 877d6146487f and ONLY the delegated
@@ -762,31 +772,41 @@ fn exact_work_output_limits_and_sticky_cancellation_qualify_global_state() {
     let c = b.finish().unwrap();
     let cx = context(&c, Some(facts(&c, key(), vec![], vec![])));
     let r = req(&c, &n, HtmlSemanticQuery::TranslationMode);
-    let report = session(&c, &cx).query(std::slice::from_ref(&r)).unwrap();
-    let exact = report.usage().work();
-    for (work, pass) in [(exact, true), (exact - 1, false)] {
-        let mut s = HtmlSemanticSession::new(
-            &c,
-            &cx,
-            HtmlValueInterpreter::new(100000),
-            HtmlSemanticLimits::new(work, 1, 1000, 1000, 1000000, 1000),
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let result = s.query(std::slice::from_ref(&r));
-        assert_eq!(result.is_ok(), pass);
-        if !pass {
-            let failure = result.unwrap_err();
-            assert_eq!(s.query(&[]).unwrap_err(), failure);
-            assert_eq!(
-                failure
-                    .qualification()
-                    .unwrap()
-                    .global_inheritance_revision(),
-                cx.global_inheritance_revision()
-            );
-        }
-    }
+    // The translation mode of an element with its own translate attribute is
+    // a cloned classification: one result record and no nested or scratch
+    // storage. The attribute scan's visit layout is private, so work is
+    // required to be charged without being pinned. The exact work cap must
+    // reproduce the report; a zero work allowance stops at the first charge with
+    // the global-inheritance revision in its qualification.
+    assert_exact_and_one_short_caps(
+        "translation mode",
+        &c,
+        &cx,
+        100000,
+        HtmlSemanticLimits::new(10000000, 1, 1000, 1000, 1000000, 1000),
+        std::slice::from_ref(&r),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
+    let mut s = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(100000),
+        HtmlSemanticLimits::new(0, 1, 1000, 1000, 1000000, 1000),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let failure = s.query(std::slice::from_ref(&r)).unwrap_err();
+    assert_eq!(
+        failure
+            .qualification()
+            .unwrap()
+            .global_inheritance_revision(),
+        cx.global_inheritance_revision()
+    );
     let cancel = HtmlSemanticCancellation::new();
     cancel.cancel();
     let mut s =

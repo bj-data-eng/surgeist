@@ -1,9 +1,10 @@
 //! Whole original parsed contributions consumed by the association owner.
 use crate::{
-    DocumentId, DocumentString, DomError, DomMetaRootCommit,
-    DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId, DomStamp, NodeId,
+    DocumentId, DomError, DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError,
+    DomParsedHtmlAssociationId, DomStamp, NodeId,
 };
-use surgeist_html::HtmlNodeId;
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::HtmlParseAssociationOccurrenceId;
 
 /// A complete original contribution or actual root-qualified producer failure.

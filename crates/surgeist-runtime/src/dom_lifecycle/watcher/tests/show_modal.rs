@@ -4,6 +4,7 @@ use crate::{
     DomEventCallback, DomEventListenerOptions, DomEventType, DomSourceEventServiceLimits,
     DomSourceEventServiceProgress,
 };
+use surgeist_html::elements::dialog::HtmlDialogAction;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
@@ -698,7 +699,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
     };
     assert_eq!(
         failure.dialog_operation(),
-        surgeist_html::HtmlDialogOperation::ShowModal
+        surgeist_html::elements::dialog::HtmlDialogOperation::ShowModal
     );
     assert_eq!(failure.subject(), subject);
     assert_eq!(

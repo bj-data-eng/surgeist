@@ -1,6 +1,24 @@
 //! Independent literals from HTML #the-meter-element authoring requirements,
 //! rather than its separately tested effective processing defaults and clamps.
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeObservation,
+        HtmlAttributeRecognition,
+        meter::{
+            HtmlMeterAttributeInput, HtmlMeterAttributeReport, HtmlMeterAttributes,
+            HtmlMeterAuthorRelation, HtmlMeterNativeError, HtmlMeterNumberAuthorState,
+            HtmlMeterNumberReport, HtmlMeterNumberRole, HtmlMeterRelationState,
+            HtmlMeterRelationUnavailable,
+        },
+    },
+    microsyntax::numeric::HtmlFloatingPointNumber,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueRepresentationError, HtmlValueSyntaxError, Namespace,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 const KINDS: [KnownHtmlAttribute; 6] = [
     KnownHtmlAttribute::Value,
@@ -908,7 +926,7 @@ fn native_finite_numbers_use_existing_serialization_through_the_same_checked_bou
         -f64::MAX,
     ] {
         let number = HtmlFloatingPointNumber::try_from(value).unwrap();
-        let syntax = number.as_document_string();
+        let syntax = number.to_plain_decimal_string();
         let proof = HtmlMeterAttributes::from_syntax(
             syntax.clone(),
             Some(syntax.clone()),

@@ -1,4 +1,9 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::hash_name::{HtmlHashNameAuthorForm, HtmlHashNameProcessing, HtmlUsemapReference},
+    microsyntax::tokens::{HtmlSpaceToken, HtmlTokenError},
+    values::{DocumentString, HtmlValueInterpreter},
+    vocabulary::KnownHtmlAttribute,
+};
 
 #[test]
 fn local_author_form_and_processing_guard_are_independent() {

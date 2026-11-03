@@ -6,6 +6,7 @@ use surgeist_dom::{
     DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetError,
     DomParsedHtmlStyleSheetInput, DomParsedHtmlStyleSheetPreparation,
 };
+use surgeist_html::{construction::HtmlDocumentMode, elements::style::HtmlStyleExecutionProfile};
 
 /// Original sheet processing refused before the joined publication fence.
 #[derive(Debug)]

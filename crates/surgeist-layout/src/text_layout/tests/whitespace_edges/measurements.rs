@@ -104,6 +104,8 @@ fn block_end_claim_cannot_hide_known_later_in_flow_content() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

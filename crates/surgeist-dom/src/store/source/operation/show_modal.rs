@@ -1,6 +1,6 @@
 //! Standard ShowModal prefix through its actual canonical watcher assertion.
 use super::*;
-use surgeist_html::{HtmlDialogAction, HtmlDialogOperation, HtmlDialogReply};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogOperation, HtmlDialogReply};
 
 impl Operation {
     pub(super) fn is_show_modal_method(&self) -> bool {
@@ -82,6 +82,7 @@ impl Operation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn original_source_failure_keeps_its_first_assertion_basis_and_exact_terminal_value() {
         // Isolate the failure-custody owner. No active Window, watcher receipt
@@ -103,8 +104,16 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let subject = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
-        let other = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let subject = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
+        let other = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         let commit = dom.apply(batch, &cancel).unwrap();
         let subject = commit.created(&subject).unwrap().unwrap();
         let other = commit.created(&other).unwrap().unwrap();
@@ -118,9 +127,9 @@ mod tests {
             .unwrap();
         let id = lease.operation();
         let failure = DomSourceInvariantFailure {
-            dialog_operation: surgeist_html::HtmlDialogOperation::ShowModal,
+            dialog_operation: surgeist_html::elements::dialog::HtmlDialogOperation::ShowModal,
             subject,
-            action: surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent,
+            action: surgeist_html::elements::dialog::HtmlDialogAction::AssertCloseWatcherPresent,
             basis,
             reason: DomSourceInvariantReason::MissingDialogCloseWatcher,
         };
@@ -129,17 +138,19 @@ mod tests {
         operation.remember_failure(original);
         operation.remember_failure(DomSourceCleanupCause::ReceiverRetired {
             subject: other,
-            action: DomSourceStoppedAction::Dialog(surgeist_html::HtmlDialogAction::ReadOpen),
+            action: DomSourceStoppedAction::Dialog(
+                surgeist_html::elements::dialog::HtmlDialogAction::ReadOpen,
+            ),
         });
         assert_eq!(lease.status().cleanup_cause(), Some(original));
         assert_eq!(
             failure.dialog_operation(),
-            surgeist_html::HtmlDialogOperation::ShowModal
+            surgeist_html::elements::dialog::HtmlDialogOperation::ShowModal
         );
         assert_eq!(failure.subject(), subject);
         assert_eq!(
             failure.action(),
-            surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent
+            surgeist_html::elements::dialog::HtmlDialogAction::AssertCloseWatcherPresent
         );
         assert_eq!(failure.basis(), basis);
         assert_eq!(

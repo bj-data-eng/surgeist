@@ -1,6 +1,7 @@
 //! Constructor facts survive the actual original controlled owner and recovery.
 use super::*;
-use surgeist_html::{
+use crate::html::support::{cause, has_cause};
+use surgeist_html::construction::{
     HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation, HtmlFragment,
 };
 
@@ -45,7 +46,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
         HtmlConstructionCommand::Create {
             kind: HtmlNodeKind::Document(HtmlDocumentMode::Quirks),
         },
-        HtmlConstructionError::WrongNodeKind,
+        cause::WRONG_NODE_KIND,
     );
     let (owner, document) = create(
         owner,
@@ -75,18 +76,16 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let alias = value.clone();
     let mut value = Some(value);
     let mut lease = Some(lease);
-    assert_eq!(
-        HtmlConstructionLease::try_recover(&mut value, &mut lease).err(),
-        Some(HtmlConstructionError::SharedAllocationAliased)
-    );
+    assert!(has_cause(
+        slots::recover(&mut value, &mut lease).err().as_ref(),
+        cause::SHARED_ALLOCATION_ALIASED
+    ));
     assert_eq!(
         alias.node(&id).unwrap().document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)
     );
     drop(alias);
-    let (owner, retired_wrapper) = HtmlConstructionLease::try_recover(&mut value, &mut lease)
-        .unwrap()
-        .into_parts();
+    let (owner, retired_wrapper) = slots::recover(&mut value, &mut lease).unwrap().into_parts();
     drop(retired_wrapper);
     let document = owner.node_by_result_id(&id).unwrap().handle();
     let (owner, _) = change(
@@ -131,7 +130,7 @@ fn aborted_constructor_does_not_change_existing_owner_and_retirement_still_compl
             mode: HtmlDocumentMode::NoQuirks,
         },
     );
-    let (owner, _, _, _) = abandoned.abort().into_parts();
+    let (owner, _, _) = abandoned.abort().into_parts();
     assert_eq!(owner.usage(), before);
     assert_eq!(
         owner

@@ -25,6 +25,9 @@ pub(super) struct AllocatedMeasurements {
     formatted_usage: FormattedLineUsage,
     pub(super) alignment: InlineMeasure,
     fit: InlineMeasure,
+    margin_fit: crate::MarginEdgeFit,
+    margin_minimum: crate::MarginEdgeFit,
+    margin_maximum: crate::MarginEdgeFit,
     minimum: InlineMeasure,
     maximum: InlineMeasure,
     edges: AllocatedEdges,
@@ -81,6 +84,9 @@ impl AllocatedMeasurements {
         Ok(LineMeasurements {
             formatted_usage: self.formatted_usage,
             fit: self.fit,
+            margin_fit: self.margin_fit,
+            margin_minimum: self.margin_minimum,
+            margin_maximum: self.margin_maximum,
             alignment: self.alignment,
             minimum: self.minimum,
             maximum: self.maximum,
@@ -163,7 +169,13 @@ fn positions(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                pen = boundary
+                    .execute(pen, TextNumericPhase::Finalization)?
+                    .flow
+                    .1;
+                continue;
             }
         };
         pen = add(
@@ -235,7 +247,10 @@ fn raw_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
+                if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                    .allocation()
+                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                {
                     break;
                 }
             }
@@ -339,7 +354,9 @@ pub(super) fn natural(
         for &ordinal in &visual {
             let row = match shaped.items[ordinal] {
                 ShapedItem::Anchor { unit } => {
-                    if crate::protocol::boundary::advance(selected.presentation_input(), unit) > 0.0
+                    if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                        .allocation()
+                        .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                     {
                         break;
                     }
@@ -616,94 +633,123 @@ struct Baseline {
     raw_advance: Option<f64>,
     fit_anchor: bool,
 }
+/// The actual order and its selected-only BoxEdge authority. Context-only
+/// declarations do not produce a plan; zero-valued selected BoxEdges do.
+pub(super) struct MeasurementOrder<'order, 'source, 'scratch> {
+    pub(super) order: &'order crate::SuppliedVisualOrder<'source, 'scratch>,
+    pub(super) box_edges: Option<&'order crate::protocol::inline_box::execution::ExecutionPlan>,
+}
+
+/// Cluster positions and the actual admitted execution that produced them.
+/// Exclusion purposes vary; none may restore the selection's former traversal.
+struct MeasurementExecution<'positions, 'source, 'scratch> {
+    positions: &'positions [(f64, f64)],
+    order: &'positions crate::SuppliedVisualOrder<'source, 'scratch>,
+    box_edges: Option<&'positions crate::protocol::inline_box::execution::ExecutionPlan>,
+}
 fn measure(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    positions: &[(f64, f64)],
+    execution: &MeasurementExecution<'_, '_, '_>,
     exclusions: &[Exclusion],
     baseline: Baseline,
     ledger: &mut Ledger,
-) -> Result<InlineMeasure> {
+) -> Result<(InlineMeasure, crate::MarginEdgeFit)> {
+    let positions = execution.positions;
+    let canonical_box_flow =
+        execution.box_edges.is_some() && selected.metric_policy == LineMetricPolicy::Native;
     account::work(ledger, shaped.items.len())?;
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
     let mut anchor = 0.0;
-    for item in &shaped.items {
-        let contribution = match *item {
-            ShapedItem::Cell(cell) => {
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    shaped.cells[cell].advance
-                }
-            }
-            ShapedItem::TextCluster(i) if shaped.clusters[i].whitespace != Whitespace::Newline => {
-                let excluded = exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
-                if baseline.fit_anchor && exclusions[i].punctuation_start {
-                    anchor = add(
-                        "raw punctuation origin",
-                        TextNumericPhase::Finalization,
-                        anchor,
-                        excluded,
-                    )?
-                }
-                if baseline.raw_advance.is_some() {
-                    let prior = if exclusions[i].raw_trim {
-                        shaped.clusters[i].advance
-                    } else {
+    let mut css_composed = execution.box_edges.is_some();
+    if !canonical_box_flow {
+        for item in &shaped.items {
+            let contribution = match *item {
+                ShapedItem::Cell(cell) => {
+                    if baseline.raw_advance.is_some() {
                         0.0
-                    };
-                    let extra = add(
-                        "raw additional exclusion",
-                        TextNumericPhase::Finalization,
-                        excluded,
-                        -prior,
-                    )?;
-                    -extra
-                } else {
-                    add(
-                        "retained attributed advance",
-                        TextNumericPhase::Finalization,
-                        shaped.clusters[i].advance,
-                        -excluded,
-                    )?
+                    } else {
+                        shaped.cells[cell].advance
+                    }
                 }
-            }
-            ShapedItem::InlineBox { occurrence, .. } => {
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    super::super::super::spacing::character::atomic_advance(
-                        shaped,
-                        occurrence,
-                        inflow_allocation(atomics[&occurrence])?.0.advance,
-                    )?
+                ShapedItem::TextCluster(i)
+                    if shaped.clusters[i].whitespace != Whitespace::Newline =>
+                {
+                    let excluded =
+                        exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
+                    if baseline.fit_anchor && exclusions[i].punctuation_start {
+                        anchor = add(
+                            "raw punctuation origin",
+                            TextNumericPhase::Finalization,
+                            anchor,
+                            excluded,
+                        )?
+                    }
+                    if baseline.raw_advance.is_some() {
+                        let prior = if exclusions[i].raw_trim {
+                            shaped.clusters[i].advance
+                        } else {
+                            0.0
+                        };
+                        let extra = add(
+                            "raw additional exclusion",
+                            TextNumericPhase::Finalization,
+                            excluded,
+                            -prior,
+                        )?;
+                        -extra
+                    } else {
+                        add(
+                            "retained attributed advance",
+                            TextNumericPhase::Finalization,
+                            shaped.clusters[i].advance,
+                            -excluded,
+                        )?
+                    }
                 }
-            }
-            ShapedItem::Anchor { unit } => {
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                ShapedItem::InlineBox { occurrence, .. } => {
+                    let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
+                    css_composed |= matches!(fit, crate::AtomicFitAllocation::CssMarginBox(_));
+                    if baseline.raw_advance.is_some() {
+                        0.0
+                    } else {
+                        super::super::super::spacing::character::atomic_advance(
+                            shaped,
+                            occurrence,
+                            flow.advance,
+                        )?
+                    }
                 }
-            }
-            _ => 0.0,
-        };
-        advance = add(
-            "edge signed flow",
-            TextNumericPhase::Finalization,
-            advance,
-            contribution,
-        )?;
+                ShapedItem::Anchor { unit } => {
+                    // The raw-profile branch had no scalar lookup. Authority comes
+                    // from the already-admitted selected execution, not a new scan.
+                    if baseline.raw_advance.is_some() {
+                        0.0
+                    } else {
+                        crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                    }
+                }
+                _ => 0.0,
+            };
+            advance = add(
+                "edge signed flow",
+                TextNumericPhase::Finalization,
+                advance,
+                contribution,
+            )?;
+        }
     }
     if baseline.fit_anchor {
         include(&mut bounds, anchor, anchor)
     }
     let mut pen = 0.0;
-    // Finalization has already admitted this exact selected permutation. A
-    // measurement view changes exclusions, never the retained traversal.
-    for &ordinal in &selected.basis.order {
+    let mut fit_flow = 0.0;
+    let mut opaque = None;
+    // Every purpose uses the same admitted order as actual positioning.
+    for (ordinal, _) in execution.order.iter() {
+        let mut executed_end = None;
         let contribution = match shaped.items[ordinal] {
             ShapedItem::Cell(cell) => {
                 let extent = shaped.cells[cell].extent;
@@ -732,22 +778,23 @@ fn measure(
                 }
             }
             ShapedItem::InlineBox { occurrence, .. } => {
-                let flow = inflow_allocation(atomics[&occurrence])?.0;
-                include(
-                    &mut bounds,
-                    add(
-                        "occupied atomic start",
-                        TextNumericPhase::Finalization,
-                        pen,
-                        flow.occupied_start,
-                    )?,
-                    add(
-                        "occupied atomic end",
-                        TextNumericPhase::Finalization,
-                        pen,
-                        flow.occupied_end,
-                    )?,
-                );
+                let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
+                let left = add(
+                    "occupied atomic start",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    flow.occupied_start,
+                )?;
+                let right = add(
+                    "occupied atomic end",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    flow.occupied_end,
+                )?;
+                include(&mut bounds, left, right);
+                if css_composed && matches!(fit, crate::AtomicFitAllocation::NativeOccupied) {
+                    include(&mut opaque, left, right);
+                }
                 super::super::super::spacing::character::atomic_advance(
                     shaped,
                     occurrence,
@@ -755,30 +802,70 @@ fn measure(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                let n = crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                if n != 0.0 {
-                    include(
-                        &mut bounds,
-                        pen,
-                        add("occupied boundary", TextNumericPhase::Finalization, pen, n)?,
-                    )
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                let edge = boundary.execute(pen, TextNumericPhase::Finalization)?;
+                if boundary.allocation().is_some_and(|allocation| {
+                    allocation.box_components().is_some() || allocation.strip_advance() != 0.0
+                }) {
+                    include(&mut bounds, edge.strip.0, edge.strip.1);
                 }
-                n
+                executed_end = Some(edge.flow.1);
+                boundary.advance()
             }
         };
-        pen = add(
-            "occupied edge flow",
-            TextNumericPhase::Finalization,
-            pen,
-            contribution,
-        )?;
+        if css_composed {
+            // This view's actual retained contribution, in the canonical visual
+            // traversal. Geometry and Native opaque positions above remain raw.
+            let delta = match shaped.items[ordinal] {
+                ShapedItem::TextCluster(i)
+                    if shaped.clusters[i].whitespace != Whitespace::Newline =>
+                {
+                    let excluded =
+                        exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
+                    add(
+                        "CSS-composed retained flow",
+                        TextNumericPhase::Finalization,
+                        shaped.clusters[i].advance,
+                        -excluded,
+                    )?
+                }
+                _ => contribution,
+            };
+            fit_flow = add(
+                "CSS-composed visual flow",
+                TextNumericPhase::Finalization,
+                fit_flow,
+                delta,
+            )?;
+        }
+        pen = if let Some(end) = executed_end {
+            end
+        } else {
+            add(
+                "occupied edge flow",
+                TextNumericPhase::Finalization,
+                pen,
+                contribution,
+            )?
+        };
     }
     let (occupied_start, occupied_end) = bounds.unwrap_or((0.0, 0.0));
-    Ok(InlineMeasure {
-        advance,
+    let raw = InlineMeasure {
+        advance: if canonical_box_flow {
+            fit_flow
+        } else {
+            advance
+        },
         occupied_start,
         occupied_end,
-    })
+    };
+    let admission = if css_composed {
+        crate::MarginEdgeFit::css(fit_flow, opaque)?
+    } else {
+        crate::MarginEdgeFit::native(raw)?
+    };
+    Ok((raw, admission))
 }
 
 /// Response attribution uses the same actual natural causes/exclusion algebra
@@ -861,11 +948,12 @@ pub(super) fn allocated(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    execution_order: MeasurementOrder<'_, '_, '_>,
     natural: Natural,
     metrics: &mut LineMetrics,
     ledger: &mut Ledger,
 ) -> Result<AllocatedMeasurements> {
+    let order = execution_order.order;
     for (i, cause) in natural.deferred.iter().enumerate() {
         if let Some((cause, _)) = cause
             && shaped.clusters[i].advance != 0.0
@@ -880,6 +968,11 @@ pub(super) fn allocated(
         Side::End
     };
     let (positions, total) = positions(selected, shaped, atomics, order, ledger)?;
+    if native && execution_order.box_edges.is_some() {
+        // Logical prefix receipts have already frozen their own fold. Feedback
+        // observes this selection's actual zero-origin physical execution.
+        metrics.advance = total;
+    }
     let needs_edge = natural.causes.iter().any(|cause| {
         cause
             .rows
@@ -1062,11 +1155,16 @@ pub(super) fn allocated(
         },
         fit_anchor: false,
     };
-    let fit = measure(
+    let execution = MeasurementExecution {
+        positions: &positions,
+        order,
+        box_edges: execution_order.box_edges,
+    };
+    let (fit, margin_fit) = measure(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[FIT],
         Baseline {
             fit_anchor: !native,
@@ -1074,29 +1172,29 @@ pub(super) fn allocated(
         },
         ledger,
     )?;
-    let minimum = measure(
+    let (minimum, margin_minimum) = measure(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[MIN],
         baseline,
         ledger,
     )?;
-    let maximum = measure(
+    let (maximum, margin_maximum) = measure(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[MAX],
         baseline,
         ledger,
     )?;
-    let alignment = measure(
+    let (alignment, _) = measure(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[ALIGN],
         baseline,
         ledger,
@@ -1180,6 +1278,9 @@ pub(super) fn allocated(
         AllocatedEdges::Outer(outer)
     };
     Ok(AllocatedMeasurements {
+        margin_fit,
+        margin_minimum,
+        margin_maximum,
         fit,
         alignment,
         minimum,

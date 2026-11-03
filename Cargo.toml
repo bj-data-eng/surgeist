@@ -75,6 +75,7 @@ members = [
     "crates/surgeist-template",
     "crates/surgeist-test",
     "crates/surgeist-text",
+    "crates/surgeist-typed-winsafe",
     "crates/surgeist-window",
     "tools/cssom-reflections",
 ]
@@ -82,3 +83,6 @@ exclude = [
     "api/generator",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
 ]
+
+[patch.crates-io]
+accesskit_consumer = { path = "vendor/accesskit-consumer" }

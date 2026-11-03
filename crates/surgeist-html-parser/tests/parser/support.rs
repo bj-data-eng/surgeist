@@ -1,15 +1,21 @@
 //! Shared builders for the parser integration tests.
 //!
-//! Each helper here is used by more than one domain module. Modules whose
-//! fixtures need different values (for example tighter limits) keep a local
-//! helper instead.
+//! Each helper here is used by more than one domain module. A module whose
+//! fixtures need different parse limits starts from `limits_builder` or
+//! `small_limits_builder` and overrides only the caps that differ, so the
+//! difference stays visible. Limits unique to one module's measurement (a cap
+//! table, a linear-work budget) stay local.
 
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
-/// Generous parse limits that ordinary test fixtures do not reach.
-pub(crate) fn limits() -> HtmlParseLimits {
+/// The generous parse limits, unfinished, so a module whose fixture needs a
+/// different cap states exactly which caps it overrides.
+pub(crate) fn limits_builder() -> HtmlParseLimitsBuilder {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -30,8 +36,42 @@ pub(crate) fn limits() -> HtmlParseLimits {
         .peak_transient_bytes(100_000_000)
         .atomic_layout_bytes(100_000_000)
         .work_credits(100_000_000)
-        .finish()
-        .unwrap()
+}
+
+/// Generous parse limits that ordinary test fixtures do not reach.
+pub(crate) fn limits() -> HtmlParseLimits {
+    limits_builder().finish().unwrap()
+}
+
+/// Small parse limits, unfinished: ten thousand source units and one thousand
+/// nodes, edges, attributes, diagnostics and context effects, with ten million
+/// bytes and work credits.
+pub(crate) fn small_limits_builder() -> HtmlParseLimitsBuilder {
+    HtmlParseLimits::builder()
+        .source_units(10000)
+        .buffered_utf16_units(10000)
+        .token_attributes(1000)
+        .auxiliary_entries(10000)
+        .managed_nodes(1000)
+        .managed_edges(1000)
+        .managed_attributes(1000)
+        .managed_utf16_units(10000)
+        .source_map_entries(10000)
+        .source_map_payload_units(10000)
+        .diagnostics(1000)
+        .diagnostic_payload_units(1000)
+        .context_effects(1000)
+        .open_elements(100)
+        .tree_depth(1000)
+        .managed_capacity_bytes(10000000)
+        .peak_transient_bytes(10000000)
+        .atomic_layout_bytes(10000000)
+        .work_credits(10000000)
+}
+
+/// Small parse limits.
+pub(crate) fn small_limits() -> HtmlParseLimits {
+    small_limits_builder().finish().unwrap()
 }
 
 /// A fresh base-facts revision with fixed counters.

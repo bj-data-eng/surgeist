@@ -3,7 +3,8 @@ use super::*;
 use crate::{
     DomCloseWatcherId, DomDialogWatcherPreparation, DomDialogWatcherPublication, DomHostedSource,
 };
-use surgeist_html::{HtmlDialogAction, HtmlDialogReply};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogReply};
+
 impl Operation {
     pub(super) fn external_receipt_applied(&self) -> bool {
         matches!(

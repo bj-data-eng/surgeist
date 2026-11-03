@@ -1,5 +1,14 @@
-use crate::semantics::support::{builder, context};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+};
+use surgeist_html::{
+    attributes::HtmlAttributeAuthorState,
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlCaptureDocumentId;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -543,6 +552,54 @@ fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
         HtmlSemanticFailureKind::Attribute(_)
     ));
 }
+#[test]
+fn author_itemref_check_stops_at_a_refused_id_only_when_its_scan_reaches_it() {
+    // HTML877d §5.2 resolves an itemref token to the first element in tree
+    // order with that ID: the scan for `a` ends at its match before the
+    // oversized ID, the scan for `b` reaches that ID first, and a token with
+    // no match reads every ID.
+    for (tokens, refused) in [("a", false), ("a b", true), ("b", true), ("a z", true)] {
+        let (mut b, d) = builder();
+        let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", tokens)]);
+        let first = el(&mut b, &d, "p", &[("id", "a")]);
+        let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+        let second = el(&mut b, &d, "p", &[("id", "b")]);
+        for leaf in [&owner, &first, &oversized, &second] {
+            cs(&mut b, leaf, &[]);
+        }
+        cs(&mut b, &d, &[owner.clone(), first, oversized, second]);
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        let mut s = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(5),
+            limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let request = HtmlSemanticRequest::new(
+            c.subject_id(&owner).unwrap(),
+            HtmlSemanticQuery::MicrodataAuthor,
+        );
+        let result = s.query(&[request]);
+        if refused {
+            assert!(
+                matches!(
+                    result.unwrap_err().kind(),
+                    HtmlSemanticFailureKind::Attribute(_)
+                ),
+                "{tokens}"
+            );
+        } else {
+            assert_eq!(
+                author(&result.unwrap()).references(),
+                &HtmlMicrodataCondition::Satisfied,
+                "{tokens}"
+            );
+        }
+    }
+}
 fn property_subjects(r: &HtmlSemanticReport) -> Vec<HtmlCaptureSubjectId> {
     known(item(r).properties())
         .iter()
@@ -779,6 +836,67 @@ fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
         );
     }
 }
+/// A referrer whose `count` itemref tokens name, in the reverse of tree order,
+/// `count` distinct elements of its tree, or (without targets) no element.
+fn itemref_author_work(count: usize, with_targets: bool) -> usize {
+    let (mut b, d) = builder();
+    let tokens = (0..count)
+        .rev()
+        .map(|i| format!("t{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let referrer = el(
+        &mut b,
+        &d,
+        "div",
+        &[("itemscope", ""), ("itemref", &tokens)],
+    );
+    cs(&mut b, &referrer, &[]);
+    let mut children = vec![referrer.clone()];
+    if with_targets {
+        for i in 0..count {
+            let id = format!("t{i:03}");
+            let target = el(&mut b, &d, "meta", &[("id", &id)]);
+            cs(&mut b, &target, &[]);
+            children.push(target);
+        }
+    }
+    cs(&mut b, &d, &children);
+    let capture = b.finish().unwrap();
+    let subject = capture.subject_id(&referrer).unwrap();
+    let r = run(
+        &capture,
+        &context(&capture),
+        &subject,
+        HtmlSemanticQuery::MicrodataAuthor,
+    );
+    // HTML §5.2: each itemref token must match the ID of an element in the
+    // same tree, so the first absent token is the first violation.
+    let expected = if with_targets {
+        HtmlMicrodataCondition::Satisfied
+    } else {
+        HtmlMicrodataCondition::Violated(0)
+    };
+    assert_eq!(author(&r).references(), &expected);
+    r.usage().work()
+}
+#[test]
+fn author_itemref_lookups_scale_with_the_tree_not_tokens_times_tree() {
+    // Reading the tokens costs the same with or without targets, so the
+    // difference isolates resolving them. Scanning the tree once per token
+    // reads about count * count / 2 elements, and doubling the tokens grows
+    // that difference by about 4; one pass over the IDs and a search per
+    // token grows it by about 2.3 (a logarithmic search factor). The bound is
+    // a growth property, not a pinned cost.
+    let lookup_work = |count: usize| {
+        (itemref_author_work(count, true) - itemref_author_work(count, false)) as f64
+    };
+    let growth = lookup_work(128) / lookup_work(64);
+    assert!(
+        growth < 2.75,
+        "itemref lookup work grew by {growth:.2} when the tokens doubled"
+    );
+}
 #[test]
 fn item_graph_cycle_is_distinct_from_crawl_revisit() {
     let (mut b, d) = builder();
@@ -867,7 +985,11 @@ fn local_eligibility_and_unknown_external_checks_are_independent() {
     assert_eq!(a.id_eligibility(), &HtmlMicrodataCondition::Violated(()));
     assert_eq!(a.ref_eligibility(), &HtmlMicrodataCondition::Violated(()));
     assert!(!a.types().local_author_conforming());
-    assert!(matches!(a.type_urls(), HtmlMicrodataCondition::Missing(_)));
+    // No URL parse fact was supplied for the itemtype tokens of this item.
+    assert_eq!(
+        a.type_urls(),
+        &HtmlMicrodataCondition::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     assert_eq!(a.references(), &HtmlMicrodataCondition::Violated(0));
 }
 
@@ -895,7 +1017,12 @@ fn facts_context(
 fn property_url_uses_qualified_historical_operation_not_current_parse() {
     let (c, id) = single("img", &[("itemprop", "p"), ("src", "relative")]);
     let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataProperty);
-    assert!(matches!(prop(&r).value(), HtmlSemanticValue::Missing(_)));
+    // Without a qualified historical URL operation the current parse is not
+    // consulted, so the property's URL value is missing microdata facts.
+    assert_eq!(
+        prop(&r).value(),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     let rev = revision();
     let binding =
         HtmlMicrodataRawBinding::new(&c, id.clone(), HtmlMicrodataRawSource::Src, 8).unwrap();
@@ -1330,9 +1457,9 @@ fn influencing_first_id_unknown_before_match_prevents_later_choice() {
         cs(&mut b, &root, &[]);
         cs(&mut b, &p, &[]);
         let order = if unknown_first {
-            vec![root.clone(), unknown, p.clone()]
+            vec![root.clone(), unknown.clone(), p.clone()]
         } else {
-            vec![root.clone(), p.clone(), unknown]
+            vec![root.clone(), p.clone(), unknown.clone()]
         };
         cs(&mut b, &d, &order);
         let c = b.finish().unwrap();
@@ -1343,10 +1470,14 @@ fn influencing_first_id_unknown_before_match_prevents_later_choice() {
             HtmlSemanticQuery::MicrodataItem,
         );
         if unknown_first {
-            assert!(matches!(
+            // The unknown section may precede the referenced id, so its
+            // unestablished children are the missing evidence.
+            assert_eq!(
                 item(&r).properties(),
-                HtmlSemanticValue::Missing(_)
-            ));
+                &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+                    c.subject_id(&unknown).unwrap()
+                ))
+            );
         } else {
             assert_eq!(known(item(&r).properties()).len(), 1);
         }
@@ -1551,39 +1682,48 @@ fn exact_work_on_inapplicable_text_is_three_and_one_short_denies_result_write() 
     let c = b.finish().unwrap();
     let id = c.subject_id(&n).unwrap();
     let cx = context(&c);
-    for work in [3, 2] {
-        let mut s = HtmlSemanticSession::new(
-            &c,
-            &cx,
-            HtmlValueInterpreter::new(0),
-            HtmlSemanticLimits::new(work, 1, 0, 0, 100000, 0),
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let result = s.query(&[HtmlSemanticRequest::new(
-            id.clone(),
-            HtmlSemanticQuery::MicrodataItem,
-        )]);
-        if work == 3 {
-            assert!(matches!(
-                result.unwrap().results()[0].fact(),
-                HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
-            ));
-            assert_eq!(s.usage().work(), 3);
-        } else {
-            let err = result.unwrap_err();
-            assert_eq!(
-                err.kind(),
-                &HtmlSemanticFailureKind::LimitExceeded {
-                    resource: HtmlSemanticResource::Work,
-                    limit: 2,
-                    required: 3
-                }
-            );
-            assert_eq!(s.usage().work(), 2);
-            assert_eq!(s.query(&[]).unwrap_err(), err);
+    let request = HtmlSemanticRequest::new(id, HtmlSemanticQuery::MicrodataItem);
+    // The documented shared tariffs alone apply to a non-element subject: the
+    // result reservation (1), the subject lookup (1) and the result write (1).
+    let report = assert_exact_and_one_short_caps(
+        "microdata item on text",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(1000000, 1, 0, 0, 100000, 0),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            work: Charge::Exactly(3),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert!(matches!(
+        report.results()[0].fact(),
+        HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
+    ));
+    // One short of three stops exactly at the result write: the reservation
+    // and lookup were already charged.
+    let mut s = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(0),
+        HtmlSemanticLimits::new(2, 1, 0, 0, 100000, 0),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let err = s.query(std::slice::from_ref(&request)).unwrap_err();
+    assert_eq!(
+        err.kind(),
+        &HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            limit: 2,
+            required: 3
         }
-    }
+    );
+    assert_eq!(s.usage().work(), 2);
+    assert_eq!(s.query(&[]).unwrap_err(), err);
 }
 #[test]
 fn own_type_override_does_not_consult_unavailable_children_or_ancestry() {
@@ -1607,10 +1747,13 @@ fn own_type_override_does_not_consult_unavailable_children_or_ancestry() {
             .count(),
         2
     );
-    assert!(matches!(
+    // The item's own children were never established.
+    assert_eq!(
         item(&r).properties(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+            c.subject_id(&n).unwrap()
+        ))
+    );
 }
 #[test]
 fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
@@ -1640,8 +1783,9 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
     let unknown = el(&mut b, &d, "span", &[]);
     cs(&mut b, &a, &[]);
     cs(&mut b, &z, &[]);
-    cs(&mut b, &d, &[a.clone(), z, unknown]);
+    cs(&mut b, &d, &[a.clone(), z, unknown.clone()]);
     let c = b.finish().unwrap();
+    let unknown = c.subject_id(&unknown).unwrap();
     let r = run(
         &c,
         &context(&c),
@@ -1652,10 +1796,11 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
         document(&r).cycles(),
         HtmlMicrodataCondition::Violated(_)
     ));
-    assert!(matches!(
+    // Orphan coverage needs every element's children; the unknown span has none.
+    assert_eq!(
         document(&r).orphans(),
-        HtmlMicrodataCondition::Missing(_)
-    ));
+        &HtmlMicrodataCondition::Missing(HtmlSemanticMissing::OrderedChildren(unknown.clone()))
+    );
     let r = run(
         &c,
         &context(&c),
@@ -1666,10 +1811,12 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
         author(&r).contribution(),
         &HtmlMicrodataCondition::Satisfied
     );
-    assert!(matches!(
+    // The receivers of a property scan the whole tree, which stops at the same
+    // unknown span.
+    assert_eq!(
         author(&r).receivers(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(unknown))
+    );
 }
 
 #[test]
@@ -1804,10 +1951,12 @@ fn unavailable_and_wrong_operation_url_facts_cannot_be_relabelled() {
         vec![],
         vec![],
     );
-    assert!(matches!(
+    // The supplied fact carries no result, so the value stays missing facts of
+    // exactly this property rather than being relabelled.
+    assert_eq!(
         prop(&run(&c, &cx, &id, HtmlSemanticQuery::MicrodataProperty)).value(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id))
+    );
 }
 #[test]
 fn work_prefix_cuts_leave_no_scratch_and_do_not_resume_after_stop() {
@@ -1958,7 +2107,7 @@ fn seeded_typing_is_known_while_full_path_coverage_remains_missing() {
     let unknown = el(&mut b, &d, "span", &[]);
     cs(&mut b, &root, &[]);
     cs(&mut b, &x, &[]);
-    cs(&mut b, &d, &[root, x.clone(), unknown]);
+    cs(&mut b, &d, &[root, x.clone(), unknown.clone()]);
     let c = b.finish().unwrap();
     let r = run(
         &c,
@@ -1970,10 +2119,13 @@ fn seeded_typing_is_known_while_full_path_coverage_remains_missing() {
         item(&r).type_context().typing(),
         &HtmlMicrodataTyping::Typed
     );
-    assert!(matches!(
+    // Finding every owner path scans the tree, which stops at the unknown span.
+    assert_eq!(
         item(&r).type_context().paths(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+            c.subject_id(&unknown).unwrap()
+        ))
+    );
 }
 #[test]
 fn missing_url_value_does_not_discard_a_complete_property_collection() {
@@ -1999,7 +2151,12 @@ fn missing_url_value_does_not_discard_a_complete_property_collection() {
     let props = known(item(&r).properties());
     assert_eq!(props.len(), 1);
     assert_eq!(props[0].subject(), &id);
-    assert!(matches!(props[0].value(), HtmlSemanticValue::Missing(_)));
+    // The relative URL has no qualified parse fact: that property's value is
+    // missing microdata facts while the collection stays complete.
+    assert_eq!(
+        props[0].value(),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     let r = run(
         &c,
         &context(&c),
@@ -2160,4 +2317,128 @@ fn incomplete_receiving_coverage_without_proved_edge_stays_missing() {
         document(&doc_result).orphans(),
         &HtmlMicrodataCondition::Missing(missing)
     );
+}
+
+/// The allocation path of a growing token list does not depend on any limit, so a query's peak
+/// usage `U` of a limited resource is fixed by its input and the query succeeds under a limit
+/// exactly when the limit is at least `U`. `U` is the least successful limit, found by bisection,
+/// and must equal the usage reported without a binding limit: the nested-record and allocated-byte
+/// counters are only ever raised, so their final value is their peak. Under every swept limit, and
+/// under every limit within 64 of `U`, usage never exceeds the limit, a refusal is a limit
+/// refusal, and the query succeeds if and only if the limit is at least `U`.
+#[test]
+fn geometric_token_growth_succeeds_exactly_at_its_peak_usage_under_each_limit() {
+    let types: Vec<String> = (0..40).map(|i| format!("T{i}")).collect();
+    let (c, id) = single("div", &[("itemscope", ""), ("itemtype", &types.join(" "))]);
+    let cx = context(&c);
+    let run_with = |nested: usize, bytes: usize| {
+        let mut session = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(1_000_000),
+            HtmlSemanticLimits::new(100_000_000, 1_000, 1_000, 0, bytes, nested),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let result = session.query(&[HtmlSemanticRequest::new(
+            id.clone(),
+            HtmlSemanticQuery::MicrodataItem,
+        )]);
+        (result, session.usage())
+    };
+    let ample = 1_000_000_000;
+    let (unlimited, usage) = run_with(ample, ample);
+    unlimited.unwrap();
+    let least = |succeeds: &dyn Fn(usize) -> bool| {
+        let (mut refused, mut accepted) = (0, ample);
+        while refused + 1 < accepted {
+            let middle = refused + (accepted - refused) / 2;
+            if succeeds(middle) {
+                accepted = middle;
+            } else {
+                refused = middle;
+            }
+        }
+        accepted
+    };
+    let nested_threshold = least(&|nested| run_with(nested, ample).0.is_ok());
+    let bytes_threshold = least(&|bytes| run_with(ample, bytes).0.is_ok());
+    assert_eq!(nested_threshold, usage.nested_output_records());
+    assert_eq!(bytes_threshold, usage.allocated_bytes());
+    let check = |nested: usize, bytes: usize, holds: bool| {
+        let (result, usage) = run_with(nested, bytes);
+        assert!(
+            usage.nested_output_records() <= nested && usage.allocated_bytes() <= bytes,
+            "limits {nested} records, {bytes} bytes: usage {} records, {} bytes exceeds them",
+            usage.nested_output_records(),
+            usage.allocated_bytes()
+        );
+        match result {
+            Ok(_) => assert!(
+                holds,
+                "limits {nested} records, {bytes} bytes succeeded below U"
+            ),
+            Err(error) => {
+                assert!(
+                    matches!(error.kind(), HtmlSemanticFailureKind::LimitExceeded { .. }),
+                    "limits {nested} records, {bytes} bytes: {error:?}"
+                );
+                assert!(
+                    !holds,
+                    "limits {nested} records, {bytes} bytes refused at or above U"
+                );
+            }
+        }
+    };
+    for nested in (0..=400).chain(nested_threshold.saturating_sub(64)..=nested_threshold + 64) {
+        check(nested, ample, nested >= nested_threshold);
+    }
+    for bytes in (0..=40_000)
+        .step_by(37)
+        .chain(bytes_threshold.saturating_sub(64)..=bytes_threshold + 64)
+    {
+        check(ample, bytes, bytes >= bytes_threshold);
+    }
+}
+
+/// A one-token microdata list needs the minimum amortized capacity, 4 records: the first
+/// reservation of an empty vector grows to the greater of one record and the minimum capacity
+/// of 4 (the documented minimum of the shared growth policy), never a limit-sized request. The
+/// `itemprop` of a `meta` element is the only nested list the query keeps, so it is refused under
+/// nested-record limits 0 to 3 as a nested-record limit refusal and admitted at 4.
+#[test]
+fn a_one_token_list_is_refused_below_the_minimum_capacity_and_admitted_at_it() {
+    const MINIMUM_CAPACITY: usize = 4;
+    let (c, id) = single("meta", &[("itemprop", "p"), ("content", "v")]);
+    let cx = context(&c);
+    for nested in 0..=MINIMUM_CAPACITY {
+        let mut session = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(1_000_000),
+            HtmlSemanticLimits::new(100_000_000, 1_000, 1_000, 0, 100_000_000, nested),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let result = session.query(&[HtmlSemanticRequest::new(
+            id.clone(),
+            HtmlSemanticQuery::MicrodataProperty,
+        )]);
+        if nested < MINIMUM_CAPACITY {
+            let error = result.unwrap_err();
+            assert!(
+                matches!(
+                    error.kind(),
+                    HtmlSemanticFailureKind::LimitExceeded {
+                        resource: HtmlSemanticResource::NestedOutputRecords,
+                        limit,
+                        required,
+                    } if *limit == nested && *required == MINIMUM_CAPACITY
+                ),
+                "limit {nested}: {error:?}"
+            );
+        } else {
+            result.unwrap();
+        }
+    }
 }

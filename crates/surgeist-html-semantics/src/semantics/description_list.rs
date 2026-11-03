@@ -3,6 +3,7 @@
 //! it does not certify content conformance or compare human-readable names.
 
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 /// One source group of ordinary HTML dt names and dd values.
 /// Either side can be empty. Identities retain the capture qualification;

@@ -228,6 +228,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        inline_boxes: None,
         segment: crate::test_wrapping::only_source_segment(prepared),
         start: prepared.boundary_views().next().unwrap().handle(),
         end: termination.view().boundary(),

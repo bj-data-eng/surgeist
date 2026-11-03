@@ -1,8 +1,11 @@
 use crate::html::support::string_sanitization as string_policy;
-use surgeist_html::HtmlInputValueSanitization;
+use surgeist_html::elements::input::HtmlInputValueSanitization;
 use surgeist_html::{
-    HtmlInputEmailMode, HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
-    HtmlInputType, HtmlInputTypeChange, HtmlInputTypeEffect, HtmlInputValueMode,
+    attributes::HtmlInputType,
+    elements::input::{
+        HtmlInputEmailMode, HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
+        HtmlInputTypeChange, HtmlInputTypeEffect, HtmlInputValueMode,
+    },
 };
 
 fn sanitize(

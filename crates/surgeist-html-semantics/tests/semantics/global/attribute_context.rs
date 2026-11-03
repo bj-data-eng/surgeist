@@ -1,5 +1,16 @@
-use crate::semantics::support::{builder, context, session};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    session,
+};
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeAuthorState, HtmlAttributeConformanceError, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlHyperlinkAttributeContext,
+        HtmlImageControlsAttributeContext, HtmlImageMapAttributeContext, HtmlReferrerPolicy,
+    },
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlBooleanAuthorContextEvidence, HtmlBooleanAuthorContextReadback, HtmlCapture,
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureRegistryInput,
@@ -826,50 +837,24 @@ fn cases() -> Vec<(HtmlCapture, HtmlCaptureSubjectId, HtmlSemanticQuery)> {
 fn actual_work_and_physical_compact_output_have_exact_one_short_limits() {
     for (c, id, q) in cases() {
         let cx = context(&c);
-        let usage = report(&c, &cx, &id, q).usage();
-        assert_eq!(usage.nested_output_records(), 1);
-        assert_eq!(usage.scratch_records(), 0);
-        assert_eq!(usage.peak_scratch_records(), 0);
-        for (resource, exact) in [
-            (HtmlSemanticResource::Work, usage.work()),
-            (HtmlSemanticResource::OutputRecords, usage.output_records()),
-            (
-                HtmlSemanticResource::AllocatedBytes,
-                usage.allocated_bytes(),
-            ),
-            (
-                HtmlSemanticResource::NestedOutputRecords,
-                usage.nested_output_records(),
-            ),
-        ] {
-            assert!(exact > 0);
-            for cap in [exact, exact - 1] {
-                let mut ss = session(
-                    &c,
-                    &cx,
-                    limited(resource, cap),
-                    100000,
-                    HtmlSemanticCancellation::new(),
-                );
-                let result = ss.query(&[request(&id, q)]);
-                if cap == exact {
-                    assert!(result.is_ok(), "{q:?} {resource:?}: {result:?}");
-                } else {
-                    let failure = result.unwrap_err();
-                    assert!(
-                        matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                        "{q:?}: {failure:?}"
-                    );
-                    let qual = failure.qualification().unwrap();
-                    assert_eq!(qual.capture(), c.identity());
-                    assert_eq!(qual.context(), cx.identity());
-                    assert_eq!(qual.host_revision(), c.host_facts_revision());
-                    assert_eq!(qual.limits(), limited(resource, cap));
-                    assert_eq!(ss.query(&[]).unwrap_err(), failure);
-                }
-                assert_eq!(ss.usage().scratch_records(), 0);
-            }
-        }
+        // Each readback retains one report record holding one nested payload
+        // and needs no traversal scratch. The payload types are private, so the
+        // byte charge must cover the result record and one payload byte, and
+        // each query's work is required to be charged without being pinned.
+        assert_exact_and_one_short_caps(
+            &format!("{q:?}"),
+            &c,
+            &cx,
+            100000,
+            limits(),
+            &[request(&id, q)],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                nested_output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+                ..ExpectedUsage::none()
+            },
+        );
         // No query-owned traversal scratch or arbitrary integer is required.
         assert!(
             session(

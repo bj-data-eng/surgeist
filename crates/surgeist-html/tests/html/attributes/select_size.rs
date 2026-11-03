@@ -1,7 +1,23 @@
 //! Literal source oracles: HTML 877d #attr-select-size/#concept-select-size,
 //! #attr-select-multiple, §2.3.2 and §2.3.4.2. Display size is not size IDL.
 use crate::html::support::known_attribute as attr;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeObservation,
+        control_length::HtmlControlAttributeApplication,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
+            HtmlNumericAttributeValueOrigin, HtmlSelectDisplaySize, HtmlSelectSizeReport,
+        },
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueSyntaxError, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn read(size: Option<&str>, multiple: Option<&str>) -> HtmlSelectSizeReport {
     let size = size.map(|v| attr(KnownHtmlAttribute::Size, v));
@@ -144,16 +160,21 @@ fn negative_zero_and_recovery_only_prefixes_keep_independent_author_evidence() {
     ] {
         for multiple in [None, Some("")] {
             let report = read(Some(raw), multiple);
-            assert!(matches!(
+            // Valid non-negative integers are only ASCII digits (§2.3.4.2), so a
+            // sign, surrounding whitespace or trailing text fails the grammar
+            // though the parsing rules still recover a number.
+            assert_eq!(
                 report.common().unwrap().author(),
-                HtmlValueAuthorState::Invalid(_)
-            ));
-            assert!(matches!(
+                &HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::InvalidNumericSyntax)
+            );
+            assert_eq!(
                 report.author(),
                 HtmlNumericAttributeAuthorState::Nonconforming(
-                    HtmlNumericAttributeConformanceError::CommonValue(_)
+                    HtmlNumericAttributeConformanceError::CommonValue(HtmlValueFailure::Syntax(
+                        HtmlValueSyntaxError::InvalidNumericSyntax
+                    ))
                 )
-            ));
+            );
             known(
                 &report,
                 expected,
@@ -298,7 +319,11 @@ fn wrong_element_namespace_case_and_attribute_namespace_do_not_guess_defaults() 
         ),
     ] {
         let report = HtmlValueInterpreter::new(256)
-            .select_size(&element, Some(&size), None::<&surgeist_html::Attribute>)
+            .select_size(
+                &element,
+                Some(&size),
+                None::<&surgeist_html::values::Attribute>,
+            )
             .unwrap();
         assert_eq!(report.applicability(), applicability);
         assert_eq!(
@@ -317,7 +342,7 @@ fn wrong_element_namespace_case_and_attribute_namespace_do_not_guess_defaults() 
             .select_size(
                 &KnownHtmlElement::Select.qualified_name(),
                 Some(&wrong),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
             )
             .unwrap();
         assert!(report.common().is_none());
@@ -356,7 +381,7 @@ fn utf16_and_surrogates_stay_exact_while_shared_recovery_observes_prefix_only() 
     let missing = HtmlValueInterpreter::new(3)
         .select_size(
             &KnownHtmlElement::Select.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Some(&multiple),
         )
         .unwrap();
@@ -376,7 +401,11 @@ fn each_slot_admits_exact_raw_length_before_roles_or_irrelevant_presence() {
         .unwrap();
     known(&report, "2", HtmlNumericAttributeValueOrigin::Recovered);
     let failure = HtmlValueInterpreter::new(3)
-        .select_size(&element, Some(&size), None::<&surgeist_html::Attribute>)
+        .select_size(
+            &element,
+            Some(&size),
+            None::<&surgeist_html::values::Attribute>,
+        )
         .unwrap_err();
     assert_eq!((failure.capacity(), failure.required()), (3, 4));
     let short_size = attr(KnownHtmlAttribute::Size, "2");
@@ -395,8 +424,8 @@ fn each_slot_admits_exact_raw_length_before_roles_or_irrelevant_presence() {
         &HtmlValueInterpreter::new(0)
             .select_size(
                 &element,
-                None::<&surgeist_html::Attribute>,
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
             )
             .unwrap(),
         "1",
@@ -425,7 +454,7 @@ fn native_constructor_rejects_zero_and_authors_canonical_unbounded_positive_valu
             .select_size(
                 &KnownHtmlElement::Select.qualified_name(),
                 Some(&raw),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
             )
             .unwrap();
         assert_eq!(report.author(), HtmlNumericAttributeAuthorState::Conforming);

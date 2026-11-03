@@ -3,35 +3,49 @@
 //! This registry fact does not grant public report or browser lifecycle support.
 
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConstructionReadiness {
+pub enum HtmlParseReadiness {
     Interactive,
     Complete,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConstructionCompletion {
+pub enum HtmlParseCompletion {
     Parsing,
     Complete,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct StandaloneDocumentState {
-    pub(crate) readiness: ConstructionReadiness,
+pub struct HtmlParseDocumentState {
+    pub(crate) readiness: HtmlParseReadiness,
     pub(crate) ready_for_post_load_tasks: bool,
-    pub(crate) completion: ConstructionCompletion,
+    pub(crate) completion: HtmlParseCompletion,
 }
-impl StandaloneDocumentState {
-    pub fn readiness(&self) -> ConstructionReadiness {
+impl HtmlParseDocumentState {
+    pub fn readiness(&self) -> HtmlParseReadiness {
         self.readiness
     }
     pub fn ready_for_post_load_tasks(&self) -> bool {
         self.ready_for_post_load_tasks
     }
-    pub fn completion(&self) -> ConstructionCompletion {
+    pub fn completion(&self) -> HtmlParseCompletion {
         self.completion
     }
 }
 impl SessionStorage {
+    /// The completion row `completion_slot` found at `slot`. A row that is
+    /// gone or of another kind is an impossible registry state, latched as the
+    /// controller's first stop.
+    fn completion_state_mut(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&mut HtmlParseDocumentState, SessionError> {
+        match self.payloads.row_mut(c, slot)? {
+            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(state),
+            _ => Err(latch_registry_row(c)),
+        }
+    }
     pub(super) fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
         self.require(c)?;
         self.completion_slot_during_effects(c)
@@ -44,9 +58,12 @@ impl SessionStorage {
     ) -> Result<usize, SessionError> {
         c.require_identity(&self.control)?;
         for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::StandaloneDocumentCompletion { node, .. } = payload {
-                c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<usize>() as u64,
+                )?;
                 if *node != 0 {
                     return Err(SessionError::CompletionMetadataUnavailable);
                 }
@@ -61,18 +78,18 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let mut found = false;
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::StandaloneDocumentCompletion { node, state } = payload {
                 c.charge(
-                    WorkCategory::InspectByte,
-                    mem::size_of::<StandaloneDocumentState>() as u64,
+                    HtmlParseWorkCategory::InspectByte,
+                    mem::size_of::<HtmlParseDocumentState>() as u64,
                 )?;
                 if found
                     || *node != 0
                     || !matches!(
                         self.construction
                             .node_at(0)
-                            .expect("retained construction position")
+                            .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
                         HtmlNodeKind::Document(_)
                     )
@@ -80,8 +97,8 @@ impl SessionStorage {
                     return Err(SessionError::CompletionMetadataUnavailable);
                 }
                 found = true;
-                if state.completion == ConstructionCompletion::Complete
-                    && (state.readiness != ConstructionReadiness::Complete
+                if state.completion == HtmlParseCompletion::Complete
+                    && (state.readiness != HtmlParseReadiness::Complete
                         || !state.ready_for_post_load_tasks)
                 {
                     return Err(SessionError::CompletionIncomplete);
@@ -100,19 +117,19 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if !matches!(
             storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {
             return Err(SessionError::NotDocument);
         }
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(
                 payload,
                 RetainedPayload::StandaloneDocumentCompletion { .. }
@@ -120,69 +137,61 @@ impl ParserArenaSession {
                 return Err(SessionError::CompletionMetadataUnavailable);
             }
         }
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::StandaloneDocumentCompletion {
-                node: 0,
-                state: StandaloneDocumentState {
-                    readiness: ConstructionReadiness::Complete,
-                    ready_for_post_load_tasks: false,
-                    completion: ConstructionCompletion::Parsing,
+            .push_row(
+                prepared,
+                RetainedPayload::StandaloneDocumentCompletion {
+                    node: 0,
+                    state: HtmlParseDocumentState {
+                        readiness: HtmlParseReadiness::Complete,
+                        ready_for_post_load_tasks: false,
+                        completion: HtmlParseCompletion::Parsing,
+                    },
                 },
-            });
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(crate) fn standalone_document_state(
         &self,
         c: &mut ParseControl,
-    ) -> Result<StandaloneDocumentState, SessionError> {
+    ) -> Result<HtmlParseDocumentState, SessionError> {
         let storage = self.active()?;
         let slot = storage.completion_slot(c)?;
         c.charge(
-            WorkCategory::CopyByte,
-            mem::size_of::<StandaloneDocumentState>() as u64,
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<HtmlParseDocumentState>() as u64,
         )?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
-        Ok(state)
+        match storage.payloads.row(c, slot)? {
+            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(*state),
+            _ => Err(latch_registry_row(c)),
+        }
     }
     pub(crate) fn update_standalone_readiness(
         &mut self,
         c: &mut ParseControl,
-        readiness: ConstructionReadiness,
+        readiness: HtmlParseReadiness,
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
-            WorkCategory::InspectByte,
-            mem::size_of::<StandaloneDocumentState>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<HtmlParseDocumentState>() as u64,
         )?;
-        if state.completion != ConstructionCompletion::Parsing {
+        if state.completion != HtmlParseCompletion::Parsing {
             return Err(SessionError::CompletionIncomplete);
         }
         // Normative same-state return owns a comparison but no field write.
         if state.readiness == readiness {
             return Ok(());
         }
-        if readiness == ConstructionReadiness::Complete && !state.ready_for_post_load_tasks {
+        if readiness == HtmlParseReadiness::Complete && !state.ready_for_post_load_tasks {
             return Err(SessionError::CompletionIncomplete);
         }
-        payload_write::<ConstructionReadiness>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        payload_write::<HtmlParseReadiness>(c, 1)?;
         state.readiness = readiness;
         Ok(())
     }
@@ -192,27 +201,18 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
-            WorkCategory::InspectByte,
-            mem::size_of::<StandaloneDocumentState>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<HtmlParseDocumentState>() as u64,
         )?;
-        if state.completion != ConstructionCompletion::Parsing
-            || state.readiness != ConstructionReadiness::Interactive
+        if state.completion != HtmlParseCompletion::Parsing
+            || state.readiness != HtmlParseReadiness::Interactive
             || state.ready_for_post_load_tasks
         {
             return Err(SessionError::CompletionIncomplete);
         }
         payload_write::<bool>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
         state.ready_for_post_load_tasks = true;
         Ok(())
     }
@@ -228,19 +228,20 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(c)?;
         storage.validate_completion_facts(c)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.storage(c)?),
+            c,
+        )?;
         let state = self.standalone_document_state(c)?;
         if finished {
             storage.effects.require_freezable(c)?;
-            if state.completion != ConstructionCompletion::Complete
-                || state.readiness != ConstructionReadiness::Complete
+            if state.completion != HtmlParseCompletion::Complete
+                || state.readiness != HtmlParseReadiness::Complete
                 || !state.ready_for_post_load_tasks
             {
                 return Err(SessionError::CompletionIncomplete);
             }
-        } else if state.completion != ConstructionCompletion::Parsing {
+        } else if state.completion != HtmlParseCompletion::Parsing {
             return Err(SessionError::CompletionIncomplete);
         }
         Ok(())
@@ -249,7 +250,7 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        if self.active()?.csp_pending() {
+        if self.active()?.csp_pending(c)? {
             return Err(SessionError::PendingIntrinsicWork);
         }
         let storage = self.active()?;
@@ -263,28 +264,19 @@ impl ParserArenaSession {
         self.require_standalone_effects_finished(c)?;
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
-            WorkCategory::InspectByte,
-            mem::size_of::<StandaloneDocumentState>() as u64,
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<HtmlParseDocumentState>() as u64,
         )?;
-        if state.completion != ConstructionCompletion::Parsing
-            || state.readiness != ConstructionReadiness::Complete
+        if state.completion != HtmlParseCompletion::Parsing
+            || state.readiness != HtmlParseReadiness::Complete
             || !state.ready_for_post_load_tasks
         {
             return Err(SessionError::CompletionIncomplete);
         }
-        payload_write::<ConstructionCompletion>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
-        state.completion = ConstructionCompletion::Complete;
+        payload_write::<HtmlParseCompletion>(c, 1)?;
+        state.completion = HtmlParseCompletion::Complete;
         Ok(())
     }
 }
@@ -292,6 +284,7 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::construction::HtmlDocumentMode;
 
     #[test]
     fn completion_metadata_consumes_one_actual_retained_slot_and_one_short_reclaims_capacity() {
@@ -334,12 +327,12 @@ mod tests {
                         .standalone_document_state(&mut c)
                         .unwrap()
                         .completion,
-                    ConstructionCompletion::Parsing
+                    HtmlParseCompletion::Parsing
                 );
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         ..
                     }))
@@ -365,7 +358,7 @@ mod tests {
         cancellation.cancel();
         assert_eq!(
             session.initialize_standalone_document(&mut c),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(session.active().unwrap().payloads.values.len(), before);
         assert_eq!(
@@ -374,7 +367,7 @@ mod tests {
         );
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             work
@@ -395,7 +388,7 @@ mod tests {
             session.initialize_standalone_document(&mut c),
             Err(SessionError::CompletionMetadataUnavailable)
         );
-        let writes = c.usage().work(WorkCategory::RecordWrite);
+        let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         assert_eq!(
             session.mark_standalone_post_load(&mut c),
             Err(SessionError::CompletionIncomplete)
@@ -405,25 +398,25 @@ mod tests {
             Err(SessionError::CompletionIncomplete)
         );
         session
-            .update_standalone_readiness(&mut c, ConstructionReadiness::Interactive)
+            .update_standalone_readiness(&mut c, HtmlParseReadiness::Interactive)
             .unwrap();
-        let interactive_writes = c.usage().work(WorkCategory::RecordWrite);
+        let interactive_writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         assert_eq!(interactive_writes, writes + 1);
         assert_eq!(
-            session.update_standalone_readiness(&mut c, ConstructionReadiness::Complete),
+            session.update_standalone_readiness(&mut c, HtmlParseReadiness::Complete),
             Err(SessionError::CompletionIncomplete)
         );
         assert_eq!(
-            c.usage().work(WorkCategory::RecordWrite),
+            c.usage().work(HtmlParseWorkCategory::RecordWrite),
             interactive_writes
         );
         session.mark_standalone_post_load(&mut c).unwrap();
         session
-            .update_standalone_readiness(&mut c, ConstructionReadiness::Complete)
+            .update_standalone_readiness(&mut c, HtmlParseReadiness::Complete)
             .unwrap();
         session.mark_standalone_complete(&mut c).unwrap();
         assert_eq!(
-            session.update_standalone_readiness(&mut c, ConstructionReadiness::Interactive),
+            session.update_standalone_readiness(&mut c, HtmlParseReadiness::Interactive),
             Err(SessionError::CompletionIncomplete)
         );
         session.release(&mut c).unwrap();
@@ -434,6 +427,30 @@ mod tests {
             Err(SessionError::NotDocument)
         );
         fragment.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_completion_slot_past_the_registry_or_naming_another_row_reports_the_registry_row() {
+        use crate::construction::effects::tests::{graph, request};
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        for slot in [storage.payloads.values.len(), 0] {
+            assert!(!matches!(
+                storage.payloads.values.get(slot),
+                Some(RetainedPayload::StandaloneDocumentCompletion { .. })
+            ));
+            assert_eq!(
+                storage.completion_state_mut(&mut c, slot).err(),
+                Some(SessionError::Stop(invariant))
+            );
+        }
+        assert_eq!(c.stop(), Some(invariant));
+        session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }
 }

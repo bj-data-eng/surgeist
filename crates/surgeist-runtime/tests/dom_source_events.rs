@@ -6,7 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogAction, HtmlDialogState};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogState};
 use surgeist_runtime::*;
 
 fn source_limits() -> DomSourceLimits {
@@ -3037,16 +3037,24 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
     let html = before.node(top.document().node()).unwrap().children()[0];
     let body = before.node(html).unwrap().children()[1];
     let prior_children = before.node(body).unwrap().children().len();
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
     )
     .unwrap();
     builder
         .append_element(
             &builder.root(),
-            surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "dialog"),
-            surgeist_html::OrderedAttributes::new([surgeist_html::Attribute::new(
-                surgeist_html::QualifiedName::new(surgeist_html::Namespace::none(), None, "open"),
+            surgeist_html::values::QualifiedName::new(
+                surgeist_html::values::Namespace::html(),
+                None,
+                "dialog",
+            ),
+            surgeist_html::values::OrderedAttributes::new([surgeist_html::values::Attribute::new(
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::none(),
+                    None,
+                    "open",
+                ),
                 "",
             )])
             .unwrap(),

@@ -22,7 +22,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
     };
     let boundary = |kind| {
         l::LayoutInputOf::inline_boundary(
-            l::InlineBoundaryInputOf::new(
+            l::InlineBoundaryInputOf::contribution(
                 kind,
                 l::InlineMetricsOf::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,
@@ -32,6 +32,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
                 .unwrap(),
                 l::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_direction(direction),
         )
     };
@@ -80,6 +81,8 @@ fn compute<S: l::LayoutScalar>(
         0,
         Vec::new(),
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![l::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 4,

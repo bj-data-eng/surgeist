@@ -1,6 +1,6 @@
 //! Rebuild actual control facts from the retained canonical snapshot/map.
 use super::*;
-use crate::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
     HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
     HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
@@ -248,7 +248,7 @@ pub(super) fn current_values(
         let mut length = raw.len();
         if normalize {
             length = 0;
-            let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+            let mut normalizer = surgeist_html::values::HtmlNewlineNormalizer::new();
             for &unit in raw {
                 control.charge(1)?;
                 if normalizer.push(unit).is_some() {
@@ -277,7 +277,7 @@ pub(super) fn current_values(
         let mut copy = Vec::new();
         copy.try_reserve_exact(length)
             .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
-        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+        let mut normalizer = surgeist_html::values::HtmlNewlineNormalizer::new();
         for &unit in raw {
             control.charge(1)?;
             if normalize {

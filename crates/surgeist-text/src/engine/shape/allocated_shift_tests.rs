@@ -169,8 +169,10 @@ fn allocated(
             r.atomics = vec![AtomicAllocation {
                 occurrence: p.atomic_views().next().unwrap().handle(),
                 allocation: AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 6.0,
+                        normal_border_inline_size: 6.0,
                         before_baseline: 6.0,
                         after_baseline: 4.0,
                         occupied_start: 0.0,
@@ -188,7 +190,7 @@ fn allocated(
         Row::Control => {
             r.controls = vec![ControlAllocation {
                 occurrence: p.control_views().next().unwrap().handle(),
-                boundary: Some(InlineBoundaryAllocation::ZERO),
+                boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 strut: Some(ControlStrut {
                     baseline: 6.0,
                     line_extent: 10.0,

@@ -362,6 +362,7 @@ fn select(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
@@ -467,6 +468,7 @@ fn child_input<S: l::LayoutScalar>(
 }
 fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: child.prepared.clone(),
         container,
         nodes: vec![text],
@@ -750,7 +752,9 @@ fn parent_allocation(parent: &Captured, case: Case) -> t::AtomicAllocation {
     t::AtomicAllocation {
         occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
         allocation: t::AtomicLineAllocation::InFlow {
+            fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
             flow: t::AtomicFlowAllocation {
+                normal_border_inline_size: if cw { 14.0 } else { 6.0 },
                 advance: if cw { 14.0 } else { 6.0 },
                 before_baseline: before,
                 after_baseline: if cw { p } else { 14.0 - p },
@@ -866,6 +870,7 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
         l::LayoutInputOf::inline_text(l::TextParticipation::new(inner.origins[0].origin.clone())),
     );
     let outer = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container: 0,
         nodes: vec![1, 2, 3],

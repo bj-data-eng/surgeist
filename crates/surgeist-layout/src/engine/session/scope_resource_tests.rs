@@ -182,6 +182,7 @@ impl Fixture {
             })
             .collect();
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 20, 2, 21],
@@ -215,16 +216,19 @@ impl Fixture {
             };
             tree = tree.children(control.node, []).input(
                 control.node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                    kind,
-                    InlineMetricsOf::try_new(
-                        InlineBaselineContext::Named(BaselineName::Alphabetic),
-                        0.0,
-                        0.0,
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        kind,
+                        InlineMetricsOf::try_new(
+                            InlineBaselineContext::Named(BaselineName::Alphabetic),
+                            0.0,
+                            0.0,
+                        )
+                        .unwrap(),
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
-                    InlineBoundaryEdgeOf::ZERO,
-                )),
+                ),
             );
         }
         Self {
@@ -360,7 +364,7 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
             );
             assert_eq!(
                 allocation.boundary,
-                Some(text::InlineBoundaryAllocation::ZERO)
+                Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
             );
             assert_eq!(
                 allocation.strut,
@@ -488,3 +492,7 @@ fn genuine_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_re
     global_bridge(WORK);
     global_bridge(WORK + PASS_WORK);
 }
+
+#[cfg(test)]
+#[path = "percentage_basis_phase_refusal_tests.rs"]
+mod percentage_basis_phase_refusal_tests;

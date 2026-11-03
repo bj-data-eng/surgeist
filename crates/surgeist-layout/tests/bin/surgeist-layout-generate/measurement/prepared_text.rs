@@ -46,6 +46,8 @@ pub(super) enum Direction {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum WritingMode {
     HorizontalTb,
+    VerticalRl,
+    VerticalLr,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -151,6 +153,32 @@ pub(super) enum Affinity {
 }
 
 impl Paragraph {
+    pub(super) fn validate_frame(
+        &self,
+        context: &Context<'_>,
+        writing_mode: &str,
+        direction: &str,
+    ) -> Result<(), MeasurementError> {
+        context.ensure(
+            matches!(
+                (&self.writing_mode, writing_mode),
+                (WritingMode::HorizontalTb, "horizontal-tb")
+                    | (WritingMode::VerticalRl, "vertical-rl")
+                    | (WritingMode::VerticalLr, "vertical-lr")
+            ),
+            "preparedParagraph.writingMode",
+            "captured writing mode must match the actual container frame",
+        )?;
+        context.ensure(
+            matches!(
+                (&self.direction, direction),
+                (Direction::Ltr, "ltr") | (Direction::Rtl, "rtl")
+            ),
+            "preparedParagraph.direction",
+            "captured direction must match the actual container frame",
+        )
+    }
+
     pub(super) fn validate(
         &self,
         context: &Context<'_>,
@@ -193,6 +221,14 @@ impl Paragraph {
                 format!("preparedParagraph.origins[{index}].units"), "source units require actual pinned nominal coverage or an explicitly glyph-free source control")?;
             let style = &origin.style;
             style.validate(context)?;
+            if !matches!(self.writing_mode, WritingMode::HorizontalTb) {
+                context.ensure(
+                    matches!(style.whitespace, Whitespace::Collapse)
+                        && origin.units.iter().all(|unit| matches!(unit, 10 | 13 | 32)),
+                    format!("preparedParagraph.origins[{index}]"),
+                    "vertical capture admits only original collapsing formatting whitespace",
+                )?;
+            }
             nonnegative(style.font_size, context, "preparedParagraph.fontSize")?;
             nonnegative(style.line_height, context, "preparedParagraph.lineHeight")?;
             super::finite(
@@ -213,6 +249,13 @@ impl Paragraph {
             )?;
             nonnegative(atomic.width, context, "preparedParagraph.atomic.width")?;
             nonnegative(atomic.height, context, "preparedParagraph.atomic.height")?;
+            if !matches!(self.writing_mode, WritingMode::HorizontalTb) {
+                context.ensure(
+                    matches!(atomic.kind, AtomicKind::InFlow),
+                    format!("preparedParagraph.atomics[{index}]"),
+                    "vertical capture requires actual in-flow atomic participants",
+                )?;
+            }
         }
         for (index, control) in self.controls.iter().enumerate() {
             context.ensure(
@@ -222,6 +265,13 @@ impl Paragraph {
                 format!("preparedParagraph.controls[{index}]"),
                 "controls need distinct actual children and an original anchor",
             )?;
+            if !matches!(self.writing_mode, WritingMode::HorizontalTb) {
+                context.ensure(
+                    matches!(control.kind, ControlKind::ForcedBreak),
+                    format!("preparedParagraph.controls[{index}]"),
+                    "vertical capture admits only actual forced-break controls",
+                )?;
+            }
         }
         context.ensure(
             child_roles.len() == child_count,

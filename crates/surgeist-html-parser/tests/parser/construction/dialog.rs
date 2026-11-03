@@ -1,5 +1,12 @@
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::dialog::HtmlDialogAction,
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+    },
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -79,6 +86,7 @@ fn ordinary_open_dialog_keeps_empty_return_value_and_closed_document_history() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(dialogs, 2);
@@ -125,6 +133,7 @@ fn contextual_dialog_missing_activity_retains_the_first_actual_document_action()
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(dialogs, 1);
@@ -154,6 +163,7 @@ fn dialog_free_document_has_its_own_history_and_foreign_dialog_has_no_html_state
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(dialogs, 0);
@@ -209,7 +219,12 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
                         if !inert {
                             assert_eq!(
                                 row.node().id(),
-                                report.fragment_parser_document().unwrap().document().id()
+                                report
+                                    .fragment_parser_document()
+                                    .unwrap()
+                                    .unwrap()
+                                    .document()
+                                    .id()
                             );
                             auxiliary_inert = Some(
                                 cache
@@ -222,6 +237,7 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(
@@ -240,9 +256,11 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
         assert_eq!(inert_documents, 2);
         let auxiliary_inert = auxiliary_inert.unwrap();
         assert!(inert_ids.contains(&auxiliary_inert));
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         assert_eq!(effects.len(), 1);
-        let HtmlParseEffect::TemplateCache { document, inert } = effects.effect(0).unwrap() else {
+        let HtmlParseEffect::TemplateCache { document, inert } =
+            effects.effect(0).unwrap().unwrap()
+        else {
             panic!("actual captured target cache creation");
         };
         assert_eq!(
@@ -294,6 +312,7 @@ fn current_dialog_lenders_are_repeated_fixed_reads_without_mutating_usage() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(report.retained_construction_bytes(), before);

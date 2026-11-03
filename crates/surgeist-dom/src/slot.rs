@@ -1,10 +1,10 @@
 //! DOM3071 slot algorithms over the canonical immutable/staged owner.
 use crate::store::{check_cancel, reserve};
 use crate::{
-    DocumentId, DocumentString, DomError, DomNode, DomNodeKind, DomResource, DomSnapshot, DomStamp,
-    NodeId,
+    DocumentId, DomError, DomNode, DomNodeKind, DomResource, DomSnapshot, DomStamp, NodeId,
 };
 use std::sync::{Arc, atomic::AtomicBool};
+use surgeist_html::values::DocumentString;
 
 /// Language facts actually needed by the shared slot queries.
 #[derive(Clone, Copy)]
@@ -294,10 +294,10 @@ pub(crate) fn find_slot<T: Tree>(
     let TreeKind::ShadowRoot(state) = tree.get(root)?.kind else {
         unreachable!("hosted root")
     };
-    if open && state.mode() == crate::HtmlShadowRootMode::Closed {
+    if open && state.mode() == surgeist_html::construction::HtmlShadowRootMode::Closed {
         return Ok(None);
     }
-    if state.slot_assignment() != crate::HtmlSlotAssignment::Manual {
+    if state.slot_assignment() != surgeist_html::construction::HtmlSlotAssignment::Manual {
         return tree.named_slot(root, node, &mut || tree.step(cancel));
     }
     let mut current = tree.slot_after(root, None, &mut || tree.step(cancel))?;
@@ -357,7 +357,7 @@ pub(crate) fn visit_slottables<T: Tree>(
         return Ok(());
     };
     let host = rn.host.expect("shadow host");
-    if state.slot_assignment() == crate::HtmlSlotAssignment::Manual {
+    if state.slot_assignment() == surgeist_html::construction::HtmlSlotAssignment::Manual {
         for node in tree.get(slot)?.manual.iter() {
             tree.step(cancel)?;
             if tree.get(node)?.parent == Some(host) {

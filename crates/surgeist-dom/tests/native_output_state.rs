@@ -51,7 +51,7 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
 fn fact(c: &DomHtmlCapture, n: NodeId, q: HtmlSemanticQuery) -> HtmlSemanticFact {
     c.query(
         &[HtmlSemanticRequest::new(c.subject(n).unwrap(), q)],
-        surgeist_html::HtmlValueInterpreter::new(65536),
+        surgeist_html::values::HtmlValueInterpreter::new(65536),
         HtmlSemanticLimits::new(1000000, 32, 1024, 1024, 1000000, 1024),
         HtmlSemanticCancellation::new(),
     )
@@ -578,9 +578,9 @@ fn node_capacity_precedes_old_child_removal_and_late_wrong_family_rolls_back() {
 #[test]
 fn native_installation_has_null_override_and_exact_live_descendants() {
     let (mut dom, d, root, _) = setup();
-    let mut b = surgeist_html::HtmlFragment::builder(surgeist_html::HtmlConstructionLimits::new(
-        16, 16, 16, 1024, 16,
-    ))
+    let mut b = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
+    )
     .unwrap();
     let n = b
         .append_element(
@@ -730,7 +730,7 @@ fn actual_override_units_have_their_own_capture_admission_and_query_work_is_fini
                 c.subject(n).unwrap(),
                 HtmlSemanticQuery::OutputDefaultValue
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(0, 32, 1024, 1024, 1000000, 1024),
             HtmlSemanticCancellation::new()
         )

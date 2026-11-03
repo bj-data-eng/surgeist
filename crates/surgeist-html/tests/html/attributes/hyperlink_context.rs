@@ -1,8 +1,12 @@
 use crate::html::support::html_element as element;
 use surgeist_html::{
-    Attribute, HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
-    HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlHyperlinkAttributeContext, HtmlReferrerPolicy, HtmlValueInterpreter, KnownHtmlAttribute,
+    attributes::{
+        HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
+        HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
+        HtmlHyperlinkAttributeContext, HtmlReferrerPolicy,
+    },
+    values::{Attribute, HtmlValueInterpreter},
+    vocabulary::KnownHtmlAttribute,
 };
 
 #[test]
@@ -11,7 +15,7 @@ fn missing_href_does_not_erase_the_missing_referrerpolicy_intrinsic_default() {
         let report = HtmlValueInterpreter::new(100)
             .referrerpolicy_for_hyperlink(
                 &element(local),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 HtmlHyperlinkAttributeContext::WithoutHref,
             )
             .unwrap();

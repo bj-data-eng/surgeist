@@ -183,11 +183,12 @@ mod tests {
             S::from_f64(31.0),
         )
         .expect("valid non-default inline-boundary metrics");
-        let boundary = InlineBoundaryInputOf::new(
+        let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::End,
             boundary_metrics,
             crate::InlineBoundaryEdgeOf::ZERO,
         )
+        .expect("zero-margin contribution")
         .with_writing_mode(WritingMode::SidewaysRl)
         .with_direction(Direction::Rtl)
         .with_vertical_align(VerticalAlignOf::Bottom);

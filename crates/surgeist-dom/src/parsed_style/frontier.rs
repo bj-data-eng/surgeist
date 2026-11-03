@@ -19,6 +19,11 @@ impl From<DomParsedHtmlStyleError> for DomParsedHtmlFrontierError {
         Self::Style(value)
     }
 }
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlFrontierError {
+    fn from(value: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Style(value.into())
+    }
+}
 impl From<DomError> for DomParsedHtmlFrontierError {
     fn from(value: DomError) -> Self {
         Self::Style(value.into())

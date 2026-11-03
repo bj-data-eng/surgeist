@@ -1,9 +1,8 @@
 use super::{
     Command, Context, Controls, Cursor, CursorGrab, EventKind, Fullscreen, Handle, Id, ImeRequest,
-    InputEvent, Level, Metrics, Modality, Point, Proxy, Rect, Ref, Result, Role, Size, Theme,
-    WindowRequest, WindowRequestBuilder, WindowSnapshot, command::Action,
+    InputEvent, Instant, Level, Metrics, Modality, Point, Proxy, Rect, Ref, Result, Role, Size,
+    Theme, WindowRequest, WindowRequestBuilder, WindowSnapshot, command::Action,
 };
-use std::time::Instant;
 
 #[must_use]
 /// Creates a logical point from horizontal and vertical coordinates.
@@ -1152,11 +1151,15 @@ impl<'a> Input<'a> {
     }
 
     #[must_use]
-    /// Returns the pointer or wheel logical position carried by this input, if any.
+    /// Returns this input's logical pointer context, if any.
+    ///
+    /// For magnification this is the last observed mouse position, not a gesture
+    /// focal point.
     pub fn position(&self) -> Option<Point> {
         match &self.event {
             InputEvent::Pointer(event) => event.position,
             InputEvent::Wheel(event) => event.position,
+            InputEvent::Magnification(event) => event.position,
             _ => None,
         }
     }
@@ -1167,6 +1170,7 @@ impl<'a> Input<'a> {
         match &self.event {
             InputEvent::Pointer(event) => event.modifiers,
             InputEvent::Wheel(event) => event.modifiers,
+            InputEvent::Magnification(event) => event.modifiers,
             InputEvent::Key(event) => event.modifiers,
             InputEvent::Modifiers { modifiers, .. } => *modifiers,
             _ => super::ModifierState::default(),

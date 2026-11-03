@@ -2,6 +2,9 @@
 //! These operations do not perform setters, selection resets or rendering.
 
 use super::*;
+use surgeist_html::{
+    bounded::lexical::is_ascii_whitespace, values::DocumentString, vocabulary::KnownHtmlElement,
+};
 
 /// The source selected by an option string getter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,7 +158,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlCapturedNodeKind::Text(text) => {
                     for unit in text.code_units() {
                         self.charge(1)?;
-                        if matches!(*unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
+                        if is_ascii_whitespace(*unit) {
                             pending_space = !units.is_empty();
                         } else {
                             self.reserve_nested_output(

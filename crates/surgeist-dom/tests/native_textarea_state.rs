@@ -1,7 +1,7 @@
 //! Literal DOM3071/HTML877d Textarea outcomes through the canonical owner.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{
+use surgeist_html::elements::input::{
     HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as NoneDirection,
     HtmlInputSelectionDirection as Direction,
 };
@@ -498,7 +498,7 @@ fn fact(
     use surgeist_html_semantics::*;
     c.query(
         &[HtmlSemanticRequest::new(c.subject(n).unwrap(), q)],
-        surgeist_html::HtmlValueInterpreter::new(65536),
+        surgeist_html::values::HtmlValueInterpreter::new(65536),
         HtmlSemanticLimits::new(1000000, 32, 1024, 1024, 1000000, 1024),
         HtmlSemanticCancellation::new(),
     )
@@ -583,8 +583,8 @@ fn semantic_current_flags_values_and_owner_survive_slot_supplement_and_old_captu
 fn native_fragment_installation_creates_real_clean_raw_children_and_later_live_edits() {
     let mut dom = owner();
     let (d, root, _) = setup(&mut dom);
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
     )
     .unwrap();
     let textarea = builder

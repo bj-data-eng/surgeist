@@ -1,6 +1,7 @@
 //! Independent original-order, CSSOM selection and durable notification oracles.
 use super::*;
 use surgeist_cssom::{CssomError, CssomLimits, CssomSnapshot};
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::HtmlParseAssociationOccurrenceId as Occurrence;
 
 const SOURCE: &str = "<!doctype html><style title=A>p{color:red}</style><meta http-equiv=default-style content=B><style title=C>c{color:blue}</style><style title=B>d{color:green}</style>";
@@ -15,6 +16,7 @@ fn rows(session: &DomSession, id: DomParsedHtmlAssociationId) -> (Vec<Occurrence
     let mut meta = None;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => match row.kind() {
                 Kind::StyleUpdate(trigger) => {
                     assert_eq!(

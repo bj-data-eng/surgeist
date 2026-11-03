@@ -192,16 +192,19 @@ fn fixture() -> (
                 display: layout::Display::Block,
                 ..layout::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
-                layout::InlineBoundaryKind::Start,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::InlineBoundary(
+                layout::InlineBoundaryInput::contribution(
+                    layout::InlineBoundaryKind::Start,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[0].origin_views().next().unwrap().handle(),
             )),
@@ -212,16 +215,19 @@ fn fixture() -> (
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[2].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
-                layout::InlineBoundaryKind::End,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::InlineBoundary(
+                layout::InlineBoundaryInput::contribution(
+                    layout::InlineBoundaryKind::End,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         ],
         non_box: layout::NodeInput::non_box(),
     };
@@ -231,6 +237,7 @@ fn fixture() -> (
             let prepared = all[index].clone();
             let origin = prepared.origin_views().next().unwrap().handle();
             layout::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 origins: vec![layout::TextOriginBinding {
                     origin,
                     node: origin_node,
@@ -251,6 +258,7 @@ fn fixture() -> (
         })
         .collect();
     let empty = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: all[1].clone(),
         container: 3,
         nodes: vec![],
@@ -287,6 +295,8 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         0,
         parents.clone(),
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -321,6 +331,8 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         0,
         complete,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -377,6 +389,8 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
         0,
         parents,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -474,6 +488,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     // Output emptiness does not erase the genuine original occurrence.
     assert_eq!(prepared.origin_views().count(), 1);
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![],
@@ -494,6 +509,8 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         0,
         vec![binding],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

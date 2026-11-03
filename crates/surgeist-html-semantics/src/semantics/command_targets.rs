@@ -3,9 +3,14 @@
 
 use super::control::ControlStop;
 use super::*;
-use crate::{
-    HtmlAttributeReport, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlCommandReadback,
-    HtmlCommandState, HtmlInputType, HtmlPopoverState, HtmlStandardCommand,
+use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::attributes::{
+    HtmlAttributeReport, HtmlInputType, HtmlPopoverState, HtmlStandardCommand,
+    command::{HtmlCommandReadback, HtmlCommandState},
+};
+use surgeist_html::{
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
 };
 
 /// The two concrete reflected Element slots consumed by this owner.

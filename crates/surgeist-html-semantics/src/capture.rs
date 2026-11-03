@@ -3,19 +3,23 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
-use crate::bounded::validate_custom_element_name;
-use crate::{
-    DocumentString, HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlCustomElementState,
-    HtmlDoctype, HtmlDocumentMode, HtmlFragmentInsertionMode, HtmlFragmentTokenizerState,
-    HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment, HtmlParserScriptingMode,
-    HtmlShadowRootProperties, Namespace, OrderedAttributes, QualifiedName,
-};
 use std::{
     collections::HashSet,
     error::Error,
     fmt,
     hash::{Hash, Hasher},
     sync::Arc,
+};
+use surgeist_html::bounded::lexical::validate_custom_element_name;
+use surgeist_html::{
+    construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootProperties},
+    elements::native::HtmlCustomElementState,
+    parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
+        HtmlNonceDocumentEnvironment,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 mod construction;
@@ -619,7 +623,7 @@ pub struct HtmlCapturedElement {
     shadow: Association,
     custom_context: Option<CustomElementContext>,
     nonce: HtmlCapturedNonce,
-    link_history: Option<crate::HtmlLinkHistory>,
+    link_history: Option<surgeist_html::elements::link::HtmlLinkHistory>,
     hyperlink_url: Option<crate::HtmlCapturedHyperlinkUrl>,
 }
 impl HtmlCapturedElement {
@@ -629,7 +633,7 @@ impl HtmlCapturedElement {
     pub fn cryptographic_nonce(&self) -> &HtmlCapturedNonce {
         &self.nonce
     }
-    pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
+    pub fn link_history(&self) -> Option<surgeist_html::elements::link::HtmlLinkHistory> {
         self.link_history
     }
     pub fn custom_element_state(&self) -> HtmlCapturedCustomElementState {
@@ -914,7 +918,7 @@ impl HtmlCaptureBuilder {
     pub fn establish_link_history(
         &mut self,
         subject: &HtmlCaptureBuilderSubject,
-        history: crate::HtmlLinkHistory,
+        history: surgeist_html::elements::link::HtmlLinkHistory,
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(subject)?;
         let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
@@ -1266,7 +1270,7 @@ impl HtmlCaptureBuilder {
         let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
             unreachable!()
         };
-        if !crate::bounded::is_nonce_element(element.name()) {
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
             return Err(HtmlCaptureError::NonceInapplicable);
         }
         if !matches!(element.nonce, HtmlCapturedNonce::Unavailable) {
@@ -1733,27 +1737,37 @@ impl HtmlCaptureBuilder {
         if child == parent {
             return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
         }
-        if !self.data.records[child].dependents.is_empty() {
-            let mut ancestor = Some(parent);
-            while let Some(i) = ancestor {
-                preflight::work(admit, 3)?;
-                if i == child {
-                    return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
-                }
-                ancestor = self.data.records[i].incoming();
-            }
-        }
+        // The new edge closes a cycle exactly when `parent` is `child` or below
+        // it. Every ordinary, host and template edge is recorded in `dependents`
+        // as well as in the dependent's own `incoming`, so the traversal that
+        // revises the depths below `child` reaches `parent` in that case.
         let first = add(self.data.records[parent].depth, 1)?;
         self.depth(first)?;
         let mut updates = Vec::new();
         preflight::reserve(&mut updates, 1, admit)?;
         updates.push((child, first));
+        self.propagate_depths(&mut updates, Some(parent), admit)?;
+        Ok(updates)
+    }
+    /// Depths of every record below the seeded ones, in breadth-first order. At
+    /// each record, reaching `forbidden` is a cycle and is reported before that
+    /// record's depth is checked against the limit. Work is proportional to the
+    /// records visited, never to the whole forest.
+    fn propagate_depths<E>(
+        &self,
+        updates: &mut Vec<(usize, usize)>,
+        forbidden: Option<usize>,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
         let mut cursor = 0;
         while cursor < updates.len() {
             preflight::work(admit, 4)?;
             let (i, depth) = updates[cursor];
+            if forbidden == Some(i) {
+                return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
+            }
             self.depth(depth)?;
-            preflight::reserve(&mut updates, self.data.records[i].dependents.len(), admit)?;
+            preflight::reserve(updates, self.data.records[i].dependents.len(), admit)?;
             preflight::work(
                 admit,
                 self.data.records[i]
@@ -1767,7 +1781,7 @@ impl HtmlCaptureBuilder {
             }
             cursor += 1;
         }
-        Ok(updates)
+        Ok(())
     }
     fn apply_depths(&mut self, updates: Vec<(usize, usize)>) {
         for (i, depth) in updates {
@@ -1839,12 +1853,18 @@ impl HtmlCaptureBuilder {
                 .map_err(|_| preflight::Failure::AllocationFailed)?;
         }
         preflight::work(admit, 0)?;
+        // Duplicate detection probes the hash set per child; only the controlled
+        // path without one compares each child with every earlier child.
         preflight::work(
             admit,
-            children
-                .len()
-                .checked_mul(add(children.len(), 6)?)
-                .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+            if seen.is_some() {
+                children.len()
+            } else {
+                children
+                    .len()
+                    .checked_mul(add(children.len(), 6)?)
+                    .ok_or(HtmlCaptureError::RepresentationExhausted)?
+            },
         )?;
         for child in children {
             preflight::work(admit, 6)?;
@@ -1875,7 +1895,11 @@ impl HtmlCaptureBuilder {
             self.data.records[parent]
                 .dependents
                 .len()
-                .checked_mul(add(children.len(), 1)?)
+                .checked_mul(if seen.is_some() {
+                    2
+                } else {
+                    add(children.len(), 1)?
+                })
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         if self.data.records[parent].dependents.iter().any(|i| {
@@ -1897,10 +1921,22 @@ impl HtmlCaptureBuilder {
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         let usage = self.admit(0, relationships, 0, 0, 0, 0)?;
-        let mut scratch = preflight::DepthScratch::new();
-        preflight::depths(self, &edges, &mut scratch, admit)?;
-        let depths = scratch.into_depths();
-        preflight::work(admit, add(self.data.records.len(), edges.len())?)?;
+        // Only the subtrees attached here change depth: every other record keeps
+        // the depth its own edge established. A cycle needs the parent below one
+        // of the attached children, which the same traversal reaches.
+        let mut updates = Vec::new();
+        if !edges.is_empty() {
+            preflight::work(admit, 8)?;
+            let first = add(self.data.records[parent].depth, 1)?;
+            self.depth(first)?;
+            preflight::reserve(&mut updates, edges.len(), admit)?;
+            for &(child, _) in &edges {
+                preflight::work(admit, 3)?;
+                updates.push((child, first));
+            }
+            self.propagate_depths(&mut updates, Some(parent), admit)?;
+        }
+        preflight::work(admit, add(updates.len(), edges.len())?)?;
         preflight::reserve_storage(
             &mut self.data.records[parent].dependents,
             edges.len(),
@@ -1918,10 +1954,7 @@ impl HtmlCaptureBuilder {
         }
         self.data.records[parent].children = Some(indices);
         self.data.usage = usage;
-        for (i, depth) in depths.into_iter().enumerate() {
-            self.data.records[i].depth = depth;
-            self.data.usage.depth = self.data.usage.depth.max(depth);
-        }
+        self.apply_depths(updates);
         Ok(())
     }
     pub fn establish_unhosted(
@@ -2162,7 +2195,7 @@ impl HtmlCaptureBuilder {
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<(), preflight::Failure<E>> {
         preflight::references(self, admit)?;
-        preflight::depths(self, &[], scratch, admit)
+        preflight::depths(self, scratch, admit)
     }
 }
 
@@ -2276,14 +2309,18 @@ impl<'a> HtmlCapturedNode<'a> {
     }
     /// The established contents' owning or non-owning relationship kind.
     /// Non-template elements and unavailable contents return None.
-    pub fn template_contents_kind(self) -> Option<crate::HtmlTemplateContentsKind> {
+    pub fn template_contents_kind(
+        self,
+    ) -> Option<surgeist_html::construction::HtmlTemplateContentsKind> {
         let HtmlCapturedNodeKind::Element(element) = self.kind() else {
             return None;
         };
         match element.template {
-            TemplateAssociation::Owned(_) => Some(crate::HtmlTemplateContentsKind::Owned),
+            TemplateAssociation::Owned(_) => {
+                Some(surgeist_html::construction::HtmlTemplateContentsKind::Owned)
+            }
             TemplateAssociation::ShadowReference(_) => {
-                Some(crate::HtmlTemplateContentsKind::ShadowReference)
+                Some(surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference)
             }
             TemplateAssociation::Absent | TemplateAssociation::Unavailable => None,
         }
@@ -2838,11 +2875,11 @@ impl HtmlFragmentContext {
         html(&self.element_values().name, "template")
     }
     pub fn is_mathml_text_integration_point(&self) -> bool {
-        crate::is_mathml_text_integration_point(&self.element_values().name)
+        surgeist_html::parsing::is_mathml_text_integration_point(&self.element_values().name)
     }
     pub fn is_html_integration_point(&self) -> bool {
         let element = self.element_values();
-        crate::is_html_integration_point(&element.name, &element.attributes)
+        surgeist_html::parsing::is_html_integration_point(&element.name, &element.attributes)
     }
     /// Initial tokenizer choice derives from context identity and effective mode.
     pub fn initial_tokenizer_state(
@@ -2850,7 +2887,7 @@ impl HtmlFragmentContext {
         requested: HtmlParserScriptingMode,
     ) -> Result<HtmlFragmentTokenizerState, HtmlCaptureError> {
         let mode = self.resolve_scripting_mode(requested)?;
-        Ok(crate::fragment_tokenizer_state(
+        Ok(surgeist_html::parsing::fragment_tokenizer_state(
             &self.element_values().name,
             mode,
         ))
@@ -2858,7 +2895,7 @@ impl HtmlFragmentContext {
     /// Resets initial insertion mode with the single internal root replaced by context.
     /// Captured ancestor templates/tables are not put on the parser's open stack.
     pub fn initial_insertion_mode(&self) -> HtmlFragmentInsertionMode {
-        crate::fragment_insertion_mode(&self.element_values().name)
+        surgeist_html::parsing::fragment_insertion_mode(&self.element_values().name)
     }
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;
@@ -2961,6 +2998,7 @@ impl HtmlDefinitionLookupCursor<'_> {
 #[cfg(test)]
 mod definition_cursor_tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn capture(
         definitions: Vec<HtmlCustomElementDefinition>,

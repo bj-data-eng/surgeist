@@ -1,7 +1,7 @@
 //! HTML877d: every original Document begins with design mode disabled.
 use surgeist_html::{
-    HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment, Namespace,
-    OrderedAttributes, QualifiedName,
+    construction::{HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment},
+    values::{Namespace, OrderedAttributes, QualifiedName},
 };
 
 #[test]

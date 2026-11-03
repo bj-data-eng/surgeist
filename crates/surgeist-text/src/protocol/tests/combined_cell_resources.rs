@@ -46,6 +46,7 @@ fn shared_arenas(shaped: &ShapedData) -> Footprint {
 fn request(prepared: &PreparedText) -> LineSelectionRequest {
     let segment = prepared.source_segments().next().unwrap();
     LineSelectionRequest {
+        inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),

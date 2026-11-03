@@ -1,5 +1,13 @@
 use std::sync::Arc;
-use surgeist_html::{bounded::HtmlConstructionResult, *};
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{
+        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlElement,
+        HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildren, HtmlCapturedFragmentKind,
@@ -523,6 +531,27 @@ fn early_fact_refusals_and_each_admission_limit_return_original_builder_and_sour
     )
     .unwrap();
     let usage = full.usage();
+    // The fragment root and its one appended element are the two mapped nodes,
+    // each needs at least one traversal step and the worklist holds at least
+    // one entry. The adapter's remaining step layout is private, so each
+    // reported amount is checked to be the least admitting limit: it succeeds
+    // exactly and, in the loop below, one less is refused.
+    assert!(usage.mapping_entries() >= 2);
+    assert!(usage.scratch_entries() >= 1);
+    assert!(usage.work() >= usage.mapping_entries());
+    let (builder, _, observations) = make();
+    import(
+        builder,
+        source.clone(),
+        observations,
+        HtmlConstructionCaptureLimits::new(
+            usage.mapping_entries(),
+            usage.scratch_entries(),
+            usage.work(),
+        ),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
     for limits in [
         HtmlConstructionCaptureLimits::new(usage.mapping_entries() - 1, 20_000, 1_000_000),
         HtmlConstructionCaptureLimits::new(200, usage.scratch_entries() - 1, 1_000_000),
@@ -642,76 +671,71 @@ fn refused_finish_keeps_caller_facts_mapping_and_original_source() {
 
 // Drive the real controlled construction owner to create topology the ordinary
 // native authoring front door deliberately does not expose.
-fn storage() -> bounded::HtmlConstructionStorage {
-    use bounded::*;
-    let mut value = Some(HtmlConstructionStorage::begin());
-    while let Some(action) = value.as_mut().unwrap().next_action().unwrap() {
+fn storage() -> surgeist_html::bounded::construction::HtmlConstructionStorage {
+    use surgeist_html::bounded::construction::HtmlConstructionStorage;
+    let mut value = HtmlConstructionStorage::begin();
+    while let Some(action) = value.next_action().unwrap() {
         action.perform().accept();
     }
-    HtmlConstructionInitialization::try_ready(&mut value)
-        .unwrap()
-        .commit()
+    value.try_ready().unwrap().commit()
 }
 fn command(
-    storage: bounded::HtmlConstructionStorage,
-    command: bounded::HtmlConstructionCommand,
-) -> bounded::HtmlConstructionCommit {
-    use bounded::*;
-    let mut value = Some(
-        storage
-            .prepare(command)
-            .unwrap_or_else(|_| panic!("prepare")),
-    );
-    while let Some(action) = value.as_mut().unwrap().next_action().unwrap() {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    command: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> surgeist_html::bounded::construction::HtmlConstructionCommit {
+    let mut value = storage.prepare(command);
+    while let Some(action) = value.next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    HtmlConstructionOperation::try_ready(&mut value)
-        .unwrap()
-        .commit()
+    value.try_ready().unwrap().commit()
 }
 fn change(
-    storage: bounded::HtmlConstructionStorage,
-    request: bounded::HtmlConstructionCommand,
-) -> (bounded::HtmlConstructionStorage, Option<HtmlBuilderNode>) {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> (
+    surgeist_html::bounded::construction::HtmlConstructionStorage,
+    Option<HtmlBuilderNode>,
+) {
     match command(storage, request) {
-        bounded::HtmlConstructionCommit::Changed {
+        surgeist_html::bounded::construction::HtmlConstructionCommit::Changed {
             storage,
             created,
-            mut retired_orders,
-            ..
-        } => {
-            while let Some(action) = retired_orders.next_action() {
-                action.perform();
-            }
-            (storage, created)
-        }
+        } => (storage, created),
         _ => panic!("change"),
     }
 }
 fn create(
-    storage: bounded::HtmlConstructionStorage,
-    request: bounded::HtmlConstructionCommand,
-) -> (bounded::HtmlConstructionStorage, HtmlBuilderNode) {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> (
+    surgeist_html::bounded::construction::HtmlConstructionStorage,
+    HtmlBuilderNode,
+) {
     let (storage, created) = change(storage, request);
     (storage, created.unwrap())
 }
 fn publish(
-    storage: bounded::HtmlConstructionStorage,
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
     root: HtmlBuilderNode,
 ) -> HtmlConstructionResult {
-    match command(storage, bounded::HtmlConstructionCommand::Publish { root }) {
-        bounded::HtmlConstructionCommit::Published { result, .. } => result,
+    match command(
+        storage,
+        surgeist_html::bounded::construction::HtmlConstructionCommand::Publish { root },
+    ) {
+        surgeist_html::bounded::construction::HtmlConstructionCommit::Published {
+            result, ..
+        } => result,
         _ => panic!("publish"),
     }
 }
-fn create_element(local: &str) -> bounded::HtmlConstructionCommand {
-    bounded::HtmlConstructionCommand::Create {
+fn create_element(local: &str) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
+    surgeist_html::bounded::construction::HtmlConstructionCommand::Create {
         kind: HtmlNodeKind::Element(HtmlElement::new(name(local), OrderedAttributes::default())),
     }
 }
 #[test]
 fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, detached) = create(storage(), C::CreateFragment);
     let (owner, doc) = create(
         owner,
@@ -750,7 +774,7 @@ fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
 }
 #[test]
 fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, shadow) = create(
         storage(),
         C::CreateShadowContents {
@@ -812,7 +836,7 @@ fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth
 }
 #[test]
 fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, selected) = create(storage(), C::CreateFragment);
     let (owner, template) = create(owner, create_element("template"));
     let (owner, host) = create(owner, create_element("div"));
@@ -974,7 +998,7 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
         },
         HtmlConstructionCaptureError::ForeignBuilder,
     );
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, shadow) = create(
         storage(),
         C::CreateShadowContents {
@@ -1153,4 +1177,283 @@ fn finish_work_refusal_preserves_caller_additions_without_consuming_the_builder(
         capture.node(&subject).unwrap().shadow_root(),
         Some(HtmlCapturedShadowRoot::Absent)
     );
+}
+
+/// Imports `source`, which has `nodes` nodes of at most `depth` levels, with a
+/// fact for every node, into a fresh builder that never refuses.
+#[expect(clippy::result_large_err)] // Exercise the actual unboxed failure carrier.
+fn import_all_nodes(
+    source: &HtmlFragment,
+    nodes: usize,
+    depth: usize,
+    limits: HtmlConstructionCaptureLimits,
+) -> Result<HtmlConstructionCaptureImport, HtmlConstructionCaptureFailure> {
+    let source = HtmlConstructionResult::Fragment(source.clone());
+    let revision = HtmlHostFactsRevision::fresh();
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(
+            nodes + 8,
+            8 * nodes + 64,
+            0,
+            64 * nodes + 256,
+            depth + 8,
+            4,
+            4,
+            1 << 20,
+        ),
+        revision.clone(),
+    );
+    let document = external_document(&mut builder);
+    let facts = facts(
+        &source,
+        revision,
+        HtmlConstructionCaptureDocument::Existing(document),
+    );
+    import(
+        builder,
+        source,
+        facts,
+        limits,
+        HtmlSemanticCancellation::new(),
+    )
+}
+/// Usage of importing `source` under allowances that never refuse.
+fn usage_of_import(
+    source: HtmlFragment,
+    nodes: usize,
+    depth: usize,
+) -> HtmlConstructionCaptureUsage {
+    let imported = import_all_nodes(
+        &source,
+        nodes,
+        depth,
+        HtmlConstructionCaptureLimits::new(nodes + 8, 1 << 24, 1 << 40),
+    )
+    .unwrap();
+    assert_eq!(imported.usage().mapping_entries(), nodes);
+    imported.usage()
+}
+fn fragment_builder(nodes: usize, depth: usize) -> HtmlFragmentBuilder {
+    HtmlFragment::builder(HtmlConstructionLimits::new(
+        nodes + 8,
+        2 * nodes + 8,
+        0,
+        64 * nodes + 256,
+        depth + 8,
+    ))
+    .unwrap()
+}
+/// A fragment root with `children` empty elements.
+fn wide_fragment(children: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(children + 1, 1);
+    let root = native.root();
+    for _ in 0..children {
+        native
+            .append_element(&root, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), children + 1, 1)
+}
+/// A fragment root with `pairs` elements that each contain one element.
+fn paired_fragment(pairs: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(2 * pairs + 1, 2);
+    let root = native.root();
+    for _ in 0..pairs {
+        let outer = native
+            .append_element(&root, name("li"), OrderedAttributes::default())
+            .unwrap();
+        native
+            .append_element(&outer, name("a"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), 2 * pairs + 1, 2)
+}
+/// A fragment root with a single chain of `depth` nested elements.
+fn chain_fragment(depth: usize) -> HtmlConstructionCaptureUsage {
+    let mut native = fragment_builder(depth + 1, depth);
+    let mut parent = native.root();
+    for _ in 0..depth {
+        parent = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), depth + 1, depth)
+}
+/// A fragment root holding a template whose contents hold a template, and so on
+/// `templates` times: the contents are attached to their template after their
+/// own contents have been established.
+fn nested_templates(templates: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 2 * templates + 1;
+    let mut native = fragment_builder(nodes, 2 * templates);
+    let mut parent = native.root();
+    for _ in 0..templates {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        parent = native.template_contents(&template).unwrap().unwrap();
+    }
+    usage_of_import(native.finish(), nodes, 2 * templates)
+}
+/// A chain of `size` nested elements whose deepest element holds `size`
+/// templates, each with one element in its contents.
+fn chain_with_templates(size: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 1 + size + 3 * size;
+    let mut native = fragment_builder(nodes, size + 2);
+    let mut parent = native.root();
+    for _ in 0..size {
+        parent = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+    }
+    for _ in 0..size {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        let contents = native.template_contents(&template).unwrap().unwrap();
+        native
+            .append_element(&contents, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), nodes, size + 2)
+}
+/// Every doubling of the size must at most double a charge that does not depend
+/// on the other nodes. A little slack covers the amortized growth of arrays,
+/// whose moves are charged when they happen; a charge that scans the earlier
+/// nodes for every node roughly quadruples it.
+fn assert_charge_is_linear(
+    shape: &str,
+    charge: &str,
+    measure: impl Fn(usize) -> HtmlConstructionCaptureUsage,
+    pick: impl Fn(HtmlConstructionCaptureUsage) -> usize,
+) {
+    let sizes = [50, 100, 200, 400];
+    let amounts = sizes.map(|size| pick(measure(size)));
+    for (pair, amounts) in sizes.windows(2).zip(amounts.windows(2)) {
+        assert!(
+            amounts[1] * 2 <= amounts[0] * 5,
+            "{shape}: {} nodes charged {} {charge} but {} nodes charged {}: more than 2.5 times",
+            pair[0],
+            amounts[0],
+            pair[1],
+            amounts[1]
+        );
+    }
+}
+#[test]
+fn charged_work_grows_linearly_with_the_number_of_imported_nodes() {
+    assert_charge_is_linear(
+        "wide",
+        "work",
+        wide_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_when_every_container_has_children() {
+    assert_charge_is_linear(
+        "paired",
+        "work",
+        paired_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_for_a_deep_chain() {
+    assert_charge_is_linear(
+        "chain",
+        "work",
+        chain_fragment,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_through_nested_template_contents() {
+    assert_charge_is_linear(
+        "nested templates",
+        "work",
+        nested_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_for_templates_below_a_deep_chain() {
+    assert_charge_is_linear(
+        "chain with templates",
+        "work",
+        chain_with_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
+    assert_charge_is_linear(
+        "wide",
+        "scratch entries",
+        wide_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "paired",
+        "scratch entries",
+        paired_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "chain",
+        "scratch entries",
+        chain_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "nested templates",
+        "scratch entries",
+        nested_templates,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "chain with templates",
+        "scratch entries",
+        chain_with_templates,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+}
+#[test]
+fn reported_usage_of_a_wide_import_is_its_least_admitting_allowance() {
+    let children = 100;
+    let mut native = fragment_builder(children + 1, 1);
+    let root = native.root();
+    for _ in 0..children {
+        native
+            .append_element(&root, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    let source = native.finish();
+    let nodes = children + 1;
+    let usage = usage_of_import(source.clone(), nodes, 1);
+    let exact = HtmlConstructionCaptureLimits::new(
+        usage.mapping_entries(),
+        usage.scratch_entries(),
+        usage.work(),
+    );
+    let imported = import_all_nodes(&source, nodes, 1, exact).unwrap();
+    assert_eq!(imported.usage(), usage);
+    // Each allowance is individually exact: one less is refused with the
+    // original builder, which then still completes an unconstrained import.
+    for refused in [
+        HtmlConstructionCaptureLimits::new(exact.mapping_entries() - 1, 1 << 24, 1 << 40),
+        HtmlConstructionCaptureLimits::new(nodes + 8, exact.scratch_entries() - 1, 1 << 40),
+        HtmlConstructionCaptureLimits::new(nodes + 8, 1 << 24, exact.work() - 1),
+    ] {
+        let failure = import_all_nodes(&source, nodes, 1, refused).unwrap_err();
+        assert_eq!(
+            failure.reason(),
+            &HtmlConstructionCaptureError::LimitExceeded
+        );
+        assert!(
+            failure.usage().mapping_entries() <= refused.mapping_entries()
+                && failure.usage().scratch_entries() <= refused.scratch_entries()
+                && failure.usage().work() <= refused.work()
+        );
+        assert_eq!(failure.builder().usage().subjects(), 1);
+    }
 }

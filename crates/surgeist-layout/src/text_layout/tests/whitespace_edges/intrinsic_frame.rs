@@ -46,6 +46,7 @@ fn observed<S: LayoutScalar>(
         super::super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
@@ -62,8 +63,16 @@ fn observed<S: LayoutScalar>(
                 Direction::Rtl,
             ),
             frame: super::super::super::run::Frame::Canonical {
-                origin: Point::ZERO,
-                size,
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
             },
             containing_size: size,
             content_insets: crate::Edges::ZERO,

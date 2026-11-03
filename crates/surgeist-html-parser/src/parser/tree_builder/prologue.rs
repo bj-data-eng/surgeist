@@ -11,27 +11,31 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf, Initial and BeforeHtml.
 // HTML 877d6146487f15b15bc8dd0e3c625063a37b456a governs doctype and PI drift.
 
-use super::{InsertionLocation, KernelError, LocationKernel, doctype, write};
+use super::{InsertionLocation, KernelError, LocationKernel, StopCause, doctype, write};
 use crate::construction::{
     ParserArenaSession, RootKind, SessionError, release_token_kind, split_leading_ascii_whitespace,
     validate_token_kind,
 };
 use crate::parser::{
-    control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
+    control::{
+        ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, OwnedVec,
+        ParseControl,
+    },
     tokenizer::token::{Doctype, Tag, TagKind, Text, Token, TokenKind},
 };
-use crate::{HtmlDocumentMode, HtmlParseResource, HtmlSource, HtmlSourceRange};
+use crate::{HtmlParseResource, HtmlSource, HtmlSourceRange};
 use std::mem::size_of;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PrologueMode {
+pub enum HtmlPrologueMode {
     Initial,
     BeforeHtml,
     BeforeHead,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PrologueCondition {
+pub enum HtmlPrologueDiagnostic {
     MissingDoctype,
     InvalidDoctype,
     UnexpectedDoctype,
@@ -41,8 +45,8 @@ pub enum PrologueCondition {
 
 #[cfg(test)]
 pub(super) struct PrologueDiagnostic {
-    pub(super) condition: PrologueCondition,
-    pub(super) mode: PrologueMode,
+    pub(super) condition: HtmlPrologueDiagnostic,
+    pub(super) mode: HtmlPrologueMode,
     pub(super) source: HtmlSourceRange,
 }
 
@@ -50,17 +54,37 @@ pub(super) struct PrologueDiagnostic {
 pub(crate) enum PrologueError {
     Kernel(KernelError),
     AlreadyAtBeforeHead,
+    /// The before-head state was taken before the prologue reached it.
+    NotAtBeforeHead,
     PendingInput,
     MissingInput,
     Consumed,
+}
+impl PrologueError {
+    /// What ends a parse that this error ends: the cause of the kernel error it
+    /// carries, or a lost owner. A lost owner is a prologue owner its driver
+    /// keeps that is gone, or a prologue the driver processed or took out of
+    /// order. The driver takes the prologue's before-head state in the same
+    /// step that reports it and a failure ends the driver, so no input leads to
+    /// either order fault.
+    pub(super) fn stop_cause(&self) -> StopCause {
+        match self {
+            Self::Kernel(error) => error.stop_cause(),
+            Self::AlreadyAtBeforeHead
+            | Self::NotAtBeforeHead
+            | Self::PendingInput
+            | Self::MissingInput
+            | Self::Consumed => StopCause::LostOwner,
+        }
+    }
 }
 impl From<KernelError> for PrologueError {
     fn from(error: KernelError) -> Self {
         Self::Kernel(error)
     }
 }
-impl From<ParseStop> for PrologueError {
-    fn from(error: ParseStop) -> Self {
+impl From<HtmlParseStop> for PrologueError {
+    fn from(error: HtmlParseStop) -> Self {
         Self::Kernel(error.into())
     }
 }
@@ -84,33 +108,33 @@ pub(super) struct PendingToken {
     pub(super) lexical: Option<crate::construction::provenance::LexicalRef>,
     pub(super) source: HtmlSourceRange,
     pub(super) payload: Payload,
-    pub(super) family: crate::construction::evidence::DiagnosticToken,
+    pub(super) family: crate::construction::evidence::HtmlParseTokenFamily,
 }
 impl PendingToken {
     pub(super) fn from_token(token: Token) -> Self {
         let (family, payload) = match token.kind {
             TokenKind::Text(text) => (
-                crate::construction::evidence::DiagnosticToken::Text,
+                crate::construction::evidence::HtmlParseTokenFamily::Text,
                 Payload::Text(Some(text)),
             ),
             TokenKind::Tag(tag) => (
-                crate::construction::evidence::DiagnosticToken::Tag,
+                crate::construction::evidence::HtmlParseTokenFamily::Tag,
                 Payload::Tag(Some(tag)),
             ),
             TokenKind::Comment(text) => (
-                crate::construction::evidence::DiagnosticToken::Comment,
+                crate::construction::evidence::HtmlParseTokenFamily::Comment,
                 Payload::Comment(Some(text)),
             ),
             TokenKind::Doctype(doctype) => (
-                crate::construction::evidence::DiagnosticToken::Doctype,
+                crate::construction::evidence::HtmlParseTokenFamily::Doctype,
                 Payload::Doctype(Some(doctype)),
             ),
             TokenKind::ProcessingInstruction { target, data } => (
-                crate::construction::evidence::DiagnosticToken::ProcessingInstruction,
+                crate::construction::evidence::HtmlParseTokenFamily::ProcessingInstruction,
                 Payload::Pi(Some((target, data))),
             ),
             TokenKind::Eof => (
-                crate::construction::evidence::DiagnosticToken::Eof,
+                crate::construction::evidence::HtmlParseTokenFamily::Eof,
                 Payload::Eof,
             ),
         };
@@ -140,7 +164,7 @@ impl PendingToken {
     }
     pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
         if c.stop().is_none() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         }
         let present = match &self.payload {
             Payload::Text(value) | Payload::Comment(value) => value.is_some(),
@@ -191,7 +215,7 @@ pub(super) struct DocumentPrologue<'a> {
     source: &'a HtmlSource,
     owner: ControlIdentity,
     pub(super) kernel: Option<LocationKernel>,
-    mode: PrologueMode,
+    mode: HtmlPrologueMode,
     pending: Option<PendingToken>,
     whitespace: Option<OwnedVec<Text>>,
     whitespace_pending: Option<Text>,
@@ -219,28 +243,22 @@ impl<'a> DocumentPrologue<'a> {
         whitespace.require_owner(c)?;
         let mut session =
             match ParserArenaSession::new(c, RootKind::Document(HtmlDocumentMode::NoQuirks)) {
-                Ok(session) => Some(session),
+                Ok(session) => session,
                 Err(error) => {
                     whitespace.release(c)?;
                     return Err(error.into());
                 }
             };
         if let Err(error) = session
-            .as_mut()
-            .expect("fresh Document")
             .initialize_standalone_document(c)
-            .and_then(|()| {
-                session
-                    .as_mut()
-                    .expect("fresh Document")
-                    .initialize_parse_evidence(c, source)
-            })
+            .and_then(|()| session.initialize_parse_evidence(c, source))
         {
-            session.as_mut().expect("retained Document").release(c)?;
+            session.release(c)?;
 
             whitespace.release(c)?;
             return Err(error.into());
         }
+        let mut session = Some(session);
         let mut kernel = match LocationKernel::new(&mut session, c) {
             Ok(kernel) => kernel,
             Err(error) => {
@@ -252,7 +270,7 @@ impl<'a> DocumentPrologue<'a> {
                 return Err(error.into());
             }
         };
-        if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
+        if let Err(stop) = c.charge(HtmlParseWorkCategory::ProviderCall, 1) {
             kernel.release(c)?;
 
             whitespace.release(c)?;
@@ -262,7 +280,7 @@ impl<'a> DocumentPrologue<'a> {
             source,
             owner: c.identity(),
             kernel: Some(kernel),
-            mode: PrologueMode::Initial,
+            mode: HtmlPrologueMode::Initial,
             pending: None,
 
             whitespace: Some(whitespace),
@@ -280,22 +298,28 @@ impl<'a> DocumentPrologue<'a> {
     pub(super) fn kernel(&mut self) -> Result<&mut LocationKernel, PrologueError> {
         self.kernel.as_mut().ok_or(PrologueError::Consumed)
     }
-    fn set_mode(&mut self, mode: PrologueMode, c: &mut ParseControl) -> Result<(), PrologueError> {
-        write(size_of::<PrologueMode>(), 1, c)?;
+    fn set_mode(
+        &mut self,
+        mode: HtmlPrologueMode,
+        c: &mut ParseControl,
+    ) -> Result<(), PrologueError> {
+        write(size_of::<HtmlPrologueMode>(), 1, c)?;
         self.mode = mode;
         Ok(())
     }
     fn emit(
         &mut self,
-        condition: PrologueCondition,
-        rule: crate::construction::evidence::DiagnosticRule,
+        condition: HtmlPrologueDiagnostic,
+        rule: crate::construction::evidence::HtmlParseDiagnosticRule,
         c: &mut ParseControl,
     ) -> Result<(), PrologueError> {
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         c.charge(
-            WorkCategory::InspectByte,
-            (size_of::<PrologueMode>()
-                + size_of::<crate::construction::evidence::DiagnosticToken>()) as u64,
+            HtmlParseWorkCategory::InspectByte,
+            const {
+                size_of::<HtmlPrologueMode>()
+                    + size_of::<crate::construction::evidence::HtmlParseTokenFamily>()
+            } as u64,
         )?;
         let pending = self.pending.as_ref().ok_or(PrologueError::MissingInput)?;
         let source = &pending.source;
@@ -307,12 +331,12 @@ impl<'a> DocumentPrologue<'a> {
             .evidence(c)?
             .append(
                 c,
-                crate::construction::evidence::DiagnosticKind::Prologue(condition),
-                crate::construction::evidence::DiagnosticContext::Prologue(self.mode),
+                crate::construction::evidence::HtmlParseDiagnosticKind::Prologue(condition),
+                crate::construction::evidence::HtmlParseDiagnosticContext::Prologue(self.mode),
                 rule,
                 crate::construction::evidence::DiagnosticLocationInput {
                     source,
-                    role: crate::construction::evidence::DiagnosticLocationRole::TokenEnvelope,
+                    role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TokenEnvelope,
                     token: Some(family),
                 },
             )?;
@@ -345,8 +369,8 @@ impl<'a> DocumentPrologue<'a> {
                 evidence.retain_omission(
                     c,
                     text.origins.as_slice(),
-                    crate::construction::provenance::OmissionKind::IgnoredText,
-                    crate::construction::provenance::ParserRule::Prologue(self.mode),
+                    crate::construction::provenance::HtmlParseOmissionKind::IgnoredText,
+                    crate::construction::provenance::HtmlParserRule::Prologue(self.mode),
                 )?;
             }
         }
@@ -357,7 +381,7 @@ impl<'a> DocumentPrologue<'a> {
         self.finish_pending(c)
     }
     fn whitespace_prefix(&mut self, c: &mut ParseControl) -> Result<bool, PrologueError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Payload::Text(input) = &mut self
             .pending
             .as_mut()
@@ -377,22 +401,25 @@ impl<'a> DocumentPrologue<'a> {
                 .retain_omission(
                     c,
                     prefix.origins.as_slice(),
-                    crate::construction::provenance::OmissionKind::LeadingWhitespace,
-                    crate::construction::provenance::ParserRule::Prologue(self.mode),
+                    crate::construction::provenance::HtmlParseOmissionKind::LeadingWhitespace,
+                    crate::construction::provenance::HtmlParserRule::Prologue(self.mode),
                 )?;
             write(size_of::<Option<Text>>(), 1, c)?;
-            let prefix = self.whitespace_pending.take().expect("retained prefix");
+            let prefix = self
+                .whitespace_pending
+                .take()
+                .ok_or(PrologueError::MissingInput)?;
             if let Err((stop, prefix)) = self
                 .whitespace
                 .as_mut()
                 .ok_or(PrologueError::Consumed)?
-                .try_push_recover(c, prefix)
+                .try_push_recover_geometric(c, prefix)
             {
                 self.whitespace_pending = Some(prefix);
                 return Err(stop.into());
             }
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(input.is_none())
     }
     pub(super) fn process(
@@ -401,18 +428,18 @@ impl<'a> DocumentPrologue<'a> {
         c: &mut ParseControl,
     ) -> Result<PrologueStep, PrologueError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
-        if self.mode == PrologueMode::BeforeHead {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        if self.mode == HtmlPrologueMode::BeforeHead {
             return Err(PrologueError::AlreadyAtBeforeHead);
         }
         if self.pending.is_some() {
             return Err(PrologueError::PendingInput);
         }
         let token = input.as_ref().ok_or(PrologueError::MissingInput)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if token.source.source() != self.source.identity() {
-            return Err(c.fail_invariant(Invariant::ForeignSource).into());
+            return Err(c.fail_invariant(HtmlParseInvariant::ForeignSource).into());
         }
         // A shared source identity does not reassign lexical backing tickets.
         // Verify every actual payload owner before taking it or emitting a
@@ -421,14 +448,14 @@ impl<'a> DocumentPrologue<'a> {
         write(size_of::<Token>(), 1, c)?;
         write(size_of::<PendingToken>(), 3, c)?;
         self.pending = Some(PendingToken::from_token(
-            input.take().expect("validated input"),
+            input.take().ok_or(PrologueError::MissingInput)?,
         ));
         self.advance(c)
     }
     fn advance(&mut self, c: &mut ParseControl) -> Result<PrologueStep, PrologueError> {
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let pending = self.pending.as_ref().ok_or(PrologueError::MissingInput)?;
             self.kernel
                 .as_mut()
@@ -438,7 +465,7 @@ impl<'a> DocumentPrologue<'a> {
                     c,
                     crate::construction::provenance::ParserTrigger {
                         source: &pending.source,
-                        rule: crate::construction::provenance::ParserRule::Prologue(self.mode),
+                        rule: crate::construction::provenance::HtmlParserRule::Prologue(self.mode),
                         family: pending.family,
                     },
                 )?;
@@ -470,13 +497,13 @@ impl<'a> DocumentPrologue<'a> {
                     self.finish_pending(c)?;
                     return Ok(PrologueStep::Consumed);
                 }
-                Payload::Doctype(input) if self.mode == PrologueMode::Initial => {
+                Payload::Doctype(input) if self.mode == HtmlPrologueMode::Initial => {
                     let decision =
                         doctype::classify(input.as_ref().ok_or(PrologueError::MissingInput)?, c)?;
                     if decision.error {
                         self.emit(
-                            PrologueCondition::InvalidDoctype,
-                            crate::construction::evidence::DiagnosticRule {
+                            HtmlPrologueDiagnostic::InvalidDoctype,
+                            crate::construction::evidence::HtmlParseDiagnosticRule {
                                 anchor: "the-initial-insertion-mode",
                                 branch: "doctype/invalid",
                             },
@@ -489,7 +516,7 @@ impl<'a> DocumentPrologue<'a> {
                         .ok_or(PrologueError::MissingInput)?
                         .payload
                     else {
-                        unreachable!("doctype payload retained");
+                        return Err(PrologueError::MissingInput);
                     };
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
                     let node = kernel.session.allocate_doctype(c, input)?;
@@ -500,14 +527,14 @@ impl<'a> DocumentPrologue<'a> {
                     if decision.mode != HtmlDocumentMode::NoQuirks {
                         kernel.session.set_document_mode(c, decision.mode)?;
                     }
-                    self.set_mode(PrologueMode::BeforeHtml, c)?;
+                    self.set_mode(HtmlPrologueMode::BeforeHtml, c)?;
                     self.finish_pending(c)?;
                     return Ok(PrologueStep::Consumed);
                 }
-                _ if self.mode == PrologueMode::Initial => {
+                _ if self.mode == HtmlPrologueMode::Initial => {
                     self.emit(
-                        PrologueCondition::MissingDoctype,
-                        crate::construction::evidence::DiagnosticRule {
+                        HtmlPrologueDiagnostic::MissingDoctype,
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "the-initial-insertion-mode",
                             branch: "anything-else/missing-doctype",
                         },
@@ -516,15 +543,15 @@ impl<'a> DocumentPrologue<'a> {
                     self.kernel()?
                         .session
                         .set_document_mode(c, HtmlDocumentMode::Quirks)?;
-                    self.set_mode(PrologueMode::BeforeHtml, c)?;
+                    self.set_mode(HtmlPrologueMode::BeforeHtml, c)?;
                     // The same exact token, including its original source, is
                     // reprocessed; no cursor read, clone or fabricated emission.
                     continue;
                 }
                 Payload::Doctype(_) => {
                     self.emit(
-                        PrologueCondition::UnexpectedDoctype,
-                        crate::construction::evidence::DiagnosticRule {
+                        HtmlPrologueDiagnostic::UnexpectedDoctype,
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "the-before-html-insertion-mode",
                             branch: "doctype/ignore",
                         },
@@ -536,13 +563,13 @@ impl<'a> DocumentPrologue<'a> {
                 Payload::Tag(input) => {
                     let tag = input.as_ref().ok_or(PrologueError::MissingInput)?;
                     c.require_document_string(tag.name.value.allocation(), tag.name.value.text())?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let html = super::tag_sets::ascii_eq(tag.name.value.text(), "html", c)?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let start = tag.kind == TagKind::Start;
                     if start && html {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
-                        c.charge(WorkCategory::InspectByte, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
                         let self_closing = tag.self_closing;
                         let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
                         let root = kernel.session.root(c)?;
@@ -556,15 +583,15 @@ impl<'a> DocumentPrologue<'a> {
                         kernel.push(&node, c)?;
                         if self_closing {
                             self.emit(
-                                PrologueCondition::UnacknowledgedSelfClosing,
-                                crate::construction::evidence::DiagnosticRule {
+                                HtmlPrologueDiagnostic::UnacknowledgedSelfClosing,
+                                crate::construction::evidence::HtmlParseDiagnosticRule {
                                     anchor: "the-before-html-insertion-mode",
                                     branch: "html-start/self-closing",
                                 },
                                 c,
                             )?;
                         }
-                        self.set_mode(PrologueMode::BeforeHead, c)?;
+                        self.set_mode(HtmlPrologueMode::BeforeHead, c)?;
                         self.finish_pending(c)?;
                         return Ok(PrologueStep::BeforeHead);
                     }
@@ -575,8 +602,8 @@ impl<'a> DocumentPrologue<'a> {
                             || super::tag_sets::ascii_eq(tag.name.value.text(), "br", c)?;
                         if !permitted {
                             self.emit(
-                                PrologueCondition::UnexpectedEndTag,
-                                crate::construction::evidence::DiagnosticRule {
+                                HtmlPrologueDiagnostic::UnexpectedEndTag,
+                                crate::construction::evidence::HtmlParseDiagnosticRule {
                                     anchor: "the-before-html-insertion-mode",
                                     branch: "disallowed-end-tag/ignore",
                                 },
@@ -594,7 +621,7 @@ impl<'a> DocumentPrologue<'a> {
             let root = kernel.session.root(c)?;
             kernel.session.insert(c, &root, &node, None, None)?;
             kernel.push(&node, c)?;
-            self.set_mode(PrologueMode::BeforeHead, c)?;
+            self.set_mode(HtmlPrologueMode::BeforeHead, c)?;
             return Ok(PrologueStep::BeforeHead);
         }
     }
@@ -603,20 +630,31 @@ impl<'a> DocumentPrologue<'a> {
         c: &mut ParseControl,
     ) -> Result<BeforeHead, PrologueError> {
         self.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.mode != PrologueMode::BeforeHead {
-            return Err(PrologueError::PendingInput);
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if self.mode != HtmlPrologueMode::BeforeHead {
+            return Err(PrologueError::NotAtBeforeHead);
+        }
+        if self.whitespace.is_none() {
+            return Err(PrologueError::Consumed);
         }
         write(size_of::<BeforeHead>(), 3, c)?;
         write(size_of::<Option<LocationKernel>>(), 1, c)?;
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         write(size_of::<Option<OwnedVec<Text>>>(), 1, c)?;
-        Ok(BeforeHead {
-            kernel: self.kernel.take().expect("active kernel"),
-            input: self.pending.take().and_then(PendingToken::into_token),
-
-            whitespace: self.whitespace.take().expect("active whitespace"),
-        })
+        // Both owners were observed above; should either be gone anyway, the
+        // other stays where it was.
+        match (self.kernel.take(), self.whitespace.take()) {
+            (Some(kernel), Some(whitespace)) => Ok(BeforeHead {
+                kernel,
+                input: self.pending.take().and_then(PendingToken::into_token),
+                whitespace,
+            }),
+            (kernel, whitespace) => {
+                self.kernel = kernel;
+                self.whitespace = whitespace;
+                Err(PrologueError::Consumed)
+            }
+        }
     }
     pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
         if c.stop().is_some() {
@@ -624,9 +662,9 @@ impl<'a> DocumentPrologue<'a> {
         } else {
             c.require_identity(&self.owner)?;
         }
-        if self.kernel.is_none() {
+        let Some(kernel) = self.kernel.as_mut() else {
             return Err(PrologueError::Consumed);
-        }
+        };
         if let Some(pending) = &mut self.pending {
             pending.release(c)?;
         }
@@ -644,7 +682,7 @@ impl<'a> DocumentPrologue<'a> {
                 text.release(c)?;
             }
         }
-        self.kernel.as_mut().expect("active kernel").release(c)?;
+        kernel.release(c)?;
         if let Some(whitespace) = self.whitespace.take() {
             whitespace.release(c)?;
         }
@@ -663,8 +701,8 @@ impl BeforeHead {
                 let (record, source) = e.retained_record(index)?;
                 match (record.kind, record.context) {
                     (
-                        crate::construction::evidence::DiagnosticKind::Prologue(condition),
-                        crate::construction::evidence::DiagnosticContext::Prologue(mode),
+                        crate::construction::evidence::HtmlParseDiagnosticKind::Prologue(condition),
+                        crate::construction::evidence::HtmlParseDiagnosticContext::Prologue(mode),
                     ) => Some(PrologueDiagnostic {
                         condition,
                         mode,
@@ -680,7 +718,8 @@ impl BeforeHead {
 #[cfg(test)]
 mod completion_tests {
     use super::*;
-    use crate::construction::{ConstructionCompletion, ConstructionReadiness};
+    use crate::construction::{HtmlParseCompletion, HtmlParseReadiness};
+    use surgeist_html::construction::HtmlDocumentMode;
 
     #[test]
     fn fresh_source_document_initial_readiness_is_complete_but_parsing_is_unfinished() {
@@ -693,14 +732,14 @@ mod completion_tests {
         let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
         let session = &mut prologue.kernel.as_mut().unwrap().session;
         let state = session.standalone_document_state(&mut c).unwrap();
-        assert_eq!(state.readiness, ConstructionReadiness::Complete);
+        assert_eq!(state.readiness, HtmlParseReadiness::Complete);
         assert!(!state.ready_for_post_load_tasks);
-        assert_eq!(state.completion, ConstructionCompletion::Parsing);
-        let writes = c.usage().work(WorkCategory::RecordWrite);
+        assert_eq!(state.completion, HtmlParseCompletion::Parsing);
+        let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         session
-            .update_standalone_readiness(&mut c, ConstructionReadiness::Complete)
+            .update_standalone_readiness(&mut c, HtmlParseReadiness::Complete)
             .unwrap();
-        assert_eq!(c.usage().work(WorkCategory::RecordWrite), writes);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordWrite), writes);
         prologue.release(&mut c).unwrap();
         super::super::tests::assert_released(&c);
         for root in [
@@ -715,5 +754,50 @@ mod completion_tests {
             session.release(&mut c).unwrap();
             super::super::tests::assert_released(&c);
         }
+    }
+}
+
+#[cfg(test)]
+mod owner_loss_tests {
+    use super::*;
+
+    #[test]
+    fn taking_before_head_before_the_prologue_reaches_it_is_an_order_fault() {
+        let source = HtmlSource::utf8("");
+        let mut c = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
+        assert_eq!(prologue.mode, HtmlPrologueMode::Initial);
+        // No token is pending, so the refusal is about the mode alone.
+        assert!(prologue.pending.is_none());
+        let error = prologue.take_before_head(&mut c).err().unwrap();
+        assert!(matches!(error, PrologueError::NotAtBeforeHead), "{error:?}");
+        assert!(error.stop_cause().is_lost_owner());
+        assert!(prologue.kernel.is_some(), "the refusal took the kernel");
+        prologue.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+    }
+
+    #[test]
+    fn taking_before_head_without_the_whitespace_owner_keeps_every_owner() {
+        let source = HtmlSource::utf8("");
+        let mut c = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
+        prologue.mode = HtmlPrologueMode::BeforeHead;
+        // Private-state fault injection: the whitespace owner is gone before the
+        // hand-off, released through its own vector.
+        prologue.whitespace.take().unwrap().release(&mut c).unwrap();
+        let error = prologue.take_before_head(&mut c).err().unwrap();
+        assert!(matches!(error, PrologueError::Consumed), "{error:?}");
+        assert!(prologue.kernel.is_some(), "the refusal took the kernel");
+        prologue.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
     }
 }

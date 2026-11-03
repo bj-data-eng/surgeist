@@ -1,9 +1,12 @@
 use crate::html::support::html_element as element;
 use surgeist_html::{
-    Attribute, HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
-    HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlBooleanAttribute as Boolean, HtmlButtonSubmitterContext as Button, HtmlInputType as Input,
-    HtmlScriptAttributeContext as Script, HtmlValueInterpreter,
+    attributes::{
+        HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
+        HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
+        HtmlBooleanAttribute as Boolean, HtmlButtonSubmitterContext as Button,
+        HtmlInputType as Input, HtmlScriptAttributeContext as Script,
+    },
+    values::{Attribute, HtmlValueInterpreter},
 };
 
 #[test]
@@ -64,7 +67,7 @@ fn prohibited_input_states_preserve_known_absent_boolean_content() {
             .boolean_attribute_for_input(
                 selected,
                 &element("input"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 state,
             )
             .unwrap();
@@ -101,7 +104,7 @@ fn absent_input_type_facts_do_not_erase_known_boolean_content() {
             .boolean_attribute(
                 selected,
                 &element("input"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
             )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
@@ -145,7 +148,7 @@ fn prohibited_script_contexts_preserve_present_content_and_boolean_spelling() {
             .boolean_attribute_for_script(
                 selected,
                 &element("script"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 context,
             )
             .unwrap();
@@ -174,7 +177,7 @@ fn absent_script_facts_do_not_erase_known_boolean_content() {
             .boolean_attribute(
                 selected,
                 &element("script"),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
             )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
@@ -208,7 +211,7 @@ fn non_submit_button_preserves_formnovalidate_content_presence() {
     let absent = interpreter
         .formnovalidate_for_button(
             &element("button"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
             Button::NotSubmitButton,
         )
         .unwrap();
@@ -237,7 +240,7 @@ fn absent_button_submitter_facts_do_not_erase_formnovalidate_presence() {
         .boolean_attribute(
             Boolean::Formnovalidate,
             &element("button"),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(absent.intrinsic(), Some(&false));

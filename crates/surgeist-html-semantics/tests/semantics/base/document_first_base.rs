@@ -1,5 +1,5 @@
 //! An established serialized fallback is selected by the same first-Base rule.
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::*;
 #[test]
 fn serialization_selection_preserves_missing_first_and_historical_frozen_record() {

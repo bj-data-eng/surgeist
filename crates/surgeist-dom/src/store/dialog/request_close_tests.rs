@@ -1,5 +1,6 @@
 //! Canonical storage at its private owner; no fabricated native Window service.
 use super::*;
+use surgeist_html::values::DocumentString;
 
 fn fixture() -> (Dom, DocumentId, NodeId) {
     let mut dom = Dom::new(
@@ -18,7 +19,11 @@ fn fixture() -> (Dom, DocumentId, NodeId) {
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let dialog = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     (
         dom,

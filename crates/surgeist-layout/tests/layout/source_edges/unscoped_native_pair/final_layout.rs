@@ -66,6 +66,8 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
         layout::InlineBoxRef::NativePair { start: 3, end: 4 }
     );
     layout::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::NativePair {
             start: 3,
             end: 4,
@@ -215,7 +217,7 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
             // source scope or default/font strut is fabricated for this pair.
             assert_eq!(input.metrics().baseline(), S::ZERO);
             assert_eq!(input.metrics().line_extent(), S::ZERO);
-            assert_eq!(input.edge().advance(), S::ZERO);
+            assert_eq!(input.edge().border_padding_advance(), S::ZERO);
             installed[node as usize] = Some(layout::LayoutInputOf::inline_boundary(input));
             binding.controls.push(layout::TextControlBinding {
                 occurrence: handle,

@@ -7,8 +7,12 @@
 //! accounting. No parser instruction quantum is claimed.
 
 use super::*;
-use crate::bounded::stylesheet_link_context_work_bound;
-use crate::{
+use surgeist_html::{
+    bounded::attributes::stylesheet_link_context_work_bound, values::Attribute,
+    vocabulary::KnownHtmlElement,
+};
+
+use surgeist_html::attributes::{
     HtmlAttributeReport, HtmlBooleanAttribute, HtmlHyperlinkAttributeContext,
     HtmlImageControlsAttributeContext, HtmlImageMapAttributeContext, HtmlReferrerPolicy,
 };

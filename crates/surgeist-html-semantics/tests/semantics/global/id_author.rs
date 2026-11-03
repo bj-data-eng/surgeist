@@ -1,14 +1,25 @@
 use crate::semantics::support::{
-    builder, collection_limits as capped, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, collection_limits as capped,
+    context, result_record_bytes, semantic_limits as limits, session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeAuthorState, HtmlAttributeContextAuthorState, HtmlAttributeRecognition,
+    },
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlIdAuthorReport,
-    HtmlIdUniqueness, HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlIdAuthorReport, HtmlIdUniqueness, HtmlSemanticCancellation, HtmlSemanticDependencies,
+    HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 // Literal expectations follow HTML 877d #the-id-attribute and the retained
@@ -523,54 +534,29 @@ fn original_own_and_competitor_raw_limits_are_terminal_before_comparison() {
 fn exact_and_one_short_work_and_actual_capacity_caps_preserve_cleanup() {
     let (c, id, _) = pair("x", "y");
     let cx = context(&c);
-    let observed = report(&c, &id, 1).usage();
-    assert_eq!(observed.nested_output_records(), 1);
-    assert_eq!(observed.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, observed.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            observed.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            observed.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            observed.allocated_bytes(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            observed.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                1,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = s.query(&[request(&id)]);
-            if cap == exact {
-                assert_eq!(
-                    value(&result.unwrap()).uniqueness(),
-                    &HtmlIdUniqueness::Unique
-                );
-            } else {
-                let fail = result.unwrap_err();
-                assert!(
-                    matches!(fail.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{fail:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), fail);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // The uniqueness walk starts at the wrapper div and descends: the div's
+    // child list and the subject's own (empty) list are live together, two
+    // iterator records. One report record is retained. The payload type and
+    // the walk's visit layout are private, so the byte charge must cover the
+    // result record, both frames and one payload byte, and work is required
+    // to be charged without being pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "id author",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).uniqueness(), &HtmlIdUniqueness::Unique);
 }
 
 #[test]
@@ -639,7 +625,7 @@ fn outputs_remain_immutable_and_capture_context_host_configuration_qualified() {
     let mut s = session(
         &a,
         &cx,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     );

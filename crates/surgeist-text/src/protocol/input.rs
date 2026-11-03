@@ -4,6 +4,7 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(crate) struct RequestInput<'a> {
     pub(crate) segment: &'a PreparedSourceSegment,
+    pub(crate) inline_boxes: Option<&'a PreparedInlineBoxFamily>,
     pub(crate) start: &'a PreparedBoundary,
     pub(crate) end: &'a PreparedBoundary,
     pub(crate) participants: &'a [PreparedParticipant],
@@ -20,6 +21,7 @@ impl<'a> From<&'a LineSelectionRequest> for RequestInput<'a> {
     fn from(value: &'a LineSelectionRequest) -> Self {
         Self {
             segment: &value.segment,
+            inline_boxes: value.inline_boxes.as_ref(),
             start: &value.start,
             end: &value.end,
             participants: &value.participants,

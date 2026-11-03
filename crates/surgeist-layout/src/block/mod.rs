@@ -9,12 +9,12 @@ use super::inline::{
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
     AvailableOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
-    ComputedOverflow, ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf,
-    InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
-    LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar, LengthAutoOf,
-    LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
-    PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis, RunMode, Size, SizingAlgorithm,
-    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlignOf,
+    ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf, InlineFragmentOutputOf,
+    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
+    LayoutResultOf, LayoutScalar, LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow,
+    ParentFormattingContext, PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis,
+    RunMode, Size, SizingAlgorithm, SizingMode, TextAlign, TextAlignLast, TextJustification,
+    Traverse, VerticalAlignOf,
 };
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
@@ -24,10 +24,7 @@ use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, OptionalSizeExt,
     OptionalSizeMaxExt, resolve_containing_padding_border,
 };
-use crate::scroll::{
-    CanonicalScrollBoxSourceOf, ScrollContributionAccumulatorOf, UsedOverflow,
-    canonical_scroll_box_from_source,
-};
+use crate::scroll::{CanonicalScrollBoxSourceOf, UsedOverflow, canonical_scroll_box_from_source};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 
 #[cfg(test)]
@@ -41,9 +38,11 @@ mod floats;
 mod in_flow;
 mod inline_run;
 mod input;
+mod relative;
 mod scroll;
 mod sizing;
 
+pub(crate) use absolute::StaticPositionOf;
 use absolute::layout_absolute_children;
 pub(crate) use input::BlockChildProjection;
 use input::{BlockContainerProjection, block_container_projection, with_block_scroll_projections};
@@ -259,6 +258,11 @@ where
                 .logical_axis_progression(crate::LogicalAxis::Block)
                 .is_decreasing()
                 && logical_inner_size.block.is_none());
+    // A provisional rectangular preview cannot lock the final measured basis
+    // of an actual percentage operand. Use the existing performed normal path,
+    // including Shape queries/encounter acceptance, before selecting that size.
+    let measured_inset_demand = input.run_mode().is_perform_layout()
+        && relative::has_pending_children::<Tree, M>(tree, &children);
     let intrinsic_pass = layout_in_flow_children(
         tree,
         node,
@@ -267,12 +271,13 @@ where
         input,
         InFlowPassContext {
             inner_inline: logical_inner_size.inline,
-            set_layout: input.run_mode().is_perform_layout() && !needs_final_pass,
+            set_layout: input.run_mode().is_perform_layout()
+                && (!needs_final_pass || measured_inset_demand),
             inherited,
         },
     )?;
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
-        intrinsic_pass.content_size.inline + constants.logical_content_box_inset().inline_sum(),
+        intrinsic_pass.intrinsic_inline_demand + constants.logical_content_box_inset().inline_sum(),
         intrinsic_pass.auto_block(&constants, float_role),
     );
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
@@ -391,6 +396,19 @@ where
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
         })
     } else {
+        let mut accepted_contributions = final_pass.contributions;
+        let measured_content_size = Size::new(
+            (output_size.width - final_constants.content_box_inset.sum_axes().width).max(S::ZERO),
+            (output_size.height - final_constants.content_box_inset.sum_axes().height).max(S::ZERO),
+        );
+        relative::settle_children(
+            tree,
+            node,
+            &children,
+            crate::output::MeasuredInsetBasisOf::from_used_content_size(measured_content_size),
+            final_constants.flow_axes,
+            &mut accepted_contributions,
+        )?;
         let mut contributions =
             with_block_scroll_projections::<Tree, M, _>(tree, node, |scroll_box_projection, _| {
                 prepare_scroll_contributions::<_, _, M>(
@@ -399,8 +417,7 @@ where
                     scroll_box_projection,
                     &final_constants,
                     output_size,
-                    final_pass.scroll_content_size,
-                    final_pass.contributions,
+                    accepted_contributions,
                 )
             })?;
         layout_floats(
@@ -418,7 +435,7 @@ where
             &final_pass.static_positions,
             output_size,
             &final_constants,
-            &mut contributions,
+            &mut contributions.geometry,
         )?;
         let published_scroll = with_block_scroll_projections::<Tree, M, _>(
             tree,

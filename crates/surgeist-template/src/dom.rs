@@ -1,5 +1,8 @@
 use surgeist_dom::{CreatedNode, DomBatch, NodeOperand};
-use surgeist_html::{DocumentString, KnownHtmlElement, Namespace};
+use surgeist_html::{
+    values::{DocumentString, Namespace},
+    vocabulary::KnownHtmlElement,
+};
 
 use crate::{SourceSpan, ValidatedAttrValue, ValidatedNode, ValidatedTemplate};
 

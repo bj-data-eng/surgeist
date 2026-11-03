@@ -5,6 +5,7 @@
 
 use super::*;
 use std::{io, time::Duration};
+use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_test::checkpoint::{Config, Gate, Identity};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,16 +41,16 @@ impl Case {
     /// IDs and scratch vectors die inside these helpers; only this bank escapes.
     fn check(
         self,
-        report: &ImmutableParseReport,
+        report: &HtmlParseReport,
         mode: ValueSharingMode,
-    ) -> Arc<Vec<surgeist_html::Attribute>> {
+    ) -> Arc<Vec<surgeist_html::values::Attribute>> {
         match self {
             Self::EqualBanks => check_equal_banks(report, mode),
             Self::DistinctBanksText => check_distinct_banks_text(report, mode),
         }
     }
 
-    fn hold_bank(self, report: &ImmutableParseReport) -> Arc<Vec<surgeist_html::Attribute>> {
+    fn hold_bank(self, report: &HtmlParseReport) -> Arc<Vec<surgeist_html::values::Attribute>> {
         let ids = elements(
             report,
             match self {
@@ -64,7 +65,7 @@ impl Case {
     }
 
     /// Independent literal checks require no report, source ID or NodeId.
-    fn check_held_bank(self, held: &[surgeist_html::Attribute]) {
+    fn check_held_bank(self, held: &[surgeist_html::values::Attribute]) {
         assert_eq!(held.len(), 2);
         let expected: [(&[u16], &[u16]); 2] = match self {
             Self::EqualBanks => [

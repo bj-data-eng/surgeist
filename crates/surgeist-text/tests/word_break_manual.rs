@@ -392,7 +392,14 @@ fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
                     .source_segments()
                     .next()
                     .unwrap()
-                    .conditional_search(&start, None, &ceiling, purpose, &[], None)
+                    .conditional_search(
+                        &start,
+                        None,
+                        &ceiling,
+                        purpose,
+                        &[],
+                        surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                    )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
                     .unwrap()

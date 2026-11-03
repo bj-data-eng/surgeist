@@ -1,5 +1,12 @@
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    elements::image::{HtmlImageUpdateFlags, HtmlImgFreshRequestState},
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+    },
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -67,6 +74,7 @@ fn image_with_document(
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let image = image.expect("retained literal Img");
@@ -84,6 +92,7 @@ fn image_with_document(
             }
             HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     (image, document.expect("actual Img node-Document"))
@@ -128,7 +137,12 @@ fn fragment_owned_inert_template_document_keeps_first_image_wait() {
     };
     assert_ne!(
         document.id(),
-        report.fragment_parser_document().unwrap().document().id()
+        report
+            .fragment_parser_document()
+            .unwrap()
+            .unwrap()
+            .document()
+            .id()
     );
     let mut inert = false;
     let mut cursor = report.metadata();
@@ -144,6 +158,7 @@ fn fragment_owned_inert_template_document_keeps_first_image_wait() {
             }
             HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(inert, "actual retained inert constructor state");

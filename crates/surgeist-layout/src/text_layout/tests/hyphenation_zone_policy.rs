@@ -77,6 +77,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -563,6 +565,8 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

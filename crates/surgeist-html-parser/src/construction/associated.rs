@@ -1,10 +1,19 @@
 //! Reached A/Area URL and wholly inactive Img updates in the original owner.
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 use surgeist_html::{
-    HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
-    HtmlHyperlinkSetUrlReply as Reply, HtmlImageAttributeChange, HtmlImageAttributeEffect,
-    HtmlImageDocumentActivity, HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
-    HtmlImageUpdateStartDecision, HtmlImgFreshState, KnownHtmlAttribute, KnownHtmlElement,
+    elements::{
+        image::{
+            HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
+            HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
+            HtmlImageUpdateStartDecision, HtmlImgFreshState,
+        },
+        link::{
+            HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
+            HtmlHyperlinkSetUrlReply as Reply,
+        },
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 use surgeist_html_semantics::{
     HtmlBaseMissing, HtmlDocumentFirstBase, HtmlEncodingUrlFactsError, HtmlEncodingUrlLookupError,
@@ -23,18 +32,18 @@ impl AssociatedStorageUsage {
         other: Self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.bytes = self.bytes.checked_add(other.bytes).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
-        self.units = self.units.checked_add(other.units).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                .unwrap_err()
-        })?;
-        self.entries = self.entries.checked_add(other.entries).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        self.bytes = self
+            .bytes
+            .checked_add(other.bytes)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
+        self.units = self
+            .units
+            .checked_add(other.units)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+        self.entries = self
+            .entries
+            .checked_add(other.entries)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         Ok(())
     }
     pub(super) fn resources(self) -> [(HtmlParseResource, u64); 4] {
@@ -52,27 +61,31 @@ impl AssociatedStorageUsage {
         entries: usize,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.bytes = self.bytes.checked_add(bytes as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
-        self.units = self.units.checked_add(units as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                .unwrap_err()
-        })?;
-        self.entries = self.entries.checked_add(entries as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        self.bytes = self
+            .bytes
+            .checked_add(bytes as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
+        self.units = self
+            .units
+            .checked_add(units as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+        self.entries = self
+            .entries
+            .checked_add(entries as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         Ok(())
     }
     pub(super) fn acquire(self, c: &mut ParseControl) -> Result<(), SessionError> {
-        c.charge(WorkCategory::ReserveByte, self.bytes)?;
+        c.charge(HtmlParseWorkCategory::ReserveByte, self.bytes)?;
         c.acquire_retained_provider(self.bytes, self.units, self.entries)?;
         Ok(())
     }
-    pub(super) fn release(self, c: &mut ParseControl, owner: &ControlIdentity) {
-        c.release_retained_provider(owner, self.bytes, self.units, self.entries);
+    pub(super) fn release(
+        self,
+        c: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> Result<(), HtmlParseStop> {
+        c.release_retained_provider(owner, self.bytes, self.units, self.entries)
     }
 }
 
@@ -101,10 +114,7 @@ impl Inputs {
                     .and_then(|n| v.checked_add(n))
             })
             .and_then(|v| mem::size_of::<Self>().checked_add(v))
-            .ok_or_else(|| {
-                c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         usage.add(
             header,
             0,
@@ -118,7 +128,7 @@ impl Inputs {
             .into_iter()
             .flatten()
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let retained = facts.retained_storage_usage();
             usage.add(
                 retained.retained_bytes(),
@@ -128,7 +138,7 @@ impl Inputs {
             )?;
         }
         for context in &self.captured {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let retained = context.retained_storage_usage();
             let backing = retained
                 .retained_bytes()
@@ -139,14 +149,14 @@ impl Inputs {
             usage.add(backing, retained.utf16_extent(), 0, c)?;
         }
         for (i, facts) in self.encoding_urls.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            for previous in &self.encoding_urls[..i] {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            for previous in self.encoding_urls.iter().take(i) {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if previous.base() == facts.base()
                     && previous.encoding() == facts.encoding()
                     && previous.revision() == facts.revision()
                 {
-                    return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                    return Err(c.stop_invalid_associated_facts().into());
                 }
             }
             let retained = facts.retained_storage_usage();
@@ -162,7 +172,7 @@ impl Inputs {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HyperlinkUnavailable {
+pub enum HtmlParseHyperlinkUnavailable {
     Base(HtmlBaseMissing),
     Observation(HtmlEncodingUrlFactsError),
     DocumentEnvironment,
@@ -172,7 +182,7 @@ pub enum HyperlinkUnavailable {
 pub(super) enum HyperlinkValue {
     Absent,
     Observed(HtmlHyperlinkUrlSnapshot),
-    Unavailable(HyperlinkUnavailable),
+    Unavailable(HtmlParseHyperlinkUnavailable),
 }
 pub(super) struct HyperlinkMetadata {
     pub(super) document: DocumentRef,
@@ -182,15 +192,15 @@ pub(super) struct HyperlinkMetadata {
     pub(super) usage: AssociatedStorageUsage,
 }
 impl HyperlinkMetadata {
-    pub(super) fn diagnostic_usage(&self) -> AssociatedStorageUsage {
+    pub(super) fn diagnostic_usage(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<AssociatedStorageUsage, SessionError> {
         let mut usage = self.usage;
         if matches!(self.value, HyperlinkValue::Observed(_)) {
-            usage.bytes = usage
-                .bytes
-                .checked_add(mem::size_of::<HtmlHyperlinkUrlSnapshot>() as u64)
-                .expect("owner-computed complete snapshot footprint");
+            usage.add(mem::size_of::<HtmlHyperlinkUrlSnapshot>(), 0, 0, c)?;
         }
-        usage
+        Ok(usage)
     }
 }
 pub(super) struct ImageMetadata {
@@ -211,37 +221,40 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         for (index, context) in inputs.captured.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 3)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
             let Some(fragment) = &storage.fragment else {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             };
             let capture = fragment.context.capture();
             if context.host_revision() != capture.host_facts_revision() {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             }
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             if capture.document_id(context.document().subject()).is_err() {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             }
-            for previous in &inputs.captured[..index] {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+            for previous in inputs.captured.iter().take(index) {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if previous.document() == context.document() {
-                    return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                    return Err(c.stop_invalid_associated_facts().into());
                 }
             }
         }
         let usage = inputs.usage(c)?;
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         payload_write::<Arc<Inputs>>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         usage.acquire(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::AssociatedInputs {
-                inputs: inputs.clone(),
-                usage,
-            });
+            .push_row(
+                prepared,
+                RetainedPayload::AssociatedInputs {
+                    inputs: inputs.clone(),
+                    usage,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
 }
@@ -257,7 +270,7 @@ impl SessionStorage {
         c: &mut ParseControl,
     ) -> Result<Option<&Arc<Inputs>>, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::AssociatedInputs { inputs, .. } = payload {
                 return Ok(Some(inputs));
             }
@@ -271,15 +284,20 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let facts = self.associated_inputs(c)?.and_then(|i| i.template.as_ref());
         if let Some(facts) = facts {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlParseBaseFacts>(c, 1)?;
             let facts = facts.clone();
-            self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::BaseDocument {
-                node,
-                facts,
-                first: None,
-            });
+            let prepared = self.prepare_payload_slot_owned(c)?;
+            self.payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::BaseDocument {
+                        node,
+                        facts,
+                        first: None,
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
         }
         Ok(())
     }
@@ -324,20 +342,25 @@ impl SessionStorage {
         if matches!(tag, Some(KnownHtmlElement::A | KnownHtmlElement::Area)) {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
-            self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::Hyperlink {
-                node,
-                state: HyperlinkMetadata {
-                    document,
-                    raw: None,
-                    value: HyperlinkValue::Absent,
-                    cause,
-                    usage: AssociatedStorageUsage::default(),
-                },
-            });
+            let prepared = self.prepare_payload_slot_owned(c)?;
+            self.payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Hyperlink {
+                        node,
+                        state: HyperlinkMetadata {
+                            document,
+                            raw: None,
+                            value: HyperlinkValue::Absent,
+                            cause,
+                            usage: AssociatedStorageUsage::default(),
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
             self.set_hyperlink(c, node, None)?;
         } else if tag == Some(KnownHtmlElement::Img) {
-            self.prepare_payload_slot_owned(c)?;
+            let prepared = self.prepare_payload_slot_owned(c)?;
             // The shared fresh tuple owns exactly one public Arc<Vec<u16>> URL.
             // Admit its known empty Vec payload before calling the constructor;
             // opaque allocator bookkeeping has the same limitation as strings.
@@ -345,22 +368,27 @@ impl SessionStorage {
             usage.add(mem::size_of::<Vec<u16>>(), 0, 0, c)?;
             payload_write::<ImageMetadata>(c, 1)?;
             usage.acquire(c)?;
-            self.payloads.values.push(RetainedPayload::Image {
-                node,
-                state: ImageMetadata {
-                    fresh: HtmlImgFreshState::fresh(),
-                    dimension_source: node,
-                    latest: 0,
-                    waiting: None,
-                    cause: None,
-                    usage,
-                },
-            });
+            self.payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Image {
+                        node,
+                        state: ImageMetadata {
+                            fresh: HtmlImgFreshState::fresh(),
+                            dimension_source: node,
+                            latest: 0,
+                            waiting: None,
+                            cause: None,
+                            usage,
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
             self.start_img_update(c, node, HtmlImageUpdateFlags::new(false, false))?;
         } else {
             return Ok(());
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction
             .node_at(node)
@@ -397,7 +425,7 @@ impl SessionStorage {
             .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attr.name().namespace().uri().is_some() {
             return Ok(());
         }
@@ -422,14 +450,14 @@ impl SessionStorage {
         };
         let tag = self.associated_tag(c, node)?;
         if matches!(tag, Some(KnownHtmlElement::A | KnownHtmlElement::Area)) {
-            if surgeist_html::hyperlink_attribute_effect(attr.name().namespace(), name, false)
-                == surgeist_html::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
+            if surgeist_html::elements::link::hyperlink_attribute_effect(attr.name().namespace(), name, false)
+                == surgeist_html::elements::link::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
             {
                 let raw = self.attribute_value_slot(c, node, position)?;
                 self.set_hyperlink(c, node, Some(raw))?;
             }
         } else if tag == Some(KnownHtmlElement::Img) {
-            let effect = surgeist_html::image_attribute_effect(
+            let effect = surgeist_html::elements::image::image_attribute_effect(
                 attr.name().namespace(),
                 name,
                 HtmlImageAttributeChange::Set { same_value: false },
@@ -438,32 +466,37 @@ impl SessionStorage {
                 HtmlImageAttributeEffect::Update(flags) => Some(flags),
                 HtmlImageAttributeEffect::CompareCrossOrigin
                 | HtmlImageAttributeEffect::CompareReferrerPolicy => {
-                    let mut admit = |step| match step {
-                        surgeist_html::bounded::HtmlAttributeKeywordRead::ValueHeader
-                        | surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordHeader => {
-                            c.charge(WorkCategory::RecordVisit, 1)
+                    let mut admit = |step| {
+                        match step {
+                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::ValueHeader
+                        | surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordHeader => {
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                         }
-                        surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordPair => {
-                            c.charge(WorkCategory::InspectByte, 3)
+                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordPair => {
+                            c.charge_unit_literal_comparison()
                         }
+                    }
                     };
                     let changed = if effect == HtmlImageAttributeEffect::CompareCrossOrigin {
-                        let old =
-                            surgeist_html::bounded::crossorigin_processing_with(None, &mut admit)?;
-                        let new = surgeist_html::bounded::crossorigin_processing_with(
-                            Some(attr.value()),
-                            &mut admit,
-                        )?;
-                        surgeist_html::image_crossorigin_changed(old, new)
-                    } else {
-                        let old = surgeist_html::bounded::referrerpolicy_processing_with(
+                        let old = surgeist_html::bounded::attributes::crossorigin_processing_with(
                             None, &mut admit,
                         )?;
-                        let new = surgeist_html::bounded::referrerpolicy_processing_with(
+                        let new = surgeist_html::bounded::attributes::crossorigin_processing_with(
                             Some(attr.value()),
                             &mut admit,
                         )?;
-                        surgeist_html::image_referrerpolicy_changed(old, new)
+                        surgeist_html::elements::image::image_crossorigin_changed(old, new)
+                    } else {
+                        let old =
+                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                None, &mut admit,
+                            )?;
+                        let new =
+                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                Some(attr.value()),
+                                &mut admit,
+                            )?;
+                        surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
                     };
                     changed.then_some(HtmlImageUpdateFlags::new(false, false))
                 }
@@ -481,16 +514,16 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         raw: usize,
-    ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HyperlinkUnavailable>, SessionError> {
-        let RetainedPayload::String { value: raw, .. } = &self.payloads.values[raw] else {
-            return Err(SessionError::WrongToken);
+    ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HtmlParseHyperlinkUnavailable>, SessionError> {
+        let Some(RetainedPayload::String { value: raw, .. }) = self.payloads.values.get(raw) else {
+            return Err(latch_registry_row(c));
         };
         let context = match self.encoding_url_context(c, node)? {
             Ok(value) => value,
             Err(missing) => return Ok(Err(missing)),
         };
         payload_write::<HtmlHyperlinkUrlSnapshot>(c, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         match context.facts.resolve_hyperlink_with(
             raw,
             context.base,
@@ -501,7 +534,7 @@ impl SessionStorage {
         ) {
             Ok(value) => Ok(Ok(value)),
             Err(HtmlEncodingUrlLookupError::Facts(error)) => {
-                Ok(Err(HyperlinkUnavailable::Observation(error)))
+                Ok(Err(HtmlParseHyperlinkUnavailable::Observation(error)))
             }
             Err(HtmlEncodingUrlLookupError::Interrupted(stop)) => Err(stop.into()),
         }
@@ -510,7 +543,7 @@ impl SessionStorage {
         &'a self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
+    ) -> Result<Result<EncodingUrlContext<'a>, HtmlParseHyperlinkUnavailable>, SessionError> {
         let document = match self.node_document_ref(c, node)? {
             DocumentRef::Owned(d) => d,
             DocumentRef::Captured(document) => {
@@ -519,42 +552,41 @@ impl SessionStorage {
         };
         if !self.csp_base_current(c, document)? || self.meta_policy_missing(c, document)?.is_some()
         {
-            return Ok(Err(HyperlinkUnavailable::PolicyHistory));
+            return Ok(Err(HtmlParseHyperlinkUnavailable::PolicyHistory));
         }
         let mut environment = None;
-        for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::BaseDocument { node, facts, first } = payload
+        if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::BaseDocument { node, facts, first }) =
+                self.payloads.values.get(slot)
                 && *node == document
             {
                 environment = Some((facts, first));
-                break;
             }
         }
         let Some((facts, first)) = environment else {
-            return Ok(Err(HyperlinkUnavailable::Base(
+            return Ok(Err(HtmlParseHyperlinkUnavailable::Base(
                 HtmlBaseMissing::DocumentFacts,
             )));
         };
         let Some(encoding) = facts.document().encoding() else {
-            return Ok(Err(HyperlinkUnavailable::Base(
+            return Ok(Err(HtmlParseHyperlinkUnavailable::Base(
                 HtmlBaseMissing::CharacterEncoding,
             )));
         };
         let mut frozen = None;
-        if let Some(first) = first {
-            for payload in &self.payloads.values {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::Base {
-                    node: Some(node),
-                    frozen: base::BaseValue::Frozen(value),
-                    ..
-                } = payload
-                    && node == first
-                {
-                    frozen = Some(&value.value);
-                    break;
-                }
+        if let Some(first) = first
+            && let Some(slot) = self.payloads.joined(c, *first, Join::Base)?
+        {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::Base {
+                node: Some(node),
+                frozen: base::BaseValue::Frozen(value),
+                ..
+            }) = self.payloads.values.get(slot)
+                && node == first
+            {
+                frozen = Some(&value.value);
             }
         }
         let selection = if first.is_some() {
@@ -567,7 +599,7 @@ impl SessionStorage {
             selection,
         ) {
             Ok(base) => base,
-            Err(e) => return Ok(Err(HyperlinkUnavailable::Base(e))),
+            Err(e) => return Ok(Err(HtmlParseHyperlinkUnavailable::Base(e))),
         };
         let expected = facts.document().revision();
         self.encoding_url_bank(c, base, encoding, expected)
@@ -576,30 +608,30 @@ impl SessionStorage {
         &'a self,
         c: &mut ParseControl,
         document: &crate::HtmlCaptureDocumentId,
-    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
+    ) -> Result<Result<EncodingUrlContext<'a>, HtmlParseHyperlinkUnavailable>, SessionError> {
         // This source-created fragment has only these exact captured effects.
         // None changes captured Document policy or its ordinary Base tree. This
         // exhaustive inventory must be revised before admitting any such new
         // producer: it must retain the actual captured gap and refuse here.
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let fragment = self
             .fragment
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?;
         for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             match effect {
                 context::ContextEffect::TemplateCache { .. }
                 | context::ContextEffect::AttachShadow { .. } => {}
             }
         }
         let Some(inputs) = self.associated_inputs(c)? else {
-            return Ok(Err(HyperlinkUnavailable::DocumentEnvironment));
+            return Ok(Err(HtmlParseHyperlinkUnavailable::DocumentEnvironment));
         };
         for value in &inputs.captured {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if value.document() == document {
-                c.charge(WorkCategory::RecordVisit, 3)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
                 return self.encoding_url_bank(
                     c,
                     value.base_url().value(),
@@ -608,7 +640,7 @@ impl SessionStorage {
                 );
             }
         }
-        Ok(Err(HyperlinkUnavailable::DocumentEnvironment))
+        Ok(Err(HtmlParseHyperlinkUnavailable::DocumentEnvironment))
     }
     fn encoding_url_bank<'a>(
         &'a self,
@@ -616,15 +648,15 @@ impl SessionStorage {
         base: &'a crate::HtmlBaseUrlRecord,
         encoding: &'a crate::HtmlBaseEncoding,
         expected: &'a crate::HtmlBaseFactsRevision,
-    ) -> Result<Result<EncodingUrlContext<'a>, HyperlinkUnavailable>, SessionError> {
+    ) -> Result<Result<EncodingUrlContext<'a>, HtmlParseHyperlinkUnavailable>, SessionError> {
         let Some(inputs) = self.associated_inputs(c)? else {
-            return Ok(Err(HyperlinkUnavailable::Observation(
+            return Ok(Err(HtmlParseHyperlinkUnavailable::Observation(
                 HtmlEncodingUrlFactsError::MissingObservation,
             )));
         };
         let mut missing = HtmlEncodingUrlFactsError::MissingObservation;
         for candidate in &inputs.encoding_urls {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Err(error) = candidate.validate_inputs(base, encoding, expected) {
                 missing = error;
                 continue;
@@ -636,7 +668,7 @@ impl SessionStorage {
                 expected,
             }));
         }
-        Ok(Err(HyperlinkUnavailable::Observation(missing)))
+        Ok(Err(HtmlParseHyperlinkUnavailable::Observation(missing)))
     }
     fn set_hyperlink(
         &mut self,
@@ -644,30 +676,26 @@ impl SessionStorage {
         node: usize,
         raw: Option<usize>,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Hyperlink { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let slot = slot.ok_or(SessionError::WrongToken)?;
+        let slot = self
+            .payloads
+            .joined(c, node, Join::Hyperlink)?
+            .ok_or(SessionError::WrongToken)?;
         let mut cursor = HtmlHyperlinkSetUrlCursor::new();
         let mut result = None;
         loop {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let reply = match cursor.action() {
                 Action::ClearUrl => {
                     payload_write::<HyperlinkValue>(c, 1)?;
-                    let RetainedPayload::Hyperlink { state, .. } = &mut self.payloads.values[slot]
+                    let Some(RetainedPayload::Hyperlink { state, .. }) =
+                        self.payloads.values.get_mut(slot)
                     else {
-                        unreachable!()
+                        return Err(latch_registry_row(c));
                     };
                     let old = mem::replace(&mut state.value, HyperlinkValue::Absent);
                     let old_usage = mem::take(&mut state.usage);
                     drop(old);
-                    old_usage.release(c, &self.control);
+                    old_usage.release(c, &self.control)?;
                     Reply::Applied
                 }
                 Action::ReadHref => Reply::HrefPresent(raw.is_some()),
@@ -680,7 +708,7 @@ impl SessionStorage {
                     match &result {
                         Some(Ok(value)) => Reply::Parsed(value.url().is_some()),
                         Some(Err(_)) => break,
-                        None => unreachable!(),
+                        None => return Err(latch_registry_row(c)),
                     }
                 }
                 Action::StoreParsedUrl => Reply::Applied,
@@ -717,8 +745,9 @@ impl SessionStorage {
                 }
             });
         }
-        let RetainedPayload::Hyperlink { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Hyperlink { state, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         let old = mem::replace(
             state,
@@ -732,7 +761,7 @@ impl SessionStorage {
         );
         let old_usage = old.usage;
         drop(old);
-        old_usage.release(c, &self.control);
+        old_usage.release(c, &self.control)?;
         Ok(())
     }
     fn image_document_activity(
@@ -752,29 +781,21 @@ impl SessionStorage {
         node: usize,
         flags: HtmlImageUpdateFlags,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Image { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let Some(slot) = slot else {
+        let Some(slot) = self.payloads.joined(c, node, Join::Image)? else {
             return Ok(());
         };
         let activity = self.image_document_activity(c, node)?;
-        let decision = surgeist_html::image_update_start(activity);
+        let decision = surgeist_html::elements::image::image_update_start(activity);
         let cause = self.associated_cause(c)?;
-        let RetainedPayload::Image { state, .. } = &self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(latch_registry_row(c));
         };
-        let next = state.latest.checked_add(1).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        let next = state
+            .latest
+            .checked_add(1)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         if state.waiting.is_some()
-            && !surgeist_html::image_update_is_superseded(state.latest.cmp(&next))
+            && !surgeist_html::elements::image::image_update_is_superseded(state.latest.cmp(&next))
                 .map_err(|_| SessionError::AssociatedFacts)?
         {
             return Err(SessionError::AssociatedFacts);
@@ -784,8 +805,8 @@ impl SessionStorage {
             Option<HtmlImageUpdateFlags>,
             Option<provenance::ConstructionCauseRef>,
         )>(c, 1)?;
-        let RetainedPayload::Image { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(c));
         };
         state.latest = next;
         state.waiting =
@@ -815,9 +836,14 @@ impl SessionStorage {
             .map(|p| self.associated_tag(c, p))
             .transpose()?
             .flatten();
-        let effect =
-            surgeist_html::image_tree_effect(tag, change, parent_tag, old_tag, root == node)
-                .map_err(|_| SessionError::WrongToken)?;
+        let effect = surgeist_html::elements::image::image_tree_effect(
+            tag,
+            change,
+            parent_tag,
+            old_tag,
+            root == node,
+        )
+        .map_err(|_| SessionError::WrongToken)?;
         // Media resource selection has no Img recipient and is outside this
         // retained standalone-Img prefix. No Audio/Video capability is issued.
         if effect.check_media_parent_selection() {
@@ -837,14 +863,14 @@ impl SessionStorage {
                         old_parent
                     }
                     .ok_or(SessionError::WrongToken)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let count = self
                     .construction
                     .node_at(picture)
                     .ok_or(SessionError::ForeignNode)?
                     .child_count();
                 for ordinal in 0..count {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(picture)
@@ -862,9 +888,9 @@ impl SessionStorage {
     }
 }
 
-pub(super) fn encoding_url_step(c: &mut ParseControl) -> Result<(), ParseStop> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    c.charge(WorkCategory::InspectByte, 4)
+pub(super) fn encoding_url_step(c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::InspectByte, 4)
 }
 
 #[cfg(test)]
@@ -976,7 +1002,7 @@ mod tests {
         );
         let document = builder
             .add_document(
-                surgeist_html::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                 HtmlScriptingStatus::Disabled,
                 HtmlCaptureRegistryInput::Null,
             )
@@ -984,8 +1010,12 @@ mod tests {
         let div = builder
             .add_element(
                 &document,
-                surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "div"),
-                surgeist_html::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "div",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
                 HtmlCapturedIsValue::Absent,
                 HtmlCaptureRegistryInput::Null,
             )

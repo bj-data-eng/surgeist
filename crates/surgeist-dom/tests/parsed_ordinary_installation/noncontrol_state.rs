@@ -1,7 +1,10 @@
 //! Completed non-control history and later canonical operations stay distinct.
 use super::*;
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 use surgeist_html::{
-    HtmlElementClass, HtmlNodeId, HtmlNodeKind, HtmlScriptResult, KnownHtmlElement,
+    construction::{HtmlNodeId, HtmlNodeKind},
+    elements::{native::HtmlElementClass, script::HtmlScriptResult},
+    vocabulary::KnownHtmlElement,
 };
 use surgeist_html_parser::HtmlFragmentParseRequest;
 use surgeist_html_parser::HtmlParseMetadataStep;
@@ -156,6 +159,7 @@ fn assert_original_patch(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(templates, 1);
@@ -411,7 +415,7 @@ fn installed_true_and_false_html_script_flags_feed_the_ordinary_clone_rule() {
         );
         assert_eq!(
             original_script.script_type(),
-            started.then_some(surgeist_html::HtmlScriptKind::Classic)
+            started.then_some(surgeist_html::elements::script::HtmlScriptKind::Classic)
         );
         let mut batch = DomBatch::new();
         let clone = batch.import_node(original, script, installed.document(), true);

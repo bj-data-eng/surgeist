@@ -1,14 +1,18 @@
 use crate::semantics::support::{
-    builder, collection_limits as resource_limits, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    collection_limits as resource_limits, result_record_bytes, semantic_limits as limits, session,
 };
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn element(
@@ -588,48 +592,30 @@ fn changed_current_state_at_one_capture_recomputes_with_distinct_context_identit
 fn exact_and_one_short_work_scratch_output_nested_and_bytes_bound_the_real_text_pipeline() {
     let (c, s, o) = fixture(&[("required", "")], &[], Some("not empty normalized text"));
     let cx = context(&c, &[(o, Some(true))]);
-    let baseline = report(&c, &cx, &s, 0);
+    // The explicitly selected option has no value attribute, so its text is
+    // its value: "not empty normalized text" keeps 25 units, each growing the
+    // buffer by exactly one `u16`. The select walk's frame is released before
+    // the option text walk, so one frame record is live at a time. The walk
+    // and text step layouts are private, so work is required to be charged
+    // but is not pinned, and the byte charge needs only cover the result
+    // record, both frames and the 25 units.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let baseline = assert_exact_and_one_short_caps(
+        "select value missing, text pipeline",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 1000),
+        &[request(&s)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(25),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 25 * 2),
+            ..ExpectedUsage::none()
+        },
+    );
     assert!(!known(&baseline));
-    let u = baseline.usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = ss.query(&[request(&s)]);
-            if cap == exact {
-                assert!(!known(&r.unwrap()));
-            } else {
-                let f = r.unwrap_err();
-                assert!(
-                    matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if actual == &resource)
-                );
-                assert_eq!(
-                    f.qualification().unwrap().limits(),
-                    resource_limits(resource, cap)
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
 }
 
 #[test]
@@ -843,7 +829,27 @@ fn nonterminal_missing_evidence_never_hides_a_later_terminal_work_stop() {
     let c = b.finish().unwrap();
     let cx = context(&c, &[]);
     let sid = c.subject_id(&s).unwrap();
-    let r = report(&c, &cx, &sid, 0);
+    // The unknown sibling's children are missing evidence, but the walk still
+    // reaches the option, so the answer is one Missing result with the select's
+    // frame live. The walk's visit layout is private, so work is required to be
+    // charged without being pinned; the helper proves the reported work is the
+    // least admitting cap before the stop below reuses it.
+    let r = assert_exact_and_one_short_caps(
+        "select value missing, late terminal stop",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&sid)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     assert_eq!(
         missing(&r),
         &HtmlSemanticMissing::OrderedChildren(c.subject_id(&gap).unwrap())
@@ -953,45 +959,27 @@ fn fallback_selected_attribute_whole_raw_admission_remains_terminal_and_sticky()
 fn fallback_descendant_pipeline_has_exact_and_one_short_physical_resource_boundaries() {
     let (c, s, o, _) = gap_fixture(&[], Some("nonempty normalized fallback text"));
     let cx = context(&c, &[(o, Some(true))]);
-    let baseline = report(&c, &cx, &s, 0);
+    // The selected option behind the unknown sibling has no value attribute:
+    // "nonempty normalized fallback text" keeps 33 units, each growing the
+    // buffer by exactly one `u16`, with one frame live at a time. Step layouts
+    // are private, so work is required to be charged but is not pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let baseline = assert_exact_and_one_short_caps(
+        "select value missing, fallback pipeline",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 1000),
+        &[request(&s)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(33),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 33 * 2),
+            ..ExpectedUsage::none()
+        },
+    );
     assert!(!known(&baseline));
-    let u = baseline.usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&s)]);
-            if cap == exact {
-                assert!(!known(&result.unwrap()));
-            } else {
-                let f = result.unwrap_err();
-                assert!(
-                    matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if actual == &resource)
-                );
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
 }
 
 #[test]
@@ -1134,41 +1122,26 @@ fn a_single_possibly_first_empty_option_remains_missing_across_unknown_order() {
 fn predecessor_proof_has_exact_and_one_short_physical_admission_and_sticky_cleanup() {
     let (c, s, a, selected) = predecessor_fixture(true);
     let cx = context(&c, &[(a, None), (selected, Some(true))]);
-    let baseline = report(&c, &cx, &s, 0);
+    // Selectedness and the predecessor's value attribute are supplied, so the
+    // walk allocates no text: only the select's frame is live. Step layout is
+    // private, so work is required to be charged but is not pinned.
+    let baseline = assert_exact_and_one_short_caps(
+        "select value missing, predecessor proof",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 0),
+        &[request(&s)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     assert!(!known(&baseline));
-    let u = baseline.usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&s)]);
-            if cap == exact {
-                assert!(!known(&result.unwrap()));
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if actual == &resource)
-                );
-                assert_eq!(failure.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
 }
 
 #[test]
@@ -1185,7 +1158,13 @@ fn predecessor_queries_charge_each_traversal_and_late_work_failure_is_atomic() {
         ));
     }
     assert_eq!(complete.usage().nested_output_records(), 0);
-    assert!(complete.usage().work() > report(&c, &cx, &s, 0).usage().work());
+    // Derived from the shared tariff: the batch's one result reservation (1) is
+    // charged once, so two identical requests cost twice one request's work less
+    // that shared unit.
+    assert_eq!(
+        complete.usage().work(),
+        2 * report(&c, &cx, &s, 0).usage().work() - 1
+    );
     let mut ss = session(
         &c,
         &cx,

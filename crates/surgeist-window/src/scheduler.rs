@@ -1,8 +1,5 @@
-use super::{Id, command::Action};
-use std::{
-    collections::{HashMap, HashSet},
-    time::Instant,
-};
+use super::{Id, Instant, command::Action};
+use std::collections::{HashMap, HashSet};
 
 /// Draw scheduler with per-window coalescing.
 #[derive(Clone, Debug, Default)]

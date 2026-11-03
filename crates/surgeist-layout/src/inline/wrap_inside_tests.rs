@@ -64,19 +64,25 @@ fn exercise<S: LayoutScalar>(
         )
         .input(
             2,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                InlineBoundaryKind::Start,
-                metrics,
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    metrics,
+                    InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         )
         .input(
             5,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                InlineBoundaryKind::End,
-                metrics,
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::End,
+                    metrics,
+                    InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     let (graph, _) =
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 100, &[], &[])
@@ -84,19 +90,30 @@ fn exercise<S: LayoutScalar>(
     let context = WrappingContext::new(
         &tree,
         &graph,
-        &[WrappingScopeInput::NativePair {
-            metric_contribution: None,
-            edges: Default::default(),
-            start: 2,
-            end: 5,
-            wrap_inside: WrapInside::Avoid,
-        }],
+        &crate::WrappingInput {
+            scopes: vec![WrappingScopeInput::NativePair {
+                metric_contribution: None,
+                edges: Default::default(),
+                start: 2,
+                end: 5,
+                wrap_inside: WrapInside::Avoid,
+            }],
+            ..Default::default()
+        },
         &[],
-        &[],
+        |_| false,
     )
     .unwrap();
     let projection = context
-        .numeric_projection(&graph, 100, &[1, 2, 3, 4, 5])
+        .numeric_projection(
+            &graph,
+            100,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2, 3, 4, 5],
+                start: 0,
+            },
+            &[1, 2, 3, 4, 5],
+        )
         .unwrap();
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
@@ -122,6 +139,7 @@ fn exercise<S: LayoutScalar>(
             metrics,
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         )),
         atomic(2, second),
         atomic(3, InlineBreakOpportunity::Allowed),
@@ -132,6 +150,7 @@ fn exercise<S: LayoutScalar>(
             metrics,
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         )),
     ];
     let supplied = project_inline_participants(&participants);
@@ -288,6 +307,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             .unwrap(),
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         );
         accumulator.push(MixedInlineParticipantOf::Boundary(end), axes);
         let second_atomic = atomic(2);

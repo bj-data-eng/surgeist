@@ -929,7 +929,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
             ),
             last: Self::block_point(
                 flow_axes,
-                Some(Self::side_coordinate(flow_axes.line_over(), size)),
+                Some(Self::side_coordinate(flow_axes.line_under(), size)),
             ),
         }
     }
@@ -993,7 +993,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
         self.last_block_baseline(flow_axes).unwrap_or_else(|| {
             PhysicalBaseline::new(
                 flow_axes.block_axis(),
-                Self::side_coordinate(flow_axes.line_over(), size),
+                Self::side_coordinate(flow_axes.line_under(), size),
             )
         })
     }
@@ -1133,6 +1133,28 @@ mod baseline_tests {
                 expected_last
             );
 
+            // Align3 synthesis uses line-under for either baseline set.
+            // A genuinely supplied zero remains authority, not missing data.
+            let zero_last = match block_axis {
+                PhysicalAxis::Horizontal => Point::new(Some(S::ZERO), None),
+                PhysicalAxis::Vertical => Point::new(None, Some(S::ZERO)),
+            };
+            assert_eq!(
+                BaselinesOf {
+                    first: baselines.first,
+                    last: zero_last
+                }
+                .last_or_synthesize_block(flow_axes, size),
+                S::ZERO,
+            );
+            assert_eq!(
+                BaselinesOf::<S>::NONE.first_or_synthesize_block(flow_axes, size),
+                side_coordinate(flow_axes.line_under(), size),
+            );
+            assert_eq!(
+                BaselinesOf::<S>::NONE.last_or_synthesize_block(flow_axes, size),
+                side_coordinate(flow_axes.line_under(), size),
+            );
             let synthesized = BaselinesOf::synthesized(flow_axes, size);
             assert_eq!(
                 point_coordinate(synthesized.first, block_axis),
@@ -1140,7 +1162,7 @@ mod baseline_tests {
             );
             assert_eq!(
                 point_coordinate(synthesized.last, block_axis),
-                Some(side_coordinate(flow_axes.line_over(), size))
+                Some(side_coordinate(flow_axes.line_under(), size))
             );
             assert_eq!(point_coordinate(synthesized.first, non_block_axis), None);
             assert_eq!(point_coordinate(synthesized.last, non_block_axis), None);
@@ -1452,14 +1474,21 @@ pub struct PlacedTextOutput<Node> {
     container: Node,
     nodes: Vec<Node>,
     layout: surgeist_text::Layout,
+    inline_boxes: crate::text_layout::AdmittedInlineBoxes,
 }
 
 impl<Node: Copy> PlacedTextOutput<Node> {
-    pub(crate) fn new(container: Node, nodes: Vec<Node>, layout: surgeist_text::Layout) -> Self {
+    pub(crate) fn new(
+        container: Node,
+        nodes: Vec<Node>,
+        layout: surgeist_text::Layout,
+        inline_boxes: crate::text_layout::AdmittedInlineBoxes,
+    ) -> Self {
         Self {
             container,
             nodes,
             layout,
+            inline_boxes,
         }
     }
     #[must_use]
@@ -1475,23 +1504,232 @@ impl<Node: Copy> PlacedTextOutput<Node> {
     pub fn layout(&self) -> &surgeist_text::Layout {
         &self.layout
     }
+
+    /// Complete-body fragment identity attached to this exact placed binding.
+    /// None means not requested; a demanded result can have no placed pieces.
+    #[must_use]
+    pub fn inline_box_fragments(&self) -> Option<PlacedInlineBoxFragments<'_>> {
+        self.inline_boxes
+            .family()
+            .map(|family| PlacedInlineBoxFragments {
+                layout: &self.layout,
+                family,
+            })
+    }
 }
 
+/// Borrowed Text-owned piece readback from one exact Layout binding result.
+#[derive(Clone, Copy)]
+pub struct PlacedInlineBoxFragments<'layout> {
+    layout: &'layout surgeist_text::Layout,
+    family: &'layout surgeist_text::PreparedInlineBoxFamily,
+}
+impl PlacedInlineBoxFragments<'_> {
+    #[must_use]
+    pub fn family(&self) -> &surgeist_text::PreparedInlineBoxFamily {
+        self.family
+    }
+    pub fn pieces(&self) -> impl Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>> + '_ {
+        self.layout.inline_box_pieces()
+    }
+}
+
+/// Normal border geometry retained by its actual placement producer.
+/// Metadata has no content box; a real zero-area box retains its zero rectangle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct NormalGeometryOf<S: LayoutScalar> {
+    pub(crate) location: Point<S>,
+    pub(crate) size: Size<S>,
+    pub(crate) content_box: Option<crate::ScrollRectOf<S>>,
+}
+
+impl<S: LayoutScalar> NormalGeometryOf<S> {
+    pub(crate) const fn box_geometry(
+        location: Point<S>,
+        size: Size<S>,
+        content_box: crate::ScrollRectOf<S>,
+    ) -> Self {
+        Self {
+            location,
+            size,
+            content_box: Some(content_box),
+        }
+    }
+
+    pub(crate) const fn metadata(location: Point<S>, size: Size<S>) -> Self {
+        Self {
+            location,
+            size,
+            content_box: None,
+        }
+    }
+}
+
+/// Final used normal content extent before publication corner rounding.
+/// Issued only from accepted measured geometry, never canonical pixel extents.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MeasuredInsetBasisOf<S: LayoutScalar> {
+    size: Size<S>,
+}
+
+impl<S: LayoutScalar> MeasuredInsetBasisOf<S> {
+    pub(crate) const fn from_used_content_size(size: Size<S>) -> Self {
+        Self { size }
+    }
+
+    pub(crate) const fn size(self) -> Size<S> {
+        self.size
+    }
+}
+
+/// The actual paired corner evaluation retained in an accepted atomic source.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CanonicalAtomicGeometryOf<S: LayoutScalar> {
+    pub(crate) visual_readback_offset: Point<f64>,
+    pub(crate) measured_normal: NormalGeometryOf<S>,
+    pub(crate) normal: NormalGeometryOf<S>,
+    pub(crate) normal_origin: Point<f64>,
+    pub(crate) visual_origin: Point<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AtomicReadbackPhase {
+    Pending,
+    Finalized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum GeometryStateOf<S: LayoutScalar> {
+    OrdinaryUnrounded {
+        measured_normal: NormalGeometryOf<S>,
+    },
+    OrdinaryCanonical {
+        normal: NormalGeometryOf<S>,
+    },
+    CanonicalAtomic {
+        measured_normal: NormalGeometryOf<S>,
+        normal: NormalGeometryOf<S>,
+        normal_origin: Point<f64>,
+        visual_origin: Point<f64>,
+        readback: AtomicReadbackPhase,
+    },
+}
+
+impl<S: LayoutScalar> GeometryStateOf<S> {
+    pub(crate) const fn is_unrounded(self) -> bool {
+        matches!(
+            self,
+            Self::OrdinaryUnrounded { .. }
+                | Self::CanonicalAtomic {
+                    readback: AtomicReadbackPhase::Pending,
+                    ..
+                }
+        )
+    }
+}
+
+/// One node's coupled geometry and private rounding custody.
+/// Public readback exposes the visual packet; warm restoration retains this
+/// complete opaque entry rather than reconstructing it from that packet.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
     node: Node,
     output: NodeOutputOf<S>,
+    geometry: GeometryStateOf<S>,
 }
 
 pub type LayoutOutputEntry<Node> = LayoutOutputEntryOf<Node, DefaultScalar>;
 
-impl<Node, S> LayoutOutputEntryOf<Node, S>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    pub(crate) const fn new(node: Node, output: NodeOutputOf<S>) -> Self {
-        Self { node, output }
+impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
+    pub(crate) const fn ordinary_unrounded(
+        node: Node,
+        measured_normal: NormalGeometryOf<S>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::OrdinaryUnrounded { measured_normal },
+        }
+    }
+
+    pub(crate) const fn ordinary_canonical(
+        node: Node,
+        normal: NormalGeometryOf<S>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::OrdinaryCanonical { normal },
+        }
+    }
+
+    pub(crate) const fn canonical_atomic(
+        node: Node,
+        measured_normal: NormalGeometryOf<S>,
+        normal: NormalGeometryOf<S>,
+        normal_origin: Point<f64>,
+        visual_origin: Point<f64>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                normal,
+                normal_origin,
+                visual_origin,
+                readback: AtomicReadbackPhase::Pending,
+            },
+        }
+    }
+
+    /// Extract measured custody only from a current unrounded stage. The outer
+    /// Option distinguishes wrong phase from genuine non-box metadata.
+    pub(crate) fn measured_inset_basis(&self) -> Option<Option<MeasuredInsetBasisOf<S>>> {
+        let measured = match self.geometry {
+            GeometryStateOf::OrdinaryUnrounded { measured_normal }
+            | GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                readback: AtomicReadbackPhase::Pending,
+                ..
+            } => measured_normal,
+            _ => return None,
+        };
+        Some(
+            measured
+                .content_box
+                .map(|rect| MeasuredInsetBasisOf::from_used_content_size(rect.size())),
+        )
+    }
+
+    pub(crate) const fn geometry_state(&self) -> GeometryStateOf<S> {
+        self.geometry
+    }
+
+    pub(crate) const fn finalized_atomic(self, output: NodeOutputOf<S>) -> Option<Self> {
+        match self.geometry {
+            GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                normal,
+                normal_origin,
+                visual_origin,
+                readback: AtomicReadbackPhase::Pending,
+            } => Some(Self {
+                output,
+                geometry: GeometryStateOf::CanonicalAtomic {
+                    measured_normal,
+                    normal,
+                    normal_origin,
+                    visual_origin,
+                    readback: AtomicReadbackPhase::Finalized,
+                },
+                ..self
+            }),
+            _ => None,
+        }
     }
 
     #[must_use]
@@ -1574,6 +1812,16 @@ where
     }
 }
 
+#[derive(Clone)]
+struct NativeFamilyContext<Node>(std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>);
+impl<Node> core::fmt::Debug for NativeFamilyContext<Node> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("NativeFamilyContext")
+            .field("families", &self.0.families.len())
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
@@ -1584,6 +1832,9 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     cache_clear_entries: Vec<LayoutCacheClearEntry<Node>>,
     invalidated_nodes: Vec<Node>,
     placed_text: Vec<PlacedTextOutput<Node>>,
+    native_families: Option<NativeFamilyContext<Node>>,
+    native_runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+    native_completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
 }
 
 pub type CompletedLayoutBatch<Node> = CompletedLayoutBatchOf<Node, DefaultScalar>;
@@ -1610,12 +1861,63 @@ where
             cache_clear_entries,
             invalidated_nodes,
             placed_text: Vec::new(),
+            native_families: None,
+            native_runs: Vec::new(),
+            native_completions: Vec::new(),
         }
     }
 
     pub(crate) fn with_placed_text(mut self, placed_text: Vec<PlacedTextOutput<Node>>) -> Self {
         self.placed_text = placed_text;
         self
+    }
+
+    pub(crate) fn with_native_inline_boxes(
+        mut self,
+        context: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
+        runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+        completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
+    ) -> Self {
+        self.native_families = context
+            .filter(|context| !context.families.is_empty())
+            .map(NativeFamilyContext);
+        self.native_runs = runs;
+        self.native_completions = completions;
+        self
+    }
+
+    /// Families with an actual successful formatter execution, including genuine
+    /// empty completion with no pieces. Order is completion order, not source or
+    /// painting order. Mere admission does not certify formatter execution.
+    pub fn native_inline_box_families(
+        &self,
+    ) -> impl Iterator<Item = crate::NativeInlineBoxFamily<Node>> + '_
+    where
+        Node: Copy + Eq,
+    {
+        self.native_completions.iter().map(|completion| {
+            self.native_families
+                .as_ref()
+                .expect("observed native formatter retains its context")
+                .0
+                .families[completion.family]
+                .clone()
+        })
+    }
+
+    /// Borrowed native pieces from actual accepted execution, without inventing
+    /// Text fragments or physical rectangles from native scalar observations.
+    pub fn native_inline_box_pieces(
+        &self,
+    ) -> impl Iterator<Item = crate::NativeInlineBoxPieceView<'_, Node, S>> + '_
+    where
+        Node: Copy + Eq,
+    {
+        let families = self
+            .native_families
+            .as_ref()
+            .map_or(&[][..], |owner| owner.0.families.as_slice());
+        crate::inline_wrapping::family::pieces(families, &self.native_runs)
     }
 
     /// Actual Text layouts retained in the same atomic node/cache batch.

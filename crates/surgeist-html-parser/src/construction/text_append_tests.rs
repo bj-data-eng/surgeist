@@ -1,6 +1,11 @@
 use super::tests::{control, limits, native_text, owned_text, storage_zero};
 use super::*;
 use crate::HtmlParseCancellation;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode,
+    construction::{HtmlElement, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn aggregate(c: &mut ParseControl) -> (ParserArenaSession, ParserNode, ParserNode) {
     let mut session = ParserArenaSession::new(c, RootKind::Fragment).unwrap();
@@ -21,7 +26,7 @@ fn aggregate(c: &mut ParseControl) -> (ParserArenaSession, ParserNode, ParserNod
 
 fn exact_current_ticket(session: &ParserArenaSession, c: &mut ParseControl, node: &ParserNode) {
     let storage = session.active().unwrap();
-    let slot = storage.payloads.append_fields[node.index].text.unwrap();
+    let slot = storage.payloads.node_joins[node.index].text().unwrap();
     let RetainedPayload::String {
         value,
         allocation,
@@ -90,19 +95,31 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
                 expected.extend_from_slice(&incoming);
                 assert_eq!(native_text(&session, &node), expected);
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     302
                 );
             }
             Err(SessionError::Stop(
-                stop @ ParseStop::LimitExceeded {
+                stop @ HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 },
             )) => {
                 assert_eq!(native_text(&session, &node), [65, 66]);
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     2
                 );
                 let first = c.first_stop_usage().unwrap().clone();
@@ -111,7 +128,7 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
                         .resource(HtmlParseResource::ManagedUtf16Units)
                         .current;
                 let work = c.usage().resource(HtmlParseResource::WorkCredits);
-                assert_eq!(c.charge(WorkCategory::StateStep, 1), Err(stop));
+                assert_eq!(c.charge(HtmlParseWorkCategory::StateStep, 1), Err(stop));
                 assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
                 assert_eq!(c.first_stop_usage(), Some(&first));
             }
@@ -166,12 +183,18 @@ fn cancellation_after_real_tail_chunk_keeps_old_text_and_actual_growth_and_first
         session
             .insert_text(&mut c, &root, None, &mut input, None)
             .err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert!(input.is_none());
     assert_eq!(native_text(&session, &node), [65, 66]);
     assert_eq!(
-        session.active().unwrap().construction.usage().utf16_units(),
+        session
+            .active()
+            .unwrap()
+            .construction
+            .test_storage()
+            .usage()
+            .utf16_units(),
         2
     );
     let first = c.first_stop_usage().unwrap().clone();
@@ -238,7 +261,9 @@ fn external_weak_preservation_and_detached_append_keep_current_ticket_and_histor
 
 #[test]
 fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy_and_lookup_work() {
-    use crate::parser::tokenizer::{Tokenizer, TokenizerPull, states::State, token::Event};
+    use crate::parser::tokenizer::{
+        Tokenizer, TokenizerPull, states::HtmlTokenizerState, token::Event,
+    };
     for repetitions in [8usize, 16, 32, 64, 128] {
         for utf16 in [false, true] {
             let source = if utf16 {
@@ -285,9 +310,9 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                 session.initialize_parse_evidence(&mut c, &source).unwrap();
                 let root = session.root(&mut c).unwrap();
                 let mut lexer = if progressive {
-                    Tokenizer::progressive(&source, State::Data, None, &mut c).unwrap()
+                    Tokenizer::progressive(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
                 } else {
-                    Tokenizer::new(&source, State::Data, None, &mut c).unwrap()
+                    Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
                 };
                 let cuts: Vec<_> = if !progressive {
                     vec![source.len()]
@@ -342,17 +367,19 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                             TokenizerPull::Event(Event::Token(event)) => {
                                 match event.into_token(&mut c).unwrap().kind {
                                     TokenKind::Text(text) => {
-                                        let before_copy = c.usage().work(WorkCategory::CopyByte);
+                                        let before_copy =
+                                            c.usage().work(HtmlParseWorkCategory::CopyByte);
                                         let before_visits =
-                                            c.usage().work(WorkCategory::RecordVisit);
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
                                         let inserted = session
                                             .insert_text(&mut c, &root, None, &mut Some(text), None)
                                             .unwrap()
                                             .unwrap();
-                                        copies +=
-                                            c.usage().work(WorkCategory::CopyByte) - before_copy;
-                                        visits += c.usage().work(WorkCategory::RecordVisit)
-                                            - before_visits;
+                                        copies += c.usage().work(HtmlParseWorkCategory::CopyByte)
+                                            - before_copy;
+                                        visits +=
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                                                - before_visits;
                                         if let Some(old) = &node {
                                             assert_eq!(inserted._node.index, old.index);
                                         }
@@ -377,12 +404,14 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                                         }
                                         old_capacity = capacity;
                                         old_address = address;
-                                        let before = c.usage().work(WorkCategory::RecordVisit);
+                                        let before =
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
                                         storage
                                             .field_slot(&mut c, StringLocation::Text(node.index))
                                             .unwrap();
                                         lookup_visits +=
-                                            c.usage().work(WorkCategory::RecordVisit) - before;
+                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                                                - before;
                                     }
                                     TokenKind::Eof => {}
                                     _ => panic!("text-only source"),
@@ -416,7 +445,7 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                     "geometric actual capacity relocation bound"
                 );
                 let storage = session.active().unwrap();
-                let slot = storage.payloads.append_fields[node.index].text.unwrap();
+                let slot = storage.payloads.node_joins[node.index].text().unwrap();
                 let RetainedPayload::String {
                     origins: Some(group),
                     ..
@@ -493,7 +522,7 @@ fn text_append_preserving_copy_has_exact_managed_boundary_and_retains_failed_buf
         } else {
             assert_eq!(
                 result.err(),
-                Some(SessionError::Stop(ParseStop::LimitExceeded {
+                Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedUtf16Units,
                     limit: 3,
                     current: 2,
@@ -523,4 +552,242 @@ fn text_append_preserving_copy_has_exact_managed_boundary_and_retains_failed_buf
         storage_zero(&c);
         assert_eq!(c.first_stop_usage(), first.as_ref());
     }
+}
+
+// Characterization of existing behaviour after B07 (a malformed reserve
+// request from the producer is a typed stop, not a panic); not RED against an
+// earlier commit. The capacity is real, observed from an actual append
+// operation; only the requested size is made impossible.
+#[test]
+fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatch() {
+    use surgeist_html::bounded::construction::HtmlConstructionTextAppend as Append;
+    let mut c = control();
+    let (mut session, _root, node) = aggregate(&mut c);
+    let storage = session.active_mut().unwrap();
+    let slot = storage.payloads.node_joins[node.index].text().unwrap();
+    let RetainedPayload::String {
+        value, allocation, ..
+    } = mem::replace(&mut storage.payloads.values[slot], RetainedPayload::Retired)
+    else {
+        panic!("registered text")
+    };
+    let mut allocation = allocation;
+    c.suspend_text_append_ticket(&mut allocation, &value)
+        .unwrap();
+    // Without the registry's strong handle the original is exclusive, as it is
+    // when the real append starts.
+    drop(value);
+    let mut operation = Some(Append::begin(
+        storage.construction.owner.take().unwrap(),
+        node.handle.clone(),
+        DocumentString::from("C"),
+    ));
+    let before = {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let observation = action.perform(None).unwrap();
+        let before = observation.capacity().unwrap();
+        observation.accept();
+        before
+    };
+    assert_eq!(before.initialized_len(), 2);
+    let stop = c
+        .prepare_text_append_reserve(&allocation, before, before.initialized_len() - 1)
+        .unwrap_err();
+    let mismatch = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::CapacityMismatch,
+    );
+    assert_eq!(stop, mismatch);
+    assert_eq!(c.stop(), Some(mismatch));
+    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    storage.construction.owner = Some(owner);
+    let value = match storage.construction.node_at(node.index).unwrap().kind() {
+        HtmlNodeKind::Text(value) => value.clone(),
+        _ => panic!("native text"),
+    };
+    storage.payloads.values[slot] = RetainedPayload::String {
+        value,
+        allocation,
+        origins: None,
+        location: StringLocation::Text(node.index),
+    };
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+// Impossible states met while a text append commits are reported as the
+// controller's first stop with every ticket and value of the append handed
+// back, never as a panic or a dropped ticket. Each test forces the state
+// through crate-private access or a controller hook, asserts the exact typed
+// error and that the stop is latched first, and that the session's own release
+// drains every resource afterwards.
+fn capacity_mismatch() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::CapacityMismatch)
+}
+
+fn registry_row() -> HtmlParseStop {
+    HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
+}
+
+#[test]
+fn a_refused_ticket_restoration_after_a_preserving_append_commits_hands_every_ticket_back() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    // One text node whose string is shared appends through a new backing.
+    let mut first = Some(owned_text(&mut c, &[65, 66]));
+    let node = session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap()
+        .unwrap()
+        ._node;
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.refuse_next_text_append_restore();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(capacity_mismatch())));
+    assert_eq!(c.stop(), Some(capacity_mismatch()));
+    let _ = node;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_refused_ticket_restoration_after_an_in_place_append_commits_hands_every_ticket_back() {
+    let mut c = control();
+    let (mut session, root, _node) = aggregate(&mut c);
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.refuse_next_text_append_restore();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(capacity_mismatch())));
+    assert_eq!(c.stop(), Some(capacity_mismatch()));
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_stopped_append_releases_its_buffer_when_the_terminal_owner_is_already_taken() {
+    let selected = limits()
+        .into_builder()
+        .managed_utf16_units(3)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let mut first = Some(owned_text(&mut c, &[65]));
+    session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap();
+    // A terminal owner from an earlier stopped append already holds the slot.
+    let value = DocumentString::default();
+    let allocation = c.prepare_text_append_allocation().unwrap();
+    session.active_mut().unwrap().failed_text_append =
+        Some(text_append::FailedTextAppend::held(value, allocation));
+    let mut next = Some(owned_text(&mut c, &[66]));
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    let limit = HtmlParseStop::LimitExceeded {
+        resource: HtmlParseResource::ManagedUtf16Units,
+        limit: 3,
+        current: 2,
+        requested_delta: 2,
+    };
+    assert_eq!(result.err(), Some(SessionError::Stop(limit)));
+    assert_eq!(c.stop(), Some(limit));
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn appending_while_an_attribute_edit_holds_the_storage_reports_the_registry_row() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let element = session
+        .allocate_element(
+            &mut c,
+            HtmlElement::new(
+                QualifiedName::new(Namespace::none(), None, "x"),
+                OrderedAttributes::default(),
+            ),
+        )
+        .unwrap();
+    session.insert(&mut c, &root, &element, None, None).unwrap();
+    let mut first = Some(owned_text(&mut c, &[65]));
+    session
+        .insert_text(&mut c, &element, None, &mut first, None)
+        .unwrap();
+    // An attribute edit holds the storage, so the append cannot take it.
+    let storage = session.active_mut().unwrap();
+    storage
+        .construction
+        .begin_attributes(
+            &mut c,
+            element.index,
+            HtmlConstructionAttributeEditMode::Slots,
+        )
+        .unwrap();
+    let mut next = Some(owned_text(&mut c, &[66]));
+    let result = session.insert_text(&mut c, &element, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(registry_row())));
+    assert_eq!(c.stop(), Some(registry_row()));
+    // Nothing was taken from the registry before the refusal.
+    let storage = session.active_mut().unwrap();
+    storage.construction.abort_attributes(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+// Characterization: a failure of the pending backing's initialization comes
+// after its ticket is prepared and before any backing exists, so the ticket is
+// the only thing the stopped append holds. The current code already hands it
+// back; this test keeps that arm from regressing.
+#[test]
+fn a_failed_backing_initialization_keeps_the_stop_and_releases_the_prepared_ticket() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    // The first string is shared, so the append needs a new backing.
+    let mut first = Some(owned_text(&mut c, &[65, 66]));
+    session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap();
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.fail_next_text_append_backing();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    let failed = HtmlParseStop::AllocationFailed {
+        resource: HtmlParseResource::ManagedCapacityBytes,
+        layout_bytes: 0,
+    };
+    assert_eq!(result.err(), Some(SessionError::Stop(failed)));
+    assert_eq!(c.stop(), Some(failed));
+    assert!(session.active_mut().unwrap().failed_text_append.is_none());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+/// The dimensions an append operation observes on the real text of a node, as
+/// the controller receives them. Only the observation is kept: the session that
+/// produced it is released here, so the value carries no custody.
+pub(crate) fn observed_capacity()
+-> surgeist_html::bounded::construction::HtmlConstructionTextAppendCapacity {
+    use surgeist_html::bounded::construction::HtmlConstructionTextAppend as Append;
+    let mut c = control();
+    let (mut session, _root, node) = aggregate(&mut c);
+    let storage = session.active_mut().unwrap();
+    let mut operation = Some(Append::begin(
+        storage.construction.owner.take().unwrap(),
+        node.handle.clone(),
+        DocumentString::from("C"),
+    ));
+    let capacity = {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let observation = action.perform(None).unwrap();
+        let capacity = observation.capacity().unwrap();
+        observation.accept();
+        capacity
+    };
+    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    storage.construction.owner = Some(owner);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+    capacity
 }

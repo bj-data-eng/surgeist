@@ -4,10 +4,12 @@
 // Surgeist owns source-unit grouping, checked identities, geometry and atomic publication.
 // Exact origin and modifications: ../docs/accessibility-provenance.md.
 
+mod cells;
+
 #[cfg(test)]
 mod inter_character;
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, ops::Range as UnitIndices, sync::Arc};
 
 use accesskit::{Node, NodeId, Role, TextDirection, TextPosition, TextSelection, TreeUpdate};
 use skrifa::{
@@ -25,6 +27,7 @@ use crate::{
 pub struct Accessibility {
     binding: Option<Binding>,
     spans: Vec<AccessSpan>,
+    characters: Vec<Range>,
     next_id: Option<u64>,
 }
 
@@ -34,17 +37,33 @@ struct AccessSpan {
     empty_line: Option<usize>,
     id: NodeId,
     hard_break: bool,
+    characters: UnitIndices<usize>,
+    cell: Option<usize>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 struct NodeDescriptor {
     range: Range,
     empty_line: Option<usize>,
+    characters: UnitIndices<usize>,
+    cell: Option<usize>,
+    cell_line: Option<usize>,
+    word_start: bool,
 }
 
 impl NodeDescriptor {
-    fn key(self) -> (usize, usize, Option<usize>) {
-        (self.range.start, self.range.end, self.empty_line)
+    fn new(range: Range, characters: UnitIndices<usize>) -> Self {
+        Self {
+            range,
+            empty_line: None,
+            characters,
+            cell: None,
+            cell_line: None,
+            word_start: false,
+        }
+    }
+    fn key(&self) -> (usize, usize, Option<usize>, Option<usize>) {
+        (self.range.start, self.range.end, self.empty_line, self.cell)
     }
 }
 
@@ -54,6 +73,7 @@ impl Accessibility {
         Self {
             binding: None,
             spans: Vec::new(),
+            characters: Vec::new(),
             next_id: Some(first_node_id),
         }
     }
@@ -97,33 +117,47 @@ impl Metadata {
     }
 
     fn apply(&self, node: &mut Node, pieces: &[&Fragment]) {
-        if pieces
-            .iter()
-            .all(|piece| piece.metadata.family == self.family)
-            && let Some(family) = &self.family
+        if pieces.iter().all(|piece| {
+            piece
+                .metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.family == self.family)
+        }) && let Some(family) = &self.family
         {
             node.set_font_family(family.clone());
         }
-        if pieces.iter().all(|piece| piece.metadata.size == self.size) {
+        if pieces.iter().all(|piece| {
+            piece
+                .metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.size == self.size)
+        }) {
             node.set_font_size(self.size);
         }
-        if pieces
-            .iter()
-            .all(|piece| piece.metadata.weight == self.weight)
-        {
+        if pieces.iter().all(|piece| {
+            piece
+                .metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.weight == self.weight)
+        }) {
             node.set_font_weight(self.weight);
         }
         if self.italic
-            && pieces
-                .iter()
-                .all(|piece| piece.metadata.italic == self.italic)
+            && pieces.iter().all(|piece| {
+                piece
+                    .metadata
+                    .as_ref()
+                    .is_some_and(|metadata| metadata.italic == self.italic)
+            })
         {
             node.set_italic();
         }
-        if pieces
-            .iter()
-            .all(|piece| piece.metadata.locale == self.locale)
-            && let Some(locale) = &self.locale
+        if pieces.iter().all(|piece| {
+            piece
+                .metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.locale == self.locale)
+        }) && let Some(locale) = &self.locale
         {
             node.set_language(locale.clone());
         }
@@ -137,7 +171,7 @@ struct Fragment {
     rtl: bool,
     orientation: crate::LineOrientation,
     word: bool,
-    metadata: Metadata,
+    metadata: Option<Metadata>,
 }
 
 struct LocaleRun {
@@ -352,19 +386,75 @@ fn validate_binding(
     Ok(())
 }
 
+fn span_stop(state: &Accessibility, span: &AccessSpan, source: usize) -> Option<usize> {
+    if span.range.is_empty() {
+        return (span.range.start == source).then_some(0);
+    }
+    let characters = state.characters.get(span.characters.clone())?;
+    let index = characters.partition_point(|range| range.end <= source);
+    let exact = characters
+        .get(index)
+        .is_some_and(|range| range.start == source)
+        || (index == span.characters.len() && span.range.end == source);
+    exact.then_some(if span.hard_break && index == span.characters.len() {
+        index.saturating_sub(1)
+    } else {
+        index
+    })
+}
 fn access_stop(state: &Accessibility, unit: usize, affinity: Affinity) -> Option<TextPosition> {
+    // Only a real multi-character carrier adds interior host positions. Ordinary
+    // boundary preference (including empty-line rows) retains its existing owner.
+    if let Some((span, character_index)) = state.spans.iter().find_map(|span| {
+        (span.characters.len() > 1 && span.range.start < unit && unit < span.range.end)
+            .then(|| span_stop(state, span, unit).map(|index| (span, index)))
+            .flatten()
+    }) {
+        return Some(TextPosition {
+            node: span.id,
+            character_index,
+        });
+    }
     let span = match affinity {
         Affinity::After => state.spans.iter().find(|span| span.range.start == unit),
         Affinity::Before => state.spans.iter().rev().find(|span| span.range.end == unit),
     }
     .or_else(|| state.spans.iter().rev().find(|span| span.range.end == unit))
     .or_else(|| state.spans.iter().find(|span| span.range.start == unit))?;
-    let character_index =
-        usize::from(unit == span.range.end && !span.range.is_empty() && !span.hard_break);
     Some(TextPosition {
         node: span.id,
-        character_index,
+        character_index: span_stop(state, span, unit)?,
     })
+}
+
+/// The source side, not a Cell envelope or a physical caret, owns dispatch.
+fn placed_source_stop(
+    layout: &Layout,
+    state: &Accessibility,
+    index: usize,
+    affinity: Affinity,
+) -> usize {
+    let cell = state
+        .spans
+        .iter()
+        .filter(|span| span.cell.is_some())
+        .any(|span| {
+            state.characters[span.characters.clone()]
+                .iter()
+                .any(|range| match affinity {
+                    Affinity::Before => range.start < index && index <= range.end,
+                    Affinity::After => range.start <= index && index < range.end,
+                })
+        });
+    if cell {
+        crate::engine::editing::caret_at(
+            &layout.inner.prepared.analyzed.host_projection.graphemes,
+            index,
+            affinity,
+        )
+    } else {
+        layout.inner.interaction.caret(index, affinity)
+    }
 }
 
 /// AX inventories actual authored custody, independently from the source
@@ -417,18 +507,6 @@ fn update(
     parent: NodeId,
     focus: NodeId,
 ) -> Result<TreeUpdate> {
-    // This request observes the complete placement. Refuse before constructing
-    // nodes or touching prior IDs/bindings; analyzed-source projection is separate.
-    if let Projection::Placed(layout, _) = projection {
-        for (line, placed) in layout.inner.lines.iter().enumerate() {
-            if let Some((cell, _)) = placed.finalized.data.cells.iter().enumerate().next() {
-                return Err(ax_error(ErrorDetail::UnsupportedAccessibilityCell {
-                    line,
-                    cell,
-                }));
-            }
-        }
-    }
     let analyzed = projection.analyzed();
     let host_text = original_host_text(analyzed)?;
     let locales = LocaleIndex::new(&analyzed.styles);
@@ -441,6 +519,12 @@ fn update(
         for (line_index, line) in layout.inner.lines.iter().enumerate() {
             let data = &line.finalized.data;
             for cluster in &data.clusters {
+                if matches!(
+                    cluster.frame,
+                    crate::engine::layout::data::FinalizedRunFrame::Cell(_)
+                ) {
+                    continue;
+                }
                 let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
@@ -453,61 +537,82 @@ fn update(
                     orientation: line.orientation,
                     word: cluster.boundary >= crate::engine::analysis::Boundary::Word
                         && !cluster.whitespace.is_space_or_nbsp(),
-                    metadata: run.map_or_else(
-                        || Metadata {
-                            family: None,
-                            size: line.finalized.selected.prepared.styles[cluster.style]
-                                .style
-                                .font_size,
-                            weight: line.finalized.selected.prepared.styles[cluster.style]
-                                .style
-                                .font_weight
-                                .value(),
-                            italic: matches!(
-                                line.finalized.selected.prepared.styles[cluster.style]
+                    metadata: Some(run.map_or_else(
+                        || {
+                            Metadata {
+                                family: None,
+                                size: line.finalized.selected.prepared.styles[cluster.style]
                                     .style
-                                    .font_style,
-                                fontique::FontStyle::Italic
-                            ),
-                            locale: locales.uniform(cluster.source),
+                                    .font_size,
+                                weight: line.finalized.selected.prepared.styles[cluster.style]
+                                    .style
+                                    .font_weight
+                                    .value(),
+                                italic: matches!(
+                                    line.finalized.selected.prepared.styles[cluster.style]
+                                        .style
+                                        .font_style,
+                                    fontique::FontStyle::Italic
+                                ),
+                                locale: locales.uniform(cluster.source),
+                            }
                         },
                         |run| Metadata::from_run(run, locales.uniform(cluster.source)),
-                    ),
+                    )),
                 });
             }
         }
+        cells::fragments(layout, &locales, &mut fragments)?;
     }
-    let mut descriptors: Vec<_> = match projection {
-        Projection::Analyzed(_) => analyzed
-            .host_projection
-            .graphemes
-            .windows(2)
-            .flat_map(|pair| {
-                analyzed
-                    .paragraph
-                    .intersections(Range::new(pair[0], pair[1]))
-            })
-            .map(|range| NodeDescriptor {
-                range,
-                empty_line: None,
-            })
-            .collect(),
-        Projection::Placed(layout, _) => placed_source_ranges(layout)
-            .into_iter()
-            .flat_map(|range| analyzed.paragraph.intersections(range))
-            .map(|range| NodeDescriptor {
-                range,
-                empty_line: None,
-            })
-            .collect(),
-    };
+    // One flat inventory owns the actual original units. Descriptors and spans
+    // borrow checked index intervals rather than allocating one Vec per unit.
+    let mut characters = Vec::new();
+    match projection {
+        Projection::Analyzed(_) => {
+            for range in analyzed
+                .host_projection
+                .graphemes
+                .windows(2)
+                .flat_map(|pair| {
+                    analyzed
+                        .paragraph
+                        .intersections(Range::new(pair[0], pair[1]))
+                })
+            {
+                if !range.is_empty() {
+                    cells::push(&mut characters, range)?;
+                }
+            }
+        }
+        Projection::Placed(layout, _) => {
+            for range in placed_source_ranges(layout)
+                .into_iter()
+                .flat_map(|range| analyzed.paragraph.intersections(range))
+            {
+                if !range.is_empty() {
+                    cells::push(&mut characters, range)?;
+                }
+            }
+        }
+    }
+    characters.sort_unstable_by_key(|range| (range.start, range.end));
+    characters.dedup();
+    let mut descriptors = Vec::new();
+    cells::reserve(&mut descriptors, characters.len())?;
+    for (index, &range) in characters.iter().enumerate() {
+        let end = index.checked_add(1).ok_or_else(cells::capacity)?;
+        cells::push(&mut descriptors, NodeDescriptor::new(range, index..end))?;
+    }
     if matches!(projection, Projection::Analyzed(_))
         && analyzed.paragraph.extent(&analyzed.processed).is_empty()
     {
-        descriptors.push(NodeDescriptor {
-            range: analyzed.paragraph.extent(&analyzed.processed),
-            empty_line: None,
-        });
+        cells::push(
+            &mut descriptors,
+            NodeDescriptor::new(
+                analyzed.paragraph.extent(&analyzed.processed),
+                characters.len()..characters.len(),
+            ),
+        )?;
     }
     for line in &lines {
         let generated = match projection {
@@ -526,13 +631,21 @@ fn update(
             Projection::Analyzed(_) => false,
         };
         if line.range().is_empty() && !generated {
-            descriptors.push(NodeDescriptor {
-                range: line.range(),
-                empty_line: Some(line.index()),
-            });
+            let mut descriptor =
+                NodeDescriptor::new(line.range(), characters.len()..characters.len());
+            descriptor.empty_line = Some(line.index());
+            cells::push(&mut descriptors, descriptor)?;
         }
     }
-    descriptors.sort_by_key(|descriptor| descriptor.key());
+    descriptors = cells::descriptors(
+        analyzed,
+        match projection {
+            Projection::Placed(layout, _) => Some(layout),
+            Projection::Analyzed(_) => None,
+        },
+        descriptors,
+    )?;
+    descriptors.sort_by_key(NodeDescriptor::key);
     descriptors.dedup();
     let same = state
         .binding
@@ -542,7 +655,12 @@ fn update(
         state
             .spans
             .iter()
-            .map(|span| ((span.range.start, span.range.end, span.empty_line), span.id))
+            .map(|span| {
+                (
+                    (span.range.start, span.range.end, span.empty_line, span.cell),
+                    span.id,
+                )
+            })
             .collect()
     } else {
         BTreeMap::new()
@@ -573,12 +691,20 @@ fn update(
         let start = analyzed.host_projection.byte(range.start).0;
         let end = analyzed.host_projection.byte(range.end).0;
         let text = &host_text[start..end];
-        let length = u8::try_from(text.len()).map_err(|_| {
-            ax_error(ErrorDetail::UnsupportedAccessibilityUnit {
-                range,
-                bytes: text.len(),
+        let original_characters = &characters[descriptor.characters.clone()];
+        let lengths = original_characters
+            .iter()
+            .map(|unit| {
+                let bytes = analyzed.host_projection.byte(unit.end).0
+                    - analyzed.host_projection.byte(unit.start).0;
+                u8::try_from(bytes).map_err(|_| {
+                    ax_error(ErrorDetail::UnsupportedAccessibilityUnit {
+                        range: *unit,
+                        bytes,
+                    })
+                })
             })
-        })?;
+            .collect::<Result<Vec<_>>>()?;
         let id = retained.get(&descriptor.key()).copied();
         let id = match id {
             Some(id) => id,
@@ -606,11 +732,12 @@ fn update(
         }
 
         node.set_value(text.to_owned());
-        node.set_character_lengths(if range.is_empty() {
-            Vec::new()
-        } else {
-            vec![length]
-        });
+        node.set_character_lengths(lengths);
+        if descriptor.cell.is_some()
+            && let Some(locale) = locales.uniform(range)
+        {
+            node.set_language(locale);
+        }
         if let Some(first) = pieces.first() {
             let Projection::Placed(_, origin) = projection else {
                 unreachable!("only placed rows have fragments")
@@ -622,9 +749,12 @@ fn update(
                     union(bounds, fragment.bounds)
                 });
             node.set_bounds(host_rect(bounds, origin)?);
-            let direction = pieces.iter().all(|fragment| {
-                fragment.rtl == first.rtl && fragment.orientation == first.orientation
-            });
+            let complete = descriptor.cell.is_none()
+                || cells::metadata_complete(original_characters, &pieces)?;
+            let direction = complete
+                && pieces.iter().all(|fragment| {
+                    fragment.rtl == first.rtl && fragment.orientation == first.orientation
+                });
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
@@ -648,16 +778,19 @@ fn update(
                     (_, false) => TextDirection::LeftToRight,
                 });
             }
-            first.metadata.apply(&mut node, &pieces);
-            if pieces
-                .iter()
-                .any(|fragment| fragment.range.start == range.start && fragment.word)
+            if complete && let Some(metadata) = &first.metadata {
+                metadata.apply(&mut node, &pieces);
+            }
+            if descriptor.cell.is_none()
+                && pieces
+                    .iter()
+                    .any(|fragment| fragment.range.start == range.start && fragment.word)
             {
                 node.set_word_starts(vec![0]);
             }
             // Single fragments have an exact one-dimensional host projection. Multiple
             // pieces remain exact internally; omit optional fields rather than invent precision.
-            if pieces.len() == 1 {
+            if descriptor.cell.is_none() && pieces.len() == 1 {
                 node.set_character_positions(vec![0.0]);
                 let inline_span = if first.orientation != crate::LineOrientation::Horizontal {
                     bounds.size.height
@@ -669,6 +802,10 @@ fn update(
             if one_line {
                 line_nodes.push((first.line, nodes.len()));
             }
+        } else if let Some(line) = descriptor.cell_line {
+            // Source membership knows the actual containing line even when this
+            // original member has no contribution rectangle.
+            line_nodes.push((line, nodes.len()));
         } else if let Some(line) = descriptor.empty_line.and_then(|index| lines.get(index)) {
             let Projection::Placed(_, origin) = projection else {
                 unreachable!("only placed rows have visual lines")
@@ -737,11 +874,16 @@ fn update(
                 });
             }
         }
+        if descriptor.word_start {
+            node.set_word_starts(vec![0]);
+        }
         spans.push(AccessSpan {
             range,
             empty_line: descriptor.empty_line,
             id,
-            hard_break: text.ends_with('\n') || text.ends_with('\r'),
+            hard_break: descriptor.cell.is_none() && (text.ends_with('\n') || text.ends_with('\r')),
+            characters: descriptor.characters,
+            cell: descriptor.cell,
         });
         nodes.push((id, node));
     }
@@ -765,6 +907,7 @@ fn update(
     *state = Accessibility {
         binding: Some(projection.binding()),
         spans,
+        characters,
         next_id,
     };
     Ok(TreeUpdate {
@@ -777,8 +920,8 @@ fn update(
 
 impl Layout {
     /// Builds a complete host update and atomically replaces its source bindings.
-    /// Placed Cells return [`ErrorDetail::UnsupportedAccessibilityCell`] without
-    /// changing the previous binding. Analyzed-source projection is independent.
+    /// Cell geometry enriches original logical units without adding inner physical
+    /// caret stops. Analyzed-source projection remains independently available.
     pub fn accessibility_update(
         &self,
         state: &mut Accessibility,
@@ -799,9 +942,7 @@ impl Layout {
         crate::engine::editing::position::validate_source(&self.inner, cursor)?;
         Ok(access_stop(
             state,
-            self.inner
-                .interaction
-                .caret(cursor.index(), cursor.affinity()),
+            placed_source_stop(self, state, cursor.index(), cursor.affinity()),
             cursor.affinity(),
         ))
     }
@@ -825,7 +966,11 @@ impl Layout {
             let point = self.access_position(state, cursor)?;
             (point, point)
         } else {
-            let range = self.inner.interaction.selection_range(selection.range());
+            let source = selection.range();
+            let range = Range::new(
+                placed_source_stop(self, state, source.start, Affinity::Before),
+                placed_source_stop(self, state, source.end, Affinity::After),
+            );
             selection_positions(state, selection, range)
         };
         Ok(anchor
@@ -936,8 +1081,26 @@ fn host_rect(rect: Rect, origin: Point) -> Result<accesskit::Rect> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    pub(crate) fn assert_cell_original_memberships(
+        layout: &Layout,
+        originals: &[Range],
+        contributes: &[bool],
+    ) {
+        let mut fragments = Vec::new();
+        let locales = LocaleIndex::new(&layout.inner.prepared.analyzed.styles);
+        cells::fragments(layout, &locales, &mut fragments).unwrap();
+        let memberships = fragment_memberships(originals, &fragments);
+        assert_eq!(
+            memberships
+                .iter()
+                .map(|members| !members.is_empty())
+                .collect::<Vec<_>>(),
+            contributes,
+        );
+    }
     use crate::{
         FontCatalogueMode, Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System,
         SystemOptions, Text,

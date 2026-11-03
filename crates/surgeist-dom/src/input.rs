@@ -1,8 +1,11 @@
 //! Native Input intrinsic storage; canonical identities stay with Node/Draft.
-use crate::{DocumentString, DomNode, NodeId};
+use crate::{DomNode, NodeId};
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    HtmlInputFileSelection, HtmlInputFlags, HtmlInputImageHistory, HtmlInputSelection,
-    HtmlInputType,
+    attributes::HtmlInputType,
+    elements::input::{
+        HtmlInputFileSelection, HtmlInputFlags, HtmlInputImageHistory, HtmlInputSelection,
+    },
 };
 
 /// Actual native Input state, independent of its default content attributes.

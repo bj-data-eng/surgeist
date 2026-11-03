@@ -75,7 +75,7 @@ fn clear_trials() {
 
 fn ordinary<S: LayoutScalar>(input: MixedInlineRunInputOf<S>) -> MixedInlineRunReportOf<S> {
     let supplied = project_inline_participants(&input.participants);
-    let available = resolved_inline_available(&input, &supplied);
+    let available = resolved_inline_available(&input, &supplied).unwrap();
     layout_mixed_inline_run_with_formatted_observation(
         input,
         |_, _| LogicalLineBandQueryResultOf {

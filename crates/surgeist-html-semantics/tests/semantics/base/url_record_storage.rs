@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
     HtmlBaseFactsError, HtmlBaseFactsRevision, HtmlBaseProducerId, HtmlBaseUrlRecord,
     HtmlBaseUrlScheme,

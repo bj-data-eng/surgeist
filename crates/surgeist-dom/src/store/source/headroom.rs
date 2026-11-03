@@ -286,7 +286,7 @@ impl Draft {
                 result = restore.draft.run_effects(dom.limits, cancel);
             }
             let dialog_wait = matches!(&result, Err(DomError::DialogProcessingUnavailable { action })
-                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }));
+                if restore.draft.pending_dialog_hook().is_some_and(|pending| pending.action == *action) || matches!(action, surgeist_html::elements::dialog::HtmlDialogAction::RequestWatcherClose { .. }));
             let design_mode_wait = matches!(&result, Err(DomError::DesignModeProcessingUnavailable { step })
                 if restore.draft.pending_design_mode().is_some_and(|pending| pending.step == *step));
             if dialog_wait || design_mode_wait {
@@ -309,7 +309,8 @@ impl Draft {
                 let stopped = if matches!(
                     &result,
                     Err(DomError::DialogProcessingUnavailable {
-                        action: surgeist_html::HtmlDialogAction::RequestWatcherClose { .. }
+                        action:
+                            surgeist_html::elements::dialog::HtmlDialogAction::RequestWatcherClose { .. }
                     })
                 ) {
                     request_close() - FINAL_PUBLICATION
@@ -551,11 +552,21 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let styles =
-            [0; 3].map(|_| batch.create_element_ns(&document, crate::Namespace::html(), "style"));
-        let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
-        let details =
-            [0; 2].map(|_| batch.create_element_ns(&document, crate::Namespace::html(), "details"));
+        let styles = [0; 3].map(|_| {
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style")
+        });
+        let select = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let details = [0; 2].map(|_| {
+            batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "details",
+            )
+        });
         batch.set_attribute(&details[1], "open", "");
         let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         Fixture {
@@ -871,12 +882,16 @@ mod tests {
 
     #[test]
     fn native_two_style_insertion_reserves_both_updates_before_revision_exhaustion() {
-        use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+        use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
         for remaining in [13, 12] {
             let mut f = fixture();
             let mut setup = DomBatch::new();
-            let parent = setup.create_element_ns(f.document, crate::Namespace::html(), "div");
+            let parent = setup.create_element_ns(
+                f.document,
+                surgeist_html::values::Namespace::html(),
+                "div",
+            );
             setup.insert_before(&parent, f.document, None);
             let done = f.dom.apply(setup, &cancel).unwrap();
             let parent = done.created(&parent).unwrap().unwrap();
@@ -886,8 +901,12 @@ mod tests {
                 builder
                     .append_element(
                         &builder.root(),
-                        crate::QualifiedName::new(crate::Namespace::html(), None, "style"),
-                        crate::OrderedAttributes::default(),
+                        surgeist_html::values::QualifiedName::new(
+                            surgeist_html::values::Namespace::html(),
+                            None,
+                            "style",
+                        ),
+                        surgeist_html::values::OrderedAttributes::default(),
                     )
                     .unwrap();
             }
@@ -970,9 +989,16 @@ mod tests {
         for remaining in [7, 6] {
             let mut f = fixture();
             let mut setup = DomBatch::new();
-            let option = setup.create_element_ns(f.document, crate::Namespace::html(), "option");
-            let selectedcontent =
-                setup.create_element_ns(f.document, crate::Namespace::html(), "selectedcontent");
+            let option = setup.create_element_ns(
+                f.document,
+                surgeist_html::values::Namespace::html(),
+                "option",
+            );
+            let selectedcontent = setup.create_element_ns(
+                f.document,
+                surgeist_html::values::Namespace::html(),
+                "selectedcontent",
+            );
             let text = setup.create_text(f.document, "a {}");
             let previous = setup.create_text(f.document, "previous");
             setup.insert_before(&previous, &selectedcontent, None);
@@ -1196,7 +1222,11 @@ mod dialog_occurrence_tests {
         .unwrap();
         let mut create = DomBatch::new();
         let document = create.create_document();
-        let dialog = create.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let dialog = create.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         let done = dom.apply(create, &cancel).unwrap();
         let subject = done.created(&dialog).unwrap().unwrap();
         let mut input = DomBatch::new();

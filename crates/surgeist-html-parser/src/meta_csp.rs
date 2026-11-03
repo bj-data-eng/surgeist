@@ -1,9 +1,19 @@
 //! Explicit caller-supplied processing for original Meta CSP transitions.
 use crate::construction::SessionError;
-use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+use crate::parser::control::{
+    HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, ParseControl,
+};
+use crate::parser::tree_builder::parse::ReturnableCspStorage;
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
-use std::{cell::RefCell, mem::size_of};
-use surgeist_html::*;
+use std::{
+    cell::{Cell, RefCell},
+    mem::size_of,
+};
+use surgeist_html::security::csp::{
+    HtmlCspError, HtmlCspLayout, HtmlCspProcessorProfile, HtmlCspProtocolError, HtmlCspStorage,
+    HtmlCspUnavailable, HtmlMetaCspOutcome, HtmlMetaCspPrepared, HtmlMetaCspProcessor,
+    HtmlMetaCspRequest,
+};
 
 /// Original external failure; no owned native error is erased or stringified.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -12,20 +22,37 @@ pub enum HtmlParseCspFailureKind {
     Failed,
     Cancelled,
     Protocol(HtmlCspProtocolError),
-    Interrupted(ParseStop),
+    Interrupted(HtmlParseStop),
     Parse,
 }
 /// A terminal consuming parse, its native error and original accounting owner.
 /// Backend error custody cannot be extracted separately from this envelope.
 pub struct HtmlParseCspFailure<E> {
-    pub(crate) parse: Option<HtmlParseFailure>,
+    pub(crate) parse: HtmlParseFailure,
     pub(crate) native: Option<E>,
     pub(crate) kind: HtmlParseCspFailureKind,
-    pub(crate) storage: Storage,
+    pub(crate) storage: ReturnableCspStorage,
 }
 impl<E> HtmlParseCspFailure<E> {
+    /// Builds the envelope. Whether the failure can take the provider's storage
+    /// back is settled here, while `cleanup_error` is still readable through
+    /// the envelope, rather than when the envelope is dropped.
+    pub(crate) fn new(
+        mut parse: HtmlParseFailure,
+        native: Option<E>,
+        kind: HtmlParseCspFailureKind,
+        storage: Storage,
+    ) -> Self {
+        let storage = parse.claim_csp_storage(storage);
+        Self {
+            parse,
+            native,
+            kind,
+            storage,
+        }
+    }
     pub fn parse_failure(&self) -> &HtmlParseFailure {
-        self.parse.as_ref().expect("terminal original owner")
+        &self.parse
     }
     pub fn kind(&self) -> HtmlParseCspFailureKind {
         self.kind
@@ -59,12 +86,11 @@ impl<E: std::error::Error + 'static> std::error::Error for HtmlParseCspFailure<E
 impl<E> Drop for HtmlParseCspFailure<E> {
     fn drop(&mut self) {
         drop(self.native.take());
-        if self.storage != Storage::ZERO {
-            self.parse
-                .as_mut()
-                .expect("native error retains original control")
-                .release_csp_storage(self.storage);
-        }
+        // `new` claimed this storage only after the failure's controller was
+        // seen to hold it, and nothing reaches that controller through the
+        // envelope afterwards, so the credit is accepted. Were it not, the
+        // refusal would be latched on a controller dropped with the failure.
+        let _ = self.parse.return_csp_storage(self.storage);
     }
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -100,17 +126,43 @@ impl Storage {
             entries: self.entries.checked_sub(b.entries)?,
         })
     }
-    pub fn acquire(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    fn max(self, b: Self) -> Self {
+        Self {
+            bytes: self.bytes.max(b.bytes),
+            units: self.units.max(b.units),
+            entries: self.entries.max(b.entries),
+        }
+    }
+    fn saturating_sub(self, b: Self) -> Self {
+        Self {
+            bytes: self.bytes.saturating_sub(b.bytes),
+            units: self.units.saturating_sub(b.units),
+            entries: self.entries.saturating_sub(b.entries),
+        }
+    }
+    /// The extra storage to admit for a call and the part of it that overlaps
+    /// the retained result. Admission rises to the largest of the live,
+    /// peak and retained aggregates in every dimension, so the overlap is
+    /// that rise minus the retained aggregate and neither step can underflow.
+    fn overlap(live: Self, peak: Self, next: Self) -> (Self, Self) {
+        let admitted = live.max(peak).max(next);
+        (admitted.saturating_sub(live), admitted.saturating_sub(next))
+    }
+    pub fn acquire(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
-    pub fn release(self, c: &mut ParseControl) {
+    /// Whether `c` holds this much admitted provider storage to credit.
+    pub fn fits(self, c: &ParseControl) -> bool {
+        c.can_release_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
+    }
+    pub fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let owner = c.identity();
         c.release_retained_provider(
             &owner,
             self.bytes as u64,
             self.units as u64,
             self.entries as u64,
-        );
+        )
     }
 }
 /// Complete protocol-owned aggregate. Transferred occurrences already have a
@@ -120,67 +172,81 @@ pub(crate) struct Account {
     pub live: Storage,
     overlap: Storage,
     pub last: Storage,
+    /// Whether the processor admitted or released through this account since
+    /// the retained graph last set `live`. Until then the account differs from
+    /// the graph only by the parser's own accounted calls.
+    processor_touched: bool,
+}
+/// Who asks the account to admit storage. The account is shared by the
+/// processor, through its admission callback, and by the parser's own calls to
+/// the policy owner, and an account that cannot cover a call is a different
+/// failure for each: the processor broke the accounting contract of the service
+/// it was given, or the parser's own accounting disagrees with what it charged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Caller {
+    Parser,
+    Processor,
 }
 impl Account {
-    pub fn settle(&mut self, c: &mut ParseControl) {
-        self.overlap.release(c);
-        self.overlap = Storage::ZERO;
+    /// Sets `live` to the storage the retained graph actually holds.
+    pub fn rebaseline(&mut self, live: Storage) {
+        self.live = live;
+        self.processor_touched = false;
     }
-    pub fn admit(&mut self, c: &mut ParseControl, a: HtmlCspLayout) -> Result<(), ParseStop> {
-        self.settle(c);
+    pub fn settle(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        self.overlap.release(c)?;
+        self.overlap = Storage::ZERO;
+        Ok(())
+    }
+    pub fn admit(
+        &mut self,
+        c: &mut ParseControl,
+        a: HtmlCspLayout,
+        caller: Caller,
+    ) -> Result<(), HtmlParseStop> {
+        self.processor_touched |= caller == Caller::Processor;
+        self.settle(c)?;
         let work = a
             .work_credits()
             .checked_add(a.closing_work().work_credits())
-            .ok_or_else(|| {
-                c.representation::<()>(crate::HtmlParseResource::WorkCredits)
-                    .unwrap_err()
-            })?;
-        c.charge(WorkCategory::ProviderCall, work)?;
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, work)?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self
             .live
             .sub(Storage::from(a.transferred().storage()))
-            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
-        let peak = base.add(Storage::from(a.peak())).ok_or_else(|| {
-            c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
+            .ok_or_else(|| match (caller, self.processor_touched) {
+                // The account differs from the graph only by what the
+                // processor did, once it has acted, whoever finds the gap.
+                (Caller::Parser, false) => c.fail_invariant(HtmlParseInvariant::CapacityMismatch),
+                (Caller::Parser, true) | (Caller::Processor, _) => c.csp_processing_stop(),
+            })?;
+        let peak = base
+            .add(Storage::from(a.peak()))
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
         let next = base
             .add(Storage::from(a.retained().storage()))
-            .ok_or_else(|| {
-                c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
         // Temporarily admit the declared overlap before the native action.
-        let extra = Storage {
-            bytes: peak
-                .bytes
-                .saturating_sub(self.live.bytes)
-                .max(next.bytes.saturating_sub(self.live.bytes)),
-            units: peak
-                .units
-                .saturating_sub(self.live.units)
-                .max(next.units.saturating_sub(self.live.units)),
-            entries: peak
-                .entries
-                .saturating_sub(self.live.entries)
-                .max(next.entries.saturating_sub(self.live.entries)),
-        };
+        let (extra, overlap) = Storage::overlap(self.live, peak, next);
         extra.acquire(c)?;
-        let admitted = self.live.add(extra).expect("checked admitted aggregate");
-        self.overlap = admitted.sub(next).expect("peak covers returned custody");
+        self.overlap = overlap;
         self.live = next;
         self.last = Storage::from(a.retained().storage());
         Ok(())
     }
-    pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
-        self.settle(c);
+    /// Only the processor's release callback releases through the account, so
+    /// storage it never held is the processor's accounting failing.
+    pub fn release(
+        &mut self,
+        c: &mut ParseControl,
+        v: HtmlCspStorage,
+    ) -> Result<(), HtmlParseStop> {
+        self.processor_touched = true;
+        self.settle(c)?;
         let n = Storage::from(v);
-        self.live = self
-            .live
-            .sub(n)
-            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
-        n.release(c);
+        self.live = self.live.sub(n).ok_or_else(|| c.csp_processing_stop())?;
+        n.release(c)?;
         Ok(())
     }
 }
@@ -197,6 +263,73 @@ pub(crate) trait Service {
         account: &mut Account,
         request: &HtmlMetaCspRequest,
     ) -> Result<Outcome, SessionError>;
+}
+/// The controller and aggregate the processor's admission and release
+/// callbacks act on. The two callbacks are separate closures, so they share
+/// this state through one cell.
+struct Shared<'c, 'a> {
+    state: RefCell<(&'c mut ParseControl, &'a mut Account)>,
+    release_error: Cell<Option<HtmlParseStop>>,
+    reentered: Cell<bool>,
+}
+impl<'c, 'a> Shared<'c, 'a> {
+    fn new(c: &'c mut ParseControl, account: &'a mut Account) -> Self {
+        Self {
+            state: RefCell::new((c, account)),
+            release_error: Cell::new(None),
+            reentered: Cell::new(false),
+        }
+    }
+    /// The stop handed back to a processor that entered a callback while
+    /// another still held the state. The controller is out of reach there, so
+    /// `finish` latches it as the first stop once the processor has returned.
+    fn refuse_reentry(&self) -> HtmlParseStop {
+        self.reentered.set(true);
+        HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback)
+    }
+    fn admit(&self, layout: HtmlCspLayout) -> Result<(), HtmlParseStop> {
+        let Ok(mut state) = self.state.try_borrow_mut() else {
+            return Err(self.refuse_reentry());
+        };
+        let (c, account) = &mut *state;
+        account.admit(c, layout, Caller::Processor)
+    }
+    fn release(&self, storage: HtmlCspStorage) {
+        let Ok(mut state) = self.state.try_borrow_mut() else {
+            self.refuse_reentry();
+            return;
+        };
+        let (c, account) = &mut *state;
+        if let Err(e) = account.release(c, storage) {
+            self.release_error.set(Some(e));
+        }
+    }
+    /// Hands the controller and aggregate back once the processor has returned.
+    fn finish(self) -> Result<(&'c mut ParseControl, &'a mut Account), SessionError> {
+        let reentered = self.reentered.get();
+        let release_error = self.release_error.get();
+        let (c, account) = self.state.into_inner();
+        if reentered {
+            return Err(c
+                .fail_invariant(HtmlParseInvariant::ReentrantProviderCallback)
+                .into());
+        }
+        match release_error {
+            Some(e) => Err(e.into()),
+            None => Ok((c, account)),
+        }
+    }
+}
+/// A processor that returned without a usable result while the account holds
+/// storage it admitted, or that released more than it held, broke the
+/// accounting contract of the service it was given: its processing failed.
+/// Every such violation ends the parse as a failed processing, wherever it is
+/// found: when the processor releases (`Account::release`), when it asks for a
+/// transfer its account cannot cover (`Account::admit`), when it returns, and
+/// when the retained graph is reconciled against its account afterwards.
+pub(crate) fn accounting_violation(c: &mut ParseControl) -> SessionError {
+    c.csp_processing_stop();
+    SessionError::CspService
 }
 struct Adapter<'a, P: HtmlMetaCspProcessor> {
     processor: &'a mut P,
@@ -215,34 +348,23 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
         request: &HtmlMetaCspRequest,
     ) -> Result<Outcome, SessionError> {
         let before = account.live;
-        let pair = RefCell::new((c, account));
-        let mut release_error = None;
-        let result = self.processor.prepare(
-            request,
-            &mut |a| {
-                let mut p = pair.borrow_mut();
-                let (c, a0) = &mut *p;
-                a0.admit(c, a)
-            },
-            &mut |s| {
-                let mut p = pair.borrow_mut();
-                let (c, a) = &mut *p;
-                if let Err(e) = a.release(c, s) {
-                    release_error = Some(e);
-                }
-            },
-        );
-        let (c, account) = pair.into_inner();
-        if let Some(e) = release_error {
-            return Err(e.into());
-        }
-        account.settle(c);
+        let shared = Shared::new(c, account);
+        let result = self
+            .processor
+            .prepare(request, &mut |a| shared.admit(a), &mut |s| {
+                shared.release(s)
+            });
+        let (c, account) = shared.finish()?;
+        account.settle(c)?;
         let refused = matches!(&result, Ok(HtmlMetaCspOutcome::Refused(_)));
         match result {
             Ok(HtmlMetaCspOutcome::Completed(p)) => Ok(Outcome::Completed(p)),
             Ok(HtmlMetaCspOutcome::Refused(e)) | Ok(HtmlMetaCspOutcome::Failed(e)) => {
                 // The provider's remaining aggregate travels with the real E.
-                self.storage = account.live.sub(before).ok_or(SessionError::WrongToken)?;
+                self.storage = account
+                    .live
+                    .sub(before)
+                    .ok_or_else(|| accounting_violation(c))?;
                 account.live = before;
                 self.error = Some(e);
                 self.kind = if refused {
@@ -256,30 +378,23 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
             }
             Ok(HtmlMetaCspOutcome::Unavailable(u)) => {
                 if account.live != before {
-                    return Err(SessionError::WrongToken);
+                    return Err(accounting_violation(c));
                 }
                 Ok(Outcome::Unavailable(u))
             }
             Ok(HtmlMetaCspOutcome::Cancelled) => {
+                // Cancellation is what ended the processing, whatever storage
+                // the processor still holds.
                 self.kind = HtmlParseCspFailureKind::Cancelled;
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(c.cancelled_stop().into())
             }
             Err(HtmlCspError::Protocol(p)) => {
                 self.kind = HtmlParseCspFailureKind::Protocol(p);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 c.csp_protocol_stop(p);
                 Err(SessionError::CspProtocol(p))
             }
             Err(HtmlCspError::Interrupted(e)) => {
                 self.kind = HtmlParseCspFailureKind::Interrupted(e);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(e.into())
             }
         }
@@ -310,12 +425,201 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
                 }
                 _ => adapter.kind,
             };
-            Err(HtmlParseCspFailure {
-                parse: Some(parse),
-                native: adapter.error,
+            Err(HtmlParseCspFailure::new(
+                parse,
+                adapter.error,
                 kind,
-                storage: adapter.storage,
-            })
+                adapter.storage,
+            ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::HtmlParseCancellation;
+    use surgeist_html::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
+
+    fn limits() -> crate::HtmlParseLimits {
+        crate::HtmlParseLimits::builder()
+            .source_units(1_000)
+            .buffered_utf16_units(1_000)
+            .token_attributes(1_000)
+            .auxiliary_entries(1_000)
+            .managed_nodes(1_000)
+            .managed_edges(1_000)
+            .managed_attributes(1_000)
+            .managed_utf16_units(1_000)
+            .source_map_entries(1_000)
+            .source_map_payload_units(1_000)
+            .diagnostics(1_000)
+            .diagnostic_payload_units(1_000)
+            .context_effects(1_000)
+            .open_elements(1_000)
+            .tree_depth(1_000)
+            .managed_capacity_bytes(16_000)
+            .peak_transient_bytes(32_000)
+            .atomic_layout_bytes(16_000)
+            .work_credits(100_000)
+            .finish()
+            .unwrap()
+    }
+    fn control() -> ParseControl {
+        ParseControl::new(limits(), HtmlParseCancellation::new())
+    }
+    fn layout() -> HtmlCspLayout {
+        HtmlCspLayout::processing(
+            3,
+            HtmlCspStorage::default(),
+            HtmlCspDisposalWork::default(),
+            8,
+        )
+        .unwrap()
+    }
+
+    fn storage(bytes: usize, units: usize, entries: usize) -> Storage {
+        Storage {
+            bytes,
+            units,
+            entries,
+        }
+    }
+
+    #[test]
+    fn overlap_admits_the_largest_aggregate_per_dimension_and_keeps_the_excess_over_the_result() {
+        // Hand-computed per dimension: admitted = max(live, peak, next).
+        // bytes: 30, units: 9, entries: 2.
+        let (extra, overlap) =
+            Storage::overlap(storage(10, 5, 2), storage(30, 4, 2), storage(20, 9, 1));
+        assert_eq!(extra, storage(20, 4, 0));
+        assert_eq!(overlap, storage(10, 0, 1));
+        // A result larger than the peak is admitted and leaves no overlap.
+        let (extra, overlap) =
+            Storage::overlap(storage(1, 1, 1), storage(2, 2, 2), storage(7, 7, 7));
+        assert_eq!(extra, storage(6, 6, 6));
+        assert_eq!(overlap, Storage::ZERO);
+        // Nothing beyond the live aggregate is admitted when it already covers both.
+        let (extra, overlap) =
+            Storage::overlap(storage(9, 9, 9), storage(3, 3, 3), storage(4, 4, 4));
+        assert_eq!(extra, Storage::ZERO);
+        assert_eq!(overlap, storage(5, 5, 5));
+    }
+
+    #[test]
+    fn a_callback_entered_while_another_runs_stops_the_parse_without_panicking() {
+        let mut c = control();
+        let mut account = Account::default();
+        let before = c.usage().clone();
+        let shared = Shared::new(&mut c, &mut account);
+        {
+            // A processor cannot reach this through the closures it is given:
+            // neither closure calls out while it holds the state. The guard
+            // stands in for foreign code still running inside one callback.
+            let _running = shared.state.borrow_mut();
+            assert_eq!(
+                shared.admit(layout()),
+                Err(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ReentrantProviderCallback
+                ))
+            );
+            shared.release(HtmlCspStorage::default());
+        }
+        let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback);
+        assert!(matches!(shared.finish(), Err(SessionError::Stop(s)) if s == stop));
+        assert_eq!(c.stop(), Some(stop));
+        assert_eq!(c.usage(), &before);
+        assert_eq!(account.live, Storage::ZERO);
+        assert_eq!(account.last, Storage::ZERO);
+    }
+
+    #[test]
+    fn callbacks_run_in_turn_without_reporting_reentry() {
+        let mut c = control();
+        let mut account = Account::default();
+        let shared = Shared::new(&mut c, &mut account);
+        assert_eq!(shared.admit(layout()), Ok(()));
+        shared.release(HtmlCspStorage::default());
+        assert!(shared.finish().is_ok());
+        assert_eq!(c.stop(), None);
+    }
+
+    #[test]
+    fn storage_a_failure_cannot_take_back_is_reported_before_the_envelope_is_dropped() {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x"), limits());
+        request.cancellation().cancel();
+        let parse = request.parse().unwrap_err();
+        assert_eq!(parse.cleanup_error(), None);
+        let failure = HtmlParseCspFailure::<()>::new(
+            parse,
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage {
+                bytes: 8,
+                units: 2,
+                entries: 1,
+            },
+        );
+        // The caller can read why the storage was not released, and the
+        // envelope holds nothing for its drop to hand back.
+        assert_eq!(
+            failure.parse_failure().cleanup_error(),
+            Some(crate::HtmlParseEngineCondition::Ownership)
+        );
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(
+            failure.parse_failure().reason(),
+            crate::HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
+        );
+        drop(failure);
+    }
+
+    #[test]
+    fn no_storage_leaves_a_failure_without_a_cleanup_report() {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x"), limits());
+        request.cancellation().cancel();
+        let parse = request.parse().unwrap_err();
+        let failure = HtmlParseCspFailure::<()>::new(
+            parse,
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage::ZERO,
+        );
+        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+    }
+
+    #[test]
+    fn storage_the_controller_never_admitted_is_reported_and_dropping_the_envelope_is_safe() {
+        let tight = crate::parser::tree_builder::tests::limits(100)
+            .into_builder()
+            .managed_nodes(4)
+            .finish()
+            .unwrap();
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x</p>"), tight);
+        let parse = request.parse().unwrap_err();
+        let retained = parse.retained_usage().cloned();
+        let failure = HtmlParseCspFailure::<()>::new(
+            parse,
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage {
+                bytes: 8,
+                units: 2,
+                entries: 1,
+            },
+        );
+        // The caller can read why the storage was not released, and the
+        // envelope holds nothing for its drop to hand back.
+        assert_eq!(
+            failure.parse_failure().cleanup_error(),
+            Some(crate::HtmlParseEngineCondition::Cleanup)
+        );
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(failure.parse_failure().retained_usage().cloned(), retained);
+        drop(failure);
     }
 }

@@ -1,5 +1,5 @@
 //! Actual backing is distinct from logical formation admission.
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::*;
 fn text(value: &str, spare: usize) -> DocumentString {
     let mut units = Vec::with_capacity(value.len() + spare);

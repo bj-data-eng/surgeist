@@ -11,9 +11,11 @@ use std::{
     },
 };
 use surgeist_html::{
-    Attribute, DocumentString, HtmlSandboxAuthorState, HtmlSandboxDirectiveState,
-    HtmlSandboxFlag as F, HtmlSandboxFlags, HtmlValueInterpreter, KnownHtmlAttribute as A,
-    KnownHtmlElement as E,
+    attributes::sandbox::{
+        HtmlSandboxAuthorState, HtmlSandboxDirectiveState, HtmlSandboxFlag as F, HtmlSandboxFlags,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute as A, KnownHtmlElement as E},
 };
 
 const RESTRICTIONS: [F; 16] = [
@@ -66,7 +68,7 @@ fn absent_contribution_is_empty_but_present_empty_and_ascii_space_restrict_all()
     let report = HtmlValueInterpreter::new(128)
         .iframe_sandbox(
             &E::Iframe.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(report.intrinsic(), Some(&HtmlSandboxDirectiveState::Absent));
@@ -135,10 +137,25 @@ fn each_literal_source_keyword_relaxes_only_its_named_restrictions() {
 
 #[test]
 fn duplicates_unknown_tokens_and_non_ascii_preserve_only_recognized_relaxations() {
-    for text in [
-        "allow-forms allow-scripts allow-forms UNKNOWN",
-        "\tALLOW-forms\nallow-SCRIPTS\rallow-forms\u{c}unknown ",
-        "unknown allow-forms allow-scripts",
+    // (value, duplicate as (first index, rejected index, rejected spelling),
+    // unknown tokens as (token index, spelling)): the token indexes are read off
+    // each value by hand, counting ASCII-whitespace-separated tokens from zero.
+    for (text, duplicate, unknown) in [
+        (
+            "allow-forms allow-scripts allow-forms UNKNOWN",
+            Some((0, 2, "allow-forms")),
+            vec![(3, "UNKNOWN")],
+        ),
+        (
+            "\tALLOW-forms\nallow-SCRIPTS\rallow-forms\u{c}unknown ",
+            Some((0, 2, "allow-forms")),
+            vec![(3, "unknown")],
+        ),
+        (
+            "unknown allow-forms allow-scripts",
+            None,
+            vec![(0, "unknown")],
+        ),
     ] {
         let raw = DocumentString::from(text);
         let flags = parse(&raw);
@@ -151,10 +168,31 @@ fn duplicates_unknown_tokens_and_non_ascii_preserve_only_recognized_relaxations(
             report.intrinsic(),
             Some(&HtmlSandboxDirectiveState::Present(flags))
         );
-        assert!(matches!(
-            report.author(),
-            HtmlSandboxAuthorState::Nonconforming(_)
-        ));
+        let HtmlSandboxAuthorState::Nonconforming(diagnostics) = report.author() else {
+            panic!("{text:?} is nonconforming");
+        };
+        assert_eq!(
+            diagnostics.duplicate().map(|error| (
+                error.first_index(),
+                error.duplicate_index(),
+                error.token().clone()
+            )),
+            duplicate.map(|(first, rejected, spelling)| (first, rejected, spelling.into())),
+            "{text:?}"
+        );
+        assert_eq!(
+            diagnostics
+                .unknown_tokens()
+                .iter()
+                .map(|token| (token.token_index(), token.value().clone()))
+                .collect::<Vec<_>>(),
+            unknown
+                .into_iter()
+                .map(|(index, spelling)| (index, DocumentString::from(spelling)))
+                .collect::<Vec<_>>(),
+            "{text:?}"
+        );
+        assert_eq!(diagnostics.redundancies().count(), 0, "{text:?}");
     }
     // Only the five ASCII whitespace units delimit tokens; non-ASCII case
     // folding, trimming, NUL replacement and surrogate repair are not applied.
@@ -205,17 +243,19 @@ fn exact_admission_succeeds_and_each_one_short_refusal_returns_the_original_erro
     })
     .unwrap();
     restrictions_except(flags, &[F::Forms, F::Scripts, F::AutomaticFeatures]);
-    assert!(
-        required > raw.len(),
-        "keyword reads are admitted in addition to token splitting"
-    );
+    assert!(required > 0, "admission precedes the raw header");
     // The generous run only locates reached fault-injection boundaries. Literal
     // source relationships above independently establish the successful value.
+    // `parse_with` documents that a refusal is returned unchanged before the
+    // reached action, so the refusing call is the last one: none may follow it.
     for limit in 0..required {
         let mut spent = 0;
+        let mut refused = false;
         assert_eq!(
             HtmlSandboxFlags::parse_with(&raw, || {
+                assert!(!refused, "no admission follows a refusal");
                 if spent == limit {
+                    refused = true;
                     return Err(Stop::WorkLimit { limit });
                 }
                 spent += 1;
@@ -223,7 +263,7 @@ fn exact_admission_succeeds_and_each_one_short_refusal_returns_the_original_erro
             }),
             Err(Stop::WorkLimit { limit })
         );
-        assert_eq!(spent, limit);
+        assert!(refused);
     }
     let mut spent = 0;
     assert_eq!(
@@ -236,20 +276,44 @@ fn exact_admission_succeeds_and_each_one_short_refusal_returns_the_original_erro
         }),
         Ok(flags)
     );
-    assert_eq!(spent, required);
-    // Empty present input still admits its header, terminal token-cursor step
-    // and final projection: it never bypasses the caller on a no-unit path.
+    // Empty present input still consults the caller (the declared header,
+    // terminal token step and final projection admissions), so it never
+    // bypasses it. Inject a refusal at each admission it reaches, advancing the
+    // refusal point until a run completes: every refusal comes back unchanged
+    // with nothing after it, and the completed run is the all-restrictions value.
     let empty = DocumentString::from("");
-    let mut reads = 0;
-    restrictions_except(
-        HtmlSandboxFlags::parse_with(&empty, || {
-            reads += 1;
-            Ok::<_, Infallible>(())
-        })
-        .unwrap(),
-        &[],
-    );
-    assert_eq!(reads, 3);
+    let mut refusals = 0;
+    let completed = loop {
+        let limit = refusals;
+        let mut spent = 0;
+        let mut refused = false;
+        let result = HtmlSandboxFlags::parse_with(&empty, || {
+            assert!(!refused, "no admission follows a refusal");
+            if spent == limit {
+                refused = true;
+                return Err(Stop::WorkLimit { limit });
+            }
+            spent += 1;
+            Ok(())
+        });
+        match result {
+            Ok(flags) => {
+                assert!(!refused);
+                break flags;
+            }
+            Err(error) => {
+                assert_eq!(error, Stop::WorkLimit { limit });
+                assert!(refused);
+                refusals += 1;
+                assert!(
+                    refusals < 1000,
+                    "empty input admits only finitely many actions"
+                );
+            }
+        }
+    };
+    assert!(refusals > 0, "the caller is consulted for empty input");
+    restrictions_except(completed, &[]);
 }
 
 #[test]

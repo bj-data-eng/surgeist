@@ -1,6 +1,10 @@
 //! Original HTML constructor state travels in the retained arena, not parser metadata.
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlFocusedAreaDesignation},
+    elements::dialog::HtmlDialogAction,
+    security::nonce::HtmlBrowsingContextPresence,
+};
 use surgeist_html_parser::*;
 
 #[test]
@@ -21,6 +25,7 @@ fn original_document_and_reused_inert_owner_keep_null_beside_pending_style_histo
                 documents.push(row.node().id());
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => (),
         }
     }
@@ -66,7 +71,11 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
     let target = context.target_document().clone();
     let report = HtmlFragmentParseRequest::new(HtmlSource::utf8(
         "<dialog open></dialog><template><input autofocus></template><template><dialog open></dialog></template>"), context, limits()).unwrap().parse().unwrap();
-    let auxiliary = report.fragment_parser_document().unwrap().document();
+    let auxiliary = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document();
     assert_eq!(
         auxiliary.document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)
@@ -96,6 +105,7 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => (),
         }
     }
@@ -108,7 +118,7 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
         3,
         "auxiliary plus distinct auxiliary/target inert caches"
     );
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(
         effects.len(),
         1,
@@ -116,6 +126,6 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
     );
     assert!(matches!(
         effects.effect(0),
-        Some(HtmlParseEffect::TemplateCache { .. })
+        Ok(Some(HtmlParseEffect::TemplateCache { .. }))
     ));
 }

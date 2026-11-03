@@ -197,10 +197,12 @@ impl LineDisposition {
         let request = selected.request();
         if request.context.end == LineEnd::Forced
             || line.has_in_flow_content()
-            || request
-                .controls
-                .iter()
-                .any(|control| control.boundary.is_some_and(|edge| edge.advance() != 0.0))
+            || request.controls.iter().any(|control| {
+                control
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|edge| edge.participates())
+            })
         {
             Ok(Self::Formatted)
         } else {
@@ -303,6 +305,7 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
+    pub inline_boxes: Option<&'a surgeist_text::PreparedInlineBoxFamily>,
     pub segment: surgeist_text::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: Available,
@@ -468,7 +471,7 @@ fn resolve_boundary_context(
         let boundary = controls
             .iter()
             .find(|row| row.occurrence == occurrence)
-            .and_then(|row| row.boundary)
+            .and_then(|row| row.boundary.clone())
             .ok_or(FitError::Dependency)?;
         // An issued demand must add a new fact. Preserve bounded progress if
         // an inconsistent preparation ever repeats an already supplied handle.
@@ -932,6 +935,7 @@ impl EvaluatedCandidate {
             usage: self.finalized.measurements().formatted_line_usage(),
             feedback: self.finalized.feedback(),
             fit: self.finalized.measurements().fit(),
+            margin_fit: self.finalized.measurements().margin_edge_fit(),
             alignment: self.finalized.measurements().alignment(),
             metric_bounds: self.finalized.metric_bounds(),
         }
@@ -946,6 +950,7 @@ struct ObservedCandidateBasis {
     usage: surgeist_text::FormattedLineUsage,
     feedback: surgeist_text::LineFeedback,
     fit: surgeist_text::InlineMeasure,
+    margin_fit: surgeist_text::MarginEdgeFit,
     alignment: surgeist_text::InlineMeasure,
     metric_bounds: surgeist_text::Rect,
 }
@@ -1518,16 +1523,20 @@ where
                 Available::Minimum => Some(finite((band.end - band.start).max(0.0))?),
                 Available::Definite(_) | Available::Maximum => request.context.available_inline,
             };
-            let measurement = match input.available {
-                Available::Minimum => finalized.measurements().min_content_contribution(),
-                Available::Maximum => finalized.measurements().max_content_contribution(),
-                Available::Definite(_) => finalized.measurements().fit(),
+            let admission = match input.available {
+                Available::Minimum => finalized
+                    .measurements()
+                    .margin_edge_min_content_contribution(),
+                Available::Maximum => finalized
+                    .measurements()
+                    .margin_edge_max_content_contribution(),
+                Available::Definite(_) => finalized.measurements().margin_edge_fit(),
             };
-            let occupied = finite(measurement.occupied_end() - measurement.occupied_start())?;
+            let css_width = css_margin_edge_width(admission, request.context.indent)?;
             let fits = !disposition.is_formatted()
-                || fit_width.is_none_or(|width| {
-                    measurement.advance() <= width - request.context.indent
-                        && occupied <= width - request.context.indent
+                || fit_width.is_none_or(|width| match css_width {
+                    Some(required) => required <= width,
+                    None => admission.required_inline_size() <= width - request.context.indent,
                 });
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
@@ -1916,7 +1925,7 @@ where
             &recipe.ceiling,
             target.purpose(),
             &skipped,
-            Some(&ordinary.finalized),
+            surgeist_text::ConditionalLineContext::Finalized(&ordinary.finalized),
         )?;
         let staged_query = EndpointContext {
             conditional: true,
@@ -2228,6 +2237,7 @@ fn selection_request(
         .cloned()
         .collect();
     Ok(LineSelectionRequest {
+        inline_boxes: input.inline_boxes.cloned(),
         segment: input.segment.clone(),
         start: start.clone(),
         end: endpoint.boundary,
@@ -2725,7 +2735,12 @@ where
                             &ceiling,
                             purpose,
                             &skipped_ordinary,
-                            frame.as_ref(),
+                            frame.as_ref().map_or(
+                                surgeist_text::ConditionalLineContext::Unframed {
+                                    inline_boxes: input.inline_boxes,
+                                },
+                                surgeist_text::ConditionalLineContext::Finalized,
+                            ),
                         )?;
                         let query = EndpointContext {
                             accepted_prefix: result,
@@ -3126,6 +3141,36 @@ fn query_bands(
     })
 }
 
+/// Compose actual indentation with the unanchored CSS admission operands.
+/// Native-only observations keep their existing caller arithmetic unchanged.
+pub(super) fn css_margin_edge_width(
+    admission: surgeist_text::MarginEdgeFit,
+    indent: f64,
+) -> Result<Option<f64>, FitError> {
+    if admission.authority() == surgeist_text::MarginEdgeFitAuthority::NativeOnly {
+        return Ok(None);
+    }
+    let add = |base: f64, delta: f64| -> Result<f64, FitError> {
+        let result = super::run::add(base, delta)?;
+        if base != 0.0 && result == delta {
+            return Err(FitError::Numeric(
+                base,
+                crate::LayoutTextNumericError::NonZeroLost,
+            ));
+        }
+        Ok(result)
+    };
+    let flow = add(indent, admission.advance())?;
+    let (start, end) = match admission.native_occupied_bounds() {
+        Some((minimum, maximum)) => (
+            add(indent, minimum)?.min(0.0),
+            add(indent, maximum)?.max(flow),
+        ),
+        None => (0.0, flow),
+    };
+    Ok(Some(add(end, -start)?.max(0.0)))
+}
+
 fn finite(value: f64) -> Result<f64, FitError> {
     if value.is_finite() {
         Ok(value)
@@ -3197,9 +3242,14 @@ mod tests {
 
     fn no_scope_resources() -> super::super::scope_alignment::ScopeAlignmentResources<f64> {
         super::super::scope_alignment::ScopeAlignmentResources::new(
-            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(Vec::new(), &[])
-                .unwrap()
-                .freeze(),
+            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(
+                Vec::new(),
+                &[],
+                false,
+            )
+            .unwrap()
+            .freeze(),
+            crate::text_layout::fragmentation::InlineBoxFamilies::default(),
         )
     }
 

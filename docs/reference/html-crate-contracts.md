@@ -104,8 +104,8 @@ existing allocation tickets; mutable construction backing remains private.
 
 `OrderedAttributes::from_parser_storage`, `parser_backing_mut` and
 `into_parser_storage` must not expose `ParseControl` or mutable shared storage in
-HTML. Replace them with HTML-owned `bounded::HtmlAttributeStorage` and
-`bounded::HtmlAttributeValidation`. Storage retains the actual `Arc<Vec<Attribute>>`;
+HTML. Replace them with HTML-owned `bounded::values::HtmlAttributeStorage` and
+`bounded::values::HtmlAttributeValidation`. Storage retains the actual `Arc<Vec<Attribute>>`;
 its public view is immutable. A validation cursor compares expanded names in
 the existing duplicate-major/first-minor order and compares exact namespace URI
 before exact local name. Prefix and value never affect duplicate identity.
@@ -136,8 +136,8 @@ HTML's private `Identity`, `Record`, `Arena` and directly constructs
 `HtmlDocument`/`HtmlFragment`. Moving only this method or making those fields
 public would leave HTML's immutable-result invariant unenforced.
 
-HTML therefore owns `bounded::HtmlConstructionStorage` and
-`bounded::HtmlConstructionOperation`. They wrap the existing record vector,
+HTML therefore owns `bounded::construction::HtmlConstructionStorage` and
+`bounded::construction::HtmlConstructionOperation`. They wrap the existing record vector,
 identity and generic usage, with private fields. Both native builders and the
 parser's session use this same storage implementation; parser-only payloads,
 source evidence, allocation tickets and effects stay in parser. No second final
@@ -152,7 +152,7 @@ It provides read-only `node`, `kind`, `parent`, `children`, `template_contents`,
 generic transitions: append/insert a node, detach/reparent an ordinary node,
 replace content, replace validated attributes, edit an element's attributes
 through the complete controlled group below, attach template contents, attach
-or detach a shadow fragment, and select the output document/fragment root.
+a shadow fragment, and select the output document/fragment root.
 Parser-specific select, form, radio, input, nonce, script and template-patching
 decisions remain parser operations that compose these generic transitions.
 For the parser's dense retained-record joins, add checked
@@ -197,15 +197,15 @@ record. HTML never applies parser placement, recovery or language conformance
 rules to native authoring.
 
 `HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>` is the `Publish`
-command's consuming convenience entry point. It starts a publication
-operation. It checks that the selected root is the proper document/fragment
+HtmlConstructionOperation` is the `Publish` command's consuming convenience
+entry point. It starts a publication operation and cannot fail, because it
+inspects nothing. It checks that the selected root is the proper document/fragment
 kind, that all retained owning links are reciprocal and in range, that
 association roots have the right owner, that each non-owning contents reference
 targets a live result-local shadow-contents fragment, and that no pending generic operation
 exists. Its bounded actions use the original controller. The ready operation
 retains the original storage until every required check and arena-sharing
-allocation is admitted. The guarded `try_ready` transition below produces the
+allocation is admitted. The consuming `try_ready` transition below produces the
 distinct ready owner. Its `commit` consumes that owner and returns
 the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}`
 and recovery lease with no later fallible work. Invalid structure yields
@@ -248,7 +248,7 @@ generic invariants with their owner while parser effects remain in parser.
 
 #### Complete controlled attribute edits
 
-`bounded::HtmlConstructionAttributeEdit` owns the same construction storage and
+`bounded::construction::HtmlConstructionAttributeEdit` owns the same construction storage and
 one checked element throughout an attribute edit group. It consumes that storage
 through a fallible boundary returning the complete unconsumed owner and operands
 on refusal. Its read-only storage view supports parser metadata/effect reads;
@@ -354,11 +354,12 @@ operation, actual reservation, identity qualification and initialized slot move
 has a bounded description admitted by the original controller before execution.
 Reserve reports actual before/after capacity and leaves the actual enlarged
 owner recoverable after a post-provider stop. A slot action reaches a guarded
-`try_ready(&mut Option<_>)` transition only after its validation, write admission
-and post-provider observations complete. Pending, failed, consumed, foreign or
-out-of-order requests return a typed refusal; every occupied owner/input slot
-remains occupied, including an incoming replacement `Option<Attribute>` or the
-real last staged attribute. Only the private ready owner exposes infallible
+consuming `try_ready(self)` transition only after its validation, write admission
+and post-provider observations complete. Pending, failed, foreign or
+out-of-order requests return a `HtmlConstructionRefusal` that hands the slot back
+with its typed cause; every owner and input slot stays owned by the caller,
+including an incoming replacement `Option<Attribute>` or the real last staged
+attribute. Only the private ready owner exposes infallible
 commit. That owner retains or exclusively borrows the actual incoming slot and
 group through commit, so a caller cannot substitute an attribute after its name
 was qualified. Commit moves one actual slot and its prepaid fixed progress update with
@@ -458,25 +459,29 @@ not establish the same amortized bound.
 
 The public operation signature is
 `HtmlConstructionStorage::prepare(self, HtmlConstructionCommand) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>`. A rejection owns
-the unchanged storage, the unconsumed command and `HtmlConstructionError`;
-`into_parts` returns all three without allocation. Operations consume storage
-rather than borrowing a vector or returning mutable record references. Parser
-keeps this owner in its existing `Option` slot and restores it after a refusal.
+HtmlConstructionOperation`. Preparation inspects and allocates nothing, so it
+cannot fail; the operation's first action qualifies the operands, and a refusal
+surfaces from the action, after which `HtmlConstructionOperation::abort`
+returns the unchanged storage and the unconsumed command without allocation.
+Operations consume storage rather than borrowing a vector or returning mutable
+record references.
 `HtmlConstructionStorage::begin() -> HtmlConstructionInitialization` creates an
 allocation-free initialization owner. It uses the same action/observation
 sequence to create the zero-payload shared identity.
-`HtmlConstructionInitialization::try_ready(&mut Option<Self>) ->
-Result<HtmlConstructionReadyInitialization, HtmlConstructionError>` removes
+`HtmlConstructionInitialization::try_ready(self) ->
+Result<HtmlConstructionReadyInitialization,
+HtmlConstructionRefusal<HtmlConstructionInitialization>>` consumes
 the initialization owner only after all initialization actions and its
 post-provider observation are complete. The ready owner's infallible
 `commit(self) -> HtmlConstructionStorage` returns empty storage. Pending or
 failed initialization cannot call that method. Native document/fragment builders then create their
 explicit root through the commands below. Failed or cancelled initialization
-retains its owner. Both initialization types expose
-`abort(self) -> Option<HtmlConstructionRetired>`, dropping any actually created,
-unescaped identity owner and returning its zero-payload receipt. A not-yet-created
-identity returns `None`; abort cannot manufacture usable construction storage.
+retains its owner. `HtmlConstructionInitialization::abort(self) ->
+Option<HtmlConstructionRetired>` drops any actually created, unescaped identity
+owner and returns its zero-payload receipt; a not-yet-created identity returns
+`None`. A ready initialization always holds an identity, so
+`HtmlConstructionReadyInitialization::abort(self)` returns the receipt itself.
+Abort cannot manufacture usable construction storage.
 
 `HtmlConstructionCommand` is a closed, non-exhaustive enum with the following
 payloads. Every handle belongs to the storage; all payload fields below are
@@ -490,11 +495,10 @@ command operands, never mutable arena fields.
 | `CreateShadowContents` | `properties: HtmlShadowRootProperties`; creates a fragment explicitly marked as shadow contents, retaining its actual properties once, and returns its handle. This role is owner-controlled, not a caller-supplied validation flag. |
 | `Insert` | `node`, `parent`, `before: Option<HtmlBuilderNode>`; inserts or reparents an ordinary record; `None` means append. A validated `before == node` request is a structural no-op. Other same-position requests perform ordinary insertion processing; unchanged logical order does not guarantee unchanged storage or successful admission. Parser-owned hooks are independent of the structural shortcut. |
 | `Detach` | `node`; removes an ordinary edge, retaining the record and its descendants in storage. Detaching an already-detached ordinary record is a no-op. |
-| `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. |
+| `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. An element's new name must keep its template-ness, an HTML `template` expanded name exactly when the record has template contents, or the operation is refused with `InvalidTemplateAssociation` (the `ReplaceContent` arm of `command_phase` in `operations.rs`, from the pinned HTML rule that only a `template` element has template contents). Link history survives only while the new name is an HTML `link` expanded name and is otherwise cleared (the `ReplaceContent` arm of `HtmlConstructionReadyOperation::commit`, from the `CreateElement` rule that flags need an HTML link name). |
 | `ReplaceAttributes` | `element`, `attributes: HtmlValidatedAttributes`; replaces one checked ordered collection without bypassing duplicate validation. |
-| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. |
+| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. A shadow root stays attached to its host: neither the DOM nor the HTML parser removes one, and no command does (DOM [shadow tree](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 249, a shadow root is always attached through its host, and [shadow root](../../references/dom-foundation--editor-capture-20261010--08dff0a4827f.md) line 2731, its host is never null; parser template start tag steps 7.11.2 to 7.11.6, lines 4026 to 4042 of the [retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md), which only attach). |
 | `AttachTemplateShadow` | `template`, `host`, `contents`; atomically releases the template's old owning association, installs local host shadow ownership of the new shadow contents, and installs the template's non-owning reference, without a transient extra owned edge. |
-| `DetachShadow` | `host`; removes that association, leaving its fragment an unowned root. |
 | `SetTemplateShadowContents` | `template`, `contents`; validates an HTML template with ordinary owned contents and a live unowned shadow-contents fragment, atomically releases that owning template association and installs a typed non-owning contents reference. |
 | `SetDocumentMode` | `document`, `mode: HtmlDocumentMode`; parser prologue selection changes only the actual document mode. |
 | `SetLinkFlags` | `element`, `flags: HtmlLinkFlags`; installs the local rule's actual link flags only on an HTML link element. Source-qualified history remains parser metadata. |
@@ -502,12 +506,58 @@ command operands, never mutable arena fields.
 
 Insert validates storage-qualified handles, parent kind, movable node and
 reference-child membership before its structural shortcut. An already-last
-append or insertion immediately before the current successor retains the real
-shared child-order preparation, resource admission and bank replacement.
-Depth and edge preflight still precede scratch providers. Native and controlled
-callers use that same operation; parser form/nonce hooks remain parser-owned.
+append or insertion immediately before the current successor is ordinary
+insertion: it edits the parent's actual child order like any other placement,
+so unchanged logical order does not skip depth and edge preflight or the
+commit's described writes. Native and controlled callers use that same
+operation; parser form/nonce hooks remain parser-owned.
 This follows the [unchanged-order determination in #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
 It does not change Detach or other explicitly specified no-op cases.
+
+Insert, move and Detach edit the parents' actual `Children` banks in place at
+the atomic commit, and nothing is written to a child order before it. A refused
+or aborted operation therefore leaves every order, parent link and logical fact
+unchanged, and no pending child-order bank exists. Planning finds each place by
+walking the order from both ends in turn, starting at the last entry, one entry
+per `Inspect` action: the moving node's place in its old parent, then the
+reference sibling's place in the new parent (`before: None` needs no walk). A
+walk costs about twice the entries between the target and the nearer end of the
+order. Each `Children` bank is a deque, so the commit shifts only the entries
+between the place it closes or opens and the nearer end: for a removal at
+position `p` of `n` entries the lesser of `p` and `n - 1 - p`, and for an
+insertion at `p` among `n` entries the lesser of `p` and `n - p`. When a node
+moves within one parent, `n` for the insertion counts the entries left after
+its removal. Its `Commit`
+description counts the parent link, the removed and inserted entries and every
+shifted entry as `record_writes` of one word each in `copied_bytes`, besides
+the depth work.
+A change near either end of an order therefore describes work independent of
+the parent's child count, whatever siblings lie between it and the far end, and
+appending, which shifts nothing and needs no walk, does too. Moving every child
+from the front of one parent to the end of another costs a constant for each
+child, so work linear in their number.
+
+Only a push into a full order allocates. When the new parent's `Children` bank
+has no spare capacity, a `PrepareAllocationReport` and a `Reserve` action on it
+(`growth: Geometric`) follow depth and edge preflight; otherwise neither is
+described. A move within one parent needs no growth, because the node leaves the
+order before it returns, and Detach never grows an order. A refused or
+interrupted reserve leaves the order unchanged, and the grown bank, with a fresh
+allocation incarnation, is retained on abort like the record bank. The `Commit`
+action refuses with `ParentChildConflict` any edit whose planned place no longer
+holds the entry planning found, and with `CapacityMismatch` a push that would
+reallocate or name a missing node or parent; the ready commit then applies
+nothing, so a parent link and its list cannot diverge.
+
+Publish checks that every ordinary child appears exactly once in its parent's
+child list with work linear in the records and child entries, not in each
+parent's fanout. Three passes of `Inspect` actions, each describing two record
+visits per step, reset a private one-byte count in every record, add one count
+for each list entry naming its list's owner as parent, and then validate the
+records in index order, where each record with a parent must have a count of
+exactly one (`ParentChildConflict` otherwise). The count lives in the already
+admitted record layout, so it needs no allocation, and a stale count is reset
+before it is read. Failures keep the order of the earlier per-record scan.
 
 Template association creation is owned by `Create`; lookup returns its issued
 contents handle. Cloning a template clones its element through `Create` and
@@ -576,16 +626,22 @@ native authoring still requires its existing separately checked
 `HtmlAuthoredProcessingInstruction`. Those are different phase contracts, not
 permission for native syntax checks to reject recovered parser data.
 
-Add these typed `HtmlConstructionError` variants to the existing non-exhaustive
-error enum: `UnknownNode`, `WrongNodeKind`, `RootMove`, `AssociationMove`,
-`WrongSibling`, `Cycle`, `AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
-`InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
-`OperationConsumed`, `OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
-`DuplicateAttribute { first: usize, duplicate: usize }`, `AttributeNameMismatch`,
-`AttributeOrderMismatch`,
-`SharedAllocationAliased`, and `ReleaseUnderflow`. Existing
-`ForeignBuilder`, native-parent/association errors, `LimitExceeded`,
-`RepresentationExhausted` and `AllocationFailed` remain distinct. Parser maps
+`HtmlConstructionError` is a struct whose cause is private, so new refusal
+causes never break a caller. A caller asks `is_foreign_builder`,
+`is_unknown_node`, `is_wrong_node_kind`, `is_root_move`, `is_association_move`,
+`is_wrong_sibling`, `is_cycle`, `is_association_already_owned`,
+`is_invalid_template_association`, `is_invalid_shadow_association`,
+`is_invalid_contents_reference`, `is_parent_child_conflict`,
+`is_invalid_output_root`, `is_operation_not_ready`,
+`is_foreign_allocation`, `is_capacity_mismatch`, `is_attribute_name_mismatch`,
+`is_attribute_order_mismatch`, `is_shared_allocation_aliased`,
+`is_release_underflow`, `is_parent_cannot_have_children`,
+`is_template_contents_required`, `is_shadow_host_must_be_element`,
+`is_shadow_already_attached`, `is_representation_exhausted`,
+`is_allocation_failed`, `is_duplicate_attribute` and `is_limit_exceeded`.
+`duplicate_attribute_indices` returns the first and the duplicate position, and
+`exceeded_resource`, `limit` and `attempted` describe a limit refusal. Parser
+maps
 structural refusal to its corresponding `SessionError`; admission/cancellation
 continues to originate in `ParseControl` and is never disguised as a structural
 error. `ReplaceContent` cannot silently change a parent-capable node into a leaf.
@@ -612,17 +668,21 @@ Descriptions are closed variants for inspection, comparison, reserve, fixed
 sharing and commit; they state record visits, inspected/copied/initialized bytes,
 logical node/edge/attribute/unit deltas and the exact allocation descriptors
 below. `next_action` does not perform the described read or mutation.
-`HtmlConstructionOperation::try_ready(&mut Option<Self>) ->
-Result<HtmlConstructionReadyOperation, HtmlConstructionError>` checks that
+`HtmlConstructionOperation::try_ready(self) ->
+Result<HtmlConstructionReadyOperation,
+HtmlConstructionRefusal<HtmlConstructionOperation>>` checks that
 every validation, provider action and allocation observation has completed, and
 that the complete fixed final-write description has been issued and admitted
 through its action. It performs no additional useful work, allocation,
 reserve or clone. Pending returns `OperationNotReady`; a failed operation
-returns its latched construction reason; an empty slot returns
-`OperationConsumed`. Every refusal leaves the original `Some` owner, command,
-actual allocations and capacities untouched. Only success removes it and
-issues the private-field ready owner. Initialization uses the same refusal and
-slot-retention rules.
+returns its latched construction reason. Every refusal hands the original
+owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
+allocations and capacities untouched; a consumed operation cannot be presented
+again because the check takes it by value. Only success issues the
+private-field ready owner. Initialization, text append, attribute slots,
+candidate planning, attribute edits and lease recovery use the same refusal
+rules: `HtmlConstructionRefusal<T>` carries the owner or owners, `reason`,
+`owner` and `into_parts`.
 
 Only `HtmlConstructionReadyOperation` exposes
 `commit(self) -> HtmlConstructionCommit`; the commit enum is
@@ -639,7 +699,7 @@ Abort never needs a useful-work scan or a new allocation. A ready owner
 has no public constructor, `Default`, unchecked conversion, deserializer or
 field mutation; a pending/failed operation cannot construct one. Parser calls
 the guarded ready transition only after its corresponding admission and
-post-provider cancellation checks have succeeded. On an external `ParseStop`
+post-provider cancellation checks have succeeded. On an external `HtmlParseStop`
 it aborts the retained owner instead. HTML does not encode or override that
 independent controller's first-stop policy.
 
@@ -653,9 +713,7 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children`, `PendingChildOrder`, `ArenaWrapper` and `AttributePlan`.
-`PendingChildOrder` reports only its scratch slot and parent position; these
-ordinals cannot issue handles or retirement authority. The last role identifies
+`Children`, `ArenaWrapper` and `AttributePlan`. The last role identifies
 the complete attribute group's actual decision/name-plan allocation. Equality is identity
 equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
@@ -669,18 +727,28 @@ the editor's actions report actual reservation and uniqueness work. They do not
 need a second opaque attribute-vector/wrapper ticket or another ledger. Only
 the private name-decision plan requires the opaque `AttributePlan` role.
 
+A plan reservation plans one candidate's decision at a time. Its description's minimum
+capacity is the least capacity that holds that decision. `perform` reserves exactly
+the minimum; the consumer may admit a larger, amortizing capacity, which cannot be
+smaller and is requested with the candidate action's `perform_with_capacity`, so planning
+`n` candidates requests `O(log n)` reallocations. A smaller capacity, or use on any other
+candidate action, latches `CapacityMismatch` before a provider call. The parser
+doubles the plan, never beyond the edit's candidate count; the capacity depends on the
+plan and the candidate count only, never on a limit, and is admitted before it is
+allocated.
+
 Allocation reports never issue construction node handles. A pending creation
 can allocate its child bank before committing a record; aborting it leaves that
 record position available for a later creation. Issuing a handle from the bank's
 position would let it escape before commit and then identify the later node.
 `Children` therefore classifies only the allocation role. Its read-only
-`child_position()` is an owner-local accounting join, like pending-order slot
-metadata; it cannot mint an identity or authorize a mutation or retirement.
+`child_position()` is an owner-local accounting join; it cannot mint an
+identity or authorize a mutation or retirement.
 Checked committed-node views remain the authority for issuing node handles.
 Each newly created bank also receives a fresh checked allocation incarnation,
 including when it reuses a position left by an aborted operation. A retained
 report from the retired bank cannot identify the replacement or authorize its
-retirement. Reallocation and actual bank replacement preserve this distinction.
+retirement. Reallocation preserves this distinction.
 `HtmlConstructionAllocationId::same_owner_role` compares the issuing storage and
 bank role while deliberately ignoring generation. It supports observing a
 provider's updated report only after the old exact ID has been qualified against
@@ -698,6 +766,12 @@ metadata remain excluded, matching the existing provider limitation.
 
 A reserve description contains the pre-action snapshot, required initialized
 length, requested minimum capacity and selected exact/geometric growth policy.
+`Exact` means `perform` reserves exactly that minimum. `Geometric` means the
+minimum is only the least capacity that suffices: the consumer admits its own
+amortizing capacity, which cannot be smaller, and requests it with
+`HtmlConstructionAction::perform_with_capacity`; a smaller capacity, or use on
+any other action, latches `CapacityMismatch` before a provider call, and
+`perform` still reserves the minimum.
 The parser computes and admits its current resource/peak/atomic-layout and
 reserve/copy/provider work in the same precedence as `reserve_vector`; it cannot
 substitute an assumed `Record` layout. `perform` calls `try_reserve` on the actual
@@ -730,11 +804,12 @@ fallible-Arc-allocation promise. Only successful commit returns the result and
 arena reference and issued wrapper descriptor; parser tickets no longer need
 `SharedAllocation<Arena>` or `SharedAllocation<Identity>`.
 
-`HtmlConstructionLease::try_recover(result: &mut Option<HtmlConstructionResult>,
-lease: &mut Option<Self>) -> Result<HtmlConstructionRecovery,
-HtmlConstructionError>` checks exact arena/lease identity before taking either
-slot. A result clone, associated fragment view or other strong arena alias
-returns `SharedAllocationAliased`, leaving both slots and all tickets intact.
+`HtmlConstructionLease::try_recover(result: HtmlConstructionResult, lease: Self)
+-> Result<HtmlConstructionRecovery,
+HtmlConstructionRefusal<(HtmlConstructionResult, HtmlConstructionLease)>>` checks
+exact arena/lease identity first. A result clone, associated fragment view or
+other strong arena alias returns `SharedAllocationAliased`, handing back both the
+result and the lease with all tickets intact.
 After aliases disappear the same cleanup can be retried, including after a
 sticky parser stop. Successful recovery returns the exact unwrapped storage
 together with its non-forgeable wrapper-retirement receipt. Identity handles may
@@ -814,7 +889,7 @@ HTML owns only the local decision inputs and outputs:
 `HtmlParserScriptingMode`, `HtmlFragmentTokenizerState`,
 `HtmlFragmentInsertionMode`. The shared private policy selected by #1177 lives
 in HTML's private `fragment_initialization.rs`. The bounded front door exposes
-`bounded::fragment_initial_modes<E>(effective: HtmlParserScriptingMode,
+`bounded::parsing::fragment_initial_modes<E>(effective: HtmlParserScriptingMode,
 compare: impl FnMut(HtmlFragmentNameTest<'_>) -> Result<bool, E>) ->
 Result<(HtmlFragmentTokenizerState, HtmlFragmentInsertionMode), E>` wrapper.
 `HtmlFragmentNameTest<'a>` has `HtmlNamespace` and `Local(&'a [&'static str])`
@@ -843,7 +918,7 @@ Non-HTML context selects Data/InBody. Captured ancestor templates or tables are
 not inserted into the parser's open-elements stack.
 
 Parser stack reset consumes a second narrow HTML wrapper,
-`bounded::stack_reset_insertion_mode<E>(compare: impl FnMut(&'static str) ->
+`bounded::parsing::stack_reset_insertion_mode<E>(compare: impl FnMut(&'static str) ->
 Result<bool, E>) -> Result<Option<HtmlFragmentInsertionMode>, E>`. It delegates
 the same private fixed table under `FixedInsertionScope::StackReset`; fragment
 initialization uses `FixedInsertionScope::Fragment`. The public wrapper does not
@@ -858,13 +933,13 @@ annotation-xml encoding comparison and prefix policy are defined once by the
 #1175 correction; consumer adapters preserve their existing admission before
 each comparison. Captured identity and host validation remain in semantics.
 The bounded front door exposes `HtmlIntegrationPointComparison::{Exact,
-AsciiCaseInsensitive}` and `bounded::HtmlIntegrationPointRule::{Never, Always,
+AsciiCaseInsensitive}` and `bounded::parsing::HtmlIntegrationPointRule::{Never, Always,
 EncodingAttribute}`, matching the private `integration_points.rs` policy.
-`bounded::html_integration_point_rule` takes optional namespace URI, local name
+`bounded::parsing::html_integration_point_rule` takes optional namespace URI, local name
 and the fallible comparator
 `FnMut(&DocumentString, &'static str, HtmlIntegrationPointComparison) ->
 Result<bool, E>`, returning `Result<HtmlIntegrationPointRule, E>`.
-`bounded::html_integration_point_encoding_attribute` additionally takes the
+`bounded::parsing::html_integration_point_encoding_attribute` additionally takes the
 attribute value and returns `Result<Option<bool>, E>`: `None` is an unrelated
 expanded name; `Some(false)` is the actual encoding attribute with a rejected
 MIME value and stops further attribute reads. Semantics' ordinary borrowed
@@ -874,7 +949,7 @@ module itself remains private.
 
 MathML text integration points use the ordinary
 `is_mathml_text_integration_point(&QualifiedName) -> bool` front door and
-`bounded::mathml_text_integration_point<E>(compare:
+`bounded::parsing::mathml_text_integration_point<E>(compare:
 impl FnMut(HtmlMathmlTextPointTest<'_>) -> Result<bool, E>) -> Result<bool, E>`.
 `HtmlMathmlTextPointTest` emits `Namespace(&'static str)` for the exact MathML
 URI and, only after success, one `Local(&[&'static str])` group containing
@@ -887,7 +962,7 @@ exceptions and the separate annotation-xml/SVG branch remain parser-owned.
 
 ### Local rules and semantic execution
 
-`bounded::HtmlScriptTypeCursor` owns the existing script classification actions
+`bounded::script::HtmlScriptTypeCursor` owns the existing script classification actions
 for current content and preparation. It borrows original operands, including
 the virtual language prefix, and exposes `required_work`, `advance` and the
 completed optional kind. `HtmlScriptTypeWork` describes record visits and actual
@@ -944,7 +1019,7 @@ fields. No operation accepts a parser or semantic controller.
 | --- | --- |
 | `HtmlValueInterpreter::admit_attribute_raw`; semantic attribute helpers throughout `semantics/` | Public `admit_attribute_raw`; checks optional UTF-16 length without cloning/allocating. Reports are assembled only through owner operations. `time_element_report_from_attempts` stays private: a public caller cannot assert that arbitrary attempts belong to arbitrary raw text. |
 | `numeric::{try_parse_integer, IntegerUnitStep, IntegerUnitStepResult, IntegerUnitStepError, try_floating_point_number, FloatingPointParseMode, FloatingPointParseResult, FloatingPointAllocationError}`; semantic ordinals/range/time/dimensions | Export bounded parse/materialization/step operations and checked result/error accessors, including integer-prefix scanning, long-integer interpretation and capped nonnegative recovery used by image dimensions, tabindex, select and inheritance. Preserve requested/actual capacity accounting on both success and failure. |
-| `NumericMaterialized`, `NumericMaterializationFailure`, `NumericMaterializationError` and current bounded methods on integer/decimal/rational values; semantic time/dimensions | Export the bounded materialization result/error domain and the exact existing `try_*` operations with their work-bound methods; values retain private canonical digits. |
+| `NumericMaterialized`, `NumericMaterializationFailure`, `HtmlNumericMaterializationError` and current bounded methods on integer/decimal/rational values; semantic time/dimensions | Export the bounded materialization result/error domain and the exact existing `try_*` operations with their work-bound methods; values retain private canonical digits. |
 | `numeric::natural_ratio::{NaturalDigits, NaturalProduct, NaturalComparison, NaturalDifference}`; `semantics/natural_dimensions.rs` | Export immutable borrowed operands and bounded arithmetic cursor operations; semantic resource/host qualification stays in semantics. |
 | `numeric::range` and its ingress/best/lattice cursors; `construction/parser_session/range.rs` | Export the numerical request/reply/cursor boundary, scratch roles and exact layout descriptions; scratch allocation stays with parser, not HTML. |
 | `temporal::{TemporalAlternative, TemporalPhase, BorrowedTemporalPlan, BorrowedYear, BorrowedDate, BorrowedDurationPlan, BorrowedGlobalDateTime, recognize_time_alternative, temporal_recognition_work_bound}`; `semantics/time_element.rs` | HTML owns `HtmlTimeElementInterpretation`, retaining one raw operand and its recognition/materialization phases. Its bounded actions describe recognition, numeric allocation and owner assembly before execution; only its completed operation creates the report. The listed borrowed plans remain private to HTML. Temporal input-coordinate conversion belongs in a distinct HTML module under #1181, retaining its current API. |
@@ -980,15 +1055,21 @@ value outcomes are the report's author/recovery states, not a failed publication
 transition.
 No public report constructor accepts caller-asserted raw/attempt pairs.
 
-All consuming fallible boundaries in this contract follow one of two concrete
-forms: a guarded `&mut Option<Owner>` transition that leaves `Some` unchanged
-on refusal, or an error value containing the complete unconsumed owner/input.
-Borrowing action failure leaves ownership in its enclosing operation. There is
-no infallible consuming `commit` or `finish` on a pending/failed owner, and no
-ready-proof constructor outside the owner. This applies to initialization,
-attribute validation, complete attribute edits and slot commits, tree
-mutation/publication, interpretation, lease recovery
-and semantic import/finalization; it does not add a generic public typestate
+All consuming fallible boundaries in this contract follow one of three concrete
+forms. The construction owners (initialization, tree mutation and publication,
+text append, complete attribute edits with their candidates and slots, and lease
+recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
+holds the complete unconsumed owner and the cause, so a refusal loses nothing and
+a consumed owner cannot be presented again. The other owner families
+(attribute validation, interpretation and the value pools) keep a guarded
+`&mut Option<Owner>` transition that leaves `Some` unchanged on refusal. The
+remaining boundaries return an error value containing the complete unconsumed
+owner/input. Borrowing action failure leaves ownership in its enclosing
+operation. There is no infallible consuming `commit` or `finish` on a
+pending/failed owner, and no ready-proof constructor outside the owner. This
+applies to initialization, attribute validation, complete attribute edits and
+slot commits, tree mutation/publication, interpretation, lease recovery and
+semantic import/finalization; it does not add a generic public typestate
 framework.
 
 The input-type semantic adapter required by #1173 performs one HTML-owned rule
@@ -1041,10 +1122,10 @@ all such execution failures retain the owner and prevent publication.
 
 #### Rel interpretation and refinement
 
-The rel owner retains the actual `RelInputs<'raw>` used by initial
+The rel owner retains the actual `HtmlRelInputs<'raw>` used by initial
 interpretation: role, rel, rev, href, imagesrcset, itemprop, title, type hint and
 as-destination. These are borrowed operands or fixed values, not reconstructed
-from `RelData`, which does not retain all of them. `RelInputs` has private fields
+from `RelData`, which does not retain all of them. `HtmlRelInputs` has private fields
 and a constructor taking these explicit operands. Initial interpretation keeps
 the existing `interpret` work, reservation and raw-sharing order. The owner
 holds its occurrence vector and single data-record vector; it introduces no
@@ -1097,7 +1178,7 @@ The completed report supplies a read-only registry-resolution accessor; its data
 and mutation helpers remain private.
 
 These requirements follow the actual
-[rel kernel](../../crates/surgeist-html/src/rel.rs),
+[rel kernel](../../crates/surgeist-html/src/internal/elements/rel.rs),
 [relationship adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships.rs)
 and [noopener adapter](../../crates/surgeist-html-semantics/src/semantics/link_relationships/noopener.rs).
 
@@ -1166,8 +1247,8 @@ remain semantics-owned. `HtmlMediaAttributeReport::observed` stays private.
 
 This order is required by the existing
 [media semantic adapter](../../crates/surgeist-html-semantics/src/semantics/media.rs),
-[ordinary report kernel](../../crates/surgeist-html/src/attributes/media.rs)
-and [media cursors](../../crates/surgeist-html/src/media.rs).
+[ordinary report kernel](../../crates/surgeist-html/src/internal/attributes/media.rs)
+and [media cursors](../../crates/surgeist-html/src/internal/elements/media.rs).
 
 #### Microdata token production
 
@@ -1206,7 +1287,7 @@ rules stay authoritative; in particular ItemProp suppresses duplicate processing
 tokens. This protocol preserves the actual checkpoints in
 [`md_tokens`](../../crates/surgeist-html-semantics/src/semantics/microdata.rs) while moving
 token/report assembly into the
-[HTML microdata owner](../../crates/surgeist-html/src/attributes/microdata.rs).
+[HTML microdata owner](../../crates/surgeist-html/src/internal/attributes/microdata.rs).
 
 #### Opaque reservations and failure accounting
 
@@ -1214,11 +1295,23 @@ The small rel meter retains its work callback. Its reservation callback receives
 `HtmlRelReservation<'_>`, an opaque borrowing guard over the owner's actual
 occurrence or single data-record vector, instead of `&mut Vec<T>`. Microdata
 uses a concrete `HtmlMicrodataTokenReservation<'_>` over its actual token vector.
-Each guard describes only the current fixed request for one additional record:
-actual length, capacity and record byte size, plus one checked reservation
-operation. That operation reserves exactly the pending required length using
-`try_reserve_exact`, at most once; when existing capacity suffices, the same
-operation completes without allocation after the existing one-unit admission.
+Each guard describes only the current fixed request for room for one additional
+record: actual length, capacity and record byte size, the capacity the reservation
+will reach (`target_capacity`) and one checked reservation operation. When one more
+record fits, nothing grows. When a vector that takes records one at a time is full
+(the microdata tokens and rel occurrences), the target is the greater of one more
+record and double its capacity (at least 4), so `n` records request `O(log n)`
+reallocations. The target depends only on the vector, never on a limit, so the
+allocation path and the usage it needs are fixed by the input: a consumer that
+admits the target against a limit refuses the reservation when the limit cannot
+hold it, and a query that grows only such lists succeeds under a limit exactly when
+the limit is at least that usage. The report-data vector of a rel interpretation takes one record and is
+reserved exactly. The meter admits the target capacity before the operation
+allocates it and charges the capacity the vector actually reaches. The operation
+uses `try_reserve_exact` at most once for the target; only if the allocator refuses
+a target larger than the one record that is needed does it request that one record
+instead. It runs at most once, and when existing capacity suffices it completes
+without allocation after the existing one-unit admission.
 The guard exposes neither record mutation nor
 a vector/slice escape, and accepts no arbitrary additional count. Dropping an
 unexecuted guard performs no reservation; successful callback return without a
@@ -1399,6 +1492,56 @@ logical capacity model, not a parser-style claim about allocator metadata or
 physical RSS. Query-session accounting begins only after a successful capture
 and context have been built.
 
+Importing is linear in the imported nodes and supplied facts. Node and fact
+lookups use hash indexes keyed by source node identity (the
+standard randomly keyed hash map: `HtmlNodeId` provides equality and hashing,
+but neither an order nor a public dense index). Each probe is charged one work
+credit, expected constant, and an index is only probed, never iterated, so no
+outcome depends on hash seeds or bucket order. A repeated fact node is refused
+as `DuplicateNodeFacts` at its first repetition, in fact order, after the
+foreign-result check of the same fact. Retained arrays and indexes are charged
+for moving their existing entries only when growth actually moves them, so those
+charges sum to a constant number of credits per entry. Establishing a container's
+children or attaching template contents revises only the depths of the subtrees
+it attaches, and charges for them. The new edge's own depth, the parent's depth
+plus one, is checked against the limit first. A cycle is the parent being found
+at or below an attached child, reported at the first such record the
+breadth-first revision reaches (before that record's depth is checked against
+the limit). The one
+remaining whole-capture pass is `finish`, which runs once. No
+`HtmlConstructionCaptureAdapter` charge scales with the number of other nodes,
+so a work allowance sized as a fixed amount per node, attribute, name or value
+unit and relationship admits every adapter import of that size. The crate-private
+controlled-storage builder mode, whose duplicate-child detection compares every
+pair, is not reachable through the adapter, which always uses a builder in
+ordinary storage mode.
+
+Scratch entries are counted per live logical entry: one per supplied fact and
+one per mapped node while the import runs, plus the traversal worklist and, for
+one container at a time, its child lists, duplicate-detection set and
+revised-depth list. All of these are bounded by a constant number of entries per
+node: a fragment of `n` childless siblings peaks at `8n + O(1)` scratch entries,
+measured. The fact index is released when the import ends, whatever the outcome.
+The node index is released on refusal; after success it is moved, not copied,
+into the returned `HtmlConstructionCaptureMap`, so its entries stop counting as
+live scratch (the reported peak still includes them) and become retained memory
+of the map.
+
+The map therefore retains, for every mapped node, one entry (the source
+`HtmlNodeId` and its checked handle) and one slot of a hash index from a second
+clone of that identity to the entry's position, plus whatever spare capacity the
+entry list and the index grew. Their logical sizes are bounded by the import's
+mapping-entry limit.
+`mapping.builder_subject` and `mapping.subject` probe that index, taking
+expected constant time rather than scanning; a node outside the imported closure
+is one failed probe and still returns `OutsideImportedClosure`, and `subject`
+still checks the capture identity first and returns `ForeignBuilder`. The probes
+are not charged to any work allowance; they belong to the caller, not to the
+import. The index is only probed, never iterated, so no outcome depends on hash
+seeds or bucket order. The map has no equality and its `Debug` output lists the
+entries, not the index. `HtmlNodeId` was not given a public dense index for
+this; that would change the `surgeist-html` public contract.
+
 `HtmlConstructionCaptureImport` owns the builder, the same source result and
 `HtmlConstructionCaptureMap`, plus adapter usage. `mapping.builder_subject(id)`
 returns the checked handle for a source ID; `into_parts` returns those owners
@@ -1482,7 +1625,7 @@ execution failure. Successful partial trees, effects or report fragments are
 not returned on error.
 
 `OrdinaryInitializationOwner`, EOF completion, `SealedOrdinaryConstruction`,
-`FrozenStandaloneParts` and `ImmutableParseReport` remain parser-private.
+`FrozenStandaloneParts` and `HtmlParseReport` remain parser-private.
 Construction publication proves an HTML tree; parser publication additionally
 requires completed metadata, associations, lexical/source evidence and terminal
 state. Native freeze alone cannot stand in for a complete parse report.
@@ -1518,6 +1661,31 @@ existing `HtmlParseStop::ColorProcessing` domain and retains the original
 controller, order of provider calls and provenance. HTML legacy color grammar
 and `HtmlLegacyColor` remain HTML values; no numerical matrix, gamut or
 serialization implementation is copied into HTML or parser.
+
+## Error conventions and enum evolution
+
+The crate documentation in [lib.rs](../../crates/surgeist-html/src/lib.rs) owns
+this policy. A reader predicts any error's shape by asking, in order, whether
+the refusal hands back owners, whether it misuses an owner or cursor protocol or
+merges many operations, whether a consumer matches every variant exhaustively,
+and otherwise that it names a rule or vocabulary.
+
+| Family | Shape | Evolution |
+| --- | --- | --- |
+| `HtmlConstructionRefusal`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
+| Resource accounting that a consumer matches exhaustively: `HtmlIntegerUnitStepError` and `HtmlNumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `HtmlFloatingPointAllocationError` (semantics `range.rs`), `HtmlIntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `HtmlAutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
+| Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
+| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `HtmlRangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
+
+Keyword and state sets that the pinned standard enumerates, and the action,
+reply, outcome and step enums of the controlled operations, are exhaustive. Every
+error implements `Display` and `Error`; a wrapper's text describes its own
+operation and exposes its cause through `source`. Errors capture no backtrace,
+because most are `Clone` and `Eq` values returned under exact allocation
+accounting. The `From` conversion of an owned cause replaces repeated
+`map_err`; the generic caller-error wrappers keep `map_err` because a blanket
+`From` would overlap the protocol conversion.
 
 ## Consumer, generated-data and attribution changes
 

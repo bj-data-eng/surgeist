@@ -1,9 +1,9 @@
 //! Public source-body behavior from HTML877d raw60303–60311. The small
 //! adapter below owns operands and captures; it supplies no native focus proof.
-use surgeist_html::{
-    HtmlFocusEventAction as A, HtmlFocusEventCursor as C, HtmlFocusEventError as E,
-    HtmlFocusEventInterface as Interface, HtmlFocusEventName, HtmlFocusEventReply as R,
-    HtmlFocusEventTargetKind as Target, HtmlFocusEventView as View,
+use surgeist_html::focus::{
+    HtmlFocusEventAction as A, HtmlFocusEventCursor as C, HtmlFocusEventInterface as Interface,
+    HtmlFocusEventName, HtmlFocusEventReply as R, HtmlFocusEventTargetKind as Target,
+    HtmlFocusEventView as View,
 };
 
 fn step(cursor: &mut C, control: &mut C, action: A, reply: R) {
@@ -12,7 +12,7 @@ fn step(cursor: &mut C, control: &mut C, action: A, reply: R) {
         R::Applied => R::Dispatched,
         R::Dispatched => R::Applied,
     };
-    assert_eq!(cursor.reply(wrong), Err(E::WrongReply));
+    assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(cursor, control);
     cursor.reply(reply).unwrap();
     control.reply(reply).unwrap();
@@ -74,7 +74,7 @@ fn event<'a>(
     step(&mut cursor, &mut control, action, R::Dispatched);
     assert_eq!(cursor.action(), A::Complete);
     for reply in [R::Applied, R::Dispatched] {
-        assert_eq!(cursor.reply(reply), Err(E::Terminal));
+        assert!(matches!(cursor.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(cursor, control);
     }
     result

@@ -255,6 +255,8 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0), inner.binding(2)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -699,11 +701,12 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 (
                     6,
                     LayoutInputOf::inline_boundary(
-                        InlineBoundaryInputOf::new(
+                        InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::Start,
                             top_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_vertical_align(VerticalAlignOf::Top),
                     ),
                     NodeInputOf::non_box(),
@@ -711,11 +714,12 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                 (
                     7,
                     LayoutInputOf::inline_boundary(
-                        InlineBoundaryInputOf::new(
+                        InlineBoundaryInputOf::contribution(
                             InlineBoundaryKind::End,
                             bottom_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_vertical_align(VerticalAlignOf::Bottom),
                     ),
                     NodeInputOf::non_box(),
@@ -850,11 +854,14 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
                 (
                     3,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::Start,
-                        boundary_metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            boundary_metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 (4, paragraph.text_input(4), NodeInputOf::non_box()),
@@ -1098,11 +1105,14 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         let only_boundary = fri06_c03_mixed_batch(
             vec![(
                 1,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                    InlineBoundaryKind::Start,
-                    metrics,
-                    crate::InlineBoundaryEdgeOf::ZERO,
-                )),
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        InlineBoundaryKind::Start,
+                        metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                ),
                 NodeInputOf::non_box(),
             )],
             AvailableOf::MAX_CONTENT,
@@ -1117,20 +1127,26 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             vec![
                 (
                     1,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::Start,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 (
                     2,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1153,21 +1169,27 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             vec![
                 (
                     1,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::Start,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 text(),
                 (
                     3,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1301,11 +1323,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(3, 10.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1349,11 +1374,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(3, 20.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1389,11 +1417,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(4, 30.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     5,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1550,6 +1581,8 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 0,
                 vec![paragraph.binding(2)],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
@@ -1689,6 +1722,8 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             0,
             vec![paragraph.binding(3)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -3178,7 +3213,7 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
         style,
         surgeist_text::ParagraphBaseDirection::LeftToRight,
     );
-    let strut = InlineBoundaryInputOf::new(
+    let strut = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(
             crate::InlineBaselineContext::Physical,
@@ -3187,7 +3222,8 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
         )
         .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
-    );
+    )
+    .unwrap();
     let mut children = vec![
         (3, paragraph.text_input(3), NodeInputOf::non_box()),
         (
@@ -5228,7 +5264,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -5257,7 +5293,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -5322,8 +5358,23 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -5418,11 +5469,11 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     );
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
-        tree.layouts[&1],
+        tree.layouts[&1].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(0))
     );
     assert_eq!(
-        tree.layouts[&3],
+        tree.layouts[&3].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());
@@ -5434,7 +5485,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -5463,7 +5514,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -5528,8 +5579,23 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -5607,11 +5673,14 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         .insert(2, LayoutInput::box_input(NodeInput::default()));
     tree.inputs.insert(
         3,
-        LayoutInput::inline_boundary(InlineBoundaryInput::new(
-            InlineBoundaryKind::Start,
-            metrics,
-            crate::InlineBoundaryEdgeOf::ZERO,
-        )),
+        LayoutInput::inline_boundary(
+            InlineBoundaryInput::contribution(
+                InlineBoundaryKind::Start,
+                metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .unwrap(),
+        ),
     );
     tree.caches.insert(1, Cache::new());
     tree.caches.insert(2, Cache::new());
@@ -5636,11 +5705,11 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     );
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
-        tree.layouts[&1],
+        tree.layouts[&1].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(0))
     );
     assert_eq!(
-        tree.layouts[&3],
+        tree.layouts[&3].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());

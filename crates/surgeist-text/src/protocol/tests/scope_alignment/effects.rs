@@ -682,8 +682,10 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
                 AtomicLineAllocation::OutOfFlow
             } else {
                 AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 4.0,
+                        normal_border_inline_size: 4.0,
                         before_baseline: 3.0,
                         after_baseline: 2.0,
                         occupied_start: 0.0,
@@ -713,7 +715,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
         .enumerate()
         .map(|(i, view)| ControlAllocation {
             occurrence: view.handle(),
-            boundary: Some(InlineBoundaryAllocation::ZERO),
+            boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
             strut: Some(ControlStrut {
                 baseline: 8.0,
                 line_extent: 10.0,
@@ -731,7 +733,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
             .boundary_context
             .push(InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: InlineBoundaryAllocation::ZERO,
+                boundary: InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     request

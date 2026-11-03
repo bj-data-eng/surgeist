@@ -13,50 +13,29 @@
 
 use super::{
     KernelError,
-    head::{HeadCondition, HeadError, HeadState, HeadStep},
+    head::{HeadError, HeadState, HeadStep, HtmlTreeDiagnostic},
     prologue::Payload,
     tag_sets, write,
 };
 use crate::{
-    DocumentString,
-    bounded::{
-        self, HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
-    },
     construction::{BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text},
     parser::{
-        control::{ParseControl, StandaloneUnsupported, WorkCategory},
+        control::{HtmlParseUnsupportedState, HtmlParseWorkCategory, ParseControl},
         tokenizer::token::{TagKind, Text},
     },
 };
 use std::mem::size_of;
+use surgeist_html::{
+    bounded,
+    bounded::parsing::{
+        HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
+    },
+    values::DocumentString,
+};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
 const SVG: &str = "http://www.w3.org/2000/svg";
-
-pub(super) fn insensitive(
-    value: &DocumentString,
-    literal: &'static str,
-    c: &mut ParseControl,
-) -> Result<bool, HeadError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    if value.len() != literal.len() {
-        return Ok(false);
-    }
-    for (index, byte) in literal.bytes().enumerate() {
-        c.charge(WorkCategory::InspectByte, 3)?;
-        let unit = value.code_units()[index];
-        let lower = if (65..=90).contains(&unit) {
-            unit + 32
-        } else {
-            unit
-        };
-        if lower != u16::from(byte) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
 
 fn integration_comparison(
     value: &DocumentString,
@@ -66,17 +45,19 @@ fn integration_comparison(
 ) -> Result<bool, HeadError> {
     match comparison {
         HtmlIntegrationPointComparison::Exact => Ok(tag_sets::ascii_eq(value, literal, c)?),
-        HtmlIntegrationPointComparison::AsciiCaseInsensitive => insensitive(value, literal, c),
+        HtmlIntegrationPointComparison::AsciiCaseInsensitive => {
+            Ok(c.ascii_case_insensitive_literal_matches(value, literal)?)
+        }
     }
 }
 
 fn integration_rule(
-    name: &crate::QualifiedName,
+    name: &surgeist_html::values::QualifiedName,
     c: &mut ParseControl,
 ) -> Result<HtmlIntegrationPointRule, HeadError> {
     // Borrow the namespace, its URI and the local name before comparisons.
-    c.charge(WorkCategory::RecordVisit, 3)?;
-    bounded::html_integration_point_rule(
+    c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+    bounded::parsing::html_integration_point_rule(
         name.namespace().uri(),
         name.local_name(),
         |value, literal, comparison| integration_comparison(value, literal, comparison, c),
@@ -84,15 +65,15 @@ fn integration_rule(
 }
 
 fn integration_encoding(
-    attributes: &crate::OrderedAttributes,
+    attributes: &surgeist_html::values::OrderedAttributes,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
     for attribute in attributes.as_slice() {
         // Visit the attribute and borrow its name, namespace, URI, local name
         // and value. Variable UTF-16 inspections remain comparison-owned.
-        c.charge(WorkCategory::RecordVisit, 6)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 6)?;
         let name = attribute.name();
-        if let Some(result) = bounded::html_integration_point_encoding_attribute(
+        if let Some(result) = bounded::parsing::html_integration_point_encoding_attribute(
             name.namespace().uri(),
             name.local_name(),
             attribute.value(),
@@ -104,29 +85,34 @@ fn integration_encoding(
     Ok(false)
 }
 
-fn mathml_text_point(name: &crate::QualifiedName, c: &mut ParseControl) -> Result<bool, HeadError> {
-    Ok(bounded::mathml_text_integration_point(|test| match test {
-        HtmlMathmlTextPointTest::Namespace(expected) => tag_sets::namespace(name, expected, c),
-        HtmlMathmlTextPointTest::Local(choices) => tag_sets::local_in(name, choices, c),
-    })?)
+fn mathml_text_point(
+    name: &surgeist_html::values::QualifiedName,
+    c: &mut ParseControl,
+) -> Result<bool, HeadError> {
+    Ok(bounded::parsing::mathml_text_integration_point(
+        |test| match test {
+            HtmlMathmlTextPointTest::Namespace(expected) => tag_sets::namespace(name, expected, c),
+            HtmlMathmlTextPointTest::Local(choices) => tag_sets::local_in(name, choices, c),
+        },
+    )?)
 }
 
 impl HeadState<'_> {
     pub(super) fn adjusted_current_name<'a>(
         &'a self,
         c: &mut ParseControl,
-    ) -> Result<&'a crate::QualifiedName, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+    ) -> Result<&'a surgeist_html::values::QualifiedName, HeadError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = context
                 .capture()
                 .node(context.context_element().subject())
                 .map_err(|_| crate::construction::SessionError::ContextUnavailable)?;
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                return Err(KernelError::NotElement.into());
+                return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
             return Ok(element.name());
         }
@@ -140,18 +126,18 @@ impl HeadState<'_> {
     fn adjusted_current_attributes<'a>(
         &'a self,
         c: &mut ParseControl,
-    ) -> Result<&'a crate::OrderedAttributes, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+    ) -> Result<&'a surgeist_html::values::OrderedAttributes, HeadError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let node = context
                 .capture()
                 .node(context.context_element().subject())
                 .map_err(|_| crate::construction::SessionError::ContextUnavailable)?;
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                return Err(KernelError::NotElement.into());
+                return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
             return Ok(element.attributes());
         }
@@ -166,7 +152,7 @@ impl HeadState<'_> {
         &self,
         c: &mut ParseControl,
     ) -> Result<Option<ForeignNamespace>, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 0 {
             return Ok(None);
         }
@@ -185,14 +171,14 @@ impl HeadState<'_> {
             .kernel
             .session
             .fragment_context(c)?
-            .ok_or_else(|| c.stop_unsupported_standalone(StandaloneUnsupported::Provenance))?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+            .ok_or_else(|| c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance))?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let node = context
             .capture()
             .node(context.context_element().subject())
             .map_err(|_| super::SessionError::ContextUnavailable)?;
         let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            return Err(KernelError::NotElement.into());
+            return Err(crate::construction::SessionError::ContextUnavailable.into());
         };
         let equal = match (name.namespace().uri(), element.name().namespace().uri()) {
             (None, None) => true,
@@ -201,7 +187,7 @@ impl HeadState<'_> {
         };
         if !equal {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(Some(ForeignNamespace::Context))
@@ -241,7 +227,7 @@ impl HeadState<'_> {
         }
     }
     pub(super) fn foreign_dispatch(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let payload = &self
             .pending
             .as_ref()
@@ -294,7 +280,7 @@ impl HeadState<'_> {
         let svg_script =
             namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some();
         let place = self.before.kernel.appropriate_place(None, c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
         let Payload::Tag(input) = &mut pending.payload else {
             return Err(HeadError::MissingInput);
@@ -356,7 +342,7 @@ impl HeadState<'_> {
                 .element_attributes(c, node)?
                 .ok_or(KernelError::EmptyStack)?;
             for attribute in attrs.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 2)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if tag_sets::namespace(attribute.name(), "http://www.w3.org/2000/xmlns/", c)?
                     && tag_sets::ascii_eq(attribute.name().local_name(), local, c)?
                     && !(if let Some(expected) = expected {
@@ -380,8 +366,8 @@ impl HeadState<'_> {
             }
             if mismatch {
                 self.emit(
-                    HeadCondition::ForeignNamespaceMismatch,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::ForeignNamespaceMismatch,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inforeign",
                         branch: "foreign-start/xmlns-namespace-mismatch",
                     },
@@ -392,7 +378,7 @@ impl HeadState<'_> {
         Ok(())
     }
     fn foreign_characters(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.body_runs.is_none() {
             let Payload::Text(input) = &mut self
                 .pending
@@ -406,55 +392,51 @@ impl HeadState<'_> {
             self.body_runs = Some(partition_body_text(c, input)?);
         }
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if self.body_run.is_none() {
                 write(size_of::<Option<crate::construction::TextRun>>(), 1, c)?;
                 self.body_run = self
                     .body_runs
                     .as_mut()
-                    .expect("retained runs")
+                    .ok_or(HeadError::MissingInput)?
                     .take_next(c)?;
             }
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(run) = self.body_run.as_ref() else {
                 break;
             };
-            c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
+            c.charge(
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<BodyTextKind>() as u64,
+            )?;
             let kind = run.kind;
             if kind == BodyTextKind::Null {
                 let mode = self.mode(c)?;
-                for origin in self
-                    .body_run
-                    .as_ref()
-                    .expect("retained run")
-                    .text
-                    .origins
-                    .as_slice()
-                {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                for origin in run.text.origins.as_slice() {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
 
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     self.before.kernel.session.evidence(c)?.append(
                         c,
-                        crate::construction::evidence::DiagnosticKind::Tree(
-                            HeadCondition::NullInForeign,
+                        crate::construction::evidence::HtmlParseDiagnosticKind::Tree(
+                            HtmlTreeDiagnostic::NullInForeign,
                         ),
-                        crate::construction::evidence::DiagnosticContext::Tree(mode),
-                        crate::construction::evidence::DiagnosticRule {
+                        crate::construction::evidence::HtmlParseDiagnosticContext::Tree(mode),
+                        crate::construction::evidence::HtmlParseDiagnosticRule {
                             anchor: "parsing-main-inforeign",
                             branch: "null-character/replace",
                         },
                         crate::construction::evidence::DiagnosticLocationInput {
                             source: &origin.source,
-                            role: crate::construction::evidence::DiagnosticLocationRole::TextOrigin,
-                            token: Some(crate::construction::evidence::DiagnosticToken::Text),
+                            role: crate::construction::evidence::HtmlParseDiagnosticLocationRole::TextOrigin,
+                            token: Some(crate::construction::evidence::HtmlParseTokenFamily::Text),
                         },
                     )?;
                 }
             }
             write(
-                size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>(),
+                const { size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>() },
                 2,
                 c,
             )?;
@@ -475,7 +457,10 @@ impl HeadState<'_> {
                 self.frameset(false, c)?;
             }
         }
-        self.body_runs.as_mut().expect("retained runs").release(c)?;
+        self.body_runs
+            .as_mut()
+            .ok_or(HeadError::MissingInput)?
+            .release(c)?;
         write(size_of::<Option<BodyTextRuns>>(), 1, c)?;
         self.body_runs = None;
         self.finish(c)
@@ -486,8 +471,8 @@ impl HeadState<'_> {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
-        self.record_trigger(crate::construction::provenance::ParserRule::Foreign, c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.record_trigger(crate::construction::provenance::HtmlParserRule::Foreign, c)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match &self
             .pending
             .as_ref()
@@ -498,8 +483,8 @@ impl HeadState<'_> {
             Payload::Comment(_) | Payload::Pi(_) => return Ok(Some(self.ordinary_node(c)?)),
             Payload::Doctype(_) => {
                 self.emit(
-                    HeadCondition::UnexpectedDoctype,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedDoctype,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inforeign",
                         branch: "foreign-doctype/ignore",
                     },
@@ -568,8 +553,8 @@ impl HeadState<'_> {
         };
         if breakout {
             self.emit(
-                HeadCondition::UnexpectedForeignToken,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedForeignToken,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inforeign",
                     branch: if kind == TagKind::Start {
                         "foreign-start/html-breakout"
@@ -580,7 +565,7 @@ impl HeadState<'_> {
                 c,
             )?;
             loop {
-                c.charge(WorkCategory::StateStep, 1)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 let current = self.before.kernel.current(c)?;
                 let current_name = self
                     .before
@@ -623,25 +608,31 @@ impl HeadState<'_> {
         }
         if !self.foreign_end_matches(&current, c)? {
             self.emit(
-                HeadCondition::UnexpectedForeignToken,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedForeignToken,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-inforeign",
                     branch: "foreign-end/current-local-name-mismatch",
                 },
                 c,
             )?;
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let mut index = self.before.kernel.stack()?.len() - 1;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let mut index = self
+            .before
+            .kernel
+            .stack()?
+            .len()
+            .checked_sub(1)
+            .ok_or(KernelError::EmptyStack)?;
         loop {
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             if index == 0 {
                 return Ok(Some(self.discard(c)?));
             }
             let node = self.before.kernel.at(index, c)?;
             if self.foreign_end_matches(&node, c)? {
                 loop {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if self.before.kernel.stack()?.len() <= index {
                         break;
                     }
@@ -652,7 +643,7 @@ impl HeadState<'_> {
                 }
                 return Ok(Some(self.discard(c)?));
             }
-            index -= 1;
+            index = index.saturating_sub(1);
             let node = self.before.kernel.at(index, c)?;
             let name = self
                 .before
@@ -680,7 +671,7 @@ impl HeadState<'_> {
             .attributes
             .as_slice()
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             for name in ["color", "face", "size"] {
                 if tag_sets::ascii_eq(attribute.name.value.text(), name, c)? {
                     return Ok(true);
@@ -715,19 +706,14 @@ impl HeadState<'_> {
             .name
             .value
             .text();
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if name.len() != token.len() {
             return Ok(false);
         }
-        for index in 0..name.len() {
-            c.charge(WorkCategory::InspectByte, 4)?;
-            let unit = name.code_units()[index];
-            let lower = if (65..=90).contains(&unit) {
-                unit + 32
-            } else {
-                unit
-            };
-            if lower != token.code_units()[index] {
+        // The lengths are equal, so the pairs are exactly the shared indices.
+        for (&unit, &expected) in name.code_units().iter().zip(token.code_units()) {
+            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
+            if surgeist_html::bounded::lexical::ascii_lowercase(unit) != expected {
                 return Ok(false);
             }
         }
@@ -738,10 +724,8 @@ impl HeadState<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Attribute, HtmlParseCancellation, HtmlParseResource, Namespace, OrderedAttributes,
-        QualifiedName,
-    };
+    use crate::{HtmlParseCancellation, HtmlParseResource};
+    use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
     fn encoding(value: &str) -> Attribute {
         Attribute::new(
@@ -762,19 +746,25 @@ mod tests {
     }
 
     #[test]
-    fn mathml_text_group_retains_exact_header_unit_and_refusal_costs() {
+    fn mathml_text_group_membership_succeeds_at_measured_budget_and_refuses_one_short() {
         let name = QualifiedName::new(Namespace::mathml(), Some("p".into()), "mtext");
-        // Namespace: two field visits and one comparison header, 34 pairs of
-        // UTF-16/literal bytes. Local group: one header, five choice/comparison
-        // headers and five final pairs. All categories have unit weight.
-        let mut exact = control(131, HtmlParseCancellation::new());
+        // HTML 877d: a MathML mtext element is a MathML text integration
+        // point. The work a successful classification needs is measured from
+        // an unconstrained run, not counted from the comparison's layout.
+        let mut measured = control(1_000_000, HtmlParseCancellation::new());
+        assert!(mathml_text_point(&name, &mut measured).unwrap());
+        let required = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        assert!(required > 1);
+
+        let mut exact = control(required, HtmlParseCancellation::new());
         assert!(mathml_text_point(&name, &mut exact).unwrap());
-        assert_eq!(exact.usage().work(WorkCategory::RecordVisit), 14);
-        assert_eq!(exact.usage().work(WorkCategory::InspectByte), 117);
         assert_eq!(exact.stop(), None);
 
         let cancellation = HtmlParseCancellation::new();
-        let mut short = control(130, cancellation.clone());
+        let mut short = control(required - 1, cancellation.clone());
         assert!(mathml_text_point(&name, &mut short).is_err());
         let first = short.stop();
         assert!(matches!(
@@ -790,23 +780,105 @@ mod tests {
         assert_eq!(short.stop(), first);
         assert_eq!(short.usage(), &usage);
 
-        let mut foreign = control(3, HtmlParseCancellation::new());
+        // An element outside the MathML namespace is refused with the answer
+        // false, at a budget that accepting would not fit. HTML 877d lists
+        // only mi, mo, mn, ms and mtext in the MathML namespace, so a MathML
+        // element outside that list is refused too.
+        let foreign_name = QualifiedName::new(Namespace::html(), None, "mtext");
+        let mut foreign = control(required - 1, HtmlParseCancellation::new());
+        assert!(!mathml_text_point(&foreign_name, &mut foreign).unwrap());
+        assert_eq!(foreign.stop(), None);
         assert!(
-            !mathml_text_point(
-                &QualifiedName::new(Namespace::html(), None, "mtext"),
-                &mut foreign,
-            )
-            .unwrap()
+            foreign
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                < required
         );
-        assert_eq!(foreign.usage().work(WorkCategory::RecordVisit), 3);
-        assert_eq!(foreign.usage().work(WorkCategory::InspectByte), 0);
+        // The list is exactly the five MathML elements of the definition at
+        // references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md
+        // lines 3403-3410: mi, mo, mn, ms and mtext. Every one is a point;
+        // other MathML elements, including the two the tree builder treats
+        // specially (mglyph, malignmark) and annotation-xml, are not.
+        for local in ["mi", "mo", "mn", "ms", "mtext"] {
+            let mut listed = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                mathml_text_point(
+                    &QualifiedName::new(Namespace::mathml(), None, local),
+                    &mut listed,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
+        for local in ["mglyph", "malignmark", "annotation-xml", "mrow", "m"] {
+            let mut unlisted = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                !mathml_text_point(
+                    &QualifiedName::new(Namespace::mathml(), None, local),
+                    &mut unlisted,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
+        // The same local names outside the MathML namespace are not points.
+        for local in ["mi", "mo", "mn", "ms", "mtext"] {
+            let mut html = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                !mathml_text_point(
+                    &QualifiedName::new(Namespace::html(), None, local),
+                    &mut html,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
+
+        // The work depends only on the namespace URI and the local name's
+        // length and bytes, not on unrelated parts of the name. namespace()
+        // reads only the URI and local_in() only the local name
+        // (tag_sets.rs:50-76), and a local name whose length differs from a
+        // choice is refused before any unit is inspected (tag_sets.rs:36-39).
+        // So the prefix never changes the cost, and neither does the length of
+        // a MathML local name that is not the length of any listed name.
+        let measured_cost = |name: &QualifiedName| {
+            let mut measured = control(1_000_000, HtmlParseCancellation::new());
+            mathml_text_point(name, &mut measured).unwrap();
+            measured
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+        };
+        for prefix in [None, Some("p".repeat(1_000))] {
+            let prefixed = QualifiedName::new(
+                Namespace::mathml(),
+                prefix.as_deref().map(Into::into),
+                "mtext",
+            );
+            assert_eq!(measured_cost(&prefixed), required);
+        }
+        let unlisted = |length: usize| {
+            measured_cost(&QualifiedName::new(
+                Namespace::mathml(),
+                None,
+                "x".repeat(length),
+            ))
+        };
+        assert_eq!(unlisted(100), unlisted(10_000));
 
         let cancellation = HtmlParseCancellation::new();
-        let mut cancelled = control(131, cancellation.clone());
+        let mut cancelled = control(required, cancellation.clone());
         cancellation.cancel();
         assert!(mathml_text_point(&name, &mut cancelled).is_err());
         assert_eq!(cancelled.stop(), Some(crate::HtmlParseStop::Cancelled));
-        assert_eq!(cancelled.usage().work(WorkCategory::RecordVisit), 0);
+        assert_eq!(
+            cancelled
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            0
+        );
     }
 
     #[test]

@@ -2630,7 +2630,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -2682,7 +2682,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -2743,8 +2743,23 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -2810,8 +2825,8 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
         .unwrap();
 
     assert_eq!(output.content_size, Size::new(20.0, 30.0));
-    assert_eq!(tree.layouts[&2].size, Size::new(20.0, 10.0));
-    assert_eq!(tree.layouts[&3].size, Size::new(20.0, 15.0));
+    assert_eq!(tree.layouts[&2].output().size, Size::new(20.0, 10.0));
+    assert_eq!(tree.layouts[&3].output().size, Size::new(20.0, 15.0));
 }
 
 #[test]
@@ -5043,14 +5058,15 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
         ),
     )
     .unwrap();
-    tree.borrow_compute().set_unrounded(
-        1,
-        NodeOutput {
-            size: output.size,
-            content_size: output.content_size,
-            ..NodeOutput::new()
-        },
-    );
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            NodeOutput {
+                size: output.size,
+                content_size: output.content_size,
+                ..NodeOutput::new()
+            },
+        ));
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size.height, 96.0);
@@ -5130,14 +5146,15 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
         ),
     )
     .unwrap();
-    tree.borrow_compute().set_unrounded(
-        1,
-        NodeOutput {
-            size: output.size,
-            content_size: output.content_size,
-            ..NodeOutput::new()
-        },
-    );
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            NodeOutput {
+                size: output.size,
+                content_size: output.content_size,
+                ..NodeOutput::new()
+            },
+        ));
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size, Size::new(100.0, 90.0));
@@ -5557,7 +5574,20 @@ impl<'input> Compute<'input> for LaneMarginMeasureTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
-    fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        Err(crate::test_support::layout_tree::missing_staged_unrounded(
+            node,
+        ))
+    }
+
+    fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         unreachable!("lane margin measurement should not write layout output");
     }
 
@@ -5764,7 +5794,7 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     struct F64GridTree {
         styles: Vec<NodeInputOf<f64>>,
         children: Vec<Vec<usize>>,
-        layouts: Vec<NodeOutputOf<f64>>,
+        layouts: Vec<Option<crate::LayoutOutputEntryOf<usize, f64>>>,
     }
 
     impl Traverse for F64GridTree {
@@ -5791,7 +5821,7 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     struct F64GridTreeCompute<'input> {
         styles: &'input Vec<NodeInputOf<f64>>,
         children: &'input Vec<Vec<usize>>,
-        layouts: &'input mut Vec<NodeOutputOf<f64>>,
+        layouts: &'input mut Vec<Option<crate::LayoutOutputEntryOf<usize, f64>>>,
     }
 
     impl F64GridTree {
@@ -5849,8 +5879,24 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<f64>) {
-            self.layouts[node] = layout;
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(node)
+                .copied()
+                .flatten()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts[entry.node()] = Some(entry);
         }
 
         fn compute_child(
@@ -5898,7 +5944,7 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     let mut tree = F64GridTree {
         styles: vec![root_style, child_style],
         children: vec![vec![1], Vec::new()],
-        layouts: vec![NodeOutputOf::new(), NodeOutputOf::new()],
+        layouts: vec![None, None],
     };
 
     let computation = compute_grid_with_report(
@@ -5925,7 +5971,10 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
 
     assert!(report.is_empty());
     assert_eq!(output.size, Size::new(120.0, 90.0));
-    assert_eq!(tree.layouts[1].size, Size::new(30.0, 20.0));
+    assert_eq!(
+        tree.layouts[1].unwrap().output().size,
+        Size::new(30.0, 20.0)
+    );
 }
 
 fn assert_fri08_c01_area_only_pattern_topology<S: LayoutScalar>() {
@@ -7829,3 +7878,6 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
     assert_eq!(report.leaves[0].ancestor_span, GridTrackSpan::new(1, 2));
     assert!(report.leaves[0].standalone_parent_context.is_none());
 }
+
+#[path = "lanes_subgrid/lanes_minmax_authority.rs"]
+mod lanes_minmax_authority;

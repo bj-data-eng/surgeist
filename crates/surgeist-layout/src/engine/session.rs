@@ -10,8 +10,7 @@ use crate::scroll::SettledAutoScrollbarState;
 use crate::{
     CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
     InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputViewOf,
-    LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, NodeOutputOf, RunMode, Size,
-    Traverse,
+    LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, RunMode, Size, Traverse,
 };
 
 type SessionResult<Tree, T> = LayoutResultOf<
@@ -58,6 +57,9 @@ where
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
     wrapping_uncached: Vec<Tree::Node>,
+    native_inline_runs: Vec<crate::inline_wrapping::family::NativePublication<Tree::Scalar>>,
+    native_inline_completions:
+        Vec<crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>>,
     groups: Option<crate::group_alignment::State<Tree::Node, Tree::Scalar>>,
     text: Option<crate::text_layout::state::TextComputation<'a, Tree::Node, Tree::Scalar>>,
     unrounded_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
@@ -90,10 +92,11 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     associations: Option<std::sync::Arc<crate::text_layout::capture::ScopeAssociations<Node>>>,
     entries: Vec<LayoutOutputEntryOf<Node, S>>,
     fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
+    native_inline_runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+    native_inline_completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
     stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
     clears: Vec<LayoutCacheClearEntry<Node>>,
     pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
-    atomic_origins: Vec<(Node, crate::Point<f64>)>,
     absolute_baselines: Vec<(Node, f64)>,
     scope_fragments: Vec<crate::text_layout::state::ScopeFragmentGroup<Node, S>>,
 }
@@ -169,6 +172,8 @@ where
             wrapping: None,
             flow_graph: None,
             wrapping_uncached: Vec::new(),
+            native_inline_runs: Vec::new(),
+            native_inline_completions: Vec::new(),
             groups: None,
             text: None,
             unrounded_entries: Vec::new(),
@@ -198,7 +203,7 @@ where
             // Host geometry has no slot for this immutable selection basis.
             // Keep influencing results out of that cache, including ancestors
             // that could otherwise conceal an old selected sequence.
-            self.uncache_flow_dependencies(graph, wrapping.dependencies().into_iter());
+            self.uncache_flow_dependencies(graph, wrapping.dependencies().iter().copied());
         }
     }
 
@@ -257,6 +262,7 @@ where
                 capture.associations.clone(),
                 crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                     capture.scope_alignments.clone(),
+                    capture.associations.inline_box_families().clone(),
                 ),
             );
             text.graph = Some(&capture.graph);
@@ -288,14 +294,14 @@ where
         &self,
         root: Tree::Node,
     ) -> SessionResult<Tree, CanonicalFrames<Tree>> {
-        let mut pending = vec![(root, crate::Point::<f64>::ZERO)];
+        use crate::output::{AtomicReadbackPhase, GeometryStateOf};
+        let mut pending = vec![(root, crate::Point::<f64>::ZERO, crate::Point::<f64>::ZERO)];
         let mut frames = Vec::new();
-        while let Some((node, parent_origin)) = pending.pop() {
-            let output = self
+        while let Some((node, parent_visual, parent_normal)) = pending.pop() {
+            let entry = self
                 .final_entries
                 .iter()
                 .find(|entry| entry.node() == node)
-                .map(LayoutOutputEntryOf::output)
                 .ok_or_else(|| {
                     LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
@@ -305,35 +311,81 @@ where
                         ),
                     )
                 })?;
-            let origin = crate::Point::new(
-                parent_origin.x + output.location.x.to_f64(),
-                parent_origin.y + output.location.y.to_f64(),
-            );
-            for (base, delta, value) in [
-                (parent_origin.x, output.location.x.to_f64(), origin.x),
-                (parent_origin.y, output.location.y.to_f64(), origin.y),
-            ] {
-                let reason = if !value.is_finite() {
-                    Some(crate::LayoutTextNumericError::NonFinite)
-                } else if delta != 0.0 && value == base {
-                    Some(crate::LayoutTextNumericError::NonZeroLost)
-                } else {
-                    None
-                };
-                if let Some(reason) = reason {
+            let output = entry.output();
+            let (normal, atomic_origins) = match entry.geometry_state() {
+                GeometryStateOf::OrdinaryCanonical { normal } => (normal, None),
+                GeometryStateOf::CanonicalAtomic {
+                    normal,
+                    normal_origin,
+                    visual_origin,
+                    readback: AtomicReadbackPhase::Finalized,
+                    ..
+                } => (normal, Some((normal_origin, visual_origin))),
+                _ => {
                     return Err(LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::TextPlacement,
-                        LayoutErrorKindOf::TextNumeric {
-                            value: if value.is_finite() { delta } else { value },
-                            reason,
-                        },
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                        ),
                     ));
                 }
-            }
+            };
+            let origin_sum = |parent: crate::Point<f64>, location: crate::Point<Tree::Scalar>| {
+                let mut result = parent;
+                for (base, delta, target) in [
+                    (parent.x, location.x.to_f64(), &mut result.x),
+                    (parent.y, location.y.to_f64(), &mut result.y),
+                ] {
+                    let value = base + delta;
+                    let reason = if !value.is_finite() {
+                        Some(crate::LayoutTextNumericError::NonFinite)
+                    } else if delta != 0.0 && value == base {
+                        Some(crate::LayoutTextNumericError::NonZeroLost)
+                    } else {
+                        None
+                    };
+                    if let Some(reason) = reason {
+                        return Err(LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::TextNumeric {
+                                value: if value.is_finite() { delta } else { value },
+                                reason,
+                            },
+                        ));
+                    }
+                    *target = value;
+                }
+                Ok(result)
+            };
+            let (normal_origin, origin) = match atomic_origins {
+                Some(origins) => origins,
+                None => (
+                    origin_sum(parent_normal, normal.location)?,
+                    origin_sum(parent_visual, output.location)?,
+                ),
+            };
+            let measured_inset_basis = self
+                .unrounded_entries
+                .iter()
+                .find(|entry| entry.node() == node)
+                .and_then(LayoutOutputEntryOf::measured_inset_basis)
+                .ok_or_else(|| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::TextPlacement,
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                        ),
+                    )
+                })?;
             frames.push(crate::text_layout::state::CanonicalFrame {
                 node,
                 origin,
+                normal_origin,
+                normal,
+                measured_inset_basis,
                 output,
             });
             pending.extend(
@@ -342,7 +394,7 @@ where
                     .collect::<Vec<_>>()
                     .into_iter()
                     .rev()
-                    .map(|child| (child, origin)),
+                    .map(|child| (child, origin, normal_origin)),
             );
         }
         Ok(frames)
@@ -427,9 +479,10 @@ where
             text.pending.clear();
             text.boxes.clear();
             text.scope_fragments.clear();
-            text.atomic_origins.clear();
             text.absolute_baselines.clear();
         }
+        self.native_inline_runs.clear();
+        self.native_inline_completions.clear();
         self.block_floats.reset();
         self.unrounded_entries.clear();
         self.final_entries.clear();
@@ -505,6 +558,11 @@ where
             self.cache_clear_entries,
             self.invalidated_nodes,
         )
+        .with_native_inline_boxes(
+            self.wrapping,
+            self.native_inline_runs,
+            self.native_inline_completions,
+        )
     }
 
     pub(super) fn complete_for_root(
@@ -536,6 +594,46 @@ where
         self.unrounded_entries = ordered_unrounded;
         self.final_entries = ordered_final;
         self.complete()
+    }
+
+    fn retain_native_completion(
+        &mut self,
+        node: Tree::Node,
+        completion: crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if let Some(old) = self
+            .native_inline_completions
+            .iter_mut()
+            .find(|old| old.family == completion.family)
+        {
+            *old = completion;
+        } else {
+            self.native_inline_completions.try_reserve(1).map_err(|_| {
+                crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+            })?;
+            self.native_inline_completions.push(completion);
+        }
+        Ok(())
+    }
+
+    fn replace_native_run(
+        &mut self,
+        node: Tree::Node,
+        run: crate::inline_wrapping::family::NativePublication<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if let Some(index) = self
+            .native_inline_runs
+            .iter()
+            .position(|old| old.family == run.family && old.source == run.source)
+        {
+            self.native_inline_runs[index] = run;
+        } else {
+            self.native_inline_runs.try_reserve(1).map_err(|_| {
+                crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+            })?;
+            self.native_inline_runs.push(run);
+        }
+        Ok(())
     }
 
     fn staged_source_index(&self, node: Tree::Node) -> crate::SourceIndex {
@@ -572,15 +670,35 @@ where
                 continue;
             }
             visited.push(node);
-            let Some(output) = self.tree.unrounded_layout(node) else {
+            let Some(entry) = self.tree.unrounded_layout(node) else {
                 return false;
             };
-            restored.push((node, output));
+            if entry.node() != node || !entry.geometry_state().is_unrounded() {
+                return false;
+            }
+            if let crate::output::GeometryStateOf::CanonicalAtomic {
+                normal,
+                normal_origin,
+                visual_origin,
+                ..
+            } = entry.geometry_state()
+            {
+                let current = self.text.as_ref().and_then(|text| text.frame(node));
+                if current.is_none_or(|frame| {
+                    frame.normal != normal
+                        || frame.normal_origin != normal_origin
+                        || frame.origin != visual_origin
+                        || frame.output.size != entry.output().size
+                }) {
+                    return false;
+                }
+            }
+            restored.push(entry);
             let children = self.tree.children(node).collect::<Vec<_>>();
             pending.extend(children.into_iter().rev());
         }
-        for (node, output) in restored {
-            self.set_unrounded(node, output);
+        for entry in restored {
+            self.set_unrounded(entry);
         }
         true
     }
@@ -591,6 +709,20 @@ where
         input: ComputeInputOf<Tree::Scalar>,
     ) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
     {
+        if input.run_mode().is_perform_layout()
+            && let Some(index) = self.wrapping.as_ref().and_then(|context| {
+                context
+                    .families
+                    .iter()
+                    .position(|family| family.formatter() == node)
+            })
+        {
+            // Recompute this formatter's accepted runs rather than appending an
+            // earlier scrollbar/size trial. Intrinsic probes do not clear them.
+            self.native_inline_runs.retain(|run| run.family != index);
+            self.native_inline_completions
+                .retain(|completion| completion.family != index);
+        }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
             let result = crate::measurement::compute_tree_leaf(self.tree, node, input, style);
@@ -609,7 +741,7 @@ where
             return result;
         }
 
-        match style.display.inner_display() {
+        let output = match style.display.inner_display() {
             crate::Display::Block => crate::block::compute_block(self, node, input),
             crate::Display::Flex => crate::flex::compute_flex(self, node, input),
             crate::Display::Grid | crate::Display::GridLanes => {
@@ -627,7 +759,25 @@ where
             | crate::Display::InlineGridLanes => {
                 unreachable!("inner_display removes inline display variants")
             }
+        }?;
+        if input.run_mode().is_perform_layout()
+            && let Some(family) = self.wrapping.as_ref().and_then(|context| {
+                context
+                    .families
+                    .iter()
+                    .position(|family| family.formatter() == node)
+            })
+        {
+            self.retain_native_completion(
+                node,
+                crate::inline_wrapping::family::NativeFormatterCompletion {
+                    family,
+                    input,
+                    output,
+                },
+            )?;
         }
+        Ok(output)
     }
 }
 
@@ -705,7 +855,34 @@ where
         self.text.as_mut()
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>) {
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> LayoutResultOf<
+        Self::Node,
+        LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        self.unrounded_entries
+            .iter()
+            .rev()
+            .find(|entry| entry.node() == node)
+            .copied()
+            .filter(|entry| entry.geometry_state().is_unrounded())
+            .ok_or_else(|| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::InternalInvariant(
+                        LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                    ),
+                )
+            })
+    }
+
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
         if let Some(index) = self
             .unrounded_entries
             .iter()
@@ -713,8 +890,73 @@ where
         {
             self.unrounded_entries.remove(index);
         }
-        self.unrounded_entries
-            .push(LayoutOutputEntryOf::new(node, layout));
+        self.unrounded_entries.push(entry);
+    }
+
+    fn publish_native_inline_run(
+        &mut self,
+        node: Self::Node,
+        source: std::ops::Range<usize>,
+        completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
+        lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<Self::Scalar>>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, Tree::MeasureError> {
+        let family = self.wrapping.as_ref().and_then(|context| {
+            context
+                .families
+                .iter()
+                .position(|family| family.formatter() == node)
+        });
+        let Some(family_index) = family else {
+            if lines.is_empty() && completion.is_none() {
+                return Ok(());
+            }
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        };
+        let completion = completion.ok_or_else(|| {
+            crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            )
+        })?;
+        let actual_source = completion
+            .selection(0..completion.ranks.len())
+            .map_err(|error| crate::inline_wrapping::wrapping_error(node, error))?
+            .raw_fences;
+        let family = &self
+            .wrapping
+            .as_ref()
+            .expect("actual requested family context")
+            .families[family_index];
+        if actual_source != source || !std::sync::Arc::ptr_eq(family.profile(), &completion.profile)
+        {
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        }
+        if lines.iter().any(|line| {
+            !std::sync::Arc::ptr_eq(&completion, &line.receipt)
+                || !std::sync::Arc::ptr_eq(family.profile(), &line.profile)
+                || line.source.start < source.start
+                || line.source.end > source.end
+                || line.source.start > line.source.end
+        }) {
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        }
+        let run = crate::inline_wrapping::family::NativePublication::new(
+            family_index,
+            source,
+            completion,
+            lines,
+        )
+        .map_err(|error| crate::inline_wrapping::wrapping_error(node, error))?;
+        self.replace_native_run(node, run)
     }
 
     fn set_unrounded_inline_fragment_state(
@@ -931,22 +1173,12 @@ where
             std::sync::Arc::from([])
         };
         let output = probe.compute_child(node, input)?;
-        let (pending, atomic_origins, absolute_baselines, scope_fragments, formatted, boxes) =
+        let (pending, absolute_baselines, scope_fragments, formatted, boxes) =
             probe.text.map_or_else(
-                || {
-                    (
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        None,
-                        Vec::new(),
-                    )
-                },
+                || (Vec::new(), Vec::new(), Vec::new(), None, Vec::new()),
                 |text| {
                     (
                         text.pending,
-                        text.atomic_origins,
                         text.absolute_baselines,
                         text.scope_fragments,
                         text.formatted,
@@ -972,10 +1204,11 @@ where
             associations,
             entries: probe.unrounded_entries,
             fragments: probe.unrounded_inline_fragment_groups,
+            native_inline_runs: probe.native_inline_runs,
+            native_inline_completions: probe.native_inline_completions,
             stores: probe.cache_store_entries,
             clears: probe.cache_clear_entries,
             pending,
-            atomic_origins,
             absolute_baselines,
             scope_fragments,
         }))
@@ -1032,10 +1265,39 @@ where
             groups.accept(accepted);
         }
         for entry in &packet.entries {
-            self.set_unrounded(entry.node(), entry.output());
+            self.set_unrounded(*entry);
         }
         for group in &packet.fragments {
             self.set_unrounded_inline_fragment_state(group.node, group.fragments.clone());
+        }
+        for completion in &packet.native_inline_completions {
+            let formatter = self
+                .wrapping
+                .as_ref()
+                .and_then(|context| context.families.get(completion.family))
+                .ok_or_else(|| {
+                    crate::inline_wrapping::wrapping_error(
+                        packet.node,
+                        crate::WrappingScopeError::InconsistentIncidence,
+                    )
+                })?;
+            if !completion.input.run_mode().is_perform_layout()
+                || (formatter.formatter() == packet.node && completion.output != packet.output)
+            {
+                return Err(crate::inline_wrapping::wrapping_error(
+                    packet.node,
+                    crate::WrappingScopeError::InconsistentIncidence,
+                ));
+            }
+            self.native_inline_runs
+                .retain(|run| run.family != completion.family);
+            self.retain_native_completion(packet.node, *completion)?;
+        }
+        for run in &packet.native_inline_runs {
+            let accepted = run
+                .try_clone()
+                .map_err(|error| crate::inline_wrapping::wrapping_error(packet.node, error))?;
+            self.replace_native_run(packet.node, accepted)?;
         }
         for entry in &packet.stores {
             self.cache_store(entry.node(), entry.input(), entry.context(), entry.output());
@@ -1066,7 +1328,6 @@ where
             for paragraph in &packet.pending {
                 text.record(paragraph.clone());
             }
-            text.record_atomic_origins(packet.atomic_origins.clone());
             for &(node, baseline) in &packet.absolute_baselines {
                 text.record_absolute_baseline(node, baseline);
             }
@@ -1097,24 +1358,20 @@ where
         })
     }
 
-    fn canonical_text_atomic_origin(&self, node: Self::Node) -> Option<crate::Point<f64>> {
-        self.text
-            .as_ref()?
-            .atomic_origins
-            .iter()
-            .find_map(|(subject, origin)| (*subject == node).then_some(*origin))
-    }
-
     fn unrounded(
         &self,
         node: Self::Node,
-    ) -> LayoutResultOf<Self::Node, NodeOutputOf<Self::Scalar>, Self::Scalar, Tree::MeasureError>
-    {
+    ) -> LayoutResultOf<
+        Self::Node,
+        LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
         self.unrounded_entries
             .iter()
             .rev()
             .find(|entry| entry.node() == node)
-            .map(LayoutOutputEntryOf::output)
+            .copied()
             .ok_or_else(|| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
@@ -1126,7 +1383,8 @@ where
             })
     }
 
-    fn set_final(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>) {
+    fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
         if let Some(index) = self
             .final_entries
             .iter()
@@ -1134,8 +1392,7 @@ where
         {
             self.final_entries.remove(index);
         }
-        self.final_entries
-            .push(LayoutOutputEntryOf::new(node, layout));
+        self.final_entries.push(entry);
     }
 
     fn unrounded_inline_fragment_state(
@@ -1287,6 +1544,9 @@ where
             .push(LayoutCacheClearEntry::new(node));
     }
 }
+
+#[cfg(test)]
+use crate::NodeOutputOf;
 
 #[cfg(test)]
 #[path = "formatted_session_tests.rs"]
@@ -1494,8 +1754,19 @@ mod tests {
         };
         let mut session = ComputeSession::new(&tree, Vec::new());
         for node in [2, 4, 5, 3, 1, 0] {
-            Compute::set_unrounded(&mut session, node, NodeOutputOf::new());
-            Round::set_final(&mut session, node, NodeOutputOf::new());
+            let normal = crate::output::NormalGeometryOf::box_geometry(
+                Point::ZERO,
+                Size::ZERO,
+                ScrollRectOf::try_new(Point::ZERO, Size::ZERO).unwrap(),
+            );
+            Compute::set_unrounded(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_unrounded(node, normal, NodeOutputOf::new()),
+            );
+            Round::set_final(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_canonical(node, normal, NodeOutputOf::new()),
+            );
         }
 
         let batch = session.complete_for_root(0);
@@ -1559,6 +1830,8 @@ mod tests {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1583,7 +1856,14 @@ mod tests {
             let mut session = ComputeSession::with_flow(&capture, Vec::new());
             let mut output = NodeOutputOf::new();
             output.location = Point::new(S::from_f64(0.25), S::from_f64(0.5));
-            Compute::set_unrounded(&mut session, 1, output);
+            Compute::set_unrounded(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_unrounded(
+                    1,
+                    crate::output::NormalGeometryOf::metadata(output.location, output.size),
+                    output,
+                ),
+            );
             Compute::set_unrounded_inline_fragment_state(&mut session, 1, Some(fragments.clone()));
             round_layout(&mut session, 1).unwrap();
             assert_eq!(session.final_entries[0].output(), output);
@@ -1619,7 +1899,7 @@ mod grid_overflow_observation_tests {
 
     #[derive(Clone, Debug, Default, PartialEq)]
     struct ObservationRetainedState<S: LayoutScalar> {
-        unrounded: HashMap<u32, NodeOutputOf<S>>,
+        unrounded: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
         final_outputs: HashMap<u32, NodeOutputOf<S>>,
         caches: HashMap<u32, CacheOf<S>>,
     }
@@ -1633,7 +1913,7 @@ mod grid_overflow_observation_tests {
                 prepared.caches.remove(node);
             }
             for entry in batch.unrounded_entries() {
-                prepared.unrounded.insert(entry.node(), entry.output());
+                prepared.unrounded.insert(entry.node(), *entry);
             }
             for entry in batch.final_entries() {
                 prepared.final_outputs.insert(entry.node(), entry.output());
@@ -1826,7 +2106,7 @@ mod grid_overflow_observation_tests {
                 .push((node, *input, output.is_some()));
             output
         }
-        fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+        fn unrounded_layout(&self, node: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
             self.retained.unrounded.get(&node).copied()
         }
     }
@@ -1880,6 +2160,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1913,6 +2195,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1977,6 +2261,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -2087,6 +2373,8 @@ mod grid_overflow_observation_tests {
             0,
             vec![text.binding(1)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

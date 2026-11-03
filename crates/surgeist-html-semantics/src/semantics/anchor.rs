@@ -5,6 +5,7 @@
 //! This does not implement the setter, rendered text or hyperlink activation.
 
 use super::*;
+use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
 impl HtmlSemanticSession<'_> {
     pub(super) fn anchor_text(

@@ -78,8 +78,10 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             allocation: match atomic.original_box().kind() {
                 InlineBoxKind::OutOfFlow => AtomicLineAllocation::OutOfFlow,
                 InlineBoxKind::InFlow => AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 5.0,
+                        normal_border_inline_size: 5.0,
                         before_baseline: 8.0,
                         after_baseline: 2.0,
                         occupied_start: 0.0,
@@ -105,7 +107,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
                     crate::ParagraphControlKind::InlineBoundaryStart
                         | crate::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }
@@ -124,6 +126,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(

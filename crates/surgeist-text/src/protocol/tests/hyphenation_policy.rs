@@ -104,7 +104,7 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
                     crate::ParagraphControlKind::InlineBoundaryStart
                         | crate::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }

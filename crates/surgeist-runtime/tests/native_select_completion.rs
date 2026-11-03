@@ -557,7 +557,9 @@ fn live_select_copy(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
     };
     assert_eq!(
         request.action(),
-        DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp,)
+        DomStyleAction::Update(
+            surgeist_html::elements::style::HtmlStyleUpdateAction::CheckInlineCsp,
+        )
     );
     let operation = request.source().operation();
     let ordinal = request.source().ordinal();

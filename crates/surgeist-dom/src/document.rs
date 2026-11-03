@@ -1,6 +1,7 @@
 use std::{fmt, sync::Arc};
 
-use crate::{DocumentString, DomError, HtmlDocumentMode};
+use crate::DomError;
+use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
 const CONTENT_TYPE: &str = "application/xml";
 const ENCODING: &str = "UTF-8";
@@ -121,10 +122,10 @@ pub(crate) struct HostedDocumentInputs(pub(crate) Arc<HostedDocumentInputData>);
 #[derive(Debug)]
 pub(crate) struct HostedDocumentInputData {
     pub(crate) facts: surgeist_html_semantics::HtmlBaseDocumentFacts,
-    pub(crate) opener: surgeist_html::HtmlOpenerPolicy,
+    pub(crate) opener: surgeist_html::security::opener_policy::HtmlOpenerPolicy,
     pub(crate) top_creation_url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
     pub(crate) top_origin: DomOpaqueOrigin,
-    pub(crate) active_sandbox: surgeist_html::HtmlSandboxFlags,
+    pub(crate) active_sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
     pub(crate) referrer: Option<DocumentString>,
     // Both source algorithms complete before the new Document has a container.
     // Their actual initialized lists are empty in this creation profile.
@@ -227,7 +228,10 @@ impl NativeSvgScriptEnvironment {
     }
     /// Tiny step3 remains real after the reached operation has separately
     /// established that its native notifications have no applicable recipient.
-    pub(crate) fn mark_processed(self, flags: &mut surgeist_html::SvgScriptFlags) {
+    pub(crate) fn mark_processed(
+        self,
+        flags: &mut surgeist_html::elements::script::SvgScriptFlags,
+    ) {
         flags.mark_processed();
     }
 }
@@ -236,13 +240,13 @@ impl NativeSvgScriptEnvironment {
 /// Construction fixes both facts for this native environment's lifetime.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomNativeInputPlatform {
-    empty_selection: surgeist_html::HtmlInputEmptySelectionSupport,
-    none_direction: surgeist_html::HtmlInputNoneDirectionSupport,
+    empty_selection: surgeist_html::elements::input::HtmlInputEmptySelectionSupport,
+    none_direction: surgeist_html::elements::input::HtmlInputNoneDirectionSupport,
 }
 impl DomNativeInputPlatform {
     pub const fn new(
-        empty_selection: surgeist_html::HtmlInputEmptySelectionSupport,
-        none_direction: surgeist_html::HtmlInputNoneDirectionSupport,
+        empty_selection: surgeist_html::elements::input::HtmlInputEmptySelectionSupport,
+        none_direction: surgeist_html::elements::input::HtmlInputNoneDirectionSupport,
     ) -> Self {
         Self {
             empty_selection,
@@ -252,14 +256,18 @@ impl DomNativeInputPlatform {
     /// Selected headless profile; neither capability is inferred from no BC.
     pub const fn headless() -> Self {
         Self::new(
-            surgeist_html::HtmlInputEmptySelectionSupport::Supported,
-            surgeist_html::HtmlInputNoneDirectionSupport::Supported,
+            surgeist_html::elements::input::HtmlInputEmptySelectionSupport::Supported,
+            surgeist_html::elements::input::HtmlInputNoneDirectionSupport::Supported,
         )
     }
-    pub const fn empty_selection(self) -> surgeist_html::HtmlInputEmptySelectionSupport {
+    pub const fn empty_selection(
+        self,
+    ) -> surgeist_html::elements::input::HtmlInputEmptySelectionSupport {
         self.empty_selection
     }
-    pub const fn none_direction(self) -> surgeist_html::HtmlInputNoneDirectionSupport {
+    pub const fn none_direction(
+        self,
+    ) -> surgeist_html::elements::input::HtmlInputNoneDirectionSupport {
         self.none_direction
     }
 }
@@ -274,10 +282,10 @@ impl DomDocumentEnvironment {
         self.input
     }
     /// Selected native creation policy, not an inference from missing resources.
-    pub const fn input_images(&self) -> surgeist_html::HtmlInputImagesDisabled {
-        surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
+    pub const fn input_images(&self) -> surgeist_html::elements::input::HtmlInputImagesDisabled {
+        surgeist_html::elements::input::HtmlInputImagesDisabled::ExplicitlyDisabled
     }
-    pub fn browsing_context(&self) -> surgeist_html::HtmlBrowsingContextPresence {
+    pub fn browsing_context(&self) -> surgeist_html::security::nonce::HtmlBrowsingContextPresence {
         match &self.hosted {
             Some(association)
                 if !matches!(
@@ -285,9 +293,9 @@ impl DomDocumentEnvironment {
                     crate::hosted::DocumentPhase::Retired { .. }
                 ) =>
             {
-                surgeist_html::HtmlBrowsingContextPresence::Present
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
             }
-            _ => surgeist_html::HtmlBrowsingContextPresence::Absent,
+            _ => surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent,
         }
     }
     pub const fn has_ever_had_navigable(&self) -> bool {
@@ -631,7 +639,7 @@ impl DomDocumentMetadata {
     pub(crate) fn establish_parsed_meta_history(
         &mut self,
         language: Option<DocumentString>,
-        referrer: surgeist_html::HtmlReferrerPolicy,
+        referrer: surgeist_html::attributes::HtmlReferrerPolicy,
         will_declaratively_refresh: bool,
         theme_color: Option<surgeist_color::Color>,
         color_scheme: Option<crate::meta::SelectedColorScheme>,

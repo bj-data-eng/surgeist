@@ -651,7 +651,7 @@ fn a_real_intrinsic_conditional_cut_rebuilds_the_tibetan_prefix_context() {
             &ceiling,
             ConditionalPurpose::MinContent,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap()
         .begin(&[])
@@ -840,6 +840,7 @@ fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
                     &start(&p),
                     None,
                     &PreparedTermination::Measurement(portion.clone()),
+                    None,
                 )
                 .unwrap();
             let segments = flow.segments().collect::<Vec<_>>();

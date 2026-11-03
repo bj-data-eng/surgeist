@@ -86,6 +86,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         })
         .collect::<Vec<_>>();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         nodes: origins.iter().map(|origin| origin.node).collect(),
         prepared,
         container: 2,
@@ -152,6 +153,8 @@ fn nested_batch<S: LayoutScalar>(
         0,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

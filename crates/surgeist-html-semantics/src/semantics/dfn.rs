@@ -3,6 +3,10 @@
 //! This does not certify definition adequacy or the surrounding content model.
 
 use super::*;
+use surgeist_html::{
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 /// The actual source branch selecting the exact term; ancestor title is unused.
 #[derive(Clone, Debug, Eq, PartialEq)]

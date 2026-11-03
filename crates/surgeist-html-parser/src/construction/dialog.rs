@@ -1,9 +1,12 @@
 //! Current Dialog values and compact interaction history in the original owner.
 //! The HTML cursor owns ordering; this adapter fulfills only actual closed facts.
 use super::*;
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
     HtmlDialogOutcome, HtmlDialogReply as Reply,
+};
+use surgeist_html::{
+    construction::HtmlNodeKind, values::Namespace, vocabulary::KnownHtmlAttribute,
 };
 
 pub(super) struct DialogMetadata {
@@ -58,20 +61,25 @@ impl SessionStorage {
         }
         // Real creation (also reached by the original clone owner), before any
         // ordinary source effects. The current value is independent of attrs.
-        let fresh = surgeist_html::HtmlDialogFreshState::fresh();
+        let fresh = surgeist_html::elements::dialog::HtmlDialogFreshState::fresh();
         let raw = literal_string(c, fresh.return_value().as_bytes())?;
         let (value, raw) = self.register_string_owned(c, raw, None)?;
         drop(value);
-        self.prepare_payload_slot_owned(c)?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
         payload_write::<DialogMetadata>(c, 1)?;
-        self.payloads.values.push(RetainedPayload::Dialog {
-            node,
-            state: DialogMetadata {
-                value: raw,
-                first: None,
-            },
-        });
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        self.payloads
+            .push_row(
+                prepared,
+                RetainedPayload::Dialog {
+                    node,
+                    state: DialogMetadata {
+                        value: raw,
+                        first: None,
+                    },
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction
             .node_at(node)
@@ -97,13 +105,10 @@ impl SessionStorage {
         if !self.html_local(c, node, "dialog")? {
             return Ok(None);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Dialog { node: bound, .. } if *bound == node) {
-                return Ok(Some(slot));
-            }
-        }
-        Err(SessionError::WrongToken)
+        self.payloads
+            .joined(c, node, Join::Dialog)?
+            .map(Some)
+            .ok_or(SessionError::WrongToken)
     }
     fn dialog_missing(
         &mut self,
@@ -118,8 +123,10 @@ impl SessionStorage {
             DocumentRef::Captured(_) => None,
         };
         let document_missing = if let Some(owner) = owned {
-            let RetainedPayload::Document { interaction, .. } = &self.payloads.values[owner] else {
-                unreachable!("actual Document payload")
+            let Some(RetainedPayload::Document { interaction, .. }) =
+                self.payloads.values.get(owner)
+            else {
+                return Err(latch_registry_row(c));
             };
             interaction.first.is_none()
         } else {
@@ -140,8 +147,8 @@ impl SessionStorage {
             None
         };
         payload_write::<Missing>(c, 1)?;
-        let RetainedPayload::Dialog { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!("actual Dialog payload")
+        let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(c));
         };
         state.first = Some(Missing {
             subject: node,
@@ -150,10 +157,10 @@ impl SessionStorage {
             cause,
         });
         if let Some(missing) = duplicate {
-            let RetainedPayload::Document { interaction, .. } =
-                &mut self.payloads.values[owned.unwrap()]
+            let Some(RetainedPayload::Document { interaction, .. }) =
+                owned.and_then(|owner| self.payloads.values.get_mut(owner))
             else {
-                unreachable!("actual Document payload")
+                return Err(SessionError::NodeDocumentUnavailable);
             };
             interaction.first = Some(missing);
         }
@@ -169,9 +176,9 @@ impl SessionStorage {
         let Some(slot) = self.dialog_slot(c, node)? else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Dialog { state, .. } = &self.payloads.values[slot] else {
-            unreachable!("actual Dialog payload")
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(latch_registry_row(c));
         };
         if state.first.is_some() {
             // Structural parsing continues; unknown services cannot be resumed
@@ -181,7 +188,7 @@ impl SessionStorage {
         payload_write::<HtmlDialogCursor>(c, 1)?;
         let mut cursor = HtmlDialogCursor::new(operation);
         loop {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let action = cursor.action();
             #[cfg(test)]
             observe(action);
@@ -227,7 +234,7 @@ impl SessionStorage {
         if !self.html_local(c, node, "dialog")? {
             return Ok(());
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction
             .node_at(node)
@@ -255,14 +262,17 @@ impl SessionStorage {
         old: bool,
         new: bool,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        let operation = surgeist_html::dialog_attribute_operation(
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        // The owner answers an operation for exactly this null-namespace open
+        // attribute; anything else is an impossible registry state.
+        let Some(operation) = surgeist_html::elements::dialog::dialog_attribute_operation(
             &Namespace::none(),
             KnownHtmlAttribute::Open,
             old,
             new,
-        )
-        .expect("actual exact null-namespace open change");
+        ) else {
+            return Err(latch_registry_row(c));
+        };
         self.dialog_hook(c, node, operation, None)
     }
     pub(super) fn dialog_tree_hook(
@@ -288,7 +298,11 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{
+        elements::dialog::HtmlDialogOutcome,
+        values::{Attribute, Namespace, QualifiedName},
+    };
 
     fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
         loop {
@@ -346,7 +360,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(
@@ -461,7 +476,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(
@@ -525,7 +541,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(

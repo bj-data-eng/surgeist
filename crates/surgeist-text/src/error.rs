@@ -432,13 +432,12 @@ pub enum ErrorDetail {
         range: super::Range,
         bytes: usize,
     },
-    /// Placed accessibility geometry for an actual Cell is not supported.
-    /// Source-only analyzed accessibility remains independently available.
-    UnsupportedAccessibilityCell {
-        /// Actual placed-line ordinal in the requested Layout.
-        line: usize,
-        /// Actual finalized Cell ordinal within that placed line.
+    /// Genuine Cell source membership cannot be represented by original AX units.
+    UnsupportedAccessibilityCellMapping {
+        /// Actual Cell binding ordinal in the analyzed output, in either phase.
         cell: usize,
+        /// The original aggregate source interval whose mapping is unsupported.
+        range: super::Range,
     },
     AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {

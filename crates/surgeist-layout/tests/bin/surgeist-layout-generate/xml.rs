@@ -189,6 +189,18 @@ fn write_expectation(lines: &mut Vec<String>, node: &Node, indent: usize, is_roo
                 " ".repeat(indent + 4),
                 attr_text(attrs)
             ));
+            if let Some(band) = child.br_font_band() {
+                lines.push(format!(
+                    "{}<browser-br-font-band{}/>",
+                    " ".repeat(indent + 4),
+                    attr_text(&[
+                        ("x", layout_number(band.x())),
+                        ("y", layout_number(band.y())),
+                        ("width", layout_number(band.width())),
+                        ("height", layout_number(band.height())),
+                    ])
+                ));
+            }
             lines.push(format!("{}</node>", " ".repeat(indent + 2)));
         } else {
             write_expectation(lines, child, indent + 2, false);

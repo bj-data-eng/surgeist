@@ -159,6 +159,8 @@ fn batch_with_style<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -434,6 +436,8 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
             0,
             vec![first.binding(0), tail.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -510,6 +514,8 @@ fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pr
                 0,
                 vec![first.binding(0), tail.binding(0)],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
@@ -606,6 +612,8 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

@@ -1,8 +1,9 @@
 //! Called Dialog focusing continuation, retained by the original method frame.
 use super::*;
+
 mod delegate;
 use crate::store::focus::AllowFocusPermission;
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogFocusControl as Control, HtmlDialogFocusingAction as A, HtmlDialogFocusingCursor,
     HtmlDialogFocusingReply as R,
 };
@@ -81,7 +82,7 @@ impl Draft {
         self.dialog_state(subject)?;
         let own_inert = self.focus_boolean(
             subject,
-            surgeist_html::HtmlBooleanAttribute::Inert,
+            surgeist_html::attributes::HtmlBooleanAttribute::Inert,
             KnownHtmlAttribute::Inert,
             cancel,
         )?;
@@ -106,13 +107,15 @@ impl Draft {
                 state.properties().delegates_focus()
             }
         };
-        Ok(surgeist_html::dialog_subject_focusing_decision(
-            surgeist_html::HtmlDialogSubjectFocusFacts {
-                own_inert: Some(own_inert),
-                is_document_element: Some(is_document_element),
-                has_delegating_focus_root: Some(delegates),
-            },
-        ) == surgeist_html::HtmlDialogSubjectFocusingDecision::NoChange)
+        Ok(
+            surgeist_html::elements::dialog::dialog_subject_focusing_decision(
+                surgeist_html::elements::dialog::HtmlDialogSubjectFocusFacts {
+                    own_inert: Some(own_inert),
+                    is_document_element: Some(is_document_element),
+                    has_delegating_focus_root: Some(delegates),
+                },
+            ) == surgeist_html::elements::dialog::HtmlDialogSubjectFocusingDecision::NoChange,
+        )
     }
     pub(in crate::store) fn dialog_control_top_document(
         &self,
@@ -142,8 +145,8 @@ impl Draft {
                     A::ReadAllowFocus => {
                         match self.dialog_allow_focus_permission(frame.subject, cancel)? {
                             AllowFocusPermission::Allowed
-                                if surgeist_html::allow_focus_decision(Some(true), None)
-                                    == surgeist_html::HtmlAllowFocusDecision::Allowed =>
+                                if surgeist_html::elements::dialog::allow_focus_decision(Some(true), None)
+                                    == surgeist_html::elements::dialog::HtmlAllowFocusDecision::Allowed =>
                             {
                                 Some(R::AllowFocus(true))
                             }
@@ -164,7 +167,7 @@ impl Draft {
                     }
                     A::ReadAutofocus => Some(R::Autofocus(self.focus_boolean(
                         frame.subject,
-                        surgeist_html::HtmlBooleanAttribute::Autofocus,
+                        surgeist_html::attributes::HtmlBooleanAttribute::Autofocus,
                         KnownHtmlAttribute::Autofocus,
                         cancel,
                     )?)),

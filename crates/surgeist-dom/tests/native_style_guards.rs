@@ -3,7 +3,7 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlStyleUpdateAction;
+use surgeist_html::elements::style::HtmlStyleUpdateAction;
 
 fn owner() -> Dom {
     Dom::new(

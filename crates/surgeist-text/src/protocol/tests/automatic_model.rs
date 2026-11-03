@@ -481,7 +481,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
             &ceiling,
             ConditionalPurpose::Overflow,
             &dispositions,
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -506,7 +506,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
                     .into_iter()
                     .map(crate::ConditionalDisposition::AutoFitExhausted)
                     .collect::<Vec<_>>(),
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -527,7 +527,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
                     &ceiling,
                     ConditionalPurpose::Overflow,
                     &bad,
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -544,7 +544,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &dispositions,
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -568,7 +568,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
             &ceiling,
             ConditionalPurpose::MinContent,
             &intrinsic,
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -590,7 +590,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &intrinsic,
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -616,7 +616,7 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &bad,
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -678,7 +678,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &dispositions,
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -695,7 +695,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[crate::ConditionalDisposition::Phantom(portion.clone())],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -711,7 +711,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[crate::ConditionalDisposition::AutoFitExhausted(portion)],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -740,7 +740,7 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &impossible,
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1055,7 +1055,7 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -1358,7 +1358,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[crate::ConditionalDisposition::AutoFitExhausted(automatic)],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1378,7 +1378,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
                 &[crate::ConditionalDisposition::AutoIntrinsicRefinement(
                     auto.clone(),
                 )],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1412,7 +1412,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
                         crate::ConditionalDisposition::Phantom(none),
                         auto_disposition,
                     ],
-                    None,
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1511,7 +1511,14 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
         p.source_segments()
             .next()
             .unwrap()
-            .conditional_search(&start, None, &ceiling, purpose, rows, None)
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                purpose,
+                rows,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
+            )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
     };
@@ -1595,7 +1602,7 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
                 &manual.opportunity_views().last().unwrap().handle(),
                 ConditionalPurpose::Overflow,
                 &[manual_disposition],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1809,7 +1816,7 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -1908,7 +1915,7 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }

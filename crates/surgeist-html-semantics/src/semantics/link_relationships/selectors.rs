@@ -1,10 +1,15 @@
 //! Ordinary-Document relationship selectors. Resource use remains external.
 use super::*;
-use crate::bounded::{
+use std::ops::Range;
+use surgeist_html::bounded::attributes::{HtmlIconSizeCursor, HtmlIconSizeShape};
+use surgeist_html::bounded::lexical::{
     HtmlSpaceTokenCursor as SpaceTokenCursor, HtmlSpaceTokenStep as SpaceTokenStep,
 };
-use crate::bounded::{IconSizeCursor, IconSizeShape};
-use std::ops::Range;
+use surgeist_html::{
+    elements::link::{HtmlRelKeyword, HtmlRelSpelling},
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDefaultFeedApplicability {
@@ -107,7 +112,7 @@ pub enum HtmlIconSizeDeclaration {
         width: Range<usize>,
         height: Range<usize>,
     },
-    Invalid(crate::HtmlIconSizeError),
+    Invalid(surgeist_html::attributes::token_declarations::HtmlIconSizeError),
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlIconSizeOccurrence {
@@ -132,7 +137,7 @@ pub enum HtmlIconSizesAuthor {
     Conforming,
     Invalid {
         token_index: usize,
-        reason: crate::HtmlIconSizeError,
+        reason: surgeist_html::attributes::token_declarations::HtmlIconSizeError,
     },
     Duplicate {
         first_index: usize,
@@ -968,7 +973,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 SpaceTokenStep::Continue => {}
                 SpaceTokenStep::Done => break,
                 SpaceTokenStep::Token { start, end } => {
-                    let (mut keyword, spelling) = crate::bounded::classify_rel(
+                    let (mut keyword, spelling) = surgeist_html::bounded::rel::classify_rel(
                         &raw.code_units()[start..end],
                         &mut RelControl { session: self },
                     )
@@ -1191,28 +1196,29 @@ impl<'a> HtmlSemanticSession<'a> {
                                             SpaceTokenStep::Continue => {}
                                             SpaceTokenStep::Token { start, end } => {
                                                 self.charge(1)?;
-                                                let mut grammar = IconSizeCursor::new(
+                                                let mut grammar = HtmlIconSizeCursor::new(
                                                     &sizes.value().code_units()[start..end],
                                                 );
                                                 while !grammar.is_complete() {
-                                                    self.charge(IconSizeCursor::STEP_WORK)?;
+                                                    self.charge(HtmlIconSizeCursor::STEP_WORK)?;
                                                     grammar.step();
                                                 }
                                                 let declaration = match grammar
                                                     .result()
                                                     .expect("complete canonical sizes token")
                                                 {
-                                                    Ok(IconSizeShape::Scalable) => {
+                                                    Ok(HtmlIconSizeShape::Scalable) => {
                                                         HtmlIconSizeDeclaration::Scalable
                                                     }
-                                                    Ok(IconSizeShape::Bitmap { width, height }) => {
-                                                        HtmlIconSizeDeclaration::Bitmap {
-                                                            width: start + width.start
-                                                                ..start + width.end,
-                                                            height: start + height.start
-                                                                ..start + height.end,
-                                                        }
-                                                    }
+                                                    Ok(HtmlIconSizeShape::Bitmap {
+                                                        width,
+                                                        height,
+                                                    }) => HtmlIconSizeDeclaration::Bitmap {
+                                                        width: start + width.start
+                                                            ..start + width.end,
+                                                        height: start + height.start
+                                                            ..start + height.end,
+                                                    },
                                                     Err(error) => {
                                                         HtmlIconSizeDeclaration::Invalid(*error)
                                                     }
@@ -1232,8 +1238,8 @@ impl<'a> HtmlSemanticSession<'a> {
                                                     .zip(&sizes.value().code_units()[start..end])
                                                     {
                                                         self.charge(3)?;
-                                                        if rel::fold_rel_ascii(*a)
-                                                            != rel::fold_rel_ascii(*b)
+                                                        if surgeist_html::bounded::lexical::ascii_lowercase(*a)
+                                                            != surgeist_html::bounded::lexical::ascii_lowercase(*b)
                                                         {
                                                             equal = false;
                                                             break;

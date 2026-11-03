@@ -2,6 +2,7 @@
 //! exercise actual owner mutation and affinity, not Runtime event delivery;
 //! the consuming dispatcher integration supplies real listener evidence.
 use super::*;
+use surgeist_html::values::DocumentString;
 pub(super) fn limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 4)
 }
@@ -27,8 +28,16 @@ pub(super) fn fixture() -> (Dom, DomSourceEventExecutor, DocumentId, NodeId, Nod
     .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let first = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
-    let second = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let first = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
+    let second = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     batch.insert_before(&first, &document, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let ids = (
@@ -58,14 +67,14 @@ pub(super) fn request(dom: &mut Dom, subject: NodeId) -> DomSourceEventRequest {
             .toggle_event()
             .expect("ToggleEvent source payload")
             .old_state(),
-        surgeist_html::HtmlDialogState::Closed
+        surgeist_html::elements::dialog::HtmlDialogState::Closed
     );
     assert_eq!(
         request
             .toggle_event()
             .expect("ToggleEvent source payload")
             .new_state(),
-        surgeist_html::HtmlDialogState::Open
+        surgeist_html::elements::dialog::HtmlDialogState::Open
     );
     assert!(request.cancelable());
     assert_eq!(
@@ -199,12 +208,13 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
     // cursor is supplied after its initial guards. This does not assert native
     // guard evaluation, an active Window, manager registration or any completed
     // external service. The tested boundary starts at CaptureCloseWatcher.
-    let mut caller =
-        surgeist_html::HtmlDialogCursor::new(surgeist_html::HtmlDialogOperation::RequestClose);
+    let mut caller = surgeist_html::elements::dialog::HtmlDialogCursor::new(
+        surgeist_html::elements::dialog::HtmlDialogOperation::RequestClose,
+    );
     for reply in [
-        surgeist_html::HtmlDialogReply::Open(true),
-        surgeist_html::HtmlDialogReply::Connected(true),
-        surgeist_html::HtmlDialogReply::FullyActive(true),
+        surgeist_html::elements::dialog::HtmlDialogReply::Open(true),
+        surgeist_html::elements::dialog::HtmlDialogReply::Connected(true),
+        surgeist_html::elements::dialog::HtmlDialogReply::FullyActive(true),
     ] {
         caller.reply(reply).unwrap();
     }
@@ -425,8 +435,8 @@ fn uncanceled_event_stops_at_actual_queue_toggle_and_rebase_preserves_callback_s
     assert!(matches!(
         service.action(),
         HtmlDialogAction::QueueToggle {
-            old: surgeist_html::HtmlDialogState::Closed,
-            new: surgeist_html::HtmlDialogState::Open,
+            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+            new: surgeist_html::elements::dialog::HtmlDialogState::Open,
             ..
         }
     ));
@@ -757,7 +767,11 @@ fn legacy_details_transfer_refuses_during_observation_and_preserves_the_actual_i
     dom.set_limits(dom.limits().with_details_toggle_intentions(4).unwrap())
         .unwrap();
     let mut setup = DomBatch::new();
-    let details = setup.create_element_ns(document, crate::Namespace::html(), "details");
+    let details = setup.create_element_ns(
+        document,
+        surgeist_html::values::Namespace::html(),
+        "details",
+    );
     setup.insert_before(&details, first, None);
     setup.set_attribute(&details, "open", "");
     let commit = dom.apply(setup, &cancel).unwrap();
@@ -805,8 +819,8 @@ fn legacy_details_transfer_refuses_during_observation_and_preserves_the_actual_i
     assert_eq!(
         (records[0].old_state(), records[0].new_state()),
         (
-            surgeist_html::HtmlDetailsState::Closed,
-            surgeist_html::HtmlDetailsState::Open
+            surgeist_html::elements::details::HtmlDetailsState::Closed,
+            surgeist_html::elements::details::HtmlDetailsState::Open
         )
     );
     assert_eq!(dom.pending_details_toggle_intentions(), 0);
@@ -943,9 +957,12 @@ fn retired_select_skip_requires_idle_even_inside_actual_beforetoggle_dispatch_re
     .unwrap();
 
     let mut setup = DomBatch::new();
-    let select = setup.create_element_ns(document, crate::Namespace::html(), "select");
-    let option = setup.create_element_ns(document, crate::Namespace::html(), "option");
-    let other = setup.create_element_ns(document, crate::Namespace::html(), "option");
+    let select =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "select");
+    let option =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "option");
+    let other =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "option");
     setup.insert_before(&option, &select, None);
     setup.insert_before(&other, &select, None);
     let created = dom.apply(setup, &cancel).unwrap();

@@ -2,6 +2,19 @@
 //! HTML 877d §13.4; document/cache identity is not inferred from native roots.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{
+        HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind, HtmlShadowRootProperties,
+    },
+    elements::{
+        native::custom_element_state_without_definition,
+        template::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document},
+    },
+    values::{DocumentString, Namespace, QualifiedName},
+};
 
 /// Owned positions join parser metadata; captured identities retain their owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,24 +41,30 @@ pub(super) enum RegistryRef {
 impl DocumentRef {
     pub(super) fn admit_clone(&self, c: &mut ParseControl) -> Result<(), SessionError> {
         if matches!(self, Self::Captured(_)) {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
         Ok(())
     }
     pub(super) fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
         self.admit_clone(c)?;
         c.admit_atomic_layout(mem::size_of::<Self>())?;
-        c.charge(WorkCategory::CopyByte, mem::size_of::<Self>() as u64)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<Self>() as u64,
+        )?;
         Ok(self.clone())
     }
 }
 impl RegistryRef {
     fn try_clone(&self, c: &mut ParseControl) -> Result<Self, SessionError> {
         if matches!(self, Self::Captured(_)) {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
         c.admit_atomic_layout(mem::size_of::<Self>())?;
-        c.charge(WorkCategory::CopyByte, mem::size_of::<Self>() as u64)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<Self>() as u64,
+        )?;
         Ok(self.clone())
     }
 }
@@ -54,8 +73,8 @@ impl RegistryRef {
 /// current attributes and registry reassignment cannot rewrite it.
 #[derive(Clone, Copy)]
 pub(super) struct ElementCreationState {
-    pub(super) common_scope: surgeist_html::HtmlCommonScope,
-    pub(super) state: crate::HtmlCustomElementState,
+    pub(super) common_scope: surgeist_html::elements::native::HtmlCommonScope,
+    pub(super) state: surgeist_html::elements::native::HtmlCustomElementState,
     pub(super) saved_is: Option<usize>,
 }
 
@@ -68,28 +87,34 @@ enum InternalIs<'a> {
 /// No caller can construct one or derive it from a source/target identity.
 /// Cloning preserves identity, including across imports of the same report.
 #[derive(Clone)]
-pub struct FragmentParserOrigin(Arc<()>);
-impl PartialEq for FragmentParserOrigin {
+pub struct HtmlParseOpaqueOrigin(Arc<()>);
+impl PartialEq for HtmlParseOpaqueOrigin {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
-impl Eq for FragmentParserOrigin {}
-impl std::fmt::Debug for FragmentParserOrigin {
+impl Eq for HtmlParseOpaqueOrigin {}
+impl std::fmt::Debug for HtmlParseOpaqueOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("HtmlParseOpaqueOrigin(..)")
     }
 }
 
 pub(super) struct FragmentContextStorage {
-    pub(super) origin: FragmentParserOrigin,
+    pub(super) origin: HtmlParseOpaqueOrigin,
     origin_allocation: SharedAllocation<()>,
     pub(super) completion: usize,
     pub(super) context: crate::HtmlFragmentContext,
-    pub(super) mode: crate::HtmlParserScriptingMode,
+    pub(super) mode: surgeist_html::parsing::HtmlParserScriptingMode,
     pub(super) allow_shadow: bool,
     pub(super) output: Option<usize>,
     pub(super) effects: OwnedVec<ContextEffect>,
+    /// How many effects were retained before the record they bind existed (a
+    /// template cache without its inert document, an attachment without its
+    /// shadow contents) and are still unbound. A stop between retaining and
+    /// binding leaves one, and no node may be read while one remains, so the
+    /// readiness check reads this count instead of visiting every effect.
+    unbound_effects: usize,
     pub(super) source_entries: u64,
 }
 
@@ -143,6 +168,22 @@ pub(super) enum ContextEffect {
 }
 
 impl SessionStorage {
+    /// The fragment context of a parse that has one. Every captured reference
+    /// belongs to such a parse, so its absence is an impossible registry state
+    /// latched as the controller's first stop.
+    fn fragment_storage(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<&FragmentContextStorage, SessionError> {
+        self.fragment.as_ref().ok_or_else(|| latch_registry_row(c))
+    }
+    /// As [`Self::fragment_storage`], for editing.
+    fn fragment_storage_mut(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<&mut FragmentContextStorage, SessionError> {
+        self.fragment.as_mut().ok_or_else(|| latch_registry_row(c))
+    }
     pub(super) fn captured_contents_document(
         &mut self,
         c: &mut ParseControl,
@@ -154,7 +195,7 @@ impl SessionStorage {
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?;
         for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let ContextEffect::TemplateCache {
                 document: owner,
                 inert,
@@ -162,7 +203,7 @@ impl SessionStorage {
                 && owner == document
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<Option<usize>>() as u64,
                 )?;
                 return inert
@@ -170,13 +211,13 @@ impl SessionStorage {
                     .ok_or(SessionError::ContextUnavailable);
             }
         }
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let capture = fragment.context.capture();
         let node = capture
             .node(document.subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
         let crate::HtmlCapturedNodeKind::Document(facts) = node.kind() else {
-            unreachable!("qualified captured document")
+            return Err(latch_registry_row(c));
         };
         let created_by_template_owner_algorithm = match facts.template_role() {
             crate::HtmlTemplateDocumentRole::InertTemplate => true,
@@ -192,16 +233,16 @@ impl SessionStorage {
         if template_contents_owner_document(created_by_template_owner_algorithm, false)
             == HtmlTemplateContentsOwnerDocument::CurrentDocument
         {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<DocumentRef>(c, 1)?;
             return Ok(DocumentRef::Captured(document.clone()));
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if capture
             .template_document_cache_clones_identity(document)
             .map_err(|_| SessionError::ContextUnavailable)?
         {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
         payload_write::<crate::HtmlCapturedTemplateCache>(c, 1)?;
         let cached = match capture
@@ -219,11 +260,13 @@ impl SessionStorage {
         if template_contents_owner_document(false, cached.is_some())
             == HtmlTemplateContentsOwnerDocument::AssociatedInertDocument
         {
-            let index = cached.expect("shared rule selected actual captured associated owner");
+            let Some(index) = cached else {
+                return Err(latch_registry_row(c));
+            };
             self.validate_captured_document(c, &index)?;
             return Ok(DocumentRef::Captured(index));
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let class = facts.document_class();
         if class == crate::HtmlDocumentClass::Unavailable {
             return Err(SessionError::ContextFactUnavailable(
@@ -232,33 +275,47 @@ impl SessionStorage {
         }
         // Retain the actual initialized effect slot before any new Document.
         // A later stop owns this unbound slot and refuses publication.
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<crate::HtmlCaptureDocumentId>(c, 1)?;
         let document = document.clone();
-        let effects = &mut self.fragment.as_mut().expect("qualified context").effects;
-        let effect = effects.len();
-        effects.try_push(
+        let fragment = self
+            .fragment
+            .as_mut()
+            .ok_or(SessionError::ContextUnavailable)?;
+        let effect = fragment.effects.len();
+        fragment.effects.try_push_geometric(
             c,
             ContextEffect::TemplateCache {
                 document,
                 inert: None,
             },
         )?;
-        self.prepare_payload_slot_owned(c)?;
-        let fact = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::Document {
-            node: None,
-            state: template::DocumentState::InertTemplate,
-            class,
-            meta: meta::MetaHistory::offline(),
-            interaction: dialog::InteractionHistory::new(),
-        });
-        self.prepare_payload_slot_owned(c)?;
-        let binding = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::NodeDocument {
-            node: None,
-            document: DocumentRef::Owned(self.construction.storage().len()),
-        });
+        fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let fact = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::Document {
+                    node: None,
+                    state: template::DocumentState::InertTemplate,
+                    class,
+                    meta: meta::MetaHistory::offline(),
+                    interaction: dialog::InteractionHistory::new(),
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let binding = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::NodeDocument {
+                    node: None,
+                    document: DocumentRef::Owned(self.construction.storage(c)?.len()),
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
             c,
@@ -267,26 +324,35 @@ impl SessionStorage {
             0,
             0,
         )?;
-        let RetainedPayload::Document { node: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(node.index);
-        let RetainedPayload::NodeDocument { node: bound, .. } = &mut self.payloads.values[binding]
+        let Some(RetainedPayload::Document { node: bound, .. }) =
+            self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node.index);
-        let ContextEffect::TemplateCache { inert, .. } = self
+        self.payloads
+            .join_row(fact)
+            .map_err(|_| latch_registry_row(c))?;
+        let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+            self.payloads.values.get_mut(binding)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        *bound = Some(node.index);
+        self.payloads
+            .join_row(binding)
+            .map_err(|_| latch_registry_row(c))?;
+        let fragment = self
             .fragment
             .as_mut()
-            .expect("retained context")
-            .effects
-            .get_mut(effect, c)?
-            .expect("retained cache effect")
+            .ok_or(SessionError::ContextUnavailable)?;
+        let Some(ContextEffect::TemplateCache { inert, .. }) =
+            fragment.effects.get_mut(effect, c)?
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *inert = Some(node.index);
+        fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
         self.bind_template_base(c, node.index)?;
         Ok(DocumentRef::Owned(node.index))
     }
@@ -296,7 +362,7 @@ impl SessionStorage {
         document: &crate::HtmlCaptureDocumentId,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         self.fragment
             .as_ref()
             .ok_or(SessionError::ContextUnavailable)?
@@ -332,14 +398,14 @@ impl ParserArenaSession {
         c.require_source(request.source())?;
         let storage = self.active_mut()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if storage.fragment.is_some()
-            || storage.construction.storage().len() != 1
+            || storage.construction.storage(c)?.len() != 1
             || !matches!(
                 storage
                     .construction
                     .node_at(0)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -347,7 +413,7 @@ impl ParserArenaSession {
             return Err(SessionError::ContextUnavailable);
         }
         let context = request.context();
-        c.charge(WorkCategory::RecordVisit, 4)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
         context
             .capture()
             .node(context.target_document().subject())
@@ -360,7 +426,8 @@ impl ParserArenaSession {
         let mode = request.effective_scripting_mode();
         if !matches!(
             mode,
-            crate::HtmlParserScriptingMode::Inert | crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
+                | surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         ) {
             return Err(SessionError::ContextUnavailable);
         }
@@ -370,12 +437,14 @@ impl ParserArenaSession {
         // handles plus the present nearest-form and registry handles.
         payload_write::<Option<FragmentContextStorage>>(c, 1)?;
         c.charge(
-            WorkCategory::ProviderCall,
-            5 + u64::from(context.nearest_form().is_some())
-                + u64::from(matches!(
+            HtmlParseWorkCategory::ProviderCall,
+            // Five unconditional handles plus at most two present ones.
+            5_u64
+                .saturating_add(u64::from(context.nearest_form().is_some()))
+                .saturating_add(u64::from(matches!(
                     context.root_registry(),
                     crate::HtmlCapturedRegistry::Registry(_)
-                )),
+                ))),
         )?;
         // One admitted source-created opaque origin. Its zero-sized shared
         // payload uses the existing provider boundary: Arc allocator/header
@@ -383,7 +452,7 @@ impl ParserArenaSession {
         // No fallible operation separates successful issuance from retention.
         let (origin, origin_allocation) = c.share_owned(()).map_err(|(stop, ())| stop)?;
         storage.fragment = Some(FragmentContextStorage {
-            origin: FragmentParserOrigin(origin),
+            origin: HtmlParseOpaqueOrigin(origin),
             origin_allocation,
             completion,
             context: context.clone(),
@@ -391,28 +460,33 @@ impl ParserArenaSession {
             allow_shadow: request.allow_declarative_shadow_roots(),
             output: None,
             effects,
+            unbound_effects: 0,
             source_entries: 0,
         });
         let root = self.allocate_implicit_html(c)?;
         let storage = self.active_mut()?;
         let registry = storage.captured_registry_ref(c, request.context().root_registry())?;
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::LookupRegistry {
-                node: Some(root.index),
-                registry,
-                creation: Some(ElementCreationState {
-                    common_scope: surgeist_html::HtmlCommonScope::Html,
-                    state: crate::HtmlCustomElementState::Uncustomized,
-                    saved_is: None,
-                }),
-            });
+            .push_row(
+                prepared,
+                RetainedPayload::LookupRegistry {
+                    node: Some(root.index),
+                    registry,
+                    creation: Some(ElementCreationState {
+                        common_scope: surgeist_html::elements::native::HtmlCommonScope::Html,
+                        state:
+                            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
+                        saved_is: None,
+                    }),
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
         let storage = self.active_mut()?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<DocumentRef>(c, 1)?;
         let target = DocumentRef::Captured(request.context().target_document().clone());
         let output = storage.allocate_in_document_owned(
@@ -424,7 +498,7 @@ impl ParserArenaSession {
             Some(target),
         )?;
         payload_write::<Option<usize>>(c, 1)?;
-        storage.fragment.as_mut().expect("retained context").output = Some(output.index);
+        storage.fragment_storage_mut(c)?.output = Some(output.index);
         payload_write::<FragmentBootstrap>(c, 2)?;
         Ok(FragmentBootstrap { root, output })
     }
@@ -437,7 +511,7 @@ impl ParserArenaSession {
         document: &ParserNode,
     ) -> Result<(), SessionError> {
         self.validate_standalone_proof(c, document)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let fragment = self
             .active()?
             .fragment
@@ -445,11 +519,12 @@ impl ParserArenaSession {
             .ok_or(SessionError::ContextUnavailable)?;
         if !matches!(
             fragment.mode,
-            crate::HtmlParserScriptingMode::Inert | crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
+                | surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         ) || fragment.output.is_none()
         {
             return Err(c
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
                 .into());
         }
         Ok(())
@@ -460,7 +535,7 @@ impl ParserArenaSession {
     ) -> Result<Option<&'a crate::HtmlFragmentContext>, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(storage.fragment.as_ref().map(|fragment| &fragment.context))
     }
     pub(crate) fn retain_fragment_bootstrap(
@@ -471,7 +546,7 @@ impl ParserArenaSession {
         capability.validate_fragment_session(c, self)?;
         let storage = self.active_mut()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 4)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 4)?;
         let fragment = storage
             .fragment
             .as_ref()
@@ -484,13 +559,13 @@ impl ParserArenaSession {
             .child_at(0)
             .ok_or(SessionError::ContextUnavailable)?
             .position();
-        if output >= storage.construction.storage().len()
-            || root >= storage.construction.storage().len()
+        if output >= storage.construction.storage(c)?.len()
+            || root >= storage.construction.storage(c)?.len()
             || !matches!(
                 storage
                     .construction
                     .node_at(output)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Fragment
             )
@@ -500,7 +575,7 @@ impl ParserArenaSession {
         let mut root_slot = None;
         let mut output_slot = None;
         for (slot, payload) in storage.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::ConstructionCause {
                 node: Some(node), ..
             } = payload
@@ -525,26 +600,26 @@ impl ParserArenaSession {
             c,
             provenance::CapturedParserTrigger::new(
                 &fragment.context,
-                provenance::CapturedCauseRole::FragmentBootstrap,
+                provenance::HtmlParseCapturedCauseRole::FragmentBootstrap,
             ),
         )?;
         let copy = evidence.copy_cause_ref(c, &cause)?;
         // Both qualified replacements are admitted before either canonical
         // slot changes. Superseded source-less causes stay in the sole issuer.
         payload_write::<[provenance::ConstructionCauseRef; 2]>(c, 2)?;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: root_cause, ..
-        } = &mut storage.payloads.values[root_slot]
+        }) = storage.payloads.values.get_mut(root_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *root_cause = cause;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: output_cause,
             ..
-        } = &mut storage.payloads.values[output_slot]
+        }) = storage.payloads.values.get_mut(output_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *output_cause = copy;
         Ok(())
@@ -553,7 +628,7 @@ impl ParserArenaSession {
     pub(crate) fn fragment_output(&self, c: &mut ParseControl) -> Result<ParserNode, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let index = storage
             .fragment
             .as_ref()
@@ -590,7 +665,7 @@ impl SessionStorage {
         c: &mut ParseControl,
     ) -> Result<(Namespace, Option<usize>), SessionError> {
         c.require_identity(&self.control)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let context = &self
             .fragment
             .as_ref()
@@ -630,12 +705,8 @@ impl SessionStorage {
             match evidence.retain_captured_namespace(
                 c,
                 provenance::CapturedParserTrigger::new(
-                    &self
-                        .fragment
-                        .as_ref()
-                        .expect("qualified actual context")
-                        .context,
-                    provenance::CapturedCauseRole::ContextNamespace,
+                    context,
+                    provenance::HtmlParseCapturedCauseRole::ContextNamespace,
                 ),
                 frozen.text(),
             ) {
@@ -665,7 +736,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         registry: &crate::HtmlCapturedRegistry,
     ) -> Result<RegistryRef, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match registry {
             crate::HtmlCapturedRegistry::Null => Ok(RegistryRef::Null),
             crate::HtmlCapturedRegistry::Unavailable => Ok(RegistryRef::Unavailable),
@@ -679,7 +750,7 @@ impl SessionStorage {
                     .capture()
                     .registry_scope(id)
                     .map_err(|_| SessionError::ContextUnavailable)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 payload_write::<RegistryRef>(c, 1)?;
                 Ok(RegistryRef::Captured(id.clone()))
             }
@@ -691,23 +762,23 @@ impl SessionStorage {
         node: usize,
     ) -> Result<RegistryRef, SessionError> {
         c.require_identity(&self.control)?;
-        for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 registry,
                 ..
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 return registry.try_clone(c);
             }
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) {
@@ -726,17 +797,17 @@ impl SessionStorage {
         node: usize,
     ) -> Result<ElementCreationState, SessionError> {
         c.require_identity(&self.control)?;
-        for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 creation: Some(state),
                 ..
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<ElementCreationState>() as u64,
                 )?;
                 return Ok(*state);
@@ -765,9 +836,9 @@ impl SessionStorage {
         // second lookup is possible only for a non-null internal is.
         let potential_definition = html && (is_value.is_some() || charged_custom_name(name, c)?);
         if potential_definition && let RegistryRef::Captured(index) = registry {
-            let context = &self.fragment.as_ref().expect("qualified fragment").context;
+            let context = &self.fragment_storage(c)?.context;
             let id = index;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(
                 context
                     .capture()
@@ -779,7 +850,7 @@ impl SessionStorage {
                     crate::HtmlCaptureFact::Definitions,
                 ));
             }
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
             let lookup = crate::HtmlCapturedRegistry::Registry(id.clone());
             let mut cursor = context
@@ -790,13 +861,15 @@ impl SessionStorage {
                 })?;
             loop {
                 let cost = cursor.next_cost();
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                c.charge(
-                    WorkCategory::InspectByte,
-                    (cost * mem::size_of::<u16>()) as u64,
-                )?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                let Some(bytes) = cost.checked_mul(mem::size_of::<u16>()) else {
+                    return Err(c
+                        .stop_representation(crate::HtmlParseResource::WorkCredits)
+                        .into());
+                };
+                c.charge(HtmlParseWorkCategory::InspectByte, bytes as u64)?;
                 if cursor.next_clones_registry() {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     payload_write::<surgeist_html_semantics::HtmlDefinitionLookupStep>(c, 1)?;
                 }
                 match cursor.step() {
@@ -844,21 +917,26 @@ impl SessionStorage {
         // The payload slot below admits its complete creation metadata. This
         // separate move writes the actual PreparedDocuments registry receiver.
         payload_write::<Option<usize>>(c, 1)?;
-        self.prepare_payload_slot_owned(c)?;
-        let slot = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::LookupRegistry {
-            node: None,
-            registry,
-            creation: Some(ElementCreationState {
-                common_scope: if html {
-                    surgeist_html::HtmlCommonScope::Html
-                } else {
-                    surgeist_html::HtmlCommonScope::Element
+        let admission = self.prepare_payload_slot_owned(c)?;
+        let slot = self
+            .payloads
+            .push_row(
+                admission,
+                RetainedPayload::LookupRegistry {
+                    node: None,
+                    registry,
+                    creation: Some(ElementCreationState {
+                        common_scope: if html {
+                            surgeist_html::elements::native::HtmlCommonScope::Html
+                        } else {
+                            surgeist_html::elements::native::HtmlCommonScope::Element
+                        },
+                        state,
+                        saved_is,
+                    }),
                 },
-                state,
-                saved_is,
-            }),
-        });
+            )
+            .map_err(|_| latch_registry_row(c))?;
         prepared
             .as_mut()
             .ok_or(SessionError::NodeDocumentUnavailable)?
@@ -875,17 +953,17 @@ impl SessionStorage {
         if self.fragment.is_none() {
             return Ok(());
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let shadow = if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) && matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner(),
             Some(HtmlFragmentOwner::ShadowHost(_))
         ) {
@@ -897,7 +975,7 @@ impl SessionStorage {
             && !matches!(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Element(_)
             )
@@ -908,7 +986,7 @@ impl SessionStorage {
         if matches!(previous, RegistryRef::Null) && shadow.is_some_and(|s| s.keep_registry_null) {
             return Ok(());
         }
-        let context = &self.fragment.as_ref().expect("actual context").context;
+        let context = &self.fragment_storage(c)?.context;
         let global = match &previous {
             RegistryRef::Null => true,
             RegistryRef::Unavailable => {
@@ -918,7 +996,7 @@ impl SessionStorage {
             }
             RegistryRef::Captured(index) => {
                 let id = index;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match context
                     .capture()
                     .registry_scope(id)
@@ -946,7 +1024,7 @@ impl SessionStorage {
                     && !matches!(
                         self.construction
                             .node_at(parent)
-                            .expect("retained construction position")
+                            .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
                         HtmlNodeKind::Fragment
                     ) =>
@@ -956,8 +1034,8 @@ impl SessionStorage {
             _ => match document {
                 DocumentRef::Owned(_) => RegistryRef::Null,
                 DocumentRef::Captured(index) => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    let context = &self.fragment.as_ref().expect("actual context").context;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    let context = &self.fragment_storage(c)?.context;
                     let document = context
                         .capture()
                         .node(index.subject())
@@ -967,15 +1045,15 @@ impl SessionStorage {
             },
         };
         let effective = self.effective_global_registry(c, registry)?;
-        for slot in 0..self.payloads.values.len() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values[slot],RetainedPayload::LookupRegistry {node:Some(bound),..} if bound==node)
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if matches!(self.payloads.values.get(slot),Some(RetainedPayload::LookupRegistry {node:Some(bound),..}) if *bound==node)
             {
                 payload_write::<RegistryRef>(c, 1)?;
-                let RetainedPayload::LookupRegistry { registry, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::LookupRegistry { registry, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *registry = effective;
                 return Ok(());
@@ -1011,16 +1089,16 @@ impl ParserArenaSession {
 }
 
 fn charged_custom_name(name: &DocumentString, c: &mut ParseControl) -> Result<bool, SessionError> {
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::lexical::{
         HtmlCustomNameScanAction as A, validate_custom_element_name_with,
     };
     Ok(validate_custom_element_name_with(name, |action| {
         match action {
-            A::Header | A::ReservedHeader => c.charge(WorkCategory::RecordVisit, 1)?,
-            A::Unit => c.charge(WorkCategory::InspectByte, 2)?,
-            A::ReservedPair => c.charge(WorkCategory::InspectByte, 4)?,
+            A::Header | A::ReservedHeader => c.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
+            A::Unit => c.charge_unit_inspection()?,
+            A::ReservedPair => c.charge(HtmlParseWorkCategory::InspectByte, 4)?,
         }
-        Ok::<(), ParseStop>(())
+        Ok::<(), HtmlParseStop>(())
     })?
     .is_ok())
 }
@@ -1064,36 +1142,13 @@ fn shadow_host_name(
     }
     Ok((false, false))
 }
-fn insensitive(
-    value: &DocumentString,
-    literal: &str,
-    c: &mut ParseControl,
-) -> Result<bool, SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    if value.len() != literal.len() {
-        return Ok(false);
-    }
-    for (offset, right) in literal.bytes().enumerate() {
-        c.charge(WorkCategory::InspectByte, 3)?;
-        let left = value.code_units()[offset];
-        let left = if matches!(left, 65..=90) {
-            left + 32
-        } else {
-            left
-        };
-        if left != u16::from(right) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
 impl FragmentContextStorage {
     pub(super) fn release(
         self,
         c: &mut ParseControl,
         owner: &ControlIdentity,
-    ) -> Result<(), ParseStop> {
-        release_logical(
+    ) -> Result<(), HtmlParseStop> {
+        let logical = release_logical(
             c,
             owner,
             HtmlParseResource::SourceMapEntries,
@@ -1101,9 +1156,15 @@ impl FragmentContextStorage {
         );
         // Public handles exist only after successful report publication. This
         // original cleanup owner retires its actual identity ticket on failure.
-        c.release_zero_sized_shared(self.origin.0, self.origin_allocation)
-            .unwrap_or_else(|_| panic!("original fragment origin owner/ticket"));
-        self.effects.release(c)
+        let origin = c
+            .release_zero_sized_shared(self.origin.0, self.origin_allocation)
+            .map_err(|error| error.into_parts().0);
+        let effects = self.effects.release(c);
+        if let Err(SessionError::Stop(stop)) = logical {
+            return Err(stop);
+        }
+        origin?;
+        effects
     }
 }
 impl ParserArenaSession {
@@ -1113,7 +1174,7 @@ impl ParserArenaSession {
     ) -> Result<bool, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(storage.fragment.as_ref().is_some_and(|f| f.allow_shadow))
     }
     /// Actual stack-only template attachment; fallback preserves the SAME E.
@@ -1134,10 +1195,11 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
-            unreachable!()
+            // `template_slot` qualified this record as an element.
+            return Err(latch_registry_row(c));
         };
         let mut mode = None;
         let mut delegates = false;
@@ -1146,16 +1208,16 @@ impl ParserArenaSession {
         let mut manual = false;
         let mut keep_null = false;
         for attr in element.attributes().iter() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attr.name().namespace().uri().is_some() {
                 continue;
             }
             let name = attr.name().local_name();
             if exact_ascii(c, Some(name), "shadowrootmode")? {
-                if insensitive(attr.value(), "open", c)? {
-                    mode = Some(crate::HtmlShadowRootMode::Open);
-                } else if insensitive(attr.value(), "closed", c)? {
-                    mode = Some(crate::HtmlShadowRootMode::Closed);
+                if c.ascii_case_insensitive_literal_matches(attr.value(), "open")? {
+                    mode = Some(surgeist_html::construction::HtmlShadowRootMode::Open);
+                } else if c.ascii_case_insensitive_literal_matches(attr.value(), "closed")? {
+                    mode = Some(surgeist_html::construction::HtmlShadowRootMode::Closed);
                 }
             } else if exact_ascii(c, Some(name), "shadowrootdelegatesfocus")? {
                 delegates = true;
@@ -1164,7 +1226,7 @@ impl ParserArenaSession {
             } else if exact_ascii(c, Some(name), "shadowrootserializable")? {
                 serializable = true;
             } else if exact_ascii(c, Some(name), "shadowrootslotassignment")? {
-                manual = insensitive(attr.value(), "manual", c)?;
+                manual = c.ascii_case_insensitive_literal_matches(attr.value(), "manual")?;
             } else if exact_ascii(c, Some(name), "shadowrootcustomelementregistry")? {
                 keep_null = true;
             }
@@ -1175,9 +1237,9 @@ impl ParserArenaSession {
         let properties = HtmlShadowRootProperties::new(
             mode,
             if manual {
-                crate::HtmlSlotAssignment::Manual
+                surgeist_html::construction::HtmlSlotAssignment::Manual
             } else {
-                crate::HtmlSlotAssignment::Named
+                surgeist_html::construction::HtmlSlotAssignment::Named
             },
             delegates,
             clonable,
@@ -1186,11 +1248,11 @@ impl ParserArenaSession {
         let (key, document) = match host {
             DeclarativeShadowHost::Owned(host) => {
                 let host = storage.index(c, host)?;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let HtmlNodeKind::Element(element) = &storage
                     .construction
                     .node_at(host)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind()
                 else {
                     return Ok(false);
@@ -1200,7 +1262,7 @@ impl ParserArenaSession {
                     || storage
                         .construction
                         .node_at(host)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .shadow_root()
                         .is_some()
                 {
@@ -1208,8 +1270,9 @@ impl ParserArenaSession {
                 }
                 let creation = storage.element_creation_state(c, host)?;
                 let saved_is = if let Some(slot) = creation.saved_is {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };
@@ -1233,12 +1296,12 @@ impl ParserArenaSession {
                 (ShadowHostKey::Owned(host), document)
             }
             DeclarativeShadowHost::Captured(host) => {
-                let context = &storage
+                let fragment = storage
                     .fragment
                     .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                    .ok_or(SessionError::ContextUnavailable)?;
+                let context = &fragment.context;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if host != context.context_element() {
                     return Err(SessionError::ContextUnavailable);
                 }
@@ -1253,21 +1316,15 @@ impl ParserArenaSession {
                 if !eligible {
                     return Ok(false);
                 }
-                for effect in storage
-                    .fragment
-                    .as_ref()
-                    .expect("context")
-                    .effects
-                    .as_slice()
-                {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                for effect in fragment.effects.as_slice() {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let ContextEffect::AttachShadow {
                         host: ShadowHostKey::Captured(actual),
                         contents,
                         ..
                     } = effect
                     {
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                         if actual == host {
                             if contents.is_none() {
                                 return Err(SessionError::ContextUnavailable);
@@ -1276,7 +1333,7 @@ impl ParserArenaSession {
                         }
                     }
                 }
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match context
                     .capture()
                     .shadow_presence(host)
@@ -1308,10 +1365,10 @@ impl ParserArenaSession {
                         return Ok(false);
                     }
                 }
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let document = captured.node_document();
                 let document = DocumentRef::Captured(document);
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 (ShadowHostKey::Captured(host.clone()), document)
             }
         };
@@ -1327,7 +1384,7 @@ impl ParserArenaSession {
         }
         // Slot/trigger ownership is admitted before allocating the shadow root.
         // Any later stop leaves all records and this unbound effect cleanup-owned.
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<u64>(c, 1)?;
         c.acquire(HtmlParseResource::SourceMapEntries, 1)?;
         let fragment = storage
@@ -1345,58 +1402,66 @@ impl ParserArenaSession {
             available_to_internals: false,
             source: source.clone(),
         };
-        if let Err((stop, _)) = fragment.effects.try_push_recover(c, effect) {
-            release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
+        if let Err((stop, _)) = fragment.effects.try_push_recover_geometric(c, effect) {
+            // The push refusal is the error reported; a refused release latched
+            // its own stop.
+            let _ = release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
             return Err(stop.into());
         }
-        fragment.source_entries += 1;
+        // Each entry pairs with one successful `acquire` above, so the count
+        // never exceeds the resource's own checked total.
+        fragment.source_entries = fragment.source_entries.saturating_add(1);
+        fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         let result = (|| {
-            storage.prepare_payload_slot_owned(c)?;
-            let shadow_slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Shadow {
-                root: None,
-                state: ShadowState {
-                    keep_registry_null: keep_null,
-                    declarative: true,
-                    available_to_internals: true,
-                },
-            });
+            let prepared = storage.prepare_payload_slot_owned(c)?;
+            let shadow_slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Shadow {
+                        root: None,
+                        state: ShadowState {
+                            keep_registry_null: keep_null,
+                            declarative: true,
+                            available_to_internals: true,
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
             payload_write::<Option<usize>>(c, 1)?;
             let root = storage.allocate_shadow_contents(c, properties, document)?;
-            let RetainedPayload::Shadow { root: bound, .. } =
-                &mut storage.payloads.values[shadow_slot]
+            let Some(RetainedPayload::Shadow { root: bound, .. }) =
+                storage.payloads.values.get_mut(shadow_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *bound = Some(root.index);
-            storage.prepare_payload_slot_owned(c)?;
+            let prepared = storage.prepare_payload_slot_owned(c)?;
             storage
                 .payloads
-                .values
-                .push(RetainedPayload::LookupRegistry {
-                    node: Some(root.index),
-                    registry,
-                    creation: None,
-                });
-            let local_host = match &storage
-                .fragment
-                .as_ref()
-                .expect("context")
-                .effects
-                .as_slice()[slot]
-            {
-                ContextEffect::AttachShadow {
+                .push_row(
+                    prepared,
+                    RetainedPayload::LookupRegistry {
+                        node: Some(root.index),
+                        registry,
+                        creation: None,
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
+            let local_host = match storage.fragment_storage(c)?.effects.as_slice().get(slot) {
+                Some(ContextEffect::AttachShadow {
                     host: ShadowHostKey::Owned(host),
                     ..
-                } => Some(*host),
-                _ => None,
+                }) => Some(*host),
+                Some(_) => None,
+                None => return Err(latch_registry_row(c)),
             };
             payload_write::<Option<usize>>(c, 1)?;
             payload_write::<usize>(c, 1)?;
             payload_write::<[bool; 3]>(c, 3)?;
             c.charge(
-                WorkCategory::ProviderCall,
-                2 + u64::from(local_host.is_some()),
+                HtmlParseWorkCategory::ProviderCall,
+                2_u64.saturating_add(u64::from(local_host.is_some())),
             )?;
             let template_handle = storage
                 .construction
@@ -1409,7 +1474,7 @@ impl ParserArenaSession {
                 .ok_or(SessionError::ForeignNode)?
                 .handle();
             let command = if let Some(host) = local_host {
-                bounded::HtmlConstructionCommand::AttachTemplateShadow {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::AttachTemplateShadow {
                     template: template_handle,
                     host: storage
                         .construction
@@ -1419,45 +1484,46 @@ impl ParserArenaSession {
                     contents: contents_handle,
                 }
             } else {
-                bounded::HtmlConstructionCommand::SetTemplateShadowContents {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::SetTemplateShadowContents {
                     template: template_handle,
                     contents: contents_handle,
                 }
             };
             // Preflight the real effect receiver before the fixed native commit.
-            let effect = storage
-                .fragment
-                .as_mut()
-                .expect("context")
-                .effects
-                .get_mut(slot, c)?
-                .expect("owned effect");
-            let ContextEffect::AttachShadow {
+            let Some(ContextEffect::AttachShadow {
                 contents,
                 declarative,
                 available_to_internals,
                 keep_registry_null,
                 ..
-            } = effect
+            }) = storage
+                .fragment
+                .as_mut()
+                .ok_or_else(|| latch_registry_row(c))?
+                .effects
+                .get_mut(slot, c)?
             else {
-                unreachable!("prepared attachment effect")
+                return Err(latch_registry_row(c));
             };
             storage.construction.apply(c, command, &[])?;
             *contents = Some(root.index);
             *declarative = true;
             *available_to_internals = true;
             *keep_registry_null = keep_null;
-            let RetainedPayload::Template { state, .. } =
-                &mut storage.payloads.values[template_slot]
+            if let Some(fragment) = storage.fragment.as_mut() {
+                fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
+            }
+            let Some(RetainedPayload::Template { state, .. }) =
+                storage.payloads.values.get_mut(template_slot)
             else {
-                unreachable!("preflighted template metadata")
+                return Err(latch_registry_row(c));
             };
             state.contents = root.index;
+            state.shadow_effect = Some(slot);
             Ok::<(), SessionError>(())
         })();
         if let Err(error) = result {
-            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            return Err(error);
+            return Err(super::end_session_on(c, error));
         }
         Ok(true)
     }
@@ -1468,9 +1534,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: crate::HtmlCapturedNode<'_>,
     ) -> Result<RegistryRef, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if node.lookup_registry_clones_identity() {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         }
         payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
         Ok(match node.lookup_registry() {
@@ -1488,7 +1554,7 @@ impl SessionStorage {
         match document {
             DocumentRef::Owned(_) => Ok(RegistryRef::Null),
             DocumentRef::Captured(index) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let context = &self
                     .fragment
                     .as_ref()
@@ -1538,7 +1604,7 @@ impl SessionStorage {
             .ok_or(SessionError::ContextUnavailable)?
             .context;
         let id = index;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if matches!(
             context
                 .capture()
@@ -1550,7 +1616,7 @@ impl SessionStorage {
                 crate::HtmlCaptureFact::Definitions,
             ));
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<crate::HtmlCapturedRegistry>(c, 1)?;
         let registry = crate::HtmlCapturedRegistry::Registry(id.clone());
         let mut cursor = context
@@ -1561,17 +1627,22 @@ impl SessionStorage {
             })?;
         loop {
             let cost = cursor.next_cost();
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, (cost * 2) as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(bytes) = cost.checked_mul(2) else {
+                return Err(c
+                    .stop_representation(crate::HtmlParseResource::WorkCredits)
+                    .into());
+            };
+            c.charge(HtmlParseWorkCategory::InspectByte, bytes as u64)?;
             if cursor.next_clones_registry() {
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 payload_write::<surgeist_html_semantics::HtmlDefinitionLookupStep>(c, 1)?;
             }
             match cursor.step() {
                 surgeist_html_semantics::HtmlDefinitionLookupStep::Searching => {}
                 surgeist_html_semantics::HtmlDefinitionLookupStep::Ready(None) => return Ok(false),
                 surgeist_html_semantics::HtmlDefinitionLookupStep::Ready(Some(id)) => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     return Ok(context
                         .capture()
                         .definition(&id)
@@ -1581,24 +1652,27 @@ impl SessionStorage {
             }
         }
     }
+    /// Whether the effect at `effect`, the slot the template's metadata
+    /// records, attached exactly this template's `contents` as a shadow root.
     pub(super) fn shadow_template_contents(
         &self,
         c: &mut ParseControl,
         template: usize,
         contents: usize,
+        effect: Option<usize>,
     ) -> Result<bool, SessionError> {
-        let Some(fragment) = &self.fragment else {
+        let (Some(fragment), Some(effect)) = (&self.fragment, effect) else {
             return Ok(false);
         };
-        for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(effect,ContextEffect::AttachShadow{template:actual,contents:Some(root),..}
-                if *actual==template && *root==contents)
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(matches!(
+            fragment.effects.as_slice().get(effect),
+            Some(ContextEffect::AttachShadow {
+                template: actual,
+                contents: Some(root),
+                ..
+            }) if *actual == template && *root == contents
+        ))
     }
 }
 
@@ -1619,16 +1693,28 @@ impl SessionStorage {
         let Some(fragment) = &self.fragment else {
             return Ok(());
         };
-        for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(
-                effect,
-                ContextEffect::TemplateCache { inert: None, .. }
-                    | ContextEffect::AttachShadow { contents: None, .. }
-            ) {
-                c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                return Err(SessionError::ContextUnavailable);
-            }
+        #[cfg(test)]
+        assert_eq!(
+            fragment.unbound_effects,
+            fragment
+                .effects
+                .as_slice()
+                .iter()
+                .filter(|effect| matches!(
+                    effect,
+                    ContextEffect::TemplateCache { inert: None, .. }
+                        | ContextEffect::AttachShadow { contents: None, .. }
+                ))
+                .count(),
+            "unbound effects differ from the effects still unbound"
+        );
+        // No record visit is charged: this reads one counter of the already
+        // visited session and visits no effect record. The test-only check
+        // above scans the effects to compare against it and is not charged.
+        if fragment.unbound_effects != 0 {
+            return Err(c
+                .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
+                .into());
         }
         Ok(())
     }
@@ -1662,7 +1748,7 @@ impl ParserArenaSession {
         };
         let mut current = 0;
         for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let ContextEffect::AttachShadow {
                 host,
                 template,
@@ -1685,7 +1771,7 @@ impl ParserArenaSession {
                     QualifiedFragmentHost::Owned(storage.node(c, *index)?)
                 }
                 ShadowHostKey::Captured(host) => {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     payload_write::<QualifiedFragmentHost>(c, 1)?;
                     QualifiedFragmentHost::Captured(host.clone())
                 }
@@ -1719,9 +1805,9 @@ impl SessionStorage {
     ) -> Result<RegistryRef, SessionError> {
         Ok(match registry {
             RegistryRef::Captured(index) => {
-                let context = &self.fragment.as_ref().expect("actual context").context;
+                let context = &self.fragment_storage(c)?.context;
                 let id = &index;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match context
                     .capture()
                     .registry_scope(id)
@@ -1750,14 +1836,17 @@ impl SessionStorage {
         root: usize,
     ) -> Result<ShadowState, SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Shadow {
                 root: Some(actual),
                 state,
             } = payload
                 && *actual == root
             {
-                c.charge(WorkCategory::CopyByte, mem::size_of::<ShadowState>() as u64)?;
+                c.charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<ShadowState>() as u64,
+                )?;
                 return Ok(*state);
             }
         }
@@ -1772,32 +1861,32 @@ impl SessionStorage {
         copy: usize,
         document: &DocumentRef,
     ) -> Result<Option<(usize, usize)>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(shadow) = self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         else {
             return Ok(None);
         };
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let shadow_contents = self
             .construction
-            .storage()
+            .storage(c)?
             .node_by_result_id(shadow.contents())
             .map_err(|_| SessionError::ForeignNode)?
             .position();
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<HtmlShadowRootProperties>() as u64,
         )?;
         if !shadow.properties().clonable() {
             return Ok(None);
         }
         c.charge(
-            WorkCategory::CopyByte,
-            mem::size_of::<HtmlShadowRootProperties>() as u64 + mem::size_of::<usize>() as u64,
+            HtmlParseWorkCategory::CopyByte,
+            const { mem::size_of::<HtmlShadowRootProperties>() as u64 + mem::size_of::<usize>() as u64 },
         )?;
         let properties = shadow.properties();
         let original = shadow_contents;
@@ -1810,7 +1899,7 @@ impl SessionStorage {
                     .as_ref()
                     .ok_or(SessionError::ContextUnavailable)?;
                 let id = index;
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 match fragment
                     .context
                     .capture()
@@ -1836,8 +1925,7 @@ impl SessionStorage {
                 ));
             }
         };
-        self.prepare_payload_slot_owned(c)?;
-        let fact = self.payloads.values.len();
+        let prepared = self.prepare_payload_slot_owned(c)?;
         // Attach creates false available-to-internals for these actual
         // uncustomized same-owner clone producers; DOM clone copies only the
         // declarative and keep-null flags after attachment.
@@ -1846,29 +1934,40 @@ impl SessionStorage {
             keep_registry_null: state.keep_registry_null,
             available_to_internals: false,
         };
-        self.payloads
-            .values
-            .push(RetainedPayload::Shadow { root: None, state });
-        self.prepare_payload_slot_owned(c)?;
-        let lookup = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::LookupRegistry {
-            node: None,
-            registry,
-            creation: None,
-        });
+        let fact = self
+            .payloads
+            .push_row(prepared, RetainedPayload::Shadow { root: None, state })
+            .map_err(|_| latch_registry_row(c))?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let lookup = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::LookupRegistry {
+                    node: None,
+                    registry,
+                    creation: None,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 2)?;
         let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document)?;
-        let RetainedPayload::Shadow { root: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(root.index);
-        let RetainedPayload::LookupRegistry { node: bound, .. } = &mut self.payloads.values[lookup]
+        let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *bound = Some(root.index);
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
+            self.payloads.values.get_mut(lookup)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        *bound = Some(root.index);
+        self.payloads
+            .join_row(lookup)
+            .map_err(|_| latch_registry_row(c))?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         let host = self
             .construction
             .node_at(copy)
@@ -1881,7 +1980,10 @@ impl SessionStorage {
             .handle();
         self.construction.apply(
             c,
-            bounded::HtmlConstructionCommand::AttachShadow { host, contents },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::AttachShadow {
+                host,
+                contents,
+            },
             &[(HtmlParseResource::ManagedEdges, 1)],
         )?;
         Ok(Some((original, root.index)))
@@ -1907,8 +2009,8 @@ impl FrozenStorage {
         node: &HtmlNodeId,
     ) -> Result<usize, SessionError> {
         let arena = self.context_arena(c)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(arena
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
@@ -1917,11 +2019,11 @@ impl FrozenStorage {
     #[cfg(test)]
     fn context_node(&self, c: &mut ParseControl, index: usize) -> Result<HtmlNodeId, SessionError> {
         let arena = self.context_arena(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if index >= arena.len() {
             return Err(SessionError::ForeignNode);
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlNodeId>(c, 1)?;
         Ok(arena
             .node_at(index)
@@ -1953,7 +2055,7 @@ impl FrozenStorage {
     ) -> Result<crate::HtmlCapturedRegistry, SessionError> {
         self.context_arena(c)?;
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 registry,
@@ -1977,14 +2079,21 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<(crate::HtmlCustomElementState, Option<&DocumentString>), SessionError> {
+    ) -> Result<
+        (
+            surgeist_html::elements::native::HtmlCustomElementState,
+            Option<&DocumentString>,
+        ),
+        SessionError,
+    > {
         let storage = self.active()?;
         storage.require(c)?;
         let index = storage.index(c, node)?;
         let state = storage.element_creation_state(c, index)?;
         let saved = if let Some(slot) = state.saved_is {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::String { value, .. } = &storage.payloads.values[slot] else {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(RetainedPayload::String { value, .. }) = storage.payloads.values.get(slot)
+            else {
                 return Err(SessionError::ContextUnavailable);
             };
             Some(value)
@@ -2014,11 +2123,17 @@ impl FrozenArena {
         &self,
         c: &mut ParseControl,
         node: &HtmlNodeId,
-    ) -> Result<(crate::HtmlCustomElementState, Option<&DocumentString>), SessionError> {
+    ) -> Result<
+        (
+            surgeist_html::elements::native::HtmlCustomElementState,
+            Option<&DocumentString>,
+        ),
+        SessionError,
+    > {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 creation: Some(state),
@@ -2027,12 +2142,13 @@ impl FrozenArena {
                 && *bound == index
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<ElementCreationState>() as u64,
                 )?;
                 let saved = if let Some(slot) = state.saved_is {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };
@@ -2056,7 +2172,7 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
         let arena = storage.context_arena(c)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if !matches!(
             arena
                 .node_at(index)
@@ -2067,7 +2183,7 @@ impl FrozenArena {
             return Err(SessionError::NotDocument);
         }
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Document {
                 node: Some(bound),
                 class,
@@ -2076,7 +2192,7 @@ impl FrozenArena {
                 && *bound == index
             {
                 c.charge(
-                    WorkCategory::CopyByte,
+                    HtmlParseWorkCategory::CopyByte,
                     mem::size_of::<crate::HtmlDocumentClass>() as u64,
                 )?;
                 return Ok(*class);
@@ -2093,7 +2209,7 @@ impl FrozenArena {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::NodeDocument {
                 node: Some(bound),
                 document,
@@ -2104,7 +2220,7 @@ impl FrozenArena {
                 return Ok(match document {
                     DocumentRef::Owned(index) => {
                         let arena = storage.context_arena(c)?;
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !matches!(
                             arena.node_at(*index).map(|r| r.kind()),
                             Some(HtmlNodeKind::Document(_))
@@ -2114,7 +2230,7 @@ impl FrozenArena {
                         ParserDocumentReference::Owned(storage.context_node(c, *index)?)
                     }
                     DocumentRef::Captured(index) => {
-                        c.charge(WorkCategory::ProviderCall, 1)?;
+                        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                         ParserDocumentReference::Captured(index.clone())
                     }
                 });
@@ -2145,7 +2261,7 @@ impl FrozenArena {
         };
         let mut current = 0;
         for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let ContextEffect::TemplateCache {
                 document,
                 inert: Some(inert),
@@ -2157,7 +2273,7 @@ impl FrozenArena {
                 current += 1;
                 continue;
             }
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             payload_write::<TemplateCacheState<HtmlNodeId>>(c, 1)?;
             let document = document.clone();
             return Ok(Some(TemplateCacheState {
@@ -2180,7 +2296,7 @@ impl FrozenArena {
         };
         let mut current = 0;
         for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let ContextEffect::AttachShadow {
                 host,
                 template,
@@ -2204,7 +2320,7 @@ impl FrozenArena {
                     QualifiedFragmentHost::Owned(storage.context_node(c, *index)?)
                 }
                 ShadowHostKey::Captured(host) => {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     payload_write::<QualifiedFragmentHost<HtmlNodeId>>(c, 1)?;
                     QualifiedFragmentHost::Captured(host.clone())
                 }
@@ -2230,22 +2346,22 @@ impl FrozenArena {
 pub(crate) fn registry_binding_layout() -> usize {
     mem::size_of::<usize>() + mem::size_of::<RegistryRef>()
 }
-pub struct FrozenFragmentEffects<'a> {
+pub struct HtmlParseEffects<'a> {
     storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     fragment: &'a FragmentContextStorage,
 }
-pub enum FrozenFragmentHost<'a> {
+pub enum HtmlParseEffectHost<'a> {
     Owned(HtmlNode<'a>),
     Captured(&'a crate::HtmlCaptureElementId),
 }
-pub enum FrozenFragmentEffect<'a> {
+pub enum HtmlParseEffect<'a> {
     TemplateCache {
         document: crate::HtmlCapturedNode<'a>,
         inert: HtmlNode<'a>,
     },
     AttachShadow {
-        host: FrozenFragmentHost<'a>,
+        host: HtmlParseEffectHost<'a>,
         template: HtmlNode<'a>,
         contents: HtmlNode<'a>,
         properties: &'a HtmlShadowRootProperties,
@@ -2255,24 +2371,24 @@ pub enum FrozenFragmentEffect<'a> {
         source: &'a crate::HtmlSourceRange,
     },
 }
-pub struct FrozenCapturedRegistry<'a> {
+pub struct HtmlParseCapturedRegistry<'a> {
     id: &'a crate::HtmlCaptureRegistryId,
 }
-impl FrozenCapturedRegistry<'_> {
+impl HtmlParseCapturedRegistry<'_> {
     pub fn is_registry(&self, id: &crate::HtmlCaptureRegistryId) -> bool {
         self.id == id
     }
 }
-pub enum FrozenFragmentRegistry<'a> {
+pub enum HtmlParseRegistry<'a> {
     Null,
     Unavailable,
-    Captured(FrozenCapturedRegistry<'a>),
+    Captured(HtmlParseCapturedRegistry<'a>),
 }
-pub struct FrozenFragmentRegistryBinding<'a> {
+pub struct HtmlParseRegistryBinding<'a> {
     pub(crate) node: HtmlNode<'a>,
-    pub(crate) registry: FrozenFragmentRegistry<'a>,
+    pub(crate) registry: HtmlParseRegistry<'a>,
 }
-impl<'a> FrozenFragmentEffects<'a> {
+impl<'a> HtmlParseEffects<'a> {
     pub fn len(&self) -> usize {
         self.fragment.effects.len()
     }
@@ -2282,18 +2398,18 @@ impl<'a> FrozenFragmentEffects<'a> {
     pub fn registry_slots(&self) -> usize {
         self.storage.payloads.values.len()
     }
-    fn node(&self, index: usize) -> Result<HtmlNode<'a>, SessionError> {
-        Ok(self
-            .arena
-            .node_at(index)
-            .ok_or(SessionError::ForeignNode)?
-            .as_node())
+    fn node(&self, index: usize) -> Result<HtmlNode<'a>, read::HtmlParseUnresolvedReference> {
+        self.arena.node_at(index).map(|node| node.as_node()).ok_or(
+            read::HtmlParseUnresolvedReference::new(read::HtmlParseUnresolvedKind::Node),
+        )
     }
-    /// Exactly one actual effect slot; there is no hidden ordinal scan.
+    /// Exactly one actual effect slot; there is no hidden ordinal scan. Past
+    /// the last effect is absent. An effect the report cannot resolve, or one
+    /// whose record was never bound, is a fault.
     pub(crate) fn get(
         &self,
         index: usize,
-    ) -> Result<Option<FrozenFragmentEffect<'a>>, SessionError> {
+    ) -> Result<Option<HtmlParseEffect<'a>>, read::HtmlParseUnresolvedReference> {
         let Some(effect) = self.fragment.effects.as_slice().get(index) else {
             return Ok(None);
         };
@@ -2301,13 +2417,17 @@ impl<'a> FrozenFragmentEffects<'a> {
             ContextEffect::TemplateCache {
                 document,
                 inert: Some(inert),
-            } => FrozenFragmentEffect::TemplateCache {
+            } => HtmlParseEffect::TemplateCache {
                 document: self
                     .fragment
                     .context
                     .capture()
                     .node(document.subject())
-                    .map_err(|_| SessionError::ContextUnavailable)?,
+                    .map_err(|_| {
+                        read::HtmlParseUnresolvedReference::new(
+                            read::HtmlParseUnresolvedKind::CapturedNode,
+                        )
+                    })?,
                 inert: self.node(*inert)?,
             },
             ContextEffect::AttachShadow {
@@ -2319,10 +2439,10 @@ impl<'a> FrozenFragmentEffects<'a> {
                 declarative,
                 available_to_internals,
                 source,
-            } => FrozenFragmentEffect::AttachShadow {
+            } => HtmlParseEffect::AttachShadow {
                 host: match host {
-                    ShadowHostKey::Owned(index) => FrozenFragmentHost::Owned(self.node(*index)?),
-                    ShadowHostKey::Captured(host) => FrozenFragmentHost::Captured(host),
+                    ShadowHostKey::Owned(index) => HtmlParseEffectHost::Owned(self.node(*index)?),
+                    ShadowHostKey::Captured(host) => HtmlParseEffectHost::Captured(host),
                 },
                 template: self.node(*template)?,
                 contents: self.node(*contents)?,
@@ -2332,7 +2452,12 @@ impl<'a> FrozenFragmentEffects<'a> {
                 available_to_internals: *available_to_internals,
                 source,
             },
-            _ => return Err(SessionError::ContextUnavailable),
+            // The record the effect binds was never bound.
+            _ => {
+                return Err(read::HtmlParseUnresolvedReference::new(
+                    read::HtmlParseUnresolvedKind::Fact,
+                ));
+            }
         }))
     }
     /// Exactly one canonical payload slot. The reader chooses its next index;
@@ -2340,7 +2465,7 @@ impl<'a> FrozenFragmentEffects<'a> {
     pub(crate) fn registry_binding(
         &self,
         index: usize,
-    ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, SessionError> {
+    ) -> Result<Option<HtmlParseRegistryBinding<'a>>, read::HtmlParseUnresolvedReference> {
         let Some(RetainedPayload::LookupRegistry {
             node: Some(node),
             registry,
@@ -2349,33 +2474,36 @@ impl<'a> FrozenFragmentEffects<'a> {
         else {
             return Ok(None);
         };
-        Ok(Some(FrozenFragmentRegistryBinding {
+        Ok(Some(HtmlParseRegistryBinding {
             node: self.node(*node)?,
             registry: match registry {
-                RegistryRef::Null => FrozenFragmentRegistry::Null,
-                RegistryRef::Unavailable => FrozenFragmentRegistry::Unavailable,
+                RegistryRef::Null => HtmlParseRegistry::Null,
+                RegistryRef::Unavailable => HtmlParseRegistry::Unavailable,
                 RegistryRef::Captured(index) => {
-                    FrozenFragmentRegistry::Captured(FrozenCapturedRegistry { id: index })
+                    HtmlParseRegistry::Captured(HtmlParseCapturedRegistry { id: index })
                 }
             },
         }))
     }
 }
-impl FrozenArena {
-    pub(crate) fn frozen_fragment_effects(
-        &self,
-    ) -> Result<FrozenFragmentEffects<'_>, SessionError> {
-        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let arena = &storage.view;
-        let fragment = storage
-            .fragment
-            .as_ref()
-            .ok_or(SessionError::ContextUnavailable)?;
-        Ok(FrozenFragmentEffects {
-            storage,
-            arena,
+impl FrozenStorage {
+    /// The effects of the fragment context this storage holds, if it holds one.
+    pub(crate) fn fragment_effects(&self) -> Option<HtmlParseEffects<'_>> {
+        let fragment = self.fragment.as_ref()?;
+        Some(HtmlParseEffects {
+            storage: self,
+            arena: &self.view,
             fragment,
         })
+    }
+}
+impl FrozenArena {
+    pub(crate) fn frozen_fragment_effects(&self) -> Result<HtmlParseEffects<'_>, SessionError> {
+        self.storage
+            .as_ref()
+            .ok_or(SessionError::Consumed)?
+            .fragment_effects()
+            .ok_or(SessionError::ContextUnavailable)
     }
     /// Qualified before sealing. All later reads are fixed/indexed borrows of
     /// these same immutable rows, including their original source and capture.
@@ -2387,15 +2515,15 @@ impl FrozenArena {
         c.require_identity(&storage.control)?;
         let view = self.frozen_fragment_effects()?;
         for effect in view.fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<ContextEffect>() as u64,
             )?;
             let mut node = |index: usize, fragment: bool| -> Result<(), SessionError> {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<HtmlNodeKind>() as u64,
                 )?;
                 let record = view.arena.node_at(index).ok_or(SessionError::ForeignNode)?;
@@ -2410,7 +2538,7 @@ impl FrozenArena {
                     inert: Some(inert),
                 } => {
                     node(*inert, false)?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     view.fragment
                         .context
                         .capture()
@@ -2419,7 +2547,7 @@ impl FrozenArena {
                     if !matches!(
                         view.arena
                             .node_at(*inert)
-                            .expect("qualified context node")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Document(_)
                     ) {
@@ -2438,7 +2566,7 @@ impl FrozenArena {
                     match host {
                         ShadowHostKey::Owned(index) => node(*index, false)?,
                         ShadowHostKey::Captured(host) => {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             view.fragment
                                 .context
                                 .capture()
@@ -2452,7 +2580,7 @@ impl FrozenArena {
             }
         }
         for payload in &storage.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let RetainedPayload::LookupRegistry {
                 node: Some(node),
                 registry,
@@ -2462,11 +2590,11 @@ impl FrozenArena {
                 continue;
             };
             c.charge(
-                WorkCategory::InspectByte,
-                (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64,
+                HtmlParseWorkCategory::InspectByte,
+                const { (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64 },
             )?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            view.node(*node)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            view.node(*node).map_err(|_| SessionError::ForeignNode)?;
             if let RegistryRef::Captured(index) = registry {
                 // Validate the stored identity without cloning it or requiring scope truth.
                 view.fragment
@@ -2480,20 +2608,31 @@ impl FrozenArena {
     }
 }
 
-impl<'a> FrozenFragmentEffects<'a> {
-    pub fn effect(&self, index: usize) -> Option<FrozenFragmentEffect<'a>> {
-        self.get(index).expect("prepublication-qualified effect")
+impl<'a> HtmlParseEffects<'a> {
+    /// The effect at `index`, or `None` past the last effect. Every effect is
+    /// qualified before publication and the report is immutable afterwards, so
+    /// an effect the report cannot resolve is a fault.
+    pub fn effect(
+        &self,
+        index: usize,
+    ) -> Result<Option<HtmlParseEffect<'a>>, read::HtmlParseUnresolvedReference> {
+        self.get(index)
     }
-    pub fn registry(&self, index: usize) -> Option<FrozenFragmentRegistryBinding<'a>> {
+    /// The registry binding at `index`, or `None` for a row that is not one,
+    /// including one past the registry. A binding that names a node the report
+    /// cannot resolve is a fault.
+    pub fn registry(
+        &self,
+        index: usize,
+    ) -> Result<Option<HtmlParseRegistryBinding<'a>>, read::HtmlParseUnresolvedReference> {
         self.registry_binding(index)
-            .expect("prepublication-qualified registry")
     }
 }
-impl FrozenFragmentRegistryBinding<'_> {
+impl HtmlParseRegistryBinding<'_> {
     pub fn node(&self) -> HtmlNode<'_> {
         self.node
     }
-    pub fn registry(&self) -> &FrozenFragmentRegistry<'_> {
+    pub fn registry(&self) -> &HtmlParseRegistry<'_> {
         &self.registry
     }
 }
@@ -2502,11 +2641,15 @@ impl FrozenFragmentRegistryBinding<'_> {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{
-        states::State,
+        states::HtmlTokenizerState,
         tests::LexerFixture,
         token::{Event, TokenKind},
     };
     use crate::*;
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlNodeKind},
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
 
     fn lexical_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Option<Tag> {
         loop {
@@ -2674,7 +2817,8 @@ mod tests {
                 .unwrap();
         session.initialize_standalone_document(&mut c).unwrap();
         let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut input = lexical_tag(&mut lexer, &mut c);
         let destination = session
             .allocate_html_tag_for_creation(
@@ -2756,6 +2900,77 @@ mod tests {
         crate::parser::tree_builder::tests::assert_released(&c);
     }
 
+    /// An effect a stop left unbound refuses the session as that stop, the
+    /// first one, and not as a second error that the failure's reason would
+    /// then disagree with.
+    #[test]
+    fn an_unbound_effect_refuses_the_session_as_the_first_stop() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let target = capture
+            .document_id(&capture.subject_id(&document).unwrap())
+            .unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<p>"),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        {
+            let fragment = session.active_mut().unwrap().fragment.as_mut().unwrap();
+            fragment
+                .effects
+                .try_push(
+                    &mut c,
+                    ContextEffect::TemplateCache {
+                        document: target,
+                        inert: None,
+                    },
+                )
+                .unwrap();
+            fragment.unbound_effects += 1;
+        }
+        let first = c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance);
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .require_context_ready(&mut c)
+                .err(),
+            Some(SessionError::Stop(first))
+        );
+        session.release(&mut c).unwrap();
+    }
+
     #[test]
     fn template_adoption_uses_conditional_captured_class_and_reuses_actual_inert_owner() {
         for class in [
@@ -2818,7 +3033,8 @@ mod tests {
                 session.initialize_standalone_document(&mut c).unwrap();
                 let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
                 let mut lexer =
-                    LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+                    LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                        .unwrap();
                 let mut input = lexical_tag(&mut lexer, &mut c);
                 let element = session
                     .allocate_html_tag_for_creation(
@@ -2998,7 +3214,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::ManagedNodes,
                         ..
                     }))
@@ -3036,17 +3252,20 @@ mod tests {
         let result = session.initialize_fragment(&mut c, &request);
         assert!(matches!(
             result,
-            Err(SessionError::Stop(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::ForeignSource
+            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignSource
             )))
         ));
         assert!(session.active().unwrap().fragment.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         assert_eq!(
             c.stop(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::ForeignSource
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::ForeignSource
             ))
         );
         session.release(&mut c).unwrap();
@@ -3091,7 +3310,8 @@ mod tests {
                 .unwrap();
         session.initialize_standalone_document(&mut c).unwrap();
         let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut input = lexical_tag(&mut lexer, &mut c);
         let original = &input.as_ref().unwrap().attributes.as_slice()[0].value;
         let original_backing = original.value.text().code_units().as_ptr();
@@ -3143,7 +3363,10 @@ mod tests {
         let mut frozen = session.freeze(&mut c).unwrap();
         let id = frozen.fragment().unwrap().root().children().next().unwrap();
         let (state, saved) = frozen.element_creation(&mut c, &id).unwrap();
-        assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+        assert_eq!(
+            state,
+            surgeist_html::elements::native::HtmlCustomElementState::Undefined
+        );
         assert_eq!(saved.unwrap().code_units(), &[65, 38, 66]);
         drop(id);
         frozen.release(&mut c).unwrap();
@@ -3205,7 +3428,9 @@ mod tests {
                     .unwrap();
             session.initialize_standalone_document(&mut c).unwrap();
             let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let mut input = lexical_tag(&mut lexer, &mut c);
             // Name div(3), name is(2), decoded A&B(3) own eight
             // original map entries. Lexical retention adds two occurrence
@@ -3253,15 +3478,21 @@ mod tests {
                     71
                 );
                 let (state, value) = session.element_creation(&mut c, &node).unwrap();
-                assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                assert_eq!(
+                    state,
+                    surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                );
                 assert_eq!(value.unwrap().code_units(), &[65, 38, 66]);
             } else {
                 let first = c.stop().unwrap();
                 assert!(matches!(result,Err(SessionError::Stop(stop)) if stop==first));
                 assert!(
-                    matches!(first,ParseStop::LimitExceeded {resource:actual,..} if actual==resource)
+                    matches!(first,HtmlParseStop::LimitExceeded {resource:actual,..} if actual==resource)
                 );
-                assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    3
+                );
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(first))
@@ -3341,12 +3572,13 @@ mod tests {
                 } else {
                     session.initialize_fragment(&mut c, &request).unwrap().root
                 };
-                let mut lexer = LexerFixture::new(source, State::Data, None, &mut c).unwrap();
+                let mut lexer =
+                    LexerFixture::new(source, HtmlTokenizerState::Data, None, &mut c).unwrap();
                 let mut input = lexical_tag(&mut lexer, &mut c);
                 if let Some(credit) = credit {
                     let remaining = limits.work_credits()
                         - c.usage().resource(HtmlParseResource::WorkCredits).current;
-                    c.charge(WorkCategory::StateStep, remaining - credit)
+                    c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
                         .unwrap();
                 }
                 let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -3373,7 +3605,7 @@ mod tests {
                         let first = c.stop().unwrap();
                         assert!(matches!(
                             first,
-                            ParseStop::LimitExceeded {
+                            HtmlParseStop::LimitExceeded {
                                 resource: HtmlParseResource::WorkCredits,
                                 ..
                             }
@@ -3450,7 +3682,8 @@ mod tests {
                 .unwrap();
         session.initialize_standalone_document(&mut c).unwrap();
         let bootstrap = session.initialize_fragment(&mut c, &request).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut input = lexical_tag(&mut lexer, &mut c);
         let tag = input.as_mut().unwrap();
         SessionStorage::check_html_tag(&mut c, tag).unwrap();
@@ -3468,8 +3701,8 @@ mod tests {
         )
         .unwrap();
         let entries = storage.payloads.values.len();
-        let bytes = c.usage().work(WorkCategory::CopyByte);
-        let writes = c.usage().work(WorkCategory::RecordWrite);
+        let bytes = c.usage().work(HtmlParseWorkCategory::CopyByte);
+        let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
         storage
             .prepare_creation_registry(
                 &mut c,
@@ -3486,8 +3719,11 @@ mod tests {
         let expected_bytes = mem::size_of::<RegistryRef>()
             + mem::size_of::<Option<usize>>()
             + mem::size_of::<RetainedPayload>();
-        let actual_bytes = c.usage().work(WorkCategory::CopyByte) - bytes;
-        assert_eq!(c.usage().work(WorkCategory::RecordWrite) - writes, 2);
+        let actual_bytes = c.usage().work(HtmlParseWorkCategory::CopyByte) - bytes;
+        assert_eq!(
+            c.usage().work(HtmlParseWorkCategory::RecordWrite) - writes,
+            2
+        );
         assert_eq!(prepared.unwrap().registry, Some(entries));
         assert_eq!(storage.payloads.values.len(), entries + 1);
         let tag = input.take().unwrap();
@@ -3504,6 +3740,8 @@ mod tests {
 mod fragment_origin_tests {
     use super::*;
     use crate::*;
+    use surgeist_html::construction::HtmlDocumentMode;
+    use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
     #[test]
     fn source_created_fragment_origin_retires_with_original_owner_after_cancellation() {
@@ -3556,10 +3794,10 @@ mod fragment_origin_tests {
         );
         assert_eq!(origin.strong_count(), 1);
         request.cancellation().cancel();
-        assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+        assert_eq!(c.checkpoint(), Err(HtmlParseStop::Cancelled));
         session.release(&mut c).unwrap();
         assert!(origin.upgrade().is_none());
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         for resource in [
             HtmlParseResource::ManagedCapacityBytes,
             HtmlParseResource::ManagedEdges,
@@ -3570,5 +3808,141 @@ mod fragment_origin_tests {
         ] {
             assert_eq!(c.usage().resource(resource).current(), 0, "{resource:?}");
         }
+    }
+
+    /// A fragment parse whose context element and document name one global
+    /// registry, and that registry's identity.
+    fn registry_fragment_owner() -> (
+        ParseControl,
+        ParserArenaSession,
+        HtmlCaptureRegistryId,
+        HtmlCaptureDocumentId,
+    ) {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let global = builder.add_registry(Some(Vec::new())).unwrap();
+        builder
+            .establish_registry_scope(&global, HtmlRegistryScope::Global)
+            .unwrap();
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let global = capture.registry_id(&global).unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let document = context.target_document().clone();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<div>"),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        (c, session, global, document)
+    }
+
+    fn assert_registry_row<T>(result: Result<T, SessionError>, c: &ParseControl) {
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
+    }
+
+    #[test]
+    fn a_captured_registry_in_a_parse_without_fragment_storage_reports_the_registry_row() {
+        let (mut c, mut session, registry, _document) = registry_fragment_owner();
+        let storage = session.active_mut().unwrap();
+        let fragment = storage.fragment.take();
+        assert_registry_row(
+            storage.effective_global_registry(&mut c, RegistryRef::Captured(registry.clone())),
+            &c,
+        );
+        storage.fragment = fragment;
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_definition_lookup_without_fragment_storage_reports_the_registry_row() {
+        let (mut c, mut session, registry, _document) = registry_fragment_owner();
+        let storage = session.active_mut().unwrap();
+        let fragment = storage.fragment.take();
+        assert_registry_row(
+            storage.require_no_definition(
+                &mut c,
+                &RegistryRef::Captured(registry.clone()),
+                &DocumentString::from("x-a"),
+                Some(&DocumentString::from("x-b")),
+                true,
+            ),
+            &c,
+        );
+        storage.fragment = fragment;
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_context_effect_naming_a_missing_node_is_reported_by_the_frozen_effects() {
+        let (mut c, mut session, _registry, document) = registry_fragment_owner();
+        session
+            .active_mut()
+            .unwrap()
+            .fragment
+            .as_mut()
+            .unwrap()
+            .effects
+            .try_push(
+                &mut c,
+                ContextEffect::TemplateCache {
+                    document,
+                    inert: Some(usize::MAX / 2),
+                },
+            )
+            .unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let effects = frozen.frozen_fragment_effects().unwrap();
+        assert_eq!(effects.len(), 1);
+        assert_eq!(
+            effects.effect(0).err(),
+            Some(read::HtmlParseUnresolvedReference::new(
+                read::HtmlParseUnresolvedKind::Node
+            ))
+        );
+        assert!(matches!(effects.effect(1), Ok(None)));
+        frozen.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
     }
 }

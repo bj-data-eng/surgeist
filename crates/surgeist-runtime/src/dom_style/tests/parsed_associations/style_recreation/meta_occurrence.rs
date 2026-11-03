@@ -2,6 +2,7 @@
 use super::*;
 use std::sync::Arc;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAssociationOccurrenceId as Occurrence, HtmlParseReport,
     HtmlSource,
@@ -33,6 +34,7 @@ fn original_metas(session: &DomSession, id: DomParsedHtmlAssociationId) -> Vec<O
     let mut rows = Vec::new();
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => rows.push(row.id()),
             Step::Complete => return rows,
             _ => (),

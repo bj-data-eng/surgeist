@@ -4,6 +4,7 @@
 use super::*;
 use std::cell::Cell;
 use std::ops::Deref;
+use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 
 pub(in crate::store) mod documents;
@@ -1747,6 +1748,7 @@ pub(in crate::store) mod tests {
     // owner. They do not attest hosted Globals, entropy, loops or external jobs.
     use super::*;
     use std::sync::atomic::Ordering;
+    use surgeist_html::values::DocumentString;
 
     #[test]
     fn history_outer_bank_fixed_row_work_is_bounded() {

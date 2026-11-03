@@ -5,6 +5,7 @@ use surgeist_dom::{
     DomParsedHtmlStyleNotificationDisposition as Disposition, DomParsedHtmlStyleNotificationError,
     DomStyleAssociationId,
 };
+use surgeist_html::elements::style::HtmlStyleNotificationCursor;
 
 /// Actual queue formation or the precise no-task outcome for this occurrence.
 #[derive(Debug)]

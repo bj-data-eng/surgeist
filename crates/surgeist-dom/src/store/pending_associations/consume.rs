@@ -3,11 +3,12 @@ use super::control::Meter;
 use super::*;
 use crate::parsed_meta::*;
 use crate::{
-    DocumentString, DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError,
-    DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage, DomStyleCssomRoot,
+    DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationLimits,
+    DomParsedHtmlAssociationRuntimeUsage, DomStyleCssomRoot,
 };
 use std::sync::MutexGuard;
 use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot};
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{
     HtmlParseAssociationCaptureDisposition as Capture, HtmlParseAssociationOccurrenceKind as Kind,
     HtmlParseMetadataDocument, HtmlParsePendingAssociationStep as Step,
@@ -163,6 +164,7 @@ fn validate(
             }
             Step::Skipped => (),
             Step::Complete => return Ok(()),
+            Step::Fault(fault) => return Err(fault.into()),
         }
     }
 }
@@ -292,6 +294,21 @@ fn qualify_order(
     Ok(())
 }
 
+/// A preferred-name change that the report seals carries its original name;
+/// one that does not is a defect of that report, never a name to guess.
+fn require_preferred_name<T>(
+    name: Option<T>,
+    contribution: crate::DomParsedHtmlAssociationId,
+    occurrence: surgeist_html_parser::HtmlParseAssociationOccurrenceId,
+) -> Result<T, DomParsedHtmlAssociationAdmissionError> {
+    name.ok_or(
+        DomParsedHtmlAssociationAdmissionError::MissingPreferredName {
+            contribution,
+            occurrence,
+        },
+    )
+}
+
 pub(super) fn decode_occurrence(
     meter: &Meter,
     row: &surgeist_html_parser::HtmlParseAssociationOccurrence<'_>,
@@ -309,12 +326,10 @@ pub(super) fn decode_occurrence(
         scratch.step(cancel)?;
         frames.push(HtmlParseHistoryFrame::default());
     }
-    let group = row
-        .preferred_name()
-        .expect("sealed ChangePreferred has its original name");
+    let group = require_preferred_name(row.preferred_name(), entry.id, row.id())?;
     let mut reader = history
         .cursor(group, &mut frames, None)
-        .map_err(DomParsedHtmlAssociationAdmissionError::History)?;
+        .map_err(DomParsedHtmlAssociationAdmissionError::from)?;
     let mut units = Vec::new();
     loop {
         meter.step(cancel)?;
@@ -329,6 +344,7 @@ pub(super) fn decode_occurrence(
             HtmlParseHistoryStep::Progress => (),
             HtmlParseHistoryStep::Complete => break,
             HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
+            HtmlParseHistoryStep::Fault(fault) => return Err(fault.into()),
         }
     }
     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
@@ -353,12 +369,13 @@ fn occurrences(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Complete => return Ok(result),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
                 meter.reserve(&mut result, 1, cancel)?;
                 result.push(decode_occurrence(meter, &row, cancel)?);
             }
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }

@@ -10,6 +10,15 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+pub(crate) mod inline_box;
+pub use inline_box::{
+    FinalizedInlineBoxPiece, InlineBoxEdgeComponents, InlineBoxEdgeContext, InlineBoxEdgeError,
+    InlineBoxFragment, InlineBoxFragmentationError, InlineBoxPieceMember, InlineBoxSource,
+    PlacedInlineBoxPiece, PreparedInlineBoxFamily, SelectedInlineBoxPiece,
+};
+mod atomic_fit;
+pub use atomic_fit::{AtomicFitAllocation, CssMarginBoxFit};
+
 mod alignment;
 pub use alignment::LineAlignmentInsets;
 
@@ -59,8 +68,9 @@ pub use continuation::HyphenationContinuation;
 pub use segments::PreparedSourceSegment;
 
 pub use conditional::{
-    ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
-    PreparedConditionalBatch, PreparedConditionalOpportunity, PreparedConditionalSearch,
+    ConditionalDisposition, ConditionalLineContext, ConditionalPurpose, ConditionalStage,
+    PhraseOverflowDecision, PreparedConditionalBatch, PreparedConditionalOpportunity,
+    PreparedConditionalSearch,
 };
 pub use hyphenation::{
     HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
@@ -68,7 +78,7 @@ pub use hyphenation::{
 };
 pub use measurements::{
     InlineMeasure, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
-    LineMeasurements,
+    LineMeasurements, MarginEdgeFit, MarginEdgeFitAuthority,
 };
 pub use paragraph::{ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge};
 pub use prepared::PreparedBreakKind;
@@ -405,6 +415,10 @@ impl FormattedLineUsage {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicFlowAllocation {
     pub advance: f64,
+    /// Finite nonnegative normal canonical border extent in the local inline
+    /// axis. Relative visual placement/snapping can produce a different border
+    /// width in `AtomicBoxAllocation` without changing this normal flow fact.
+    pub normal_border_inline_size: f64,
     pub before_baseline: f64,
     pub after_baseline: f64,
     pub occupied_start: f64,
@@ -417,9 +431,9 @@ pub struct AtomicFlowAllocation {
 /// this cell-coordinate conversion does not rotate the child's content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicBoxAllocation {
-    /// Border rectangle in the local inline/line-under frame.
+    /// Visual border rectangle in the local inline/line-under frame.
     pub border: Rect,
-    /// Content rectangle in the same local frame.
+    /// Visual content rectangle in the same local frame.
     pub content: Rect,
     /// Signed local line-under baseline offset relative to the flow slot.
     pub baseline: f64,
@@ -429,6 +443,7 @@ pub struct AtomicBoxAllocation {
 pub enum AtomicLineAllocation {
     InFlow {
         flow: AtomicFlowAllocation,
+        fit: AtomicFitAllocation,
         box_geometry: AtomicBoxAllocation,
         alignment: LineBoxAlignment,
     },
@@ -470,15 +485,27 @@ pub struct ControlAllocation {
     pub boundary: Option<InlineBoundaryAllocation>,
 }
 
-/// One endpoint's actual used inline advance, already resolved by its consumer.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// An allocated scalar contribution or authenticated native-lane box components.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineBoundaryAllocation {
-    advance: f64,
+    data: InlineBoundaryData,
+}
+#[derive(Clone, Debug, PartialEq)]
+enum InlineBoundaryData {
+    Contribution {
+        advance: f64,
+    },
+    BoxEdge {
+        components: InlineBoxEdgeComponents,
+        context: InlineBoxEdgeContext,
+    },
 }
 impl InlineBoundaryAllocation {
-    pub const ZERO: Self = Self { advance: 0.0 };
-
-    pub fn try_new(advance: f64) -> Result<Self> {
+    /// A genuine zero-flow Native contribution, without a box claim.
+    pub const CONTRIBUTION_ZERO: Self = Self {
+        data: InlineBoundaryData::Contribution { advance: 0.0 },
+    };
+    pub fn contribution(advance: f64) -> Result<Self> {
         let category = if !advance.is_finite() {
             Some(crate::TextNumericError::NonFinite)
         } else if advance < 0.0 {
@@ -495,13 +522,64 @@ impl InlineBoundaryAllocation {
             ));
         }
         Ok(Self {
-            advance: if advance == 0.0 { 0.0 } else { advance },
+            data: InlineBoundaryData::Contribution {
+                advance: if advance == 0.0 { 0.0 } else { advance },
+            },
         })
     }
 
+    /// Assemble checked source/parent authority and intrinsically valid components.
+    #[must_use]
+    pub fn box_edge(context: InlineBoxEdgeContext, components: InlineBoxEdgeComponents) -> Self {
+        Self {
+            data: InlineBoundaryData::BoxEdge {
+                components,
+                context,
+            },
+        }
+    }
+
+    /// Actual native-lane flow contribution, signed for a component BoxEdge.
     #[must_use]
     pub const fn advance(&self) -> f64 {
-        self.advance
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance,
+            InlineBoundaryData::BoxEdge { components, .. } => components.flow_advance(),
+        }
+    }
+    #[must_use]
+    pub const fn box_components(&self) -> Option<&InlineBoxEdgeComponents> {
+        match &self.data {
+            InlineBoundaryData::BoxEdge { components, .. } => Some(components),
+            InlineBoundaryData::Contribution { .. } => None,
+        }
+    }
+    /// Component participation is independent of signed net flow and struts.
+    #[must_use]
+    pub fn participates(&self) -> bool {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance > 0.0,
+            InlineBoundaryData::BoxEdge { components, .. } => components.participates(),
+        }
+    }
+    pub(crate) fn blocks_hanging(&self) -> bool {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance > 0.0,
+            InlineBoundaryData::BoxEdge { components, .. } => components.blocks_hanging(),
+        }
+    }
+    pub(crate) fn strip_advance(&self) -> f64 {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance,
+            InlineBoundaryData::BoxEdge { components, .. } => components.border_padding_advance(),
+        }
+    }
+    #[must_use]
+    pub const fn box_context(&self) -> Option<&InlineBoxEdgeContext> {
+        match &self.data {
+            InlineBoundaryData::BoxEdge { context, .. } => Some(context),
+            InlineBoundaryData::Contribution { .. } => None,
+        }
     }
 }
 
@@ -563,6 +641,9 @@ pub struct LineSelectionRequest {
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
     pub boundary_context: Vec<InlineBoundaryContextAllocation>,
+    /// Complete-body family authority for actual native inline fragment pieces.
+    /// None requests only the existing local endpoint operation.
+    pub inline_boxes: Option<PreparedInlineBoxFamily>,
     pub line_strut: Option<LineStrut>,
     /// Actual additional box contributions; empty means none are allocated.
     pub line_box_struts: Vec<LineBoxStrut>,
@@ -962,6 +1043,8 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InlineBoxFragmentation(InlineBoxFragmentationError),
+    InlineBoxEdge(InlineBoxEdgeError),
     InvalidSourceSegment {
         segment: usize,
     },

@@ -197,8 +197,10 @@ fn captured(
 
 fn local_allocation() -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 10.0,
+            normal_border_inline_size: 10.0,
             before_baseline: 2.0,
             after_baseline: 4.0,
             occupied_start: 0.0,

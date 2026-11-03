@@ -241,16 +241,19 @@ fn capture() -> (
     assert_eq!(prepared[1].virtual_separators().count(), 0);
 
     let boundary = |kind| {
-        layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
-            kind,
-            layout::InlineMetrics::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
-                16.0,
-                20.0,
+        layout::LayoutInput::InlineBoundary(
+            layout::InlineBoundaryInput::contribution(
+                kind,
+                layout::InlineMetrics::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    16.0,
+                    20.0,
+                )
+                .unwrap(),
+                layout::InlineBoundaryEdge::ZERO,
             )
             .unwrap(),
-            layout::InlineBoundaryEdge::ZERO,
-        ))
+        )
     };
     let tree = ContinuationTree {
         inputs: vec![
@@ -284,6 +287,7 @@ fn capture() -> (
                 _ => unreachable!(),
             };
             layout::TextParagraphBinding {
+                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared.clone(),
                 container,
                 nodes,
@@ -311,6 +315,8 @@ fn capture() -> (
         0,
         bindings,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

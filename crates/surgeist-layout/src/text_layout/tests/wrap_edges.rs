@@ -194,6 +194,7 @@ impl Fixture {
             .collect();
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -231,7 +232,7 @@ impl Fixture {
             tree = tree.children(control.node, []).input(
                 control.node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,
@@ -241,6 +242,7 @@ impl Fixture {
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(Direction::Ltr),
                 ),
             );
@@ -291,6 +293,8 @@ impl Fixture {
             0,
             vec![self.binding.clone()],
             WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: self.policies(edges, form),
                 child_order: Vec::new(),
             },
@@ -587,7 +591,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     &end,
                     text::ConditionalPurpose::MinContent,
                     &[],
-                    None,
+                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .unwrap();
             assert!(search.begin(&[]).unwrap().opportunities().is_empty());
@@ -627,6 +631,8 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     0,
                     vec![fixture.binding.clone()],
                     WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: fixture.policies(WrapEdges::AUTO, form),
                         child_order: Vec::new(),
                     },

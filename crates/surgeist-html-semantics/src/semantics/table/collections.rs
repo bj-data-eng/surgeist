@@ -7,6 +7,7 @@
 //! algorithms: None represents source −1, without a WebIDL long conversion.
 
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 /// Direct HTML tbody subjects in a qualified table snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]

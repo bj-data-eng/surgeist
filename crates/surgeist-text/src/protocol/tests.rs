@@ -6,6 +6,7 @@ mod alignment_insets;
 mod allocated_box_metrics;
 mod allocated_signed_bounds;
 mod allocation_identity;
+mod atomic_normal_geometry;
 mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
@@ -124,6 +125,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,
@@ -500,7 +502,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: if policy == ParagraphStrut::AllocatedContributions {
                         Some(ControlStrut {
@@ -517,6 +519,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         })
         .collect();
     p.select(LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,

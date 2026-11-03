@@ -1,9 +1,13 @@
 //! HTML 877d #prepare-the-script-element literal state/effect oracles.
 //! This adapter applies actual public script flags and records each real slot
 //! write. Qualified tree/document acquisition remains the consuming owner's job.
-use surgeist_html::bounded::*;
+use surgeist_html::bounded::script::{
+    HtmlScriptPreparationAction, HtmlScriptPreparationCursor, HtmlScriptPreparationError,
+    HtmlScriptPreparationReply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
+};
 use surgeist_html::{
-    DocumentString, HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult,
+    elements::script::{HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
+    values::DocumentString,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

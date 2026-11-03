@@ -127,7 +127,7 @@ fn complete_skeleton_defaults_and_real_origin_are_published_with_one_document_ti
     let environment = metadata.document_environment();
     assert_eq!(
         environment.browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert!(!environment.has_ever_had_navigable());
     assert!(!snapshot.document(html).unwrap().is_fully_active().unwrap());
@@ -271,9 +271,11 @@ fn folded_builtin_names_require_actual_family_initialization_and_validation_stil
     batch.create_element(html, "OBJECT");
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::NativeInitializationRequired(surgeist_html::HtmlElementClass::FormAssociated(
-            surgeist_html::HtmlNativeFormAssociationKind::Object
-        ))
+        DomError::NativeInitializationRequired(
+            surgeist_html::elements::native::HtmlElementClass::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object
+            )
+        )
     );
     let mut batch = DomBatch::new();
     batch.create_element(html, "A B");
@@ -749,7 +751,7 @@ fn semantic_capture_preserves_html_class_and_independent_document_environment_pr
     assert_eq!(facts.mode(), HtmlDocumentMode::NoQuirks);
     assert_eq!(
         facts.nonce_environment().browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert_eq!(capture.basis(), snapshot.document(html).unwrap().stamp());
 }

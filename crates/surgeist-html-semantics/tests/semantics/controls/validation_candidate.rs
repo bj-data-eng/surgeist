@@ -1,8 +1,12 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as capped, semantic_limits_with_integer_digits as limits,
-    session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    scalar_limits as capped, semantic_limits_with_integer_digits as limits, session,
+    validated_work,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
@@ -541,36 +545,23 @@ fn exact_one_short_work_output_bytes_and_type_raw_caps_are_qualified_sticky() {
     let (c, id) = fixture("input", &[("type", "text")], true);
     let cx = context(&c);
     let req = request(&id);
-    let base = report(&c, &cx, &id, 4).usage();
-    for (resource, cap) in [
-        (HtmlSemanticResource::Work, base.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, base.allocated_bytes()),
-    ] {
-        session(
-            &c,
-            &cx,
-            capped(resource, cap),
-            4,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        let mut ss = session(
-            &c,
-            &cx,
-            capped(resource, cap - 1),
-            4,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = ss.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource)
-        );
-        assert_eq!(f.qualification().unwrap().capture(), c.identity());
-        assert_eq!(ss.query(&[]).unwrap_err(), f);
-        assert_eq!(ss.usage().scratch_records(), 0);
-    }
+    // The candidate decision climbs ancestors without frames or nested
+    // storage, so the one result record is the only allocation. The ancestor
+    // visits, type read and datalist checks are private step layout: work is
+    // required to be charged but is not pinned.
+    assert_exact_and_one_short_caps(
+        "validation candidate",
+        &c,
+        &cx,
+        4,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
     let f = session(&c, &cx, limits(), 3, HtmlSemanticCancellation::new())
         .query(&[req])
         .unwrap_err();
@@ -589,10 +580,20 @@ fn duplicate_cumulative_work_cancel_and_late_failure_return_no_successful_prefix
     assert_eq!(batch.usage().output_records(), 2);
     assert_eq!(batch.usage().nested_output_records(), 0);
     assert_eq!(batch.usage().peak_scratch_records(), 0);
+    // One request's work, proved least-admitting, admits the first request of a
+    // two-request batch (its reservation is shared) and stops inside the second.
+    let one_work = validated_work(
+        "validation candidate select",
+        &c,
+        &cx,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+    );
     let mut ss = session(
         &c,
         &cx,
-        capped(HtmlSemanticResource::Work, one.usage().work()),
+        capped(HtmlSemanticResource::Work, one_work),
         0,
         HtmlSemanticCancellation::new(),
     );
@@ -630,7 +631,7 @@ fn classification_only_changes_and_exact_capture_configuration_qualify_results()
     let changed = session(
         &c,
         &a,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     )

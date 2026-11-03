@@ -2,16 +2,22 @@ use crate::name::AttributeStorage;
 use crate::names::qualified_equals;
 use crate::store::payload::Payload;
 use crate::store::source::formation::{self, Formation};
-use crate::{
-    DocumentString, DomAttribute, DomError, DomQualifiedName, DomRegistryBinding,
-    HtmlCustomElementState, Namespace,
-};
+use crate::{DomAttribute, DomError, DomQualifiedName, DomRegistryBinding};
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
-    HtmlCanvasNoneState, HtmlCommonState, HtmlElementClass as Requirement, HtmlIframeInitialState,
-    HtmlMarqueeState, KnownHtmlElement,
+    elements::native::HtmlCustomElementState,
+    values::{DocumentString, Namespace},
+};
+use surgeist_html::{
+    elements::{
+        frame::HtmlIframeInitialState,
+        marquee::HtmlMarqueeState,
+        media::HtmlCanvasNoneState,
+        native::{HtmlCommonState, HtmlElementClass as Requirement},
+    },
+    vocabulary::KnownHtmlElement,
 };
 mod family;
 mod groups;
@@ -79,7 +85,7 @@ pub struct DomElement {
     name: Arc<Payload<ElementName>>,
     attributes: Option<Arc<Payload<AttributeBinding>>>,
     custom_state: HtmlCustomElementState,
-    common_scope: surgeist_html::HtmlCommonScope,
+    common_scope: surgeist_html::elements::native::HtmlCommonScope,
     custom: Option<Arc<Payload<CustomAssociation>>>,
     nonce: Option<Arc<Payload<NonceSlot>>>,
     focus: Option<Arc<Payload<FocusReference<crate::NodeId>>>>,
@@ -130,7 +136,8 @@ impl DomElement {
         value: Option<Arc<Payload<FocusReference<crate::NodeId>>>>,
     ) {
         assert!(
-            value.is_none() || self.common_scope == surgeist_html::HtmlCommonScope::Html,
+            value.is_none()
+                || self.common_scope == surgeist_html::elements::native::HtmlCommonScope::Html,
             "stored focus applicability"
         );
         self.focus = value;
@@ -327,10 +334,10 @@ impl DomElement {
     ) -> Result<FormedElement, DomError> {
         let budget = formation.budget;
         let cancelled = formation.cancel;
-        let initialization =
-            surgeist_html::bounded::native_element_initialization_with(&name.value.value, |_| {
-                formation::step(budget, cancelled)
-            })?;
+        let initialization = surgeist_html::bounded::native::native_element_initialization_with(
+            &name.value.value,
+            |_| formation::step(budget, cancelled),
+        )?;
         if environment.has_ever_had_navigable()
             && matches!(
                 initialization.requirement(),
@@ -351,7 +358,7 @@ impl DomElement {
             | Requirement::CommonSvg
             | Requirement::CommonMathml => NativeFamily::Common,
             Requirement::KnownHtml(KnownHtmlElement::Form) => {
-                NativeFamily::Form(surgeist_html::HtmlFormNativeState::fresh())
+                NativeFamily::Form(surgeist_html::elements::form::HtmlFormNativeState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Template) => NativeFamily::Template,
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
@@ -372,55 +379,56 @@ impl DomElement {
                 NativeFamily::SvgScript(crate::svg_script::SvgScriptState::fresh())
             }
             Requirement::KnownHtml(KnownHtmlElement::Slot) => {
-                let Some(surgeist_html::HtmlNativeFreshSlot::EmptyManualAssignments) =
-                    initialization.slot()
+                let Some(
+                    surgeist_html::elements::native::HtmlNativeFreshSlot::EmptyManualAssignments,
+                ) = initialization.slot()
                 else {
                     unreachable!("actual Slot initialization evidence")
                 };
                 NativeFamily::Slot
             }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Button) => {
-                NativeFamily::Button(formation.native(
-                    empty_string_payload(1)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomButtonState::fresh()),
-                )?)
-            }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
-                NativeFamily::Fieldset(formation.native(
-                    empty_string_payload(1)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomFieldsetState::fresh()),
-                )?)
-            }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Input) => {
-                NativeFamily::Input(formation.native(
-                    empty_string_payload(2)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomInputState::fresh(environment.input_platform())),
-                )?)
-            }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Textarea) => {
-                NativeFamily::Textarea(formation.native(
-                    empty_string_payload(2)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomTextareaState::fresh(environment.input_platform())),
-                )?)
-            }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
-                NativeFamily::Output(formation.native(
-                    empty_string_payload(1)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomOutputState::fresh()),
-                )?)
-            }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Select) => {
-                NativeFamily::Select(formation.native(
-                    empty_string_payload(1)?,
-                    crate::store::source::storage::Payload::default(),
-                    || Ok(crate::DomSelectState::fresh()),
-                )?)
-            }
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Button,
+            ) => NativeFamily::Button(formation.native(
+                empty_string_payload(1)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomButtonState::fresh()),
+            )?),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Fieldset,
+            ) => NativeFamily::Fieldset(formation.native(
+                empty_string_payload(1)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomFieldsetState::fresh()),
+            )?),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input,
+            ) => NativeFamily::Input(formation.native(
+                empty_string_payload(2)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomInputState::fresh(environment.input_platform())),
+            )?),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Textarea,
+            ) => NativeFamily::Textarea(formation.native(
+                empty_string_payload(2)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomTextareaState::fresh(environment.input_platform())),
+            )?),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Output,
+            ) => NativeFamily::Output(formation.native(
+                empty_string_payload(1)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomOutputState::fresh()),
+            )?),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Select,
+            ) => NativeFamily::Select(formation.native(
+                empty_string_payload(1)?,
+                crate::store::source::storage::Payload::default(),
+                || Ok(crate::DomSelectState::fresh()),
+            )?),
             Requirement::KnownHtml(KnownHtmlElement::Option) => {
                 NativeFamily::Option(crate::DomOptionState::default())
             }
@@ -445,9 +453,9 @@ impl DomElement {
             Requirement::KnownHtml(KnownHtmlElement::A | KnownHtmlElement::Area) => {
                 NativeFamily::Hyperlink
             }
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Image) => {
-                NativeFamily::Img
-            }
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
+            ) => NativeFamily::Img,
             Requirement::KnownHtml(KnownHtmlElement::Picture) => NativeFamily::Picture,
             Requirement::KnownHtml(KnownHtmlElement::Source) => NativeFamily::Source,
             Requirement::KnownHtml(KnownHtmlElement::Optgroup) => NativeFamily::Optgroup,
@@ -463,7 +471,7 @@ impl DomElement {
         let html = common.html().is_some();
         let custom_name = html
             && (saved_is.is_some()
-                || surgeist_html::bounded::validate_custom_element_name_with(
+                || surgeist_html::bounded::lexical::validate_custom_element_name_with(
                     name.value.value.local_name(),
                     |_| formation::step(budget, cancelled),
                 )?
@@ -489,7 +497,10 @@ impl DomElement {
         let value = Self {
             name,
             attributes: None,
-            custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
+            custom_state: surgeist_html::elements::native::custom_element_state_without_definition(
+                html,
+                custom_name,
+            ),
             common_scope: common.scope(),
             custom,
             nonce,
@@ -504,7 +515,7 @@ impl DomElement {
         matches!(self.family, NativeFamily::Template)
     }
 
-    pub fn form_state(&self) -> Option<surgeist_html::HtmlFormNativeState> {
+    pub fn form_state(&self) -> Option<surgeist_html::elements::form::HtmlFormNativeState> {
         match self.family {
             NativeFamily::Form(state) => Some(state),
             _ => None,
@@ -599,7 +610,7 @@ impl DomElement {
         matches!(self.family, NativeFamily::Meta)
     }
     /// Native Details state is actual exact no-namespace open presence.
-    pub fn details_state(&self) -> Option<surgeist_html::HtmlDetailsState> {
+    pub fn details_state(&self) -> Option<surgeist_html::elements::details::HtmlDetailsState> {
         if !self.is_details() {
             return None;
         }
@@ -608,9 +619,9 @@ impl DomElement {
                 a.name().namespace_uri().is_none()
                     && a.name().local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e]
             }) {
-                surgeist_html::HtmlDetailsState::Open
+                surgeist_html::elements::details::HtmlDetailsState::Open
             } else {
-                surgeist_html::HtmlDetailsState::Closed
+                surgeist_html::elements::details::HtmlDetailsState::Closed
             },
         )
     }
@@ -648,26 +659,26 @@ impl DomElement {
         &self,
     ) -> Option<(
         &crate::control::NativeControlState,
-        surgeist_html::HtmlNativeFormAssociationKind,
+        surgeist_html::elements::form::HtmlNativeFormAssociationKind,
     )> {
         match &self.family {
             NativeFamily::Select(state) => Some((
                 &state.value.control,
-                surgeist_html::HtmlNativeFormAssociationKind::Select,
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Select,
             )),
             NativeFamily::Fieldset(state) => Some((&state.value.control, state.value.kind())),
             NativeFamily::Button(state) => Some((&state.value.control, state.value.kind())),
             NativeFamily::Input(state) => Some((
                 &state.value.control,
-                surgeist_html::HtmlNativeFormAssociationKind::Input,
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input,
             )),
             NativeFamily::Output(state) => Some((
                 &state.value.control,
-                surgeist_html::HtmlNativeFormAssociationKind::Output,
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Output,
             )),
             NativeFamily::Textarea(state) => Some((
                 &state.value.control,
-                surgeist_html::HtmlNativeFormAssociationKind::Textarea,
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Textarea,
             )),
             _ => None,
         }
@@ -738,10 +749,12 @@ impl DomElement {
             .then(|| self.hosted.as_ref().map(|value| value.value.value))
     }
     /// Local guards consume this projection of the one canonical relationship.
-    pub fn child_navigable_presence(&self) -> Option<surgeist_html::HtmlChildNavigablePresence> {
+    pub fn child_navigable_presence(
+        &self,
+    ) -> Option<surgeist_html::elements::frame::HtmlChildNavigablePresence> {
         self.child_navigable().map(|content| match content {
-            None => surgeist_html::HtmlChildNavigablePresence::Null,
-            Some(_) => surgeist_html::HtmlChildNavigablePresence::Present,
+            None => surgeist_html::elements::frame::HtmlChildNavigablePresence::Null,
+            Some(_) => surgeist_html::elements::frame::HtmlChildNavigablePresence::Present,
         })
     }
     /// Independent retained intrinsic Iframe tuple, without child identity.
@@ -751,7 +764,9 @@ impl DomElement {
             _ => None,
         }
     }
-    pub(crate) fn iframe_sandbox_flags(&self) -> Option<surgeist_html::HtmlSandboxFlags> {
+    pub(crate) fn iframe_sandbox_flags(
+        &self,
+    ) -> Option<surgeist_html::attributes::sandbox::HtmlSandboxFlags> {
         match self.family {
             NativeFamily::Iframe(state) => Some(state.sandbox),
             _ => None,
@@ -759,7 +774,7 @@ impl DomElement {
     }
     pub(crate) fn establish_iframe_sandbox_flags(
         &mut self,
-        sandbox: surgeist_html::HtmlSandboxFlags,
+        sandbox: surgeist_html::attributes::sandbox::HtmlSandboxFlags,
     ) -> Result<(), DomError> {
         let NativeFamily::Iframe(state) = &mut self.family else {
             return Err(DomError::WrongNodeKind);

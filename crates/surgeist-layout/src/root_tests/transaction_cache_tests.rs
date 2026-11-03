@@ -77,12 +77,12 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
             .expect("dirty float replacement commits");
         assert_ne!(tree.retained.unrounded_nodes[&1], stale_float);
         assert_eq!(
-            tree.retained.unrounded_nodes[&1].size.width,
+            tree.retained.unrounded_nodes[&1].output().size.width,
             S::from_f64(25.75)
         );
         assert_ne!(
-            tree.retained.unrounded_nodes[&2].location,
-            stale_text.location
+            tree.retained.unrounded_nodes[&2].output().location,
+            stale_text.output().location
         );
         assert!(tree.retained.dirty.is_empty());
 
@@ -153,6 +153,8 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -235,6 +237,8 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -434,7 +438,9 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             unrounded_root.size,
             Size::new(S::from_f64(20.0), S::from_f64(20.0))
         );
-        assert_eq!(unrounded_range.x().maximum(), S::from_f64(5.25));
+        // This child has no descendants or measured content. Its actual
+        // canonical border ends at25; the measured25.25 seed is not overflow.
+        assert_eq!(unrounded_range.x().maximum(), S::from_f64(5.0));
         assert_eq!(unrounded_range.y().maximum(), S::from_f64(4.0));
         let final_root = cold_final
             .iter()
@@ -595,7 +601,7 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         // actual border edges round from0/27.75 to0/28 before publication,
         // including the batch's unrounded-node phase.
         assert_eq!(
-            tree.retained.unrounded_nodes[&2].size.width,
+            tree.retained.unrounded_nodes[&2].output().size.width,
             S::from_f64(28.0)
         );
         assert_eq!(tree.retained.final_nodes[&2].size.width, S::from_f64(28.0));

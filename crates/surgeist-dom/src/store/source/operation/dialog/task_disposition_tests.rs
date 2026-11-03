@@ -32,15 +32,15 @@ fn queued(
         let mut state = draft.dialog_state_mut(key, &token).unwrap();
         state.toggle_tracker = Some(crate::DomDialogToggleTracker {
             task: id,
-            old: surgeist_html::HtmlDialogState::Closed,
+            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
         });
         state.commit(&token).unwrap();
         let prepared = draft.finish(&dom, &cancel()).unwrap();
         dom.publish(prepared, &cancel()).unwrap();
         DomDialogTaskInfo::Toggle(crate::DomDialogToggleTaskInfo {
             id,
-            old: surgeist_html::HtmlDialogState::Closed,
-            new: surgeist_html::HtmlDialogState::Open,
+            old: surgeist_html::elements::dialog::HtmlDialogState::Closed,
+            new: surgeist_html::elements::dialog::HtmlDialogState::Open,
             association: None,
         })
     } else {
@@ -168,7 +168,8 @@ fn started_toggle_exact_retirement_returns_explicit_no_write_disposition_after_c
     let mut batch = DomBatch::new();
     batch.detach(subject);
     batch.destroy(subject);
-    let replacement = batch.create_element_ns(document, crate::Namespace::html(), "dialog");
+    let replacement =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "dialog");
     let callback = dom.apply(batch, &cancel()).unwrap();
     let replacement = callback.created(&replacement).unwrap().unwrap();
     assert_ne!(replacement, subject);

@@ -1,6 +1,7 @@
 //! Authentic synchronous end, independent of task/resource delivery.
 use super::*;
-use surgeist_html::{HtmlStyleExecutionProfile, HtmlStyleTrigger};
+use surgeist_html::elements::style::{HtmlStyleExecutionProfile, HtmlStyleTrigger};
+
 use surgeist_html_parser::HtmlParseAssociationOccurrenceKind;
 
 fn headers(dom: &Dom) -> Vec<(DomParsedHtmlAssociationId, DomParsedHtmlExecutionState)> {

@@ -113,7 +113,7 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
 
 pub type LayoutErrorKind<M = core::convert::Infallible> = LayoutErrorKindOf<DefaultScalar, M>;
 
-/// Failure at Layout's actual Text-to-canonical-scalar conversion boundary.
+/// Failure at an actual scalar geometry or Text-to-canonical conversion boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutTextNumericError {
     NonFinite,
@@ -137,6 +137,16 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InlineFlowMismatch {
         expected: FlowAxes,
         actual: FlowAxes,
+    },
+    /// Paired box-edge requests disagree on their actual parent operation/basis.
+    InlineBoundaryParentMismatch {
+        expected: Option<FlowAxes>,
+        actual: Option<FlowAxes>,
+    },
+    /// The requested non-atomic parent edge runs on an incompatible physical axis.
+    InlineBoundaryParentAxis {
+        parent: FlowAxes,
+        formatter: FlowAxes,
     },
     AtomicInlineParticipation {
         reason: AtomicInlineParticipationRoleError,
@@ -344,6 +354,8 @@ pub enum LayoutInternalInvariant {
     InvalidAtomicReceiverBasis,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
+    /// A staged output was consumed in a different geometry/readback phase.
+    InvalidOutputGeometryPhase,
     SubgridTrackInheritance,
     SubgridBaselineInheritance,
 }
@@ -488,6 +500,10 @@ pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::InlineWrapping,
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason)),
+        if reason == crate::inline_wrapping::WrappingScopeError::Allocation {
+            LayoutErrorKindOf::Allocation
+        } else {
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason))
+        },
     )
 }

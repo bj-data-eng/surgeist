@@ -3,6 +3,7 @@
 //! <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-figure-element>.
 
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 impl HtmlSemanticSession<'_> {
     pub(super) fn figure_caption(

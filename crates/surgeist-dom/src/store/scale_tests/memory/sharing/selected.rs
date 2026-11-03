@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn unique_short_value_oracle_checks_exact_width_raw_digits_and_field_ordinal() {
         use super::super::unique_value_matches;
-        use crate::DocumentString;
+        use surgeist_html::values::DocumentString;
         for (literal, ordinal) in [
             ("v000", 0),
             ("v001", 1),
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn representative_id_oracle_requires_prefix_canonical_decimal_and_exact_ordinal() {
         use super::super::representative_id_matches;
-        use crate::DocumentString;
+        use surgeist_html::values::DocumentString;
         for (literal, prefix, ordinal) in [("r0", b'r', 0), ("r7", b'r', 7), ("c255", b'c', 255)] {
             assert!(representative_id_matches(
                 &DocumentString::from(literal),

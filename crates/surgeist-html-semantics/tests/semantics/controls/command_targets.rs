@@ -1,5 +1,14 @@
-use crate::semantics::support::{builder, session};
-use surgeist_html::*;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, session,
+};
+use surgeist_html::{
+    attributes::{HtmlAttributeAuthorState, command::HtmlCommandState},
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlAssociatedElement, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
@@ -1269,10 +1278,27 @@ fn work_scratch_and_allocation_caps_latch_without_partial_results_and_release_fr
     );
     let id = c.subject_id(&button).unwrap();
     let req = request(&id, HtmlSemanticQuery::CommandForElement);
-    let preserved = query(&c, &cx, &id, HtmlSemanticQuery::CommandForElement, 1);
+    // The explicit-null reference is preserved: one result record, no nested
+    // storage, and a transient traversal stack whose depth and visit layout are
+    // private, so scratch and work are required to be charged without being
+    // pinned. The helper proves the reported work is the least admitting cap
+    // before the stops below reuse it.
+    let preserved = assert_exact_and_one_short_caps(
+        "command-for preserved null",
+        &c,
+        &cx,
+        1,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
     let work = preserved.usage().work();
     assert_eq!(preserved.usage().scratch_records(), 0);
-    assert_eq!(preserved.usage().nested_output_records(), 0);
     let mut exact = session(
         &c,
         &cx,
@@ -1651,9 +1677,25 @@ fn later_sticky_cap_drops_complete_batch_and_keeps_scratch_released() {
             HtmlSemanticQuery::CommandForElement,
         ),
     ];
-    let good = session(&c, &cx, limits(), 1, HtmlSemanticCancellation::new())
-        .query(&requests)
-        .unwrap();
+    // The batch retains its two result records and no nested storage; the
+    // command-for resolution's traversal depth and visit layout are private, so
+    // scratch and work are required to be charged without being pinned. The helper proves the batch
+    // total is the least admitting work cap, which makes total - 1 the point
+    // where the last request cannot finish.
+    let good = assert_exact_and_one_short_caps(
+        "command-for batch",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &requests,
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let mut limited = session(
         &c,
         &cx,
@@ -1662,8 +1704,16 @@ fn later_sticky_cap_drops_complete_batch_and_keeps_scratch_released() {
         HtmlSemanticCancellation::new(),
     );
     let failure = limited.query(&requests).unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            limit,
+            required,
+        } if *limit == good.usage().work() - 1 && *required == good.usage().work()
+    ));
     assert_eq!(limited.usage().scratch_records(), 0);
-    assert!(limited.usage().work() > 0);
+    assert_eq!(limited.usage().work(), good.usage().work() - 1);
     assert_eq!(limited.query(&requests).unwrap_err(), failure);
 }
 

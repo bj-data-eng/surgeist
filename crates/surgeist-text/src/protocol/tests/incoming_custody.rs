@@ -96,7 +96,7 @@ fn finish_at_edges(
         crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
     };
     let edge = |control: &PreparedControl| {
-        crate::InlineBoundaryAllocation::try_new(
+        crate::InlineBoundaryAllocation::contribution(
             if *control.view().kind() == K::InlineBoundaryStart {
                 5.0
             } else {
@@ -396,8 +396,10 @@ fn with_atomic(p: &PreparedText, mut request: LineSelectionRequest) -> LineSelec
     request.atomics = vec![AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
+            fit: crate::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: size.width,
+                normal_border_inline_size: size.width,
                 before_baseline: before,
                 after_baseline: size.height - before,
                 occupied_start: 0.0,

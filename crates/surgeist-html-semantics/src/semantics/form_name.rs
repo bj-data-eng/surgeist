@@ -3,7 +3,12 @@
 //! No live collection, named-property lookup, reflection or overall conformance.
 
 use super::*;
-use crate::{HtmlAttributeReport, HtmlFormName};
+use surgeist_html::attributes::HtmlAttributeReport;
+use surgeist_html::{
+    attributes::form_name::HtmlFormName,
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::KnownHtmlElement,
+};
 
 /// Actual specified-value uniqueness, independent of the local nonempty rule.
 #[derive(Clone, Debug, Eq, PartialEq)]

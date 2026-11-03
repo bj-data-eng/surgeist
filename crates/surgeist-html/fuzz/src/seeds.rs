@@ -37,7 +37,9 @@ pub(crate) fn payload_matches(id: u8, encoding: u8, payload: &[u8]) -> bool {
         encoding == 1
             && payload.len() == 26
             && payload
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .zip(SURROGATE)
                 .all(|(p, u)| u16::from_le_bytes([p[0], p[1]]) == u)
     } else {

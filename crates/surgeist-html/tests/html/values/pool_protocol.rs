@@ -1,13 +1,15 @@
 //! Public consumer regressions for root authority and bounded rollback.
 //! The driver sees only exported actions, layouts, progress and final results.
 use std::{cell::Cell, mem::size_of, rc::Rc, sync::Arc};
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolMark, HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal,
-    HtmlValuePoolUsage, HtmlValuePoolWork,
+    HtmlValuePoolSealRefusal, HtmlValuePoolUsage, HtmlValuePoolWork,
 };
-use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct Storage {
@@ -226,7 +228,7 @@ macro_rules! consumer {
             fn prepare(
                 &mut self,
                 root: HtmlValuePoolRoot,
-            ) -> Result<HtmlValuePoolSeal, (HtmlValuePoolError, HtmlValuePoolRoot)> {
+            ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
                 self.meter.pay(<$pool>::seal_work());
                 self.pool.prepare_seal(root)
             }
@@ -433,7 +435,8 @@ macro_rules! seal_case {
             assert_eq!(owner.run(&transient.value, true).label(), "Offered");
             let before_refusal = owner.storage();
             let root = match owner.prepare(root) {
-                Err((error, root)) => {
+                Err(refusal) => {
+                    let (error, root) = refusal.into_parts();
                     assert_eq!(error, HtmlValuePoolError::NotReady);
                     root
                 }
@@ -498,7 +501,8 @@ fn paired_seal_refusal_preserves_both_rollback_routes() {
     assert_eq!(banks.run(&bank.value, true).label(), "Offered");
     let first = strings.prepare(string_root).unwrap();
     let bank_root = match banks.prepare(bank_root) {
-        Err((error, root)) => {
+        Err(refusal) => {
+            let (error, root) = refusal.into_parts();
             assert_eq!(error, HtmlValuePoolError::NotReady);
             root
         }
@@ -1041,7 +1045,8 @@ macro_rules! freeze_readiness_only {
                 assert_eq!(owner.run(&transient.value, true).label(), "Offered");
                 let before_refusal = owner.storage();
                 let root = match owner.prepare(root) {
-                    Err((error, root)) => {
+                    Err(refusal) => {
+                        let (error, root) = refusal.into_parts();
                         assert_eq!(error, HtmlValuePoolError::NotReady);
                         root
                     }

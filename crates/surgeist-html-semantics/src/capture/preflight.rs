@@ -88,10 +88,6 @@ impl DepthScratch {
             path: Vec::new(),
         }
     }
-
-    pub(super) fn into_depths(self) -> Vec<usize> {
-        self.depths
-    }
 }
 
 pub(super) fn work<E>(
@@ -121,7 +117,6 @@ pub(super) fn reserve_storage<T, E>(
         record_bytes: std::mem::size_of::<T>(),
     })
     .map_err(Failure::Admission)?;
-    work(admit, values.len())?;
     let old = values
         .capacity()
         .checked_mul(std::mem::size_of::<T>())
@@ -131,6 +126,8 @@ pub(super) fn reserve_storage<T, E>(
         .checked_add(entries)
         .ok_or(super::HtmlCaptureError::RepresentationExhausted)?;
     if needed > values.capacity() {
+        // Only a growing reservation can move the existing entries.
+        work(admit, values.len())?;
         let requested = needed
             .checked_mul(std::mem::size_of::<T>())
             .filter(|n| *n <= isize::MAX as usize)
@@ -190,7 +187,6 @@ pub(super) fn references<E>(
 /// all four real reservations. References never become incoming owning edges.
 pub(super) fn depths<E>(
     builder: &HtmlCaptureBuilder,
-    edges: &[(usize, usize)],
     scratch: &mut DepthScratch,
     admit: &mut impl FnMut(Action) -> Result<(), E>,
 ) -> Result<(), Failure<E>> {
@@ -204,10 +200,6 @@ pub(super) fn depths<E>(
     for record in &builder.data.records {
         work(admit, 4)?;
         scratch.incoming.push(record.incoming());
-    }
-    for &(child, parent) in edges {
-        work(admit, 3)?;
-        scratch.incoming[child] = Some(parent);
     }
     reserve_storage(&mut scratch.state, n, false, builder.controlled, admit)?;
     for _ in 0..n {
@@ -259,6 +251,8 @@ pub(super) fn depths<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
+
     use crate::*;
 
     #[test]

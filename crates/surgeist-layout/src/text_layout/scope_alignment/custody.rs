@@ -104,13 +104,22 @@ impl<S: LayoutScalar> Drop for ScopeInputOwner<S> {
 /// proof or a lease, so proof leases cannot form a strong ownership cycle.
 #[derive(Clone, Debug)]
 pub(crate) enum ScopeAlignmentResources<S: LayoutScalar> {
-    Empty(Arc<ScopeAlignmentSnapshot<S>>),
-    Active(Arc<ScopeInputOwner<S>>),
+    Empty(
+        Arc<ScopeAlignmentSnapshot<S>>,
+        super::super::fragmentation::InlineBoxFamilies,
+    ),
+    Active(
+        Arc<ScopeInputOwner<S>>,
+        super::super::fragmentation::InlineBoxFamilies,
+    ),
 }
 impl<S: LayoutScalar> ScopeAlignmentResources<S> {
-    pub(crate) fn new(snapshot: Arc<ScopeAlignmentSnapshot<S>>) -> Self {
+    pub(crate) fn new(
+        snapshot: Arc<ScopeAlignmentSnapshot<S>>,
+        inline_boxes: super::super::fragmentation::InlineBoxFamilies,
+    ) -> Self {
         if snapshot.retention.bytes == 0 {
-            return Self::Empty(snapshot);
+            return Self::Empty(snapshot, inline_boxes);
         }
         let census = snapshot
             .retention
@@ -133,23 +142,37 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             }),
             registry: Mutex::new(Registry::default()),
         });
-        Self::Active(Arc::new(ScopeInputOwner {
-            snapshot,
-            state,
-            census,
-        }))
+        Self::Active(
+            Arc::new(ScopeInputOwner {
+                snapshot,
+                state,
+                census,
+            }),
+            inline_boxes,
+        )
     }
     pub(crate) fn snapshot(&self) -> &Arc<ScopeAlignmentSnapshot<S>> {
         match self {
-            Self::Empty(snapshot) => snapshot,
-            Self::Active(owner) => &owner.snapshot,
+            Self::Empty(snapshot, _) => snapshot,
+            Self::Active(owner, _) => &owner.snapshot,
+        }
+    }
+    fn inline_boxes(&self) -> &super::super::fragmentation::InlineBoxFamilies {
+        match self {
+            Self::Empty(_, inline_boxes) | Self::Active(_, inline_boxes) => inline_boxes,
         }
     }
     /// Discover the actual constraining capture on the stack. Each normalized
     /// descriptor visit is admitted before continuing; no policy summary is
     /// retained beside the immutable input facts.
     pub(crate) fn key_limits(&self) -> surgeist_text::Result<Option<ScopeAlignmentLimits>> {
-        let mut tightest: Option<ScopeAlignmentLimits> = None;
+        let mut tightest = self
+            .inline_boxes()
+            .policy_scope()
+            .and_then(CapturedScope::scope_alignment_limits);
+        if let Some(limits) = tightest {
+            self.visit(limits, 1)?;
+        }
         for row in self.snapshot().rows() {
             let actual = row
                 .scope
@@ -162,17 +185,32 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             self.visit(limits, 1)?;
             tightest = Some(limits);
         }
+        if let Some(initial) = tightest {
+            let families = self.inline_boxes().slots();
+            self.visit(initial, families.len())?;
+            for family in families.iter().flatten() {
+                if let Some(actual) = family
+                    .prepared_text()
+                    .captured_owner()
+                    .and_then(|owner| owner.domain().scope_alignment_limits())
+                    && actual.structural_work() < tightest.expect("known ceiling").structural_work()
+                {
+                    self.visit(actual, 0)?;
+                    tightest = Some(actual);
+                }
+            }
+        }
         Ok(tightest)
     }
 
     pub(super) fn census(&self) -> ScopeCensus {
         match self {
-            Self::Empty(_) => ScopeCensus::default(),
-            Self::Active(owner) => owner.state.lock().live,
+            Self::Empty(_, _) => ScopeCensus::default(),
+            Self::Active(owner, _) => owner.state.lock().live,
         }
     }
     pub(super) fn lease(&self, census: ScopeCensus) -> surgeist_text::Result<ScopeLease> {
-        let Self::Active(owner) = self else {
+        let Self::Active(owner, _) = self else {
             return Err(refusal(ScopeAlignmentError::MissingCapture));
         };
         owner.state.retain(census)?;
@@ -187,7 +225,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         input_records: usize,
         count: usize,
     ) -> surgeist_text::Result<()> {
-        let Self::Active(owner) = self else {
+        let Self::Active(owner, _) = self else {
             return check(
                 ScopeAlignmentLimitKind::Records,
                 input_records
@@ -213,7 +251,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         limits: ScopeAlignmentLimits,
         count: usize,
     ) -> surgeist_text::Result<()> {
-        let Self::Active(owner) = self else {
+        let Self::Active(owner, _) = self else {
             return check(
                 ScopeAlignmentLimitKind::StructuralWork,
                 count,
@@ -238,10 +276,41 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         input: ScopeAlignmentCensusInput<'a>,
         outputs: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
+        self.begin_with_families(input, outputs, self.inline_boxes().slots())
+    }
+
+    /// Constructor input moves into Text after census; the operation owns the
+    /// policy loan and pins, not a borrow of that transferred Vec. Provisional
+    /// earlier slots stay alive in the constructor through this child call.
+    pub(crate) fn begin_inline_box_family<'a>(
+        &'a self,
+        prepared: &PreparedText,
+        native_boxes: &Vec<surgeist_text::InlineBoxSource>,
+        families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+    ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
+        self.begin_with_families(
+            ScopeAlignmentCensusInput::InlineBoxFamily {
+                prepared,
+                native_boxes,
+            },
+            0,
+            families,
+        )
+    }
+
+    fn begin_with_families<'a>(
+        &'a self,
+        input: ScopeAlignmentCensusInput<'_>,
+        outputs: usize,
+        families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+    ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
         let (prepared, retained) = match input {
             ScopeAlignmentCensusInput::Product(product) => match product {
                 ScopeAlignmentProduct::Prepared(value) => {
                     (value.clone(), value.scope_alignment_retention())
+                }
+                ScopeAlignmentProduct::InlineBoxFamily(value) => {
+                    (value.prepared_text(), value.scope_alignment_retention())
                 }
                 ScopeAlignmentProduct::Selected(value) => {
                     (value.prepared_text(), value.scope_alignment_retention())
@@ -250,11 +319,14 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                     (value.prepared_text(), value.scope_alignment_retention())
                 }
             },
-            ScopeAlignmentCensusInput::Selection { prepared, .. }
+            ScopeAlignmentCensusInput::InlineBoxFamily { prepared, .. }
+            | ScopeAlignmentCensusInput::Selection { prepared, .. }
             | ScopeAlignmentCensusInput::Flow { prepared, .. } => {
                 (prepared.clone(), prepared.scope_alignment_retention())
             }
         };
+        // Captured ceilings already materialize retained Prepared input. A
+        // no-limit family remains Native; there is no family-only activation.
         if retained.is_none() {
             return Ok(None);
         }
@@ -265,7 +337,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         let limits = root
             .scope_alignment_limits()
             .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
-        let Self::Active(owner) = self else {
+        let Self::Active(owner, _) = self else {
             return Err(refusal(ScopeAlignmentError::MissingCapture));
         };
         let mut registry = owner
@@ -316,7 +388,10 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         }
         let census = surgeist_text::scope_alignment_census(
             input,
-            ScopeAlignmentProducts::FinalizedSlots(&operation.strong),
+            ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies {
+                finalized: &operation.strong,
+                families,
+            },
             operation.allowance()?,
         )?;
         operation.input = ScopeCensus::from_retention(census.input_retention());

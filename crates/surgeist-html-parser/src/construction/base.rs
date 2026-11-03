@@ -1,6 +1,7 @@
 //! Immediate first-base hooks in the canonical construction effects owner.
 use super::*;
 use crate::{HtmlBaseMissing, HtmlBaseUrlRecord, HtmlParseBaseFacts};
+use surgeist_html::construction::HtmlNodeKind;
 
 #[derive(Clone, Copy)]
 pub(super) enum ResponseDomain {
@@ -45,7 +46,9 @@ std::thread_local! {
 
 /// A fixed filter, at most 4+28 native name units. It does not scan attributes,
 /// registers, ancestors or source; the owning transition already polls.
-pub(super) fn is_base(record: bounded::HtmlConstructionNode<'_>) -> bool {
+pub(super) fn is_base(
+    record: surgeist_html::bounded::construction::HtmlConstructionNode<'_>,
+) -> bool {
     let HtmlNodeKind::Element(element) = record.kind() else {
         return false;
     };
@@ -68,18 +71,24 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         storage.document_slot(c, 0)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if facts.document().iframe_srcdoc() {
             return Err(SessionError::WrongToken);
         }
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlParseBaseFacts>(c, 1)?;
-        storage.prepare_payload_slot_owned(c)?;
-        storage.payloads.values.push(RetainedPayload::BaseDocument {
-            node: 0,
-            facts: facts.clone(),
-            first: None,
-        });
+        let prepared = storage.prepare_payload_slot_owned(c)?;
+        storage
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::BaseDocument {
+                    node: 0,
+                    facts: facts.clone(),
+                    first: None,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(super) fn qualify_base_response(
@@ -93,7 +102,7 @@ impl ParserArenaSession {
             self.active()?
                 .construction
                 .node_at(index)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -107,8 +116,9 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         let slot = storage.base_slot(c, index)?;
         payload_write::<ResponseDomain>(c, 1)?;
-        let RetainedPayload::Base { domain, .. } = &mut storage.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Base { domain, .. }) = storage.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         *domain = ResponseDomain::ClosedOwned;
         Ok(())
@@ -125,16 +135,21 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
-        self.prepare_payload_slot_owned(c)?;
-        self.payloads.values.push(RetainedPayload::Base {
-            node: Some(node),
-            domain,
-            frozen: BaseValue::Unfrozen,
-        });
+        let prepared = self.prepare_payload_slot_for(c, Some(KindList::Base))?;
+        self.payloads
+            .push_row(
+                prepared,
+                RetainedPayload::Base {
+                    node: Some(node),
+                    domain,
+                    frozen: BaseValue::Unfrozen,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(super) fn base_slot(
@@ -142,9 +157,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<usize, SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Base { node: Some(bound), .. } if *bound == node)
+        if let Some(slot) = self.payloads.joined(c, node, Join::Base)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Base { node: Some(bound), .. }) if *bound == node)
             {
                 return Ok(slot);
             }
@@ -156,9 +171,10 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::BaseDocument { node, .. } if *node == document) {
+        if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::BaseDocument { node, .. }) if *node == document)
+            {
                 return Ok(Some(slot));
             }
         }
@@ -172,11 +188,11 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let mut next = Some(document);
         while let Some(node) = next {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if is_base(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position"),
+                    .ok_or_else(|| latch_registry_row(c))?,
             ) && self.form_attribute(c, node, "href")?.is_some()
             {
                 return Ok(Some(node));
@@ -198,7 +214,7 @@ impl SessionStorage {
         self.record_association(
             c,
             node,
-            pending_association::OccurrenceKind::BaseChanged,
+            pending_association::HtmlParseAssociationOccurrenceKind::BaseChanged,
             detached,
             None,
             false,
@@ -215,7 +231,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -233,9 +249,10 @@ impl SessionStorage {
         let missing_policy = self.meta_policy_missing(c, document)?;
         if let Some(missing) = missing_policy {
             let previous_first = if let Some(slot) = self.base_document_slot(c, document)? {
-                let RetainedPayload::BaseDocument { first, .. } = &self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *first
             } else {
@@ -246,10 +263,10 @@ impl SessionStorage {
             }
             if let Some(slot) = self.base_document_slot(c, document)? {
                 payload_write::<Option<usize>>(c, 1)?;
-                let RetainedPayload::BaseDocument { first: binding, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *binding = first;
             }
@@ -260,8 +277,9 @@ impl SessionStorage {
                     self.base_slot(c, first)?
                 };
                 payload_write::<BaseValue>(c, 1)?;
-                let RetainedPayload::Base { frozen, .. } = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get_mut(slot)
+                else {
+                    return Err(latch_registry_row(c));
                 };
                 let previous = match mem::replace(frozen, BaseValue::Unfrozen) {
                     BaseValue::Unfrozen => None,
@@ -278,21 +296,21 @@ impl SessionStorage {
             }
             return Ok(());
         };
-        let RetainedPayload::BaseDocument {
+        let Some(RetainedPayload::BaseDocument {
             facts, first: old, ..
-        } = &self.payloads.values[document_slot]
+        }) = self.payloads.values.get(document_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         if first == *old && !(href_changed && first == Some(node)) {
             return Ok(());
         }
         let Some(first) = first else {
             payload_write::<Option<usize>>(c, 1)?;
-            let RetainedPayload::BaseDocument { first, .. } =
-                &mut self.payloads.values[document_slot]
+            let Some(RetainedPayload::BaseDocument { first, .. }) =
+                self.payloads.values.get_mut(document_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *first = None;
             return Ok(());
@@ -317,12 +335,12 @@ impl SessionStorage {
             .ok_or(SessionError::WrongToken)?;
         let mut selected = None;
         for observation in facts.observations() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<crate::HtmlBaseParseObservation>() as u64,
             )?;
-            c.charge(WorkCategory::ProviderCall, 3)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 3)?;
             if observation.inputs_match(fallback, encoding, environment.revision())
                 && exact_string_equal(c, observation.raw(), raw)?
             {
@@ -335,7 +353,7 @@ impl SessionStorage {
         })?;
         let (value, respond) = crate::select_frozen_base(fallback, outcome)
             .map_err(|missing| SessionError::Stop(c.stop_base_facts(missing)))?;
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         payload_write::<BaseValue>(c, 1)?;
         payload_write::<Option<usize>>(c, 1)?;
         let frozen = FrozenBase {
@@ -348,17 +366,17 @@ impl SessionStorage {
                 Response::Returned
             },
         };
-        let RetainedPayload::BaseDocument { first: binding, .. } =
-            &mut self.payloads.values[document_slot]
+        let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+            self.payloads.values.get_mut(document_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *binding = Some(first);
-        let RetainedPayload::Base {
+        let Some(RetainedPayload::Base {
             frozen: binding, ..
-        } = &mut self.payloads.values[chosen_slot]
+        }) = self.payloads.values.get_mut(chosen_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *binding = BaseValue::Frozen(frozen);
         #[cfg(test)]
@@ -369,21 +387,21 @@ impl SessionStorage {
         });
         if respond {
             // This real checkpoint is after assignment and before response.
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::Base {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(RetainedPayload::Base {
                 domain: ResponseDomain::ClosedOwned,
                 ..
-            } = &self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get(chosen_slot)
             else {
                 return Err(c.stop_base_facts(HtmlBaseMissing::ResponseDomain).into());
             };
             payload_write::<Response>(c, 1)?;
-            let RetainedPayload::Base {
+            let Some(RetainedPayload::Base {
                 frozen: BaseValue::Frozen(frozen),
                 ..
-            } = &mut self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get_mut(chosen_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             frozen.response = Response::Finished;
         }
@@ -391,11 +409,11 @@ impl SessionStorage {
     }
     pub(super) fn validate_base_facts(&self, c: &mut ParseControl) -> Result<(), SessionError> {
         for payload in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::BaseDocument { node, first, .. } = payload {
                 self.document_slot(c, *node)?;
                 if self.first_base_href(c, *node, None)? != *first {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -403,15 +421,15 @@ impl SessionStorage {
                 ..
             } = payload
             {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if !matches!(
                     self.payloads.values.get(*missing),
                     Some(RetainedPayload::MetaMissing {
-                        kind: meta::MetaMissingKind::Csp,
+                        kind: meta::HtmlParseMetaMissingKind::Csp,
                         ..
                     })
                 ) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -420,27 +438,32 @@ impl SessionStorage {
                 ..
             } = payload
             {
-                let node = node.ok_or(SessionError::WrongToken)?;
+                let node = node.ok_or_else(|| latch_registry_row(c))?;
                 if !is_base(
                     self.construction
                         .node_at(node)
-                        .expect("retained construction position"),
-                ) || frozen.response == Response::Pending
-                {
+                        .ok_or_else(|| latch_registry_row(c))?,
+                ) {
+                    return Err(latch_registry_row(c));
+                }
+                if frozen.response == Response::Pending {
                     return Err(c
-                        .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                        .fail_invariant(
+                            crate::parser::control::HtmlParseInvariant::PendingFormEffects,
+                        )
                         .into());
                 }
                 let slot = self
                     .base_document_slot(c, frozen.document)?
-                    .ok_or(SessionError::WrongToken)?;
-                let RetainedPayload::BaseDocument { facts, .. } = &self.payloads.values[slot]
+                    .ok_or_else(|| latch_registry_row(c))?;
+                let Some(RetainedPayload::BaseDocument { facts, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
         }
@@ -449,11 +472,12 @@ impl SessionStorage {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
-    fn request(text: &str) -> crate::HtmlDocumentParseRequest {
+    pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =
             crate::HtmlBaseFactsRevision::new(crate::HtmlBaseProducerId::fresh(), 1, 1, 1);
         let fallback = crate::HtmlBaseUrlRecord::observed(
@@ -535,6 +559,39 @@ mod tests {
         let mut incoming = Some(tag(lexer, c));
         session.allocate_html_tag(c, &mut incoming).unwrap()
     }
+    // A parsed base element inserted at the root, ready for its intrinsic hook.
+    macro_rules! inserted_base_fixture {
+        ($request:ident, $c:ident, $session:ident, $root:ident, $lexer:ident, $base:ident) => {
+            let (mut $c, mut $session, capability) =
+                super::super::tests::fresh_script_owner(&$request);
+            let $root = $session.root(&mut $c).unwrap();
+            let mut $lexer =
+                LexerFixture::new($request.source(), HtmlTokenizerState::Data, None, &mut $c)
+                    .unwrap();
+            let $base = node(&mut $session, &mut $c, &mut $lexer);
+            $session
+                .qualify_base_response(&mut $c, &$base, &capability)
+                .unwrap();
+            {
+                let storage = $session.active_mut().unwrap();
+                let before = storage
+                    .construction
+                    .node_at($root.index)
+                    .unwrap()
+                    .child_at(0)
+                    .map(|n| n.position());
+                storage
+                    .insert_indices_with_cause(
+                        &mut $c,
+                        $root.index,
+                        $base.index,
+                        before,
+                        InsertionCause::Parser,
+                    )
+                    .unwrap();
+            }
+        };
+    }
     fn attribute(
         lexer: &mut LexerFixture<'_>,
         c: &mut ParseControl,
@@ -594,7 +651,8 @@ mod tests {
         let request = request("<base href=A><i target=_blank>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -701,7 +759,9 @@ mod tests {
             let (mut c, mut session, capability) =
                 super::super::tests::fresh_script_owner(&request);
             let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
             let base = node(&mut session, &mut c, &mut lexer);
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
@@ -717,7 +777,7 @@ mod tests {
                 mutation::ManagedFamily::Base,
             );
             CANCEL_AFTER_BINDING.with(|slot| assert!(slot.borrow().is_none()));
-            assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+            assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
             assert!(incoming.is_none());
             assert_eq!(first(&session), Some(base.index));
             let (value, response) = frozen(&session, &base).unwrap();
@@ -729,7 +789,7 @@ mod tests {
             let at_stop = c.first_stop_usage().unwrap().clone();
             assert_eq!(
                 session.freeze(&mut c).err(),
-                Some(SessionError::Stop(ParseStop::Cancelled))
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert_eq!(c.first_stop_usage(), Some(&at_stop));
             lexer.release(&mut c).unwrap();
@@ -743,12 +803,288 @@ mod tests {
         }
     }
 
+    /// Validation of a frozen base whose row is inconsistent. A row naming no
+    /// node, or a node that is not a base element, is a row of another kind
+    /// (the registry row); a response that is still owed is a pending effect.
+    #[test]
+    fn validating_a_frozen_base_labels_row_faults_and_a_pending_response_apart() {
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
+        let pending = HtmlParseStop::InternalInvariant(HtmlParseInvariant::PendingFormEffects);
+        for (case, expected) in [(0, registry_row), (1, registry_row), (2, pending)] {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let row = storage
+                .payloads
+                .values
+                .iter_mut()
+                .find_map(|payload| match payload {
+                    RetainedPayload::Base {
+                        node: owner,
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if *owner == Some(base.index) => Some((owner, frozen)),
+                    _ => None,
+                })
+                .unwrap();
+            let original = row.1.response;
+            match case {
+                // The row names no node at all.
+                0 => *row.0 = None,
+                // The row names a node that is not a base element.
+                1 => *row.0 = Some(root.index),
+                // The base response is still owed.
+                _ => row.1.response = Response::Pending,
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(expected)), "case {case}");
+            assert_eq!(c.stop(), Some(expected), "case {case}");
+            // The registry's own join check runs at release, so restore the row.
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                if let RetainedPayload::Base { node, frozen, .. } = payload
+                    && let BaseValue::Frozen(frozen) = frozen
+                    && (*node != Some(base.index) || case == 2)
+                {
+                    *node = Some(base.index);
+                    frozen.response = original;
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    /// A base document row that disagrees with the tree, and a frozen base
+    /// whose document has no base-document row, are retained rows that are
+    /// inconsistent or missing.
+    #[test]
+    fn validating_base_rows_that_disagree_with_the_tree_reports_the_registry_row() {
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
+        for case in 0..2 {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let mut original = None;
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    // The document row no longer names the tree's first base.
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        original = Some(*first);
+                        *first = None;
+                    }
+                    // The frozen base names a document without a base row.
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        original = Some(Some(frozen.document));
+                        frozen.document = base.index;
+                    }
+                    _ => {}
+                }
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
+            assert_eq!(c.stop(), Some(registry_row), "case {case}");
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        *first = original.unwrap();
+                    }
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        frozen.document = original.unwrap().unwrap();
+                    }
+                    _ => {}
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    /// A frozen base whose environment facts come from another owner than the
+    /// document's base row cannot have been frozen against that document: the
+    /// two retained rows disagree about whose facts they hold.
+    #[test]
+    fn validating_a_frozen_base_with_another_owners_facts_reports_the_registry_row() {
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
+        let other = request("<base href=A>");
+        let foreign = other.base_facts().unwrap().clone();
+        let request = request("<base href=A>");
+        assert!(!request.base_facts().unwrap().same_owner(&foreign));
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let base = node(&mut session, &mut c, &mut lexer);
+        session
+            .insert_parser(&mut c, &root, &base, None, &capability)
+            .unwrap();
+        session
+            .active()
+            .unwrap()
+            .validate_base_facts(&mut c)
+            .unwrap();
+        let mut original = None;
+        for payload in &mut session.active_mut().unwrap().payloads.values {
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Frozen(frozen),
+                ..
+            } = payload
+            {
+                original = Some(mem::replace(&mut frozen.environment, foreign.clone()));
+            }
+        }
+        let result = session.active().unwrap().validate_base_facts(&mut c);
+        assert_eq!(result, Err(SessionError::Stop(registry_row)));
+        assert_eq!(c.stop(), Some(registry_row));
+        for payload in &mut session.active_mut().unwrap().payloads.values {
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Frozen(frozen),
+                ..
+            } = payload
+            {
+                frozen.environment = original.take().unwrap();
+            }
+        }
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    /// An unavailable base names the missing-policy row that made it so. A row
+    /// of another kind, or one that is not a missing-policy row at all, is a
+    /// retained row that is not what the base says it is.
+    #[test]
+    fn validating_an_unavailable_base_whose_missing_row_is_not_a_csp_row_reports_the_registry_row()
+    {
+        use crate::parser::control::HtmlParseInvariant;
+        let registry_row = HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow);
+        for case in 0..2 {
+            let request = request(
+                "<head><base href=A><meta http-equiv=content-security-policy content=policy><i href=B>",
+            );
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer =
+                LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c)
+                    .unwrap();
+            let head = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &head, None, &capability)
+                .unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &head, &base, None, &capability)
+                .unwrap();
+            let meta = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &head, &meta, None, &capability)
+                .unwrap();
+            let mut incoming = attribute(&mut lexer, &mut c);
+            session
+                .set_managed_attribute(
+                    &mut c,
+                    &base,
+                    &mut incoming,
+                    &capability,
+                    mutation::ManagedFamily::Base,
+                )
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let base_slot = session
+                .active()
+                .unwrap()
+                .base_slot(&mut c, base.index)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let RetainedPayload::Base {
+                frozen: BaseValue::Unavailable { missing, .. },
+                ..
+            } = &mut storage.payloads.values[base_slot]
+            else {
+                panic!("the policy recomputation left the base unavailable")
+            };
+            let named = *missing;
+            if case == 0 {
+                // The named row is a missing-policy row of another kind.
+                let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named]
+                else {
+                    panic!("the base names its missing-policy row")
+                };
+                *kind = meta::HtmlParseMetaMissingKind::ThemeColor;
+            } else {
+                // The named row is not a missing-policy row at all.
+                *missing = base_slot;
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
+            assert_eq!(c.stop(), Some(registry_row), "case {case}");
+            // The registry's own join check runs at release, so restore the rows.
+            let storage = session.active_mut().unwrap();
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Unavailable { missing, .. },
+                ..
+            } = &mut storage.payloads.values[base_slot]
+            {
+                *missing = named;
+            }
+            if let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named] {
+                *kind = meta::HtmlParseMetaMissingKind::Csp;
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
     #[test]
     fn real_insert_reorder_remove_href_change_and_clone_bind_the_immediate_first() {
         let request = request("<base href=A><base href=B><i href=C>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let a = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &a, None, &capability)
@@ -806,36 +1142,39 @@ mod tests {
 
     #[test]
     fn original_base_wrapper_association_rows_exact_one_short_and_cleanup() {
+        // The wrapper retains a measured number of owned logical rows (one
+        // Document summary, one occurrence receiver and their registry
+        // entries); the Base input and provider already belong to this
+        // original owner.
+        let needed = {
+            let request = request("<base href=A>");
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
+            storage
+                .base_change_inner(&mut c, base.index, None, false)
+                .unwrap();
+            let prior = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            storage
+                .base_change(&mut c, base.index, None, false)
+                .unwrap();
+            let needed = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current
+                - prior;
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            needed
+        };
         for short in [false, true] {
             let request = request("<base href=A>");
-            let (mut c, mut session, capability) =
-                super::super::tests::fresh_script_owner(&request);
-            let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
-            let base = node(&mut session, &mut c, &mut lexer);
-            session
-                .qualify_base_response(&mut c, &base, &capability)
-                .unwrap();
+            inserted_base_fixture!(request, c, session, root, lexer, base);
             let storage = session.active_mut().unwrap();
-            let before = storage
-                .construction
-                .node_at(root.index)
-                .unwrap()
-                .child_at(0)
-                .map(|n| n.position());
-            storage
-                .insert_indices_with_cause(
-                    &mut c,
-                    root.index,
-                    base.index,
-                    before,
-                    InsertionCause::Parser,
-                )
-                .unwrap();
-            // Finish the existing intrinsic owner first. The wrapper must then
-            // retain exactly one Document summary, one actual occurrence receiver,
-            // and its one registry location. These are three owned logical rows;
-            // the Base input and provider already belong to this original owner.
+            // Finish the existing intrinsic owner first.
             storage
                 .base_change_inner(&mut c, base.index, None, false)
                 .unwrap();
@@ -847,7 +1186,7 @@ mod tests {
             // than this retained prefix. Keep that original prefix and cap, and
             // use real controlled fixture storage to select the later boundary.
             let mut pressure = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
-            let available = 3 - u64::from(short);
+            let available = needed - u64::from(short);
             let pressure_rows = request.limits().auxiliary_entries() - prior - available;
             for _ in 0..pressure_rows {
                 pressure.try_push(&mut c, 0u8).unwrap();
@@ -856,7 +1195,7 @@ mod tests {
             if short {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
                         ..
                     }))
@@ -880,7 +1219,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    prior + pressure_rows + 3
+                    prior + pressure_rows + needed
                 );
                 assert_eq!(
                     storage
@@ -902,35 +1241,31 @@ mod tests {
 
     #[test]
     fn actual_first_href_exact_one_short_and_pre_cancel_preserve_binding_and_cleanup() {
+        // The immediate intrinsic base hook's whole cost is measured from an
+        // unconstrained twin; the exact budget completes it and one credit less
+        // stops it with the binding still pending.
+        let total = {
+            let request = request("<base href=A>");
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            storage
+                .base_change_inner(&mut c, base.index, None, false)
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+            assert_value(&session, &base, "https://base.test/A");
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            total
+        };
         for short in [false, true] {
             let request = request("<base href=A>");
-            let (mut c, mut session, capability) =
-                super::super::tests::fresh_script_owner(&request);
-            let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
-            let base = node(&mut session, &mut c, &mut lexer);
-            session
-                .qualify_base_response(&mut c, &base, &capability)
-                .unwrap();
-            let storage = session.active_mut().unwrap();
             // Real pre-insert owner commits topology/effect retention. This test
             // then selects its immediate intrinsic base hook, not a public
             // insertion total or an invented checkpoint.
-            let before = storage
-                .construction
-                .node_at(root.index)
-                .expect("retained construction position")
-                .child_at(0)
-                .map(|node| node.position());
-            storage
-                .insert_indices_with_cause(
-                    &mut c,
-                    root.index,
-                    base.index,
-                    before,
-                    InsertionCause::Parser,
-                )
-                .unwrap();
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
             assert_eq!(
                 storage
                     .construction
@@ -950,51 +1285,10 @@ mod tests {
                     .map(|node| node.position()),
                 Some(root.index)
             );
-            let position = |predicate: fn(&RetainedPayload) -> bool| {
-                storage.payloads.values.iter().position(predicate).unwrap() as u64 + 1
-            };
-            let base_slot = storage.base_slot(&mut c, base.index).unwrap() as u64 + 1;
-            let node_document = storage.payloads.values.iter().position(|p| matches!(p, RetainedPayload::NodeDocument { node: Some(n), .. } if *n == base.index)).unwrap() as u64 + 1;
-            let document =
-                position(|p| matches!(p, RetainedPayload::Document { node: Some(0), .. }));
-            let environment =
-                position(|p| matches!(p, RetainedPayload::BaseDocument { node: 0, .. }));
-            // Source-derived cost: each registry prefix visits exactly its
-            // admitted slots. NodeDocument adds document header+prefix+fixed
-            // copy; ordinary root has two parent reads. First selection has
-            // root,next-child,base visits4 + href lookup16 =20. The second
-            // href lookup costs16; observation header+3 providers+2 headers+
-            // one UTF16 pair costs sizeof(observation)+10. Finally two
-            // provider clones and two actual binding receivers commit before
-            // the response's visit+fixed receiver. Current-policy qualification
-            // adds a Document header+prefix and one history observation (the
-            // extra document+2). The binding receiver is the actual BaseValue
-            // enum, not the former nullable frozen slot. No usage sample is oracle.
-            let total = base_slot
-                + node_document
-                + 1
-                + document
-                + mem::size_of::<DocumentRef>() as u64
-                + 2
-                + 20
-                + environment
-                + document
-                + 2
-                + 16
-                + mem::size_of::<crate::HtmlBaseParseObservation>() as u64
-                + 10
-                + 2
-                + mem::size_of::<BaseValue>() as u64
-                + 1
-                + mem::size_of::<Option<usize>>() as u64
-                + 1
-                + 1
-                + mem::size_of::<Response>() as u64
-                + 1;
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 remaining - total + u64::from(short),
             )
             .unwrap();
@@ -1002,7 +1296,7 @@ mod tests {
             if short {
                 assert!(matches!(
                     result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }))
@@ -1024,7 +1318,7 @@ mod tests {
             } else {
                 assert_eq!(result, Ok(()));
                 assert_value(&session, &base, "https://base.test/A");
-                assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+                assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
             }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -1033,14 +1327,15 @@ mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         request.cancellation().cancel();
         assert_eq!(
             session
                 .insert_parser(&mut c, &root, &base, None, &capability)
                 .err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert!(frozen(&session, &base).is_none());
         assert_eq!(first(&session), None);
@@ -1066,7 +1361,8 @@ mod tests {
         let request = request("<base href=A><template>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -1153,11 +1449,12 @@ mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         CANCEL_AFTER_BINDING.with(|slot| *slot.borrow_mut() = Some(request.cancellation().clone()));
         let result = session.insert_parser(&mut c, &root, &base, None, &capability);
-        assert_eq!(result, Err(SessionError::Stop(ParseStop::Cancelled)));
+        assert_eq!(result, Err(SessionError::Stop(HtmlParseStop::Cancelled)));
         CANCEL_AFTER_BINDING.with(|slot| assert!(slot.borrow().is_none()));
         assert_eq!(first(&session), Some(base.index));
         assert_eq!(
@@ -1179,11 +1476,11 @@ mod tests {
         let at_stop = c.first_stop_usage().unwrap().clone();
         assert_eq!(
             session.freeze(&mut c).err(),
-            Some(SessionError::Stop(ParseStop::Cancelled))
+            Some(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(
             session.insert_parser(&mut c, &root, &base, None, &capability),
-            Err(SessionError::Stop(ParseStop::Cancelled))
+            Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert_eq!(c.first_stop_usage(), Some(&at_stop));
         assert_eq!(
@@ -1208,7 +1505,8 @@ mod tests {
         let request = request("<base href=A>");
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let base = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &base, None, &capability)
@@ -1299,7 +1597,8 @@ mod tests {
         );
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let head = node(&mut session, &mut c, &mut lexer);
         session
             .insert_parser(&mut c, &root, &head, None, &capability)
@@ -1344,7 +1643,7 @@ mod tests {
         assert!(matches!(
             storage.payloads.values[*missing],
             RetainedPayload::MetaMissing {
-                kind: meta::MetaMissingKind::Csp,
+                kind: meta::HtmlParseMetaMissingKind::Csp,
                 ..
             }
         ));

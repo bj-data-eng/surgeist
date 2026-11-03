@@ -5,7 +5,7 @@ use std::cell::Cell;
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::NodeOutputOf<S>>>,
+    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<l::NodeOutputOf<S>>>,
 }
 struct CachedNumeric<S: l::LayoutScalar> {
@@ -56,7 +56,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for CachedNumeric<S> {
         }
         answer
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
@@ -78,7 +78,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
             next.caches[entry.node() as usize].clear();
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded[entry.node() as usize] = Some(entry.output());
+            next.unrounded[entry.node() as usize] = Some(*entry);
         }
         for entry in batch.final_entries() {
             next.final_output[entry.node() as usize] = Some(entry.output());
@@ -152,12 +152,12 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             (2, l::InlineBoundaryKind::End),
         ] {
             let edge = if positive_start && node == 1 {
-                l::InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::ZERO).unwrap()
+                l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
             } else {
                 l::InlineBoundaryEdgeOf::ZERO
             };
             self.actual.inputs[node] = l::LayoutInputOf::inline_boundary(
-                l::InlineBoundaryInputOf::new(
+                l::InlineBoundaryInputOf::contribution(
                     kind,
                     l::InlineMetricsOf::try_new(
                         surgeist_layout::InlineBaselineContext::Physical,
@@ -167,6 +167,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
                     .unwrap(),
                     edge,
                 )
+                .unwrap()
                 .with_direction(direction),
             );
         }

@@ -224,10 +224,12 @@ fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation 
         allocation: match kind {
             t::InlineBoxKind::OutOfFlow => t::AtomicLineAllocation::OutOfFlow,
             t::InlineBoxKind::InFlow => t::AtomicLineAllocation::InFlow {
+                fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                 alignment: t::LineBoxAlignment::Baseline,
                 // A Horizontal child exports no physical-x baseline. Physical
                 // synthesis uses its left/line-under edge: over6, under0.
                 flow: t::AtomicFlowAllocation {
+                    normal_border_inline_size: 14.0,
                     advance: 14.0,
                     before_baseline: 6.0,
                     after_baseline: 0.0,
@@ -252,6 +254,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         .unwrap()
         .handle();
     p.select(t::LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
@@ -388,6 +391,7 @@ fn child_input<S: l::LayoutScalar>(kind: t::InlineBoxKind) -> l::NodeInputOf<S> 
 }
 fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: child.prepared.clone(),
         container,
         nodes: vec![text],
@@ -498,6 +502,7 @@ fn attach<S: l::LayoutScalar>(
     );
     vec![
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container,
             nodes: vec![first, atomic, last],

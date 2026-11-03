@@ -577,8 +577,11 @@ mod tests {
                 let body = snapshot.node(html).unwrap().children()[1];
                 let mut batch = DomBatch::new();
                 let closed = batch.create_html_document(top.document(), None);
-                let iframe =
-                    batch.create_element_ns(&closed, surgeist_html::Namespace::html(), "iframe");
+                let iframe = batch.create_element_ns(
+                    &closed,
+                    surgeist_html::values::Namespace::html(),
+                    "iframe",
+                );
                 let commit = session.dom().apply(batch, &AtomicBool::new(false)).unwrap();
                 (body, commit.created(&iframe).unwrap().unwrap())
             }

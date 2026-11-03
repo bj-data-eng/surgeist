@@ -3,51 +3,51 @@
 
 use super::*;
 use crate::parser::{
-    control::Invariant,
+    control::HtmlParseInvariant,
     tokenizer::{
-        states::State,
-        token::{DiagnosticCode, DiagnosticPhase},
+        states::HtmlTokenizerState,
+        token::{HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase},
     },
     tree_builder::{
-        head::{HeadCondition, InsertionMode},
-        prologue::{PrologueCondition, PrologueMode},
+        head::{HtmlInsertionMode, HtmlTreeDiagnostic},
+        prologue::{HtmlPrologueDiagnostic, HtmlPrologueMode},
     },
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticKind {
-    Tokenizer(DiagnosticCode),
-    Prologue(PrologueCondition),
-    Tree(HeadCondition),
+pub enum HtmlParseDiagnosticKind {
+    Tokenizer(HtmlTokenizerDiagnostic),
+    Prologue(HtmlPrologueDiagnostic),
+    Tree(HtmlTreeDiagnostic),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticContext {
+pub enum HtmlParseDiagnosticContext {
     Tokenizer {
-        phase: DiagnosticPhase,
-        state: State,
+        phase: HtmlTokenizerDiagnosticPhase,
+        state: HtmlTokenizerState,
     },
-    Prologue(PrologueMode),
-    Tree(InsertionMode),
+    Prologue(HtmlPrologueMode),
+    Tree(HtmlInsertionMode),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticSeverity {
+pub enum HtmlParseDiagnosticSeverity {
     Recoverable,
 }
 /// Selected HTML anchor plus intentional engine branch within that algorithm.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DiagnosticRule {
+pub struct HtmlParseDiagnosticRule {
     pub(crate) anchor: &'static str,
     pub(crate) branch: &'static str,
 }
-pub struct DiagnosticRecord {
-    pub(crate) kind: DiagnosticKind,
-    pub(crate) context: DiagnosticContext,
-    pub(crate) severity: DiagnosticSeverity,
-    pub(crate) rule: DiagnosticRule,
+pub struct HtmlParseDiagnostic {
+    pub(crate) kind: HtmlParseDiagnosticKind,
+    pub(crate) context: HtmlParseDiagnosticContext,
+    pub(crate) severity: HtmlParseDiagnosticSeverity,
+    pub(crate) rule: HtmlParseDiagnosticRule,
     location: usize,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticToken {
+pub enum HtmlParseTokenFamily {
     Text,
     Tag,
     Comment,
@@ -56,18 +56,18 @@ pub enum DiagnosticToken {
     Eof,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DiagnosticLocationRole {
+pub enum HtmlParseDiagnosticLocationRole {
     InputFrontier,
     TokenEnvelope,
     TextOrigin,
     BufferedTableCharacter,
 }
-pub struct DiagnosticLocation {
+pub struct HtmlParseDiagnosticLocation {
     pub(crate) source: crate::HtmlSourceRange,
-    pub(crate) role: DiagnosticLocationRole,
-    pub(crate) token: Option<DiagnosticToken>,
+    pub(crate) role: HtmlParseDiagnosticLocationRole,
+    pub(crate) token: Option<HtmlParseTokenFamily>,
 }
-impl std::ops::Deref for DiagnosticLocation {
+impl std::ops::Deref for HtmlParseDiagnosticLocation {
     type Target = crate::HtmlSourceRange;
     fn deref(&self) -> &Self::Target {
         &self.source
@@ -75,8 +75,8 @@ impl std::ops::Deref for DiagnosticLocation {
 }
 pub struct DiagnosticLocationInput<'a> {
     pub(crate) source: &'a crate::HtmlSourceRange,
-    pub(crate) role: DiagnosticLocationRole,
-    pub(crate) token: Option<DiagnosticToken>,
+    pub(crate) role: HtmlParseDiagnosticLocationRole,
+    pub(crate) token: Option<HtmlParseTokenFamily>,
 }
 pub(super) struct EvidenceIdentity;
 pub(crate) struct DiagnosticId {
@@ -86,16 +86,16 @@ pub(crate) struct DiagnosticId {
 }
 #[cfg(test)]
 pub(crate) struct TokenizerDiagnosticView<'a> {
-    pub(crate) code: DiagnosticCode,
-    pub(crate) phase: DiagnosticPhase,
-    pub(crate) state: State,
+    pub(crate) code: HtmlTokenizerDiagnostic,
+    pub(crate) phase: HtmlTokenizerDiagnosticPhase,
+    pub(crate) state: HtmlTokenizerState,
     pub(crate) source: &'a crate::HtmlSourceRange,
 }
 pub(crate) struct ParseEvidence {
     pub(super) identity: Arc<EvidenceIdentity>,
     identity_allocation: SharedAllocation<EvidenceIdentity>,
-    records: OwnedVec<DiagnosticRecord>,
-    locations: OwnedVec<DiagnosticLocation>,
+    records: OwnedVec<HtmlParseDiagnostic>,
+    locations: OwnedVec<HtmlParseDiagnosticLocation>,
     pub(super) native: super::provenance::NativeProvenance,
     diagnostics_taken: bool,
 }
@@ -105,38 +105,50 @@ pub(crate) struct ParseEvidence {
 pub(crate) struct FailureDiagnosticEvidence {
     _identity: Arc<EvidenceIdentity>,
     _identity_allocation: Option<SharedAllocation<EvidenceIdentity>>,
-    records: OwnedVec<DiagnosticRecord>,
-    locations: OwnedVec<DiagnosticLocation>,
+    records: OwnedVec<HtmlParseDiagnostic>,
+    locations: OwnedVec<HtmlParseDiagnosticLocation>,
 }
 /// Fixed borrowed lender of committed diagnostics. It carries no execution authority,
 /// allocation ticket or native storage, and each observation uses constant work.
-pub struct DiagnosticEvidenceView<'a> {
-    records: &'a [DiagnosticRecord],
-    locations: &'a [DiagnosticLocation],
+pub struct HtmlParseDiagnostics<'a> {
+    records: &'a [HtmlParseDiagnostic],
+    locations: &'a [HtmlParseDiagnosticLocation],
 }
-impl DiagnosticEvidenceView<'_> {
+impl HtmlParseDiagnostics<'_> {
     pub fn len(&self) -> usize {
         self.records.len()
     }
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// The committed record at `index` with the location it names, or `None`
+    /// past the last record. Every committed record names a committed
+    /// location; a record that did not is a fault in the report.
     pub fn retained_record(
         &self,
         index: usize,
-    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
-        self.records
-            .get(index)
-            .map(|record| (record, &self.locations[record.location]))
+    ) -> Result<
+        Option<(&HtmlParseDiagnostic, &HtmlParseDiagnosticLocation)>,
+        read::HtmlParseUnresolvedReference,
+    > {
+        let Some(record) = self.records.get(index) else {
+            return Ok(None);
+        };
+        self.locations
+            .get(record.location)
+            .map(|location| Some((record, location)))
+            .ok_or(read::HtmlParseUnresolvedReference::new(
+                read::HtmlParseUnresolvedKind::Diagnostic,
+            ))
     }
     #[cfg(test)]
-    pub fn records_pointer(&self) -> *const DiagnosticRecord {
+    pub fn records_pointer(&self) -> *const HtmlParseDiagnostic {
         self.records.as_ptr()
     }
 }
 impl FailureDiagnosticEvidence {
-    pub(crate) fn diagnostics(&self) -> DiagnosticEvidenceView<'_> {
-        DiagnosticEvidenceView {
+    pub(crate) fn diagnostics(&self) -> HtmlParseDiagnostics<'_> {
+        HtmlParseDiagnostics {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
         }
@@ -150,18 +162,18 @@ impl FailureDiagnosticEvidence {
     pub(crate) fn retained_record(
         &self,
         index: usize,
-    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
+    ) -> Option<(&HtmlParseDiagnostic, &HtmlParseDiagnosticLocation)> {
         self.records
             .as_slice()
             .get(index)
             .map(|record| (record, &self.locations.as_slice()[record.location]))
     }
     #[cfg(test)]
-    pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
+    pub(crate) fn records_pointer(&self) -> *const HtmlParseDiagnostic {
         self.records.as_slice().as_ptr()
     }
     #[cfg(test)]
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.records.release(c)?;
         self.locations.release(c)?;
         if let Some(allocation) = self._identity_allocation {
@@ -173,12 +185,26 @@ impl FailureDiagnosticEvidence {
         }
     }
 }
+#[cfg(test)]
+impl ParseEvidence {
+    /// Names a location that is not committed as the location of one
+    /// diagnostic record. Whether the record exists.
+    pub(super) fn corrupt_diagnostic_location_for_test(&mut self, index: usize) -> bool {
+        match self.records.as_mut_slice_for_test().get_mut(index) {
+            Some(record) => {
+                record.location = usize::MAX;
+                true
+            }
+            None => false,
+        }
+    }
+}
 impl ParseEvidence {
     pub(super) fn retains_diagnostics(&self) -> bool {
         !self.diagnostics_taken
     }
-    pub(crate) fn diagnostics(&self) -> DiagnosticEvidenceView<'_> {
-        DiagnosticEvidenceView {
+    pub(crate) fn diagnostics(&self) -> HtmlParseDiagnostics<'_> {
+        HtmlParseDiagnostics {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
         }
@@ -194,7 +220,7 @@ impl ParseEvidence {
         }
         Ok(evidence)
     }
-    pub(crate) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(crate) fn new(c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         let mut records = OwnedVec::new(HtmlParseResource::Diagnostics)?;
         let mut locations = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         records.require_owner(c)?;
@@ -223,28 +249,30 @@ impl ParseEvidence {
     pub(crate) fn append(
         &mut self,
         c: &mut ParseControl,
-        kind: DiagnosticKind,
-        context: DiagnosticContext,
-        rule: DiagnosticRule,
+        kind: HtmlParseDiagnosticKind,
+        context: HtmlParseDiagnosticContext,
+        rule: HtmlParseDiagnosticRule,
         input: DiagnosticLocationInput<'_>,
-    ) -> Result<DiagnosticId, ParseStop> {
+    ) -> Result<DiagnosticId, HtmlParseStop> {
         let source = input.source;
         c.require_source_range(source)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let index = self.records.len();
         let location = self.locations.len();
         // Handle and descriptor preparation precedes the atomic pair commit.
         c.charge(
-            WorkCategory::CopyByte,
-            (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64,
+            HtmlParseWorkCategory::CopyByte,
+            const {
+                (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64
+            },
         )?;
         let owner = c.identity();
         let evidence = self.identity.clone();
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<crate::HtmlSourceRange>() as u64,
         )?;
-        let source = DiagnosticLocation {
+        let source = HtmlParseDiagnosticLocation {
             source: source.clone(),
             role: input.role,
             token: input.token,
@@ -252,10 +280,10 @@ impl ParseEvidence {
         self.records.try_push_pair(
             &mut self.locations,
             c,
-            DiagnosticRecord {
+            HtmlParseDiagnostic {
                 kind,
                 context,
-                severity: DiagnosticSeverity::Recoverable,
+                severity: HtmlParseDiagnosticSeverity::Recoverable,
                 rule,
                 location,
             },
@@ -271,29 +299,29 @@ impl ParseEvidence {
         &'a self,
         c: &mut ParseControl,
         id: &DiagnosticId,
-    ) -> Result<(&'a DiagnosticRecord, &'a DiagnosticLocation), ParseStop> {
+    ) -> Result<(&'a HtmlParseDiagnostic, &'a HtmlParseDiagnosticLocation), HtmlParseStop> {
         c.require_identity(&id.owner)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<Arc<EvidenceIdentity>>() as u64,
         )?;
         if !Arc::ptr_eq(&self.identity, &id.evidence) {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(HtmlParseInvariant::ForeignEvidence));
         }
         self.records.require_disposal_owner(c)?;
         self.locations.require_disposal_owner(c)?;
-        c.charge(WorkCategory::RecordVisit, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let record = self
             .records
             .as_slice()
             .get(id.index)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
         let location = self
             .locations
             .as_slice()
             .get(record.location)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
         Ok((record, location))
     }
     #[cfg(test)]
@@ -306,7 +334,7 @@ impl ParseEvidence {
     pub(crate) fn retained_record(
         &self,
         index: usize,
-    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
+    ) -> Option<(&HtmlParseDiagnostic, &HtmlParseDiagnosticLocation)> {
         self.records
             .as_slice()
             .get(index)
@@ -319,10 +347,10 @@ impl ParseEvidence {
             "actual issuer-qualified ID"
         );
         let (r, source) = self.retained_record(id.index).expect("real emitted ID");
-        let DiagnosticKind::Tokenizer(code) = r.kind else {
+        let HtmlParseDiagnosticKind::Tokenizer(code) = r.kind else {
             panic!("lexer ID")
         };
-        let DiagnosticContext::Tokenizer { phase, state } = r.context else {
+        let HtmlParseDiagnosticContext::Tokenizer { phase, state } = r.context else {
             panic!("lexer context")
         };
         TokenizerDiagnosticView {
@@ -333,7 +361,7 @@ impl ParseEvidence {
         }
     }
     #[cfg(test)]
-    pub(crate) fn records_pointer(&self) -> *const DiagnosticRecord {
+    pub(crate) fn records_pointer(&self) -> *const HtmlParseDiagnostic {
         self.records.as_slice().as_ptr()
     }
     /// The actual active or frozen storage slot remains intact on every refusal.
@@ -346,27 +374,34 @@ impl ParseEvidence {
         if c.stop().is_none() {
             return Err(SessionError::WrongToken);
         }
-        let Some(evidence) = input.as_ref() else {
+        let Some(evidence) = input.take() else {
             return Ok(None);
         };
-        evidence.records.require_disposal_owner(c)?;
-        evidence.locations.require_disposal_owner(c)?;
-        evidence.native.preflight_failed_disposal(c)?;
-        let Some(Self {
+        // Every refusal gives the evidence back to its slot untouched.
+        let preflight = (|| {
+            evidence.records.require_disposal_owner(c)?;
+            evidence.locations.require_disposal_owner(c)?;
+            evidence.native.preflight_failed_disposal(c)?;
+            Ok::<(), HtmlParseStop>(())
+        })();
+        if let Err(stop) = preflight {
+            *input = Some(evidence);
+            return Err(stop.into());
+        }
+        let Self {
             identity,
             identity_allocation,
             records,
             locations,
             native,
             diagnostics_taken: _,
-        }) = input.take()
-        else {
-            unreachable!("the exclusively borrowed slot was preflighted")
-        };
+        } = evidence;
         // Same-owner flat vectors, exact checked capacities and their aggregate
         // logical/capacity totals were proved above. No ledger mutation intervenes,
-        // so each cleanup subtraction is covered by that aggregate proof.
-        native.release(c).expect("preflighted native cleanup");
+        // so each cleanup subtraction is covered by that aggregate proof. The
+        // controller is already stopped, so a refusal here would be secondary
+        // (latched by its owner); the diagnostics are handed on regardless.
+        let _ = native.release(c);
         Ok(Some(FailureDiagnosticEvidence {
             _identity: identity,
             _identity_allocation: Some(identity_allocation),
@@ -374,7 +409,7 @@ impl ParseEvidence {
             locations,
         }))
     }
-    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.native.release(c)?;
         self.records.release(c)?;
         self.locations.release(c)?;
@@ -413,18 +448,19 @@ impl ParserArenaSession {
         if storage.evidence.is_some() {
             return Err(SessionError::WrongToken);
         }
-        storage.evidence = Some(ParseEvidence::prepare(c)?);
+        // The evidence is retained before it is initialized, so a refusal
+        // leaves it with the session for cleanup.
         storage
             .evidence
-            .as_mut()
-            .expect("retained evidence")
+            .insert(ParseEvidence::prepare(c)?)
             .initialize_native_source(c, source)?;
         let slots = storage.prepare_node_causes(c, 1)?;
-        if let Some(slot) = slots[0] {
+        let [first, _] = slots;
+        if let Some(slot) = first {
             let RetainedPayload::ConstructionCause { node, .. } =
-                &mut storage.payloads.values[slot]
+                storage.payloads.row_mut(c, slot)?
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *node = Some(0);
         }
@@ -458,7 +494,7 @@ impl ParserArenaSession {
         // The native group authority remains in the completed lender. The
         // diagnostic consumer shares the existing zero-sized identity without
         // allocating a second issuer or returning another mutable authority.
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<FailureDiagnosticEvidence>(c, 1)?;
         payload_write::<bool>(c, 1)?;
         let identity = evidence.identity.clone();
@@ -481,21 +517,21 @@ impl ParserArenaSession {
     }
 }
 
-impl DiagnosticRecord {
-    pub fn kind(&self) -> DiagnosticKind {
+impl HtmlParseDiagnostic {
+    pub fn kind(&self) -> HtmlParseDiagnosticKind {
         self.kind
     }
-    pub fn context(&self) -> DiagnosticContext {
+    pub fn context(&self) -> HtmlParseDiagnosticContext {
         self.context
     }
-    pub fn severity(&self) -> DiagnosticSeverity {
+    pub fn severity(&self) -> HtmlParseDiagnosticSeverity {
         self.severity
     }
-    pub fn rule(&self) -> DiagnosticRule {
+    pub fn rule(&self) -> HtmlParseDiagnosticRule {
         self.rule
     }
 }
-impl DiagnosticRule {
+impl HtmlParseDiagnosticRule {
     pub fn anchor(&self) -> &'static str {
         self.anchor
     }
@@ -503,14 +539,14 @@ impl DiagnosticRule {
         self.branch
     }
 }
-impl DiagnosticLocation {
+impl HtmlParseDiagnosticLocation {
     pub fn source_range(&self) -> &crate::HtmlSourceRange {
         &self.source
     }
-    pub fn role(&self) -> DiagnosticLocationRole {
+    pub fn role(&self) -> HtmlParseDiagnosticLocationRole {
         self.role
     }
-    pub fn token(&self) -> Option<DiagnosticToken> {
+    pub fn token(&self) -> Option<HtmlParseTokenFamily> {
         self.token
     }
 }
@@ -526,21 +562,21 @@ mod tests {
         c: &mut ParseControl,
         source: &HtmlSource,
         offset: usize,
-    ) -> Result<DiagnosticId, ParseStop> {
+    ) -> Result<DiagnosticId, HtmlParseStop> {
         e.append(
             c,
-            DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter),
-            DiagnosticContext::Tokenizer {
-                phase: DiagnosticPhase::Tokenizer,
-                state: State::Data,
+            HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::UnexpectedNullCharacter),
+            HtmlParseDiagnosticContext::Tokenizer {
+                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                state: HtmlTokenizerState::Data,
             },
-            DiagnosticRule {
+            HtmlParseDiagnosticRule {
                 anchor: "parse-error-unexpected-null-character",
                 branch: "unexpected-null-character",
             },
             DiagnosticLocationInput {
                 source: &source.range(offset, offset + 1).unwrap(),
-                role: DiagnosticLocationRole::InputFrontier,
+                role: HtmlParseDiagnosticLocationRole::InputFrontier,
                 token: None,
             },
         )
@@ -553,6 +589,22 @@ mod tests {
         c.admit_source(source).unwrap();
         let evidence = ParseEvidence::prepare(&mut c).unwrap();
         (c, evidence)
+    }
+
+    #[test]
+    fn a_record_identifier_past_the_retained_records_is_a_registry_row_invariant() {
+        let source = HtmlSource::utf8("\0");
+        let (mut c, mut evidence) = owner(&source, limits(100));
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        let mut id = append(&mut evidence, &mut c, &source, 0).unwrap();
+        id.index = evidence.len();
+        let stop = evidence.get(&mut c, &id).err().unwrap();
+        assert_eq!(
+            stop,
+            HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow)
+        );
+        assert_eq!(c.stop(), Some(stop));
+        evidence.release(&mut c).unwrap();
     }
 
     #[test]
@@ -572,7 +624,7 @@ mod tests {
         assert_eq!(c.usage(), &before);
 
         let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
-        foreign.fail_invariant(Invariant::InputCursorState);
+        foreign.fail_invariant(HtmlParseInvariant::InputCursorState);
         let foreign_stop = foreign.stop();
         let foreign_before = foreign.usage().clone();
         assert!(ParseEvidence::partition_failed(&mut input, &mut foreign).is_err());
@@ -581,7 +633,7 @@ mod tests {
         assert_eq!(foreign.usage(), &foreign_before);
         assert_eq!(c.usage(), &before);
 
-        c.fail_invariant(Invariant::InputCursorState);
+        c.fail_invariant(HtmlParseInvariant::InputCursorState);
         let first = c.stop();
         let stopped = c.usage().clone();
         let failure = ParseEvidence::partition_failed(&mut input, &mut c)
@@ -593,7 +645,7 @@ mod tests {
         let (record, location) = failure.retained_record(0).unwrap();
         assert_eq!(
             record.kind,
-            DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+            HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::UnexpectedNullCharacter)
         );
         assert_eq!(location.source, source.range(0, 1).unwrap());
         assert_eq!(c.stop(), first);
@@ -641,7 +693,7 @@ mod tests {
                     let result = append(&mut e, &mut c, &source, offset);
                     if offset as u64 >= cap {
                         assert!(
-                            matches!(result,Err(ParseStop::LimitExceeded {resource:r,..}) if r==resource)
+                            matches!(result,Err(HtmlParseStop::LimitExceeded {resource:r,..}) if r==resource)
                         );
                         assert_eq!(e.len(), offset);
                         assert_eq!(e.locations.len(), offset);
@@ -695,7 +747,7 @@ mod tests {
                     assert!(short);
                     assert_eq!(
                         stop,
-                        ParseStop::LimitExceeded {
+                        HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::AtomicLayoutBytes,
                             current: 0,
                             requested_delta: bytes,
@@ -742,7 +794,7 @@ mod tests {
                 let result = append(&mut e, &mut c, &source, 0);
                 if short {
                     assert!(
-                        matches!(result,Err(ParseStop::LimitExceeded {resource:r,..}) if r==resource)
+                        matches!(result,Err(HtmlParseStop::LimitExceeded {resource:r,..}) if r==resource)
                     );
                     assert_eq!((e.len(), e.locations.len()), (0, 0));
                     assert_eq!(
@@ -792,13 +844,16 @@ mod tests {
             append(&mut e, &mut c, &source, 0).unwrap();
             let available = selected.work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, available - cost + u64::from(short))
-                .unwrap();
+            c.charge(
+                HtmlParseWorkCategory::StateStep,
+                available - cost + u64::from(short),
+            )
+            .unwrap();
             let result = append(&mut e, &mut c, &source, 1);
             if short {
                 assert!(matches!(
                     result,
-                    Err(ParseStop::LimitExceeded {
+                    Err(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     })
@@ -814,7 +869,9 @@ mod tests {
             let (record, range) = e.retained_record(0).unwrap();
             assert_eq!(
                 record.kind,
-                DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                HtmlParseDiagnosticKind::Tokenizer(
+                    HtmlTokenizerDiagnostic::UnexpectedNullCharacter
+                )
             );
             assert_eq!((range.start(), range.end()), (0, 1));
             e.release(&mut c).unwrap();
@@ -839,9 +896,9 @@ mod tests {
             assert_eq!(
                 result.err(),
                 Some(if cancel {
-                    ParseStop::Cancelled
+                    HtmlParseStop::Cancelled
                 } else {
-                    ParseStop::InternalInvariant(Invariant::ForeignSource)
+                    HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignSource)
                 })
             );
             assert_eq!((e.len(), e.locations.len()), (1, 1));
@@ -918,7 +975,9 @@ mod tests {
         append(&mut other, &mut c, &source, 0).unwrap();
         assert!(matches!(
             other.get(&mut c, &id),
-            Err(ParseStop::InternalInvariant(Invariant::ForeignEvidence))
+            Err(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignEvidence
+            ))
         ));
         assert_eq!(first.len(), 1);
         assert_eq!(other.len(), 1);
@@ -937,7 +996,9 @@ mod tests {
         foreign.admit_source(&source).unwrap();
         assert!(matches!(
             e.get(&mut foreign, &id),
-            Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+            Err(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl
+            ))
         ));
         assert!(append(&mut e, &mut foreign, &source, 1).is_err());
         assert_eq!((e.len(), e.locations.len()), (1, 1));
@@ -947,51 +1008,74 @@ mod tests {
     }
 
     #[test]
-    fn fifth_diagnostic_pair_fits_capacity_clipped_for_both_actual_vectors() {
+    fn fifth_diagnostic_pair_admits_the_doubled_capacity_of_both_actual_vectors() {
         let source = HtmlSource::utf8("\0\0\0\0\0");
-        let record = mem::size_of::<DiagnosticRecord>() as u64;
-        let location = mem::size_of::<DiagnosticLocation>() as u64;
-        // At four pairs, a sixth Record slot fits by itself. It must not
-        // consume the minimum layout still required by the fifth Location.
-        let capacity = 6 * record + 4 * location;
-        let transient = 4 * (record + location) + 6 * record;
+        let record = mem::size_of::<HtmlParseDiagnostic>() as u64;
+        let location = mem::size_of::<HtmlParseDiagnosticLocation>() as u64;
+        // At four pairs both vectors are full. Each doubles to eight slots, the records first:
+        // the pair then retains eight of each, and the larger of the two replacements overlaps
+        // the old and the new layout of the vector it replaces.
+        let capacity = 8 * (record + location);
+        let transient =
+            (4 * (record + location) + 8 * record).max(8 * record + 4 * location + 8 * location);
         for physical in [true, false] {
-            let builder = limits(100).into_builder();
-            let selected = if physical {
-                builder.managed_capacity_bytes(capacity)
-            } else {
-                builder.peak_transient_bytes(transient)
+            // At the limit the fifth pair is admitted; one byte below it is refused with all
+            // four earlier pairs retained.
+            for refused in [false, true] {
+                let builder = limits(100).into_builder();
+                let (limit, resource) = if physical {
+                    (capacity, HtmlParseResource::ManagedCapacityBytes)
+                } else {
+                    (transient, HtmlParseResource::PeakTransientBytes)
+                };
+                let limit = limit - u64::from(refused);
+                let selected = if physical {
+                    builder.managed_capacity_bytes(limit)
+                } else {
+                    builder.peak_transient_bytes(limit)
+                }
+                .finish()
+                .unwrap();
+                let (mut c, mut evidence) = owner(&source, selected);
+                for offset in 0..4 {
+                    append(&mut evidence, &mut c, &source, offset).unwrap();
+                }
+                let result = append(&mut evidence, &mut c, &source, 4);
+                if refused {
+                    assert!(matches!(
+                        result,
+                        Err(HtmlParseStop::LimitExceeded { resource: stopped, limit: refusing, .. })
+                            if stopped == resource && refusing == limit
+                    ));
+                    assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
+                    for offset in 0..4 {
+                        let (record, location) = evidence.retained_record(offset).unwrap();
+                        assert_eq!(record.location, offset);
+                        assert_eq!((location.start(), location.end()), (offset, offset + 1));
+                    }
+                } else {
+                    let id = result.unwrap();
+                    assert_eq!(id.index, 4);
+                    assert_eq!(c.stop(), None);
+                    assert_eq!((evidence.len(), evidence.locations.len()), (5, 5));
+                    assert_eq!(
+                        (evidence.records.capacity(), evidence.locations.capacity()),
+                        (8, 8)
+                    );
+                    if physical {
+                        assert_eq!(c.usage().actual_capacity_bytes, capacity);
+                    } else {
+                        assert_eq!(
+                            c.usage()
+                                .resource(HtmlParseResource::PeakTransientBytes)
+                                .high_water,
+                            transient
+                        );
+                    }
+                }
+                evidence.release(&mut c).unwrap();
+                assert_released(&c);
             }
-            .finish()
-            .unwrap();
-            let (mut c, mut evidence) = owner(&source, selected);
-            for offset in 0..5 {
-                let id = append(&mut evidence, &mut c, &source, offset).unwrap();
-                assert_eq!(id.index, offset);
-                let (actual, source_range) = evidence.get(&mut c, &id).unwrap();
-                assert_eq!(actual.location, offset);
-                assert_eq!(
-                    (source_range.start(), source_range.end()),
-                    (offset, offset + 1)
-                );
-                assert_eq!(
-                    (evidence.len(), evidence.locations.len()),
-                    (offset + 1, offset + 1)
-                );
-            }
-            assert_eq!(c.stop(), None);
-            if physical {
-                assert!(c.usage().actual_capacity_bytes <= capacity);
-            } else {
-                assert!(
-                    c.usage()
-                        .resource(HtmlParseResource::PeakTransientBytes)
-                        .high_water
-                        <= transient
-                );
-            }
-            evidence.release(&mut c).unwrap();
-            assert_released(&c);
         }
     }
 
@@ -1022,13 +1106,16 @@ mod tests {
             }
             let available = selected.work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(WorkCategory::StateStep, available - cost + u64::from(short))
-                .unwrap();
+            c.charge(
+                HtmlParseWorkCategory::StateStep,
+                available - cost + u64::from(short),
+            )
+            .unwrap();
             let result = append(&mut evidence, &mut c, &source, 4);
             if short {
                 assert!(matches!(
                     result,
-                    Err(ParseStop::LimitExceeded {
+                    Err(HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     })
@@ -1066,10 +1153,13 @@ mod tests {
     #[test]
     fn second_location_one_short_capacity_keeps_the_prepared_record_and_original_prefix() {
         let source = HtmlSource::utf8("\0\0\0\0\0");
-        let record_bytes = mem::size_of::<DiagnosticRecord>() as u64;
-        let location_bytes = mem::size_of::<DiagnosticLocation>() as u64;
+        let record_bytes = mem::size_of::<HtmlParseDiagnostic>() as u64;
+        let location_bytes = mem::size_of::<HtmlParseDiagnosticLocation>() as u64;
         for prefix in [0_usize, 4] {
-            let required = (prefix as u64 + 1) * (record_bytes + location_bytes);
+            // Both vectors reach the greater of one more slot and double their capacity: one
+            // slot when empty, eight when four are full.
+            let slots = (prefix as u64 + 1).max(2 * prefix as u64);
+            let required = slots * (record_bytes + location_bytes);
             let selected = limits(100)
                 .into_builder()
                 .managed_capacity_bytes(required - 1)
@@ -1080,19 +1170,18 @@ mod tests {
                 append(&mut evidence, &mut c, &source, offset).unwrap();
             }
             let result = append(&mut evidence, &mut c, &source, prefix);
-            let first_capacity =
-                (prefix as u64 + 1) * record_bytes + prefix as u64 * location_bytes;
+            let first_capacity = slots * record_bytes + prefix as u64 * location_bytes;
             assert_eq!(
                 result.err(),
-                Some(ParseStop::LimitExceeded {
+                Some(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
                     current: first_capacity,
-                    requested_delta: location_bytes,
+                    requested_delta: (slots - prefix as u64) * location_bytes,
                     limit: required - 1,
                 })
             );
             assert_eq!((evidence.len(), evidence.locations.len()), (prefix, prefix));
-            assert_eq!(evidence.records.capacity(), prefix + 1);
+            assert_eq!(evidence.records.capacity() as u64, slots);
             assert_eq!(evidence.locations.capacity(), prefix);
             assert_eq!(c.usage().actual_capacity_bytes, first_capacity);
             assert_eq!(
@@ -1139,7 +1228,7 @@ mod tests {
         }
         assert_eq!(
             append(&mut evidence, &mut c, &source, 4).err(),
-            Some(ParseStop::LimitExceeded {
+            Some(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::SourceMapEntries,
                 current: 4,
                 requested_delta: 1,
@@ -1182,9 +1271,9 @@ mod tests {
             assert_eq!(
                 append(&mut evidence, active, &source, 4).err(),
                 Some(if cancel {
-                    ParseStop::Cancelled
+                    HtmlParseStop::Cancelled
                 } else {
-                    ParseStop::InternalInvariant(Invariant::ForeignControl)
+                    HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl)
                 })
             );
             assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
@@ -1208,7 +1297,7 @@ mod tests {
             c: &ParseControl,
             foreign: &ParseControl,
             cancel: bool,
-        ) -> Option<ParseStop> {
+        ) -> Option<HtmlParseStop> {
             if cancel { c.stop() } else { foreign.stop() }
         }
     }
@@ -1218,7 +1307,9 @@ mod tests {
         use super::super::provenance::{LexicalOccurrence, LexicalPart};
         use crate::parser::tokenizer::{
             Tokenizer,
-            token::{Event, OriginKind, Text, TextOrigin, Token, TokenEvent, TokenKind},
+            token::{
+                Event, HtmlParseOriginKind, HtmlParseTextOrigin, Text, Token, TokenEvent, TokenKind,
+            },
         };
 
         // HTML 877d comment state: one error and FFFD for each NULL. The real
@@ -1228,9 +1319,9 @@ mod tests {
         // submissions, while linear/fixed room admits lexical and owner fees.
         // These finite fixture allowances are not an HTML work coefficient,
         // allocator/RSS claim or the archived 100M threshold.
-        let per_record = mem::size_of::<DiagnosticRecord>()
-            + mem::size_of::<DiagnosticLocation>()
-            + mem::size_of::<TextOrigin>()
+        let per_record = mem::size_of::<HtmlParseDiagnostic>()
+            + mem::size_of::<HtmlParseDiagnosticLocation>()
+            + mem::size_of::<HtmlParseTextOrigin>()
             + mem::size_of::<LexicalOccurrence>()
             + mem::size_of::<LexicalPart>()
             + mem::size_of::<crate::HtmlSourceRange>()
@@ -1242,8 +1333,8 @@ mod tests {
             + mem::size_of::<Token>()
             + mem::size_of::<Text>()
             + 8 * mem::size_of::<Option<Event>>();
-        let exact_growth = mem::size_of::<DiagnosticRecord>()
-            + mem::size_of::<DiagnosticLocation>()
+        let exact_growth = mem::size_of::<HtmlParseDiagnostic>()
+            + mem::size_of::<HtmlParseDiagnosticLocation>()
             + mem::size_of::<LexicalPart>()
             + mem::size_of::<u16>();
         let mut observations = Vec::new(); // Caller-owned observations only.
@@ -1278,7 +1369,8 @@ mod tests {
             let source = HtmlSource::utf8(format!("<!--{}-->", "\0".repeat(n)));
             assert_eq!(source.len(), n + 7);
             let (mut c, mut evidence) = owner(&source, selected);
-            let mut lexer = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+            let mut lexer =
+                Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
             let mut record_slots = 0;
             let mut location_slots = 0;
             let mut record_reservations = 0;
@@ -1320,20 +1412,25 @@ mod tests {
                         let (record, location) = evidence.get(&mut c, id).unwrap();
                         assert_eq!(
                             record.kind,
-                            DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                            HtmlParseDiagnosticKind::Tokenizer(
+                                HtmlTokenizerDiagnostic::UnexpectedNullCharacter
+                            )
                         );
                         assert_eq!(
                             record.context,
-                            DiagnosticContext::Tokenizer {
-                                phase: DiagnosticPhase::Tokenizer,
-                                state: State::Comment,
+                            HtmlParseDiagnosticContext::Tokenizer {
+                                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                                state: HtmlTokenizerState::Comment,
                             }
                         );
-                        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+                        assert_eq!(record.severity, HtmlParseDiagnosticSeverity::Recoverable);
                         assert_eq!(record.rule.anchor, "parse-error-unexpected-null-character");
                         assert_eq!(record.rule.branch, "unexpected-null-character");
                         assert_eq!(record.location, diagnostics);
-                        assert_eq!(location.role, DiagnosticLocationRole::InputFrontier);
+                        assert_eq!(
+                            location.role,
+                            HtmlParseDiagnosticLocationRole::InputFrontier
+                        );
                         assert_eq!(location.token, None);
                         assert_eq!(location.source.source(), source.identity());
                         assert_eq!(
@@ -1344,7 +1441,7 @@ mod tests {
                     }
                     Event::Token(value) => {
                         assert_eq!(diagnostics, n);
-                        let token = value.token();
+                        let token = value.token_for_tests();
                         assert_eq!(token.source.source(), source.identity());
                         match &token.kind {
                             TokenKind::Comment(text) => {
@@ -1353,7 +1450,7 @@ mod tests {
                                 assert_eq!(text.value.text().code_units(), vec![0xfffd; n]);
                                 assert_eq!(text.origins.len(), n);
                                 for (i, origin) in text.origins.as_slice().iter().enumerate() {
-                                    assert_eq!(origin.kind, OriginKind::NullReplacement);
+                                    assert_eq!(origin.kind, HtmlParseOriginKind::NullReplacement);
                                     assert_eq!((origin.start, origin.end), (i, i + 1));
                                     assert_eq!(origin.source.source(), source.identity());
                                     assert_eq!(
@@ -1385,18 +1482,20 @@ mod tests {
             assert_eq!((evidence.records.len(), evidence.locations.len()), (n, n));
             let final_records = evidence.records.capacity();
             let final_locations = evidence.locations.capacity();
-            let parse_reserve = c.usage().work(WorkCategory::ReserveByte);
-            let submitted_pair_bytes = record_slots * mem::size_of::<DiagnosticRecord>()
-                + location_slots * mem::size_of::<DiagnosticLocation>();
+            let parse_reserve = c.usage().work(HtmlParseWorkCategory::ReserveByte);
+            let submitted_pair_bytes = record_slots * mem::size_of::<HtmlParseDiagnostic>()
+                + location_slots * mem::size_of::<HtmlParseDiagnosticLocation>();
             assert!(parse_reserve >= submitted_pair_bytes as u64);
             let retained = evidence.diagnostics();
             assert_eq!(retained.len(), n);
             for i in 0..n {
-                let (record, location) = retained.retained_record(i).unwrap();
+                let (record, location) = retained.retained_record(i).unwrap().unwrap();
                 assert_eq!(record.location, i);
                 assert_eq!(
                     record.kind,
-                    DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
+                    HtmlParseDiagnosticKind::Tokenizer(
+                        HtmlTokenizerDiagnostic::UnexpectedNullCharacter
+                    )
                 );
                 assert_eq!(location.source.source(), source.identity());
                 assert_eq!(
@@ -1404,7 +1503,7 @@ mod tests {
                     (4 + i, 5 + i)
                 );
             }
-            assert!(retained.retained_record(n).is_none());
+            assert!(retained.retained_record(n).unwrap().is_none());
             assert_eq!(c.stop(), None);
             let before_cleanup = c.usage().clone();
             lexer.release(&mut c).unwrap();
@@ -1437,12 +1536,12 @@ mod tests {
                         >= before_cleanup.resource(resource).high_water
                 );
             }
-            assert!(c.usage().work(WorkCategory::ReserveByte) >= parse_reserve);
+            assert!(c.usage().work(HtmlParseWorkCategory::ReserveByte) >= parse_reserve);
             assert_eq!(c.stop(), None);
             eprintln!(
                 "Pair witness N={n} record_reservations={record_reservations} record_slots={record_slots} final_records={final_records} compiled_record_bytes={} location_reservations={location_reservations} location_slots={location_slots} final_locations={final_locations} compiled_location_bytes={} parse_all_writer_reserve_bytes={parse_reserve} cleanup_actual_bytes={}",
-                mem::size_of::<DiagnosticRecord>(),
-                mem::size_of::<DiagnosticLocation>(),
+                mem::size_of::<HtmlParseDiagnostic>(),
+                mem::size_of::<HtmlParseDiagnosticLocation>(),
                 c.usage().actual_capacity_bytes
             );
             observations.push((n, record_slots, location_slots));
@@ -1463,5 +1562,37 @@ mod tests {
                 8 * n
             );
         }
+    }
+
+    #[test]
+    fn a_retained_record_naming_a_missing_location_is_reported() {
+        let record = HtmlParseDiagnostic {
+            kind: HtmlParseDiagnosticKind::Tokenizer(
+                HtmlTokenizerDiagnostic::UnexpectedNullCharacter,
+            ),
+            context: HtmlParseDiagnosticContext::Tokenizer {
+                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                state: HtmlTokenizerState::Data,
+            },
+            severity: HtmlParseDiagnosticSeverity::Recoverable,
+            rule: HtmlParseDiagnosticRule {
+                anchor: "parse-error-unexpected-null-character",
+                branch: "unexpected-null-character",
+            },
+            location: 3,
+        };
+        let records = [record];
+        let view = HtmlParseDiagnostics {
+            records: &records,
+            locations: &[],
+        };
+        assert_eq!(view.len(), 1);
+        assert_eq!(
+            view.retained_record(0).err(),
+            Some(read::HtmlParseUnresolvedReference::new(
+                read::HtmlParseUnresolvedKind::Diagnostic
+            ))
+        );
+        assert!(matches!(view.retained_record(1), Ok(None)));
     }
 }

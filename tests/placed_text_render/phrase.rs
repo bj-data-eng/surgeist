@@ -271,7 +271,7 @@ fn capture(
                 node: inputs.len(),
             });
             inputs.push(layout::LayoutInput::InlineBoundary(
-                layout::InlineBoundaryInput::new(
+                layout::InlineBoundaryInput::contribution(
                     kind,
                     layout::InlineMetrics::try_new(
                         surgeist_layout::InlineBaselineContext::Physical,
@@ -280,7 +280,8 @@ fn capture(
                     )
                     .unwrap(),
                     layout::InlineBoundaryEdge::ZERO,
-                ),
+                )
+                .unwrap(),
             ));
         }
     } else {
@@ -296,6 +297,7 @@ fn capture(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             nodes: (1..tree.inputs.len()).collect(),
             origins: vec![layout::TextOriginBinding {
                 origin,
@@ -308,6 +310,8 @@ fn capture(
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

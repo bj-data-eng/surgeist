@@ -1,12 +1,22 @@
 use super::super::select::*;
-use super::super::tests::{fresh_script_owner, limits, storage_zero};
+use super::super::tests::{
+    assert_freeze_reports_first_stop, fresh_script_owner, limit_stop_of, limits, storage_zero,
+};
 use super::*;
 use crate::parser::tokenizer::{
-    states::{Raw, State},
+    states::{HtmlTokenizerRawState, HtmlTokenizerState},
     tests::LexerFixture,
     token::{Event, Token},
 };
 use crate::parser::tree_builder::ConstructionCapability;
+use surgeist_html::{
+    construction::{HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlNodeKind},
+    elements::{
+        form::HtmlOptionFlags,
+        script::{HtmlScriptKind, HtmlScriptResult},
+    },
+    values::DocumentString,
+};
 
 // Literal HTML #selectedness-setting-algorithm oracles exercise the existing
 // callable parser boundary before its language decisions are shared with DOM.
@@ -104,7 +114,7 @@ fn next(
 
 /// The actual fresh-driver issuance is reused, then its same controller and
 /// arena consume real lexical records. The Vec is test observation/setup only.
-fn graph<'a>(
+pub(in crate::construction) fn graph<'a>(
     request: &'a crate::HtmlDocumentParseRequest,
 ) -> (
     ParseControl,
@@ -125,7 +135,8 @@ fn graph<'a>(
     let html = session.active().unwrap().node(&mut c, html_index).unwrap();
     let mut stack = vec![html];
     let mut nodes = vec![];
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     loop {
         let token = next(&mut lexer, &mut c);
         match token.kind {
@@ -193,10 +204,20 @@ fn graph<'a>(
                 }
                 nodes.push((name.clone(), node));
                 if name == "script" {
-                    lexer.set_state(State::Raw(Raw::Script), &mut c).unwrap();
+                    lexer
+                        .set_state(
+                            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Script),
+                            &mut c,
+                        )
+                        .unwrap();
                 }
                 if name == "textarea" {
-                    lexer.set_state(State::Raw(Raw::Rcdata), &mut c).unwrap();
+                    lexer
+                        .set_state(
+                            HtmlTokenizerState::Raw(HtmlTokenizerRawState::Rcdata),
+                            &mut c,
+                        )
+                        .unwrap();
                 }
             }
             TokenKind::Tag(tag) => {
@@ -207,10 +228,10 @@ fn graph<'a>(
                     session
                         .prepare_disabled_script(&mut c, &removed, &proof)
                         .unwrap();
-                    lexer.set_state(State::Data, &mut c).unwrap();
+                    lexer.set_state(HtmlTokenizerState::Data, &mut c).unwrap();
                 }
                 if name == "textarea" {
-                    lexer.set_state(State::Data, &mut c).unwrap();
+                    lexer.set_state(HtmlTokenizerState::Data, &mut c).unwrap();
                 }
             }
             TokenKind::Text(text) => {
@@ -247,7 +268,11 @@ fn graph<'a>(
     lexer.release(&mut c).unwrap();
     (c, session, proof, nodes)
 }
-fn named(nodes: &[(String, ParserNode)], name: &str, occurrence: usize) -> ParserNode {
+pub(in crate::construction) fn named(
+    nodes: &[(String, ParserNode)],
+    name: &str,
+    occurrence: usize,
+) -> ParserNode {
     nodes
         .iter()
         .filter(|(local, _)| local == name)
@@ -268,7 +293,7 @@ fn children(session: &ParserArenaSession, node: &ParserNode) -> Vec<usize> {
         .collect::<Vec<_>>()
         .clone()
 }
-fn request(source: &str) -> crate::HtmlDocumentParseRequest {
+pub(in crate::construction) fn request(source: &str) -> crate::HtmlDocumentParseRequest {
     crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits())
 }
 fn update(session: &mut ParserArenaSession, c: &mut ParseControl, option: &ParserNode) {
@@ -362,7 +387,8 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     );
     // A separately admitted real lexical replay supplies two useful text
     // payloads on the same controller; no detached synthetic Text is fabricated.
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut texts = Vec::new();
     loop {
         let token = next(&mut lexer, &mut c);
@@ -525,7 +551,7 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
         let target = named(&nodes, "selectedcontent", 0);
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         let result = session
             .active_mut()
@@ -551,12 +577,12 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
                 Some(SessionError::Stop(first))
             );
             let storage = session.active().unwrap();
-            for parent in 0..storage.construction.storage().len() {
+            for parent in 0..storage.construction.test_storage().len() {
                 for child in storage.construction.node_at(parent).unwrap().children() {
                     assert_eq!(child.parent().map(|node| node.position()), Some(parent));
                 }
             }
-            progressed |= storage.construction.storage().len() > nodes.len() + 3;
+            progressed |= storage.construction.test_storage().len() > nodes.len() + 3;
             assert!(children(&session, &target).len() <= 1);
         }
         session.release(&mut c).unwrap();
@@ -730,12 +756,12 @@ fn select_clone_cancellation_and_pending_cleanup_never_drains_useful_work() {
     request.cancellation().cancel();
     assert_eq!(
         session.perform_intrinsic_checkpoint(&mut c, &proof),
-        Err(SessionError::Stop(ParseStop::Cancelled))
+        Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     assert_eq!(children(&session, &target), old);
     assert_eq!(
         session.freeze(&mut c).err(),
-        Some(SessionError::Stop(ParseStop::Cancelled))
+        Some(SessionError::Stop(HtmlParseStop::Cancelled))
     );
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
     session.release(&mut c).unwrap();
@@ -744,7 +770,7 @@ fn select_clone_cancellation_and_pending_cleanup_never_drains_useful_work() {
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         work
     );
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
 
 #[test]
@@ -841,7 +867,7 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
         session.remove(&mut c, &option, Some(&proof)).unwrap();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         if let Err(SessionError::Stop(first)) = session.perform_intrinsic_checkpoint(&mut c, &proof)
         {
@@ -876,12 +902,49 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
-    // Document/html retain16 slots including html's independent creation row.
-    // Select's document binding fills17 before its own creation/state/nonce rows
-    // and native fields. At17 the tag remains owned; completed Select needs30
+    // The document and html retain `held` entries before the select, whose
+    // document binding takes one more. At that cap the tag remains owned; the completed select needs a measured total of
     // coexisting entries including its creation row and empty-option snapshot.
-    // At29 it stops after take at that snapshot, preserving all actual owners.
-    for cap in [17, 29, 30] {
+    // One entry short it stops after the take at that snapshot, preserving all
+    // actual owners.
+    let (held, needed) = {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), limits());
+        let (mut c, mut session, proof) = fresh_script_owner(&request);
+        let parent = session.active().unwrap().node(&mut c, 1).unwrap();
+        let held = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let token = next(&mut lexer, &mut c);
+        let TokenKind::Tag(tag) = token.kind else {
+            panic!("actual select")
+        };
+        session
+            .allocate_select_family_for_creation(
+                &mut c,
+                &mut Some(tag),
+                crate::construction::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::CreationContext::Ordinary,
+                },
+                &token.source,
+                &proof,
+            )
+            .unwrap();
+        let needed = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        (held, needed)
+    };
+    for cap in [held + 1, needed - 1, needed] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -891,7 +954,8 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), caps);
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let token = next(&mut lexer, &mut c);
         let TokenKind::Tag(tag) = token.kind else {
             panic!("actual select")
@@ -908,7 +972,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 30 {
+        if cap == needed {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(
@@ -922,7 +986,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                30
+                needed
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -933,9 +997,9 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 panic!("exact selected auxiliary cap")
             };
             assert!(
-                matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
+                matches!(first, HtmlParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 17);
+            assert_eq!(input.is_some(), cap == held + 1);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -956,7 +1020,8 @@ fn select_creation_rejects_real_alias_and_foreign_parent_before_retaining_metada
     let request = request("<select>");
     let (mut c, mut session, proof) = fresh_script_owner(&request);
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let token = next(&mut lexer, &mut c);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("actual select")
@@ -1026,14 +1091,21 @@ fn select_text_clone_every_interruption_keeps_ticket_binding_coherent_for_dispos
         let text = children(&session, &option)[0];
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let _result = session
+        let result = session
             .active_mut()
             .unwrap()
             .clone_node(&mut c, text, DocumentRef::Owned(0));
         if c.stop().is_some() {
-            assert!(session.freeze(&mut c).is_err());
+            // The sweep leaves only `extra` work credits, so the first stop is
+            // the exhausted work-credit limit of the request's limits.
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         let release = session.release(&mut c);
         assert!(
@@ -1078,7 +1150,9 @@ fn non_element_clone_fixture(
         .construction
         .apply(
             &mut c,
-            bounded::HtmlConstructionCommand::ReserveRecords { additional: 1 },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::ReserveRecords {
+                additional: 1,
+            },
             &[],
         )
         .unwrap();
@@ -1129,18 +1203,18 @@ fn non_element_clone_binding_boundary(kind: usize) {
         .chain(std::iter::once((complete, true)))
     {
         let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
-        let nodes = session.active().unwrap().construction.storage().len();
+        let nodes = session.active().unwrap().construction.test_storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - extra)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - extra)
             .unwrap();
         let result =
             session
                 .active_mut()
                 .unwrap()
                 .clone_node(&mut c, source, DocumentRef::Owned(0));
-        let installed = session.active().unwrap().construction.storage().len() - nodes;
+        let installed = session.active().unwrap().construction.test_storage().len() - nodes;
         if result.is_ok() {
             assert_eq!(extra, complete);
             assert_eq!(installed, 1);
@@ -1154,7 +1228,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
             // The complete measured envelope leaves zero credits. Establish
             // the terminal cleanup boundary explicitly, rather than spending
             // nonexistent credits on an active cleanup ownership walk.
-            assert!(c.charge(WorkCategory::StateStep, 1).is_err());
+            assert!(c.charge(HtmlParseWorkCategory::StateStep, 1).is_err());
         }
         let first = c.stop();
         if let Some(first) = first {
@@ -1203,10 +1277,10 @@ fn non_element_clone_binding_boundary(kind: usize) {
         assert!(
             matches!(
                 first,
-                Some(ParseStop::Cancelled) if cancel
+                Some(HtmlParseStop::Cancelled) if cancel
             ) || matches!(
                 first,
-                Some(ParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, .. }) if !cancel
+                Some(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, .. }) if !cancel
             )
         );
     }
@@ -1234,7 +1308,13 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     let parent = session.active().unwrap().node(&mut c, 1).unwrap();
     let mut foreign = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
     foreign.admit_source(request.source()).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut foreign).unwrap();
+    let mut lexer = LexerFixture::new(
+        request.source(),
+        HtmlTokenizerState::Data,
+        None,
+        &mut foreign,
+    )
+    .unwrap();
     let token = next(&mut lexer, &mut foreign);
     let TokenKind::Tag(tag) = token.kind else {
         panic!("real foreign select token")
@@ -1264,7 +1344,9 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
     assert_eq!(result.err(), Some(SessionError::Stop(first)));
     assert!(matches!(
         first,
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+        HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ForeignControl
+        )
     ));
     assert_eq!(
         input
@@ -1313,7 +1395,8 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
                 .flags
                 .already_started()
         );
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let mut text = loop {
             let token = next(&mut lexer, &mut c);
             if let TokenKind::Text(text) = token.kind {
@@ -1324,7 +1407,7 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
         let base = session.active().unwrap().payloads.values.len();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let result = session.insert_text(&mut c, &copy, None, &mut text, Some(&proof));
         let storage = session.active().unwrap();
@@ -1335,9 +1418,12 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
             RetainedPayload::Script { node: Some(node), metadata } if *node == copy.index && metadata.flags.already_started()));
         saw_list |= collected;
         if result.is_err() {
-            let first = c.stop().expect("canonical stopped prefix");
-            assert!(session.freeze(&mut c).is_err());
-            assert_eq!(c.stop(), Some(first));
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         if let Some(text) = text {
             text.release(&mut c).unwrap();
@@ -1407,7 +1493,9 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
             }
         }
         measured.require_identity(&storage.control).unwrap();
-        measured.charge(WorkCategory::RecordVisit, 2).unwrap();
+        measured
+            .charge(HtmlParseWorkCategory::RecordVisit, 2)
+            .unwrap();
         if storage.effects.form.is_some() {
             storage.step_form_effects(&mut measured).unwrap();
         } else if let Some(frame) = storage.effects.current.as_ref() {
@@ -1415,7 +1503,10 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
                 .admit_atomic_layout(mem::size_of::<EffectFrame>())
                 .unwrap();
             measured
-                .charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)
+                .charge(
+                    HtmlParseWorkCategory::CopyByte,
+                    mem::size_of::<EffectFrame>() as u64,
+                )
                 .unwrap();
             frame.admit_clone(&mut measured).unwrap();
             let frame = frame.clone();
@@ -1448,7 +1539,7 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
         let target = named(&nodes, "selectedcontent", 0);
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let result = (|| {
             let storage = session.active_mut()?;
@@ -1491,14 +1582,17 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
             }
         }
         if result.is_err() {
-            let first = c.stop().expect("canonical stopped batch");
-            assert!(session.freeze(&mut c).is_err());
-            assert_eq!(c.stop(), Some(first));
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         let running_before_cleanup = c.stop().is_none();
         let released = session.release(&mut c);
         if let Err(SessionError::Stop(
-            stop @ ParseStop::LimitExceeded {
+            stop @ HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 ..
             },
@@ -1548,7 +1642,7 @@ fn captured_effect_owner() -> (
     );
     let document = builder
         .add_document(
-            crate::HtmlDocumentMode::NoQuirks,
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks,
             crate::HtmlScriptingStatus::Disabled,
             crate::HtmlCaptureRegistryInput::Null,
         )
@@ -1556,8 +1650,12 @@ fn captured_effect_owner() -> (
     let element = builder
         .add_element(
             &document,
-            crate::QualifiedName::new(crate::Namespace::html(), None, "div"),
-            crate::OrderedAttributes::default(),
+            surgeist_html::values::QualifiedName::new(
+                surgeist_html::values::Namespace::html(),
+                None,
+                "div",
+            ),
+            surgeist_html::values::OrderedAttributes::default(),
             crate::HtmlCapturedIsValue::Absent,
             crate::HtmlCaptureRegistryInput::Null,
         )
@@ -1575,7 +1673,7 @@ fn captured_effect_owner() -> (
     c.admit_source(request.source()).unwrap();
     let mut session = ParserArenaSession::new(
         &mut c,
-        RootKind::Document(crate::HtmlDocumentMode::NoQuirks),
+        RootKind::Document(surgeist_html::construction::HtmlDocumentMode::NoQuirks),
     )
     .unwrap();
     session.initialize_standalone_document(&mut c).unwrap();
@@ -1585,52 +1683,401 @@ fn captured_effect_owner() -> (
 
 #[test]
 fn captured_current_frame_survives_stops_before_and_after_identity_clone_admission() {
-    for after_provider in [false, true] {
-        let (mut c, mut owner, document) = captured_effect_owner();
-        let storage = owner.active_mut().unwrap();
-        storage
+    // The work a complete drain needs is measured from an unconstrained
+    // drain. Every smaller budget stops somewhere inside it, so the contract
+    // is checked at each reachable stop instead of at offsets computed from
+    // the frame's layout. The identity clone is a provider call: whether a
+    // stop came before or after its admission is read from that count.
+    //
+    // The frame adopts the context element (position 1), whose document
+    // binding starts as something other than the captured document. The
+    // step binds the element (`set_node_document`, effects.rs AdoptSubtree)
+    // before it advances the frame, so the binding is the observable effect.
+    const ELEMENT: usize = 1;
+    let start = |c: &mut ParseControl,
+                 owner: &mut ParserArenaSession,
+                 document: &crate::HtmlCaptureDocumentId| {
+        owner
+            .active_mut()
+            .unwrap()
             .start_effect(
-                &mut c,
+                c,
                 EffectFrame::AdoptSubtree {
-                    root: 0,
-                    next: None,
+                    root: ELEMENT,
+                    next: Some(ELEMENT),
                     document: DocumentRef::Captured(document.clone()),
                 },
             )
             .unwrap();
-        // Two header visits and the complete frame layout precede the clone.
-        // The next cut admits the clone but refuses its publication receiver.
-        let credit = 2 + mem::size_of::<EffectFrame>() as u64 + u64::from(after_provider);
-        let remaining =
-            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
-            .unwrap();
-        let error = storage.drain_construction_effects(&mut c).unwrap_err();
-        let first = c.stop().unwrap();
-        assert_eq!(error, SessionError::Stop(first));
-        assert!(matches!(storage.effects.current.as_ref(),
-            Some(EffectFrame::AdoptSubtree { next: None, document: DocumentRef::Captured(id), .. }) if id == &document));
-        assert!(storage.effects.transfer.is_none());
+    };
+    // The element's retained document binding, read without charging work so
+    // it can be observed after a stop.
+    let binding = |owner: &ParserArenaSession| {
+        owner
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .find_map(|payload| match payload {
+                RetainedPayload::NodeDocument {
+                    node: Some(bound),
+                    document,
+                } if *bound == ELEMENT => Some(document.clone()),
+                _ => None,
+            })
+            .expect("the element has a document binding")
+    };
+    let (needed, initial) = {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        let initial = binding(&owner);
+        assert_ne!(initial, DocumentRef::Captured(document.clone()));
+        start(&mut c, &mut owner, &document);
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let storage = owner.active_mut().unwrap();
+        storage.drain_construction_effects(&mut c).unwrap();
+        assert!(storage.effects.current.is_none());
+        let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        assert!(c.usage().work(HtmlParseWorkCategory::ProviderCall) > 0);
+        // The completed drain adopted the element into the captured document.
+        assert_eq!(binding(&owner), DocumentRef::Captured(document));
         owner.release(&mut c).unwrap();
         storage_zero(&c);
-        assert_eq!(c.stop(), Some(first));
+        (needed, initial)
+    };
+    assert!(needed > 2);
+    #[derive(Debug, Eq, PartialEq)]
+    enum Stopped {
+        /// The frame is still on the element and has not cloned its identity.
+        BeforeClone,
+        /// The identity clone was admitted; the frame is still on the element.
+        AfterClone,
+        /// The element is adopted and the frame advanced past it.
+        Advanced,
+        /// The frame is finished and cleared.
+        Applied,
     }
-    let (mut c, mut owner, document) = captured_effect_owner();
-    let storage = owner.active_mut().unwrap();
-    storage
-        .start_effect(
-            &mut c,
-            EffectFrame::AdoptSubtree {
-                root: 0,
+    let mut observed = Vec::new();
+    for remaining in 0..needed {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        start(&mut c, &mut owner, &document);
+        let spare =
+            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+        c.charge(HtmlParseWorkCategory::StateStep, spare - remaining)
+            .unwrap();
+        let providers = c.usage().work(HtmlParseWorkCategory::ProviderCall);
+        let storage = owner.active_mut().unwrap();
+        let error = storage.drain_construction_effects(&mut c).unwrap_err();
+        let first = c.stop().unwrap();
+        assert_eq!(error, SessionError::Stop(first), "remaining {remaining}");
+        assert!(matches!(
+            first,
+            HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }
+        ));
+        // Nothing is ever half-transferred.
+        assert!(storage.effects.transfer.is_none(), "remaining {remaining}");
+        let captured = DocumentRef::Captured(document.clone());
+        let bound = binding(&owner);
+        let storage = owner.active().unwrap();
+        let stopped = match storage.effects.current.as_ref() {
+            Some(EffectFrame::AdoptSubtree {
+                next: Some(ELEMENT),
+                document: DocumentRef::Captured(id),
+                ..
+            }) if id == &document => {
+                // Adopting the element may or may not have happened yet, but
+                // the binding is always one of the two whole values.
+                assert!(
+                    bound == initial || bound == captured,
+                    "remaining {remaining}"
+                );
+                if c.usage().work(HtmlParseWorkCategory::ProviderCall) == providers {
+                    assert_eq!(bound, initial, "remaining {remaining}");
+                    Stopped::BeforeClone
+                } else {
+                    Stopped::AfterClone
+                }
+            }
+            Some(EffectFrame::AdoptSubtree {
                 next: None,
-                document: DocumentRef::Captured(document),
-            },
-        )
+                document: DocumentRef::Captured(id),
+                ..
+            }) if id == &document => {
+                assert_eq!(bound, captured, "remaining {remaining}");
+                Stopped::Advanced
+            }
+            None => {
+                assert_eq!(bound, captured, "remaining {remaining}");
+                Stopped::Applied
+            }
+            Some(_) => panic!("remaining {remaining}: the current frame changed"),
+        };
+        observed.push(stopped);
+        owner.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(first), "remaining {remaining}");
+    }
+    // Stops advance through the drain in order and reach every stage: a
+    // larger budget never stops earlier.
+    assert_eq!(observed.first(), Some(&Stopped::BeforeClone));
+    for stage in [Stopped::AfterClone, Stopped::Advanced, Stopped::Applied] {
+        assert!(observed.contains(&stage), "{stage:?}");
+    }
+    assert_eq!(observed.last(), Some(&Stopped::Applied));
+    let rank = |stopped: &Stopped| match stopped {
+        Stopped::BeforeClone => 0,
+        Stopped::AfterClone => 1,
+        Stopped::Advanced => 2,
+        Stopped::Applied => 3,
+    };
+    assert!(observed.windows(2).all(|w| rank(&w[0]) <= rank(&w[1])));
+
+    // The exact budget completes, adopts the element and clears the frame.
+    let (mut c, mut owner, document) = captured_effect_owner();
+    start(&mut c, &mut owner, &document);
+    let spare =
+        limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+    c.charge(HtmlParseWorkCategory::StateStep, spare - needed)
         .unwrap();
+    let storage = owner.active_mut().unwrap();
     storage.drain_construction_effects(&mut c).unwrap();
     assert!(storage.effects.current.is_none());
+    assert_eq!(c.stop(), None);
+    assert_eq!(binding(&owner), DocumentRef::Captured(document));
+    // Release is itself charged work in the running state (the pops in
+    // construction/token_payload.rs release_token_attributes), so with no spare the first
+    // release is refused with a work stop. That latches the stop, after which
+    // terminal cleanup charges nothing (cleanup_owner and cleanup_release in
+    // construction/cleanup.rs and parser/control.rs) and the retry succeeds.
+    let refused = owner.release(&mut c).unwrap_err();
+    assert!(matches!(
+        refused,
+        SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            ..
+        })
+    ));
+    assert_eq!(
+        c.stop(),
+        Some(match refused {
+            SessionError::Stop(stop) => stop,
+            _ => unreachable!(),
+        })
+    );
     owner.release(&mut c).unwrap();
     storage_zero(&c);
+}
+
+/// Lookup work is the record visits the controller charged: every registry
+/// scan charges one per row it passes. Reservation growth charges provider
+/// calls and byte copies when a vector's capacity doubles, which depends on the
+/// current length and is not a lookup.
+fn lookup_work(c: &ParseControl) -> u64 {
+    c.usage().work(HtmlParseWorkCategory::RecordVisit)
+}
+
+/// Builds `unrelated` sibling subtrees, each retaining several payload rows,
+/// then returns the lookup work the parser spent on `element` alone: the
+/// difference between parsing the document with and without that element at
+/// the end. Everything outside the element cancels, so a difference between
+/// two `unrelated` counts is work the element's own lookups spent on payloads
+/// that are not its own.
+fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
+    // The element goes into a fresh container, so inserting it does not walk
+    // the unrelated siblings of that container's parent.
+    let prefix = format!("<body>{}<section>", "<i>t</i>".repeat(unrelated));
+    let measure = |source: &str| {
+        let request = request(source);
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let work = lookup_work(&c);
+        session.release(&mut c).unwrap();
+        work
+    };
+    measure(&format!("{prefix}{element}")) - measure(&prefix)
+}
+
+#[test]
+fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
+    // Each element exercises the payload lookups its kind performs while it is
+    // created, attributed and inserted: attribute containers, ids, the node's
+    // document binding, attribute values read by identity (nonce, href), and
+    // script/style/dialog/image/form/details/output metadata. Creation audits
+    // only the rows registered since the previous creation
+    // (`check_new_aliases`, construction/payload_registry.rs); the completed-freeze preflight
+    // and release still run the full `check_aliases`. Elements that walk the document
+    // in tree order (meta theme color, style with text) scale with tree nodes,
+    // not with payloads, and are not measured here.
+    let elements = [
+        "<div id=a class=b>x</div>",
+        "<script src=a id=b async></script>",
+        "<script src=a id=b nonce=c async></script>",
+        "<a id=h href=a>x</a>",
+        "<script id=b>x</script>",
+        "<dialog open id=e></dialog>",
+        "<img src=a id=f alt=g>",
+        "<a id=h>x</a>",
+        "<form id=i></form>",
+        "<textarea id=l>x</textarea>",
+        "<details id=o open><summary>s</summary></details>",
+        "<output id=r></output>",
+        "<input id=m name=a>",
+        "<select id=n><option>x</option></select>",
+        "<svg id=s><circle></circle></svg>",
+        "<link rel=stylesheet href=a>",
+        "<p>text<!--c--></p>",
+        "<table><tr><td>x</td></tr></table>",
+    ];
+    let mut failures = vec![];
+    for element in elements {
+        let small = lookup_work_of_element(8, element);
+        let large = lookup_work_of_element(32, element);
+        if small != large {
+            failures.push(format!(
+                "{element}: {small} with 8 unrelated, {large} with 32"
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "lookup work grew with unrelated payloads: {failures:#?}"
+    );
+}
+
+#[test]
+fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unrelated() {
+    // One call per lookup, on an element that has the payload, measured in a
+    // document with 8 and with 32 unrelated subtrees. They sit in one wrapper
+    // so the measured elements keep the same few siblings: tree-order parent
+    // and sibling walks scale with children, not with payloads.
+    let measure = |siblings: usize| -> Vec<(&'static str, u64)> {
+        let source = format!(
+            "<body><div>{}</div><script nonce=n src=a></script><style nonce=m></style><dialog></dialog>\
+             <img src=a><form id=f><input type=radio name=r></form>\
+             <select><option>x</option></select><div id=d></div>",
+            "<i>t</i>".repeat(siblings)
+        );
+        let request = request(&source);
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let script = named(&nodes, "script", 0).index;
+        let style = named(&nodes, "style", 0).index;
+        let img = named(&nodes, "img", 0).index;
+        let input = named(&nodes, "input", 0).index;
+        let select = named(&nodes, "select", 0).index;
+        let div = named(&nodes, "div", 0).index;
+        let storage = session.active_mut().unwrap();
+        let mut work = vec![];
+        let mut record = |name: &'static str, c: &ParseControl, before: u64| {
+            work.push((name, lookup_work(c) - before));
+        };
+        macro_rules! measured {
+            ($name:expr, $c:ident, $call:expr) => {{
+                let before = lookup_work(&$c);
+                $call.unwrap();
+                record($name, &$c, before);
+            }};
+        }
+        measured!(
+            "frozen attribute container",
+            c,
+            storage.element_attribute_container(&mut c, div)
+        );
+        measured!("node document", c, storage.node_document_ref(&mut c, div));
+        measured!(
+            "set node document",
+            c,
+            storage.set_node_document(&mut c, div, DocumentRef::Owned(0))
+        );
+        measured!(
+            "script metadata",
+            c,
+            script_metadata(&storage.payloads, &mut c, script)
+        );
+        measured!("nonce", c, storage.nonce_slot(&mut c, script));
+        measured!("style", c, storage.style_slot(&mut c, style));
+        // The association step reads the style's nonce row on its own.
+        measured!(
+            "association nonce",
+            c,
+            storage.association_nonce_present(&mut c, style)
+        );
+        measured!(
+            "image update",
+            c,
+            storage.start_img_update(
+                &mut c,
+                img,
+                surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false)
+            )
+        );
+        measured!(
+            "form association",
+            c,
+            find_form_association_state(&storage.payloads, &mut c, input)
+        );
+        measured!("radio input", c, storage.radio_input(&mut c, input));
+        measured!(
+            "select metadata",
+            c,
+            storage.select_metadata(&mut c, select)
+        );
+        session.release(&mut c).unwrap();
+        work
+    };
+    let small = measure(8);
+    let large = measure(32);
+    assert_eq!(small.len(), 11);
+    for ((name, small), (_, large)) in small.iter().zip(&large) {
+        assert_eq!(
+            small, large,
+            "{name} lookup work grew with unrelated payloads"
+        );
+    }
+}
+
+#[test]
+fn adopting_one_node_costs_the_same_lookup_work_however_many_payloads_are_unrelated() {
+    // Adoption looks up the node's document binding and its image state, among
+    // others. Both are keyed by the node, so the work must not depend on how
+    // many other payloads the document retains.
+    let measure = |siblings: usize| {
+        let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
+        let request = request(&source);
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let leaf = named(&nodes, "b", 0);
+        let payloads = session.active().unwrap().payloads.values.len() as u64;
+        let storage = session.active_mut().unwrap();
+        storage
+            .start_effect(
+                &mut c,
+                EffectFrame::AdoptSubtree {
+                    root: leaf.index,
+                    next: Some(leaf.index),
+                    document: DocumentRef::Owned(0),
+                },
+            )
+            .unwrap();
+        let before = lookup_work(&c);
+        storage.drain_construction_effects(&mut c).unwrap();
+        assert!(storage.effects.current.is_none());
+        let adoption = lookup_work(&c) - before;
+        session.release(&mut c).unwrap();
+        (payloads, adoption)
+    };
+    let (small_payloads, small) = measure(8);
+    let (medium_payloads, medium) = measure(16);
+    let (large_payloads, large) = measure(32);
+    assert!(small_payloads < medium_payloads && medium_payloads < large_payloads);
+    assert_eq!(
+        small, medium,
+        "{small_payloads} vs {medium_payloads} payloads"
+    );
+    assert_eq!(
+        medium, large,
+        "{medium_payloads} vs {large_payloads} payloads"
+    );
 }
 
 #[test]
@@ -1654,7 +2101,7 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
             2 * (mem::size_of::<Option<EffectFrame>>() as u64 + 1) + u64::from(after_provider);
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
+        c.charge(HtmlParseWorkCategory::StateStep, remaining - credit)
             .unwrap();
         let error = storage
             .start_effect(&mut c, EffectFrame::AppendClone { parent: 0, copy: 0 })
@@ -1671,5 +2118,220 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
         owner.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(first));
+    }
+}
+
+#[test]
+fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
+    use super::super::mutation::ManagedFamily;
+    let request = request("<body><i>a</i><i>b</i><dialog open id=e class=k data-x=y>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let dialog = named(&nodes, "dialog", 0);
+    // The row a front-to-back scan finds for each current attribute value,
+    // computed independently of the lookup under test.
+    let expected = |session: &ParserArenaSession| -> Vec<usize> {
+        let storage = session.active().unwrap();
+        let HtmlNodeKind::Element(element) =
+            storage.construction.node_at(dialog.index).unwrap().kind()
+        else {
+            panic!("dialog element")
+        };
+        element
+            .attributes()
+            .as_slice()
+            .iter()
+            .map(|attribute| {
+                storage
+                    .payloads
+                    .values
+                    .iter()
+                    .position(|row| {
+                        matches!(row, RetainedPayload::String { value, .. }
+                            if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units()))
+                    })
+                    .unwrap()
+            })
+            .collect()
+    };
+    let lookups = |session: &ParserArenaSession, c: &mut ParseControl, count: usize| {
+        let storage = session.active().unwrap();
+        (0..count)
+            .map(|position| {
+                let before = lookup_work(c);
+                let slot = storage
+                    .attribute_value_slot(c, dialog.index, position)
+                    .unwrap();
+                (slot, lookup_work(c) - before)
+            })
+            .collect::<Vec<_>>()
+    };
+    // As created: the hint is present and every lookup is a bounded hit.
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_some()
+    );
+    let found = lookups(&session, &mut c, 4);
+    assert_eq!(
+        found.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    assert!(found.iter().all(|(_, work)| *work <= 4), "{found:?}");
+    // A real attribute removal shifts the later attributes and drops the hint;
+    // the fallback scan still finds each remaining value's row.
+    session
+        .remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog)
+        .unwrap();
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_none()
+    );
+    let after = lookups(&session, &mut c, 3);
+    assert_eq!(
+        after.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    // Restoring the stale creation hint by hand cannot make a lookup return a
+    // row whose identity differs: every candidate is verified before use.
+    let stale = found[0].0 - 1;
+    session
+        .active_mut()
+        .unwrap()
+        .payloads
+        .record_attribute_strings(dialog.index, stale)
+        .unwrap();
+    let verified = lookups(&session, &mut c, 3);
+    assert_eq!(
+        verified.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
+    let request = request("<body><img src=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let img = named(&nodes, "img", 0).index;
+    let storage = session.active_mut().unwrap();
+    let good = storage.payloads.node_joins[img];
+    // A join past the registry names no row: the lookup reports a typed error.
+    *storage.payloads.node_joins[img].rows.get_mut(Join::Image) =
+        Some(joined_cell(u32::MAX as usize - 1).unwrap());
+    assert_eq!(
+        storage.start_img_update(
+            &mut c,
+            img,
+            surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false)
+        ),
+        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow
+        )))
+    );
+    // The invariant is latched as the controller's first stop.
+    assert_eq!(
+        c.stop(),
+        Some(HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow
+        ))
+    );
+    // A slot whose successor does not exist is refused, never wrapped.
+    assert_eq!(
+        joined_cell(u32::MAX as usize),
+        Err(SessionError::registry_row())
+    );
+    assert_eq!(joined_cell(usize::MAX), Err(SessionError::registry_row()));
+    storage.payloads.node_joins[img] = good;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    // The container row does not exist: the refusal comes after the edit began
+    // and its group was taken, and must give the group back and abort it.
+    let refused = storage.replace_attribute_storage(&mut c, div, usize::MAX / 2, 0, &mut None, &[]);
+    let invariant =
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow);
+    assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
+    assert_eq!(c.stop(), Some(invariant));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    let container = storage.element_attribute_container(&mut c, div).unwrap();
+    // Node 0 is the document, not an element: the edit cannot be about it.
+    let refused = storage.replace_attribute_storage(&mut c, 0, container, 0, &mut None, &[]);
+    // The edit's own begin refuses a document first; either way the refusal is
+    // an invariant stop and the container still holds its frozen attributes.
+    let Some(SessionError::Stop(stop @ HtmlParseStop::InternalInvariant(_))) = refused.err() else {
+        panic!("expected an invariant stop")
+    };
+    assert_eq!(c.stop(), Some(stop));
+    assert!(matches!(
+        storage.payloads.values.get(container),
+        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+            element: Some(owner),
+            ..
+        }))) if *owner == div
+    ));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+/// Script and completion metadata that effect work cannot find are named by
+/// the driver as the unsupported document states they stand for. The mapping
+/// latches no invariant on the way: these are outcomes of the document, not
+/// faults of the parser, so the whole parse ends as that unsupported state.
+/// The fault is raised by the last effect drain of an ordinary parse, which
+/// runs under the head stage that classifies it.
+#[test]
+fn script_and_completion_metadata_errors_from_effect_work_stop_the_parse_as_unsupported_states() {
+    use crate::parser::control::HtmlParseUnsupportedState as Unsupported;
+    let source = "<!doctype html><p>x</p>";
+    // Nothing is raised here: the armed position is never reached, and the
+    // drains that did run are counted.
+    super::fault_effect_drain(usize::MAX, SessionError::CompletionIncomplete);
+    request(source).parse().unwrap();
+    let (unreached, drains) = super::take_effect_fault();
+    assert_eq!(unreached, Some(SessionError::CompletionIncomplete));
+    assert!(drains > 0, "an ordinary parse runs effect drains");
+    for (error, expected) in [
+        (
+            SessionError::ScriptMetadataUnavailable,
+            Unsupported::ScriptDocument,
+        ),
+        (
+            SessionError::SvgScriptMetadataUnavailable,
+            Unsupported::ScriptDocument,
+        ),
+        (
+            SessionError::CompletionMetadataUnavailable,
+            Unsupported::Completion,
+        ),
+        (SessionError::CompletionIncomplete, Unsupported::Completion),
+    ] {
+        super::fault_effect_drain(drains - 1, error);
+        let failure = request(source).parse().err();
+        assert_eq!(super::take_effect_fault().0, None, "{error:?} was raised");
+        assert_eq!(
+            failure.and_then(|failure| failure.first_stop()),
+            Some(HtmlParseStop::UnsupportedStandaloneState(expected)),
+            "{error:?}"
+        );
     }
 }

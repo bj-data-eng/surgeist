@@ -6,6 +6,7 @@ use surgeist_css::property::CssPropertyGrammar;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_css::source::CssSourceSnapshot;
 use surgeist_cssom::*;
+use surgeist_html::values::{DocumentString, Namespace};
 
 fn flag() -> AtomicBool {
     AtomicBool::new(false)

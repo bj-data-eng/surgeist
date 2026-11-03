@@ -1,5 +1,13 @@
 use crate::semantics::support::{builder_with, context};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::token_declarations::HtmlIconSizeError,
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    elements::link::{HtmlRelEffect, HtmlRelKeyword},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
@@ -708,10 +716,12 @@ fn media_missing_and_unsupported_are_conditional_and_local_empty_ascii_whitespac
             )])
             .unwrap();
         let declarations = collection(&r);
-        assert!(matches!(
+        // Only a match attestation was supplied, not the grammar parse, so the
+        // missing evidence is the media grammar of the candidate itself.
+        assert_eq!(
             declarations.candidates()[0].media_rules().grammar(),
-            HtmlMediaGrammarEvidence::Missing(_)
-        ));
+            &HtmlMediaGrammarEvidence::Missing(HtmlSemanticMissing::MediaGrammar(subject.clone()))
+        );
         let expected = expected(Some(media));
         let obs = observations(declarations, &expected, &[HtmlIconSuitability::Suitable]);
         let input = HtmlDocumentIconInput::new(

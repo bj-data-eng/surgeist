@@ -4,6 +4,7 @@ use crate::parsed_installation::{
     DomParsedHtmlAssociationDocument, DomParsedHtmlAssociationId, DomParsedHtmlBinding,
     DomParsedHtmlCapturedBinding, DomParsedHtmlPendingAssociations,
 };
+
 use surgeist_html_parser::HtmlParseReport;
 mod consume;
 pub(in crate::store) mod control;

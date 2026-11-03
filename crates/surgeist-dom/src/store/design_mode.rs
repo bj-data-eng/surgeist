@@ -2,8 +2,11 @@
 use super::*;
 use crate::{DomDesignModeRangeDisposition, DomSourceDesignModeStep};
 use surgeist_html::{
-    HtmlDesignModeAction as Action, HtmlDesignModeCursor, HtmlDesignModeInput,
-    HtmlDesignModeReply as Reply, HtmlFocusingCursor, HtmlFocusingFallback,
+    elements::native::{
+        HtmlDesignModeAction as Action, HtmlDesignModeCursor, HtmlDesignModeInput,
+        HtmlDesignModeReply as Reply,
+    },
+    focus::{HtmlFocusingCursor, HtmlFocusingFallback},
 };
 
 #[derive(Clone, Copy)]
@@ -160,7 +163,7 @@ impl Draft {
                     // The actual document element is the original target. Both
                     // fallback and trigger are omitted. No native eligibility
                     // producer exists yet (#433); no Dialog predicate applies.
-                    if called.action() != surgeist_html::HtmlFocusingAction::Complete {
+                    if called.action() != surgeist_html::focus::HtmlFocusingAction::Complete {
                         return Err(DomError::DesignModeProcessingUnavailable {
                             step: DomSourceDesignModeStep::Focusing(called.action()),
                         });

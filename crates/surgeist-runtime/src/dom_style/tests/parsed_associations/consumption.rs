@@ -686,7 +686,7 @@ fn completing_original_meta_keeps_a_real_later_shadow_style_contribution_guarded
             ),
             context,
             parsing(),
-            surgeist_html::HtmlParserScriptingMode::Inert,
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
             true,
         )
         .unwrap()

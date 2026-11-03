@@ -44,7 +44,7 @@ fn selected_end(
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -54,6 +54,7 @@ fn selected_end(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(
@@ -451,8 +452,10 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         .unwrap()
         .handle();
     let allocation = AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: -TEXT_ADVANCE,
+            normal_border_inline_size: 0.0,
             before_baseline: 0.0,
             after_baseline: 0.0,
             occupied_start: 0.0,
@@ -467,6 +470,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(
@@ -508,7 +512,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
                 .map(|(occurrence, advance)| ControlAllocation {
                     occurrence,
                     strut: None,
-                    boundary: Some(InlineBoundaryAllocation::try_new(advance).unwrap()),
+                    boundary: Some(InlineBoundaryAllocation::contribution(advance).unwrap()),
                 })
                 .collect(),
             line_box_struts: vec![],
@@ -592,7 +596,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
             .request()
             .controls
             .iter()
-            .map(|control| control.boundary.unwrap().advance())
+            .map(|control| control.boundary.as_ref().unwrap().advance())
             .collect::<Vec<_>>(),
         [EPSILON, 0.0]
     );

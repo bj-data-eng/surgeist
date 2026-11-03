@@ -1,7 +1,10 @@
 //! HTML877d native Button association, explicit weak reflection and query oracles.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlFormMethod, HtmlNativeFormAssociationKind, HtmlValueInterpreter};
+use surgeist_html::{
+    attributes::HtmlFormMethod, elements::form::HtmlNativeFormAssociationKind,
+    values::HtmlValueInterpreter,
+};
 use surgeist_html_semantics::*;
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

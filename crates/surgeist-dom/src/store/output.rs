@@ -1,6 +1,6 @@
 //! Output adapts the HTML ordered cursor to the one canonical Draft.
 use super::*;
-use surgeist_html::{
+use surgeist_html::elements::form::{
     HtmlOutputAction as Action, HtmlOutputCursor, HtmlOutputDefaultSource, HtmlOutputOperation,
 };
 
@@ -123,7 +123,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(DocumentString, Option<source::checkpoint::Charge>), DomError> {
         let state = self.output_state(key)?;
-        if surgeist_html::output_default_source(state.default_override.is_some())
+        if surgeist_html::elements::form::output_default_source(state.default_override.is_some())
             == HtmlOutputDefaultSource::Override
         {
             return source::formation::shared_string(
@@ -412,7 +412,11 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let output = batch.create_element_ns(&document, crate::Namespace::html(), "output");
+        let output = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "output",
+        );
         let first = batch.create_text(&document, "ab");
         let second = batch.create_text(&document, "cd");
         batch.insert_before(&first, &output, None);
@@ -466,9 +470,10 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
-            let form = b.create_element_ns(&d, crate::Namespace::html(), "form");
-            let output = b.create_element_ns(&d, crate::Namespace::html(), "output");
-            let input = b.create_element_ns(&d, crate::Namespace::html(), "input");
+            let form = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "form");
+            let output =
+                b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "output");
+            let input = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "input");
             b.insert_before(&form, &d, None);
             b.insert_before(&output, &form, None);
             b.insert_before(&input, &output, None);
@@ -596,8 +601,9 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
-            let form = b.create_element_ns(&d, crate::Namespace::html(), "form");
-            let output = b.create_element_ns(&d, crate::Namespace::html(), "output");
+            let form = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "form");
+            let output =
+                b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "output");
             b.insert_before(&form, &d, None);
             b.insert_before(&output, &form, None);
             b.set_output_default_value(&output, "default");

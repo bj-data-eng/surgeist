@@ -1,14 +1,26 @@
 //! Generic HTML §5.2 microdata over one qualified immutable ordinary tree.
 //! External URL/vocabulary observations are supplied facts, never URL guesses.
 use super::*;
-use crate::{HtmlCaptureDocumentId, HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
+use crate::HtmlCaptureDocumentId;
+use surgeist_html::attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
+use surgeist_html::{
+    values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
+    vocabulary::KnownHtmlElement,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        attributes::microdata::HtmlMicrodataTokenKind,
+        construction::HtmlDocumentMode,
+        values::{Attribute, HtmlValueInterpreter, OrderedAttributes},
+        vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+    };
+
     use crate::{
         HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-        HtmlDocumentMode, HtmlScriptingStatus, OrderedAttributes,
+        HtmlScriptingStatus,
     };
 
     #[derive(Clone, Copy, Eq, PartialEq)]
@@ -176,7 +188,8 @@ mod tests {
                 &c,
                 &cx,
                 HtmlValueInterpreter::new(1),
-                HtmlSemanticLimits::new(work, 0, 0, 0, 1000, 1),
+                // The first token's reservation targets the minimum amortized capacity, 4 slots.
+                HtmlSemanticLimits::new(work, 0, 0, 0, 1000, 4),
                 HtmlSemanticCancellation::new(),
             )
             .unwrap();
@@ -318,7 +331,12 @@ impl<'a> HtmlSemanticSession<'a> {
         let name = md_or(defined, md_or(url_name, untyped));
         let value_kind = match permission.and_then(|p| p.takes_url) {
             Some(true) => {
-                let e = self.md_element(id)?.expect("property");
+                // The checked subject is an HTML property element, found as
+                // one when it was crawled; anything else is an inconsistent
+                // internal request.
+                let Some(e) = self.md_element(id)? else {
+                    return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                };
                 let role = self.known(e)?;
                 self.md_boolean(Some(property_url_source(role).is_some()), token, id)
             }
@@ -499,7 +517,11 @@ impl<'a> HtmlSemanticSession<'a> {
         self.admit_intrinsic(e, scope_raw, 1)?;
         let scope_report = self
             .interpreter
-            .boolean_attribute(crate::HtmlBooleanAttribute::Itemscope, e.name(), scope_raw)
+            .boolean_attribute(
+                surgeist_html::attributes::HtmlBooleanAttribute::Itemscope,
+                e.name(),
+                scope_raw,
+            )
             .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         let itemscope_author = scope_report.author();
@@ -575,23 +597,48 @@ impl<'a> HtmlSemanticSession<'a> {
         if !refs.tokens().is_empty() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    for (i, t) in refs.tokens().iter().enumerate() {
-                        self.charge(1)?;
-                        let raw = refs.raw().expect("token raw");
-                        references = md_and(
-                            references,
-                            match self.md_find_id(&root, &raw.code_units()[t.start()..t.end()])? {
-                                HtmlSemanticValue::Known(Some(_)) => {
-                                    HtmlMicrodataCondition::Satisfied
-                                }
-                                HtmlSemanticValue::Known(None) => {
-                                    HtmlMicrodataCondition::Violated(i)
-                                }
-                                HtmlSemanticValue::Missing(m) => HtmlMicrodataCondition::Missing(m),
-                                _ => unreachable!("ID domain"),
-                            },
-                        );
-                    }
+                    // One pass over the tree's IDs answers every token, in
+                    // place of one scan of the tree per token. The pass is
+                    // charged before the first token, so a query whose tokens
+                    // match early can reach a work or scratch limit sooner.
+                    let index = self.md_id_index(&root)?;
+                    let checked = (|| {
+                        let mut references = references;
+                        for (i, t) in refs.tokens().iter().enumerate() {
+                            self.charge(1)?;
+                            // Tokens exist only in a present attribute; anything
+                            // else is an inconsistent internal report, refused
+                            // as an unavailable intrinsic result.
+                            let Some(raw) = refs.raw() else {
+                                return Err(
+                                    self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                );
+                            };
+                            let found =
+                                self.md_lookup_id(&index, &raw.code_units()[t.start()..t.end()])?;
+                            references = md_and(
+                                references,
+                                match found {
+                                    HtmlSemanticValue::Known(Some(_)) => {
+                                        HtmlMicrodataCondition::Satisfied
+                                    }
+                                    HtmlSemanticValue::Known(None) => {
+                                        HtmlMicrodataCondition::Violated(i)
+                                    }
+                                    HtmlSemanticValue::Missing(m) => {
+                                        HtmlMicrodataCondition::Missing(m)
+                                    }
+                                    _ => {
+                                        return Err(self
+                                            .stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                                    }
+                                },
+                            );
+                        }
+                        Ok(references)
+                    })();
+                    self.md_release_id_index(&index);
+                    references = checked?;
                 }
                 Err(m) => references = HtmlMicrodataCondition::Missing(m),
             }
@@ -616,7 +663,12 @@ impl<'a> HtmlSemanticSession<'a> {
                                 continue;
                             }
                             received = true;
-                            let re = self.md_element(receiver)?.expect("receiver item");
+                            // A receiver is a graph item, an HTML element.
+                            let Some(re) = self.md_element(receiver)? else {
+                                return Err(
+                                    self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                );
+                            };
                             let own = self.md_tokens(re, HtmlMicrodataTokenKind::ItemType)?;
                             let inherited = own.tokens().is_empty();
                             let context = self.md_type_context(
@@ -654,7 +706,13 @@ impl<'a> HtmlSemanticSession<'a> {
                                         }
                                     } else {
                                         for path in paths {
-                                            let origin = path.items.last().expect("type origin");
+                                            // Every type path holds at least its
+                                            // subject, so it is never empty.
+                                            let Some(origin) = path.items.last() else {
+                                                return Err(self.stop(
+                                                    HtmlSemanticFailureKind::IntrinsicUnavailable,
+                                                ));
+                                            };
                                             for (i, t) in names.tokens().iter().enumerate() {
                                                 self.charge(1)?;
                                                 if t.duplicate_of().is_some() {
@@ -678,7 +736,11 @@ impl<'a> HtmlSemanticSession<'a> {
                                 HtmlSemanticValue::Missing(m) => {
                                     missing.get_or_insert(m);
                                 }
-                                _ => unreachable!("context paths"),
+                                _ => {
+                                    return Err(
+                                        self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                                    );
+                                }
                             }
                         }
                         let contribution = if received {
@@ -788,7 +850,7 @@ impl HtmlMicrodataRawBinding {
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Err(HtmlMicrodataFactsError::WrongRole);
         };
-        if element.name().namespace() != &crate::Namespace::html() {
+        if element.name().namespace() != &surgeist_html::values::Namespace::html() {
             return Err(HtmlMicrodataFactsError::WrongRole);
         }
         let raw = element
@@ -1057,7 +1119,7 @@ impl HtmlMicrodataPropertyFact {
             let HtmlCapturedNodeKind::Element(e) = node.kind() else {
                 return Err(HtmlMicrodataFactsError::WrongRole);
             };
-            if e.name().namespace() != &crate::Namespace::html()
+            if e.name().namespace() != &surgeist_html::values::Namespace::html()
                 || !e.attributes().iter().any(|a| {
                     a.name().namespace().uri().is_none()
                         && a.name()
@@ -1357,7 +1419,7 @@ impl HtmlMicrodataReceiverCheck {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataAuthor {
     itemscope: Option<Attribute>,
-    itemscope_author: crate::HtmlAttributeAuthorState,
+    itemscope_author: surgeist_html::attributes::HtmlAttributeAuthorState,
     itemid: Option<Attribute>,
     types: HtmlMicrodataTokenReport,
     names: HtmlMicrodataTokenReport,
@@ -1378,7 +1440,7 @@ impl HtmlMicrodataAuthor {
     pub fn itemscope(&self) -> Option<&Attribute> {
         self.itemscope.as_ref()
     }
-    pub fn itemscope_author(&self) -> crate::HtmlAttributeAuthorState {
+    pub fn itemscope_author(&self) -> surgeist_html::attributes::HtmlAttributeAuthorState {
         self.itemscope_author
     }
     pub fn itemid(&self) -> Option<&Attribute> {
@@ -1609,14 +1671,21 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             )?
             .map(Attribute::value);
-        use crate::bounded::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation};
+        use surgeist_html::bounded::microdata::{
+            HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation,
+        };
         let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
-        while let Some(action) = owner
-            .as_mut()
-            .expect("retained owner")
-            .next_action()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
-        {
+        loop {
+            // Only `try_finish` below takes the owner, so it is retained here.
+            let Some(active) = owner.as_mut() else {
+                return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+            };
+            let Some(action) = active
+                .next_action()
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+            else {
+                break;
+            };
             let step = action.advance(self).map_err(|error| match error {
                 HtmlMicrodataTokenActionError::Admission(error) => error,
                 HtmlMicrodataTokenActionError::Protocol(_) => {
@@ -1624,7 +1693,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
             })?;
             #[cfg(test)]
-            if step == crate::bounded::HtmlMicrodataTokenStep::TokenCommitted {
+            if step == surgeist_html::bounded::microdata::HtmlMicrodataTokenStep::TokenCommitted {
                 tests::cancel_after_commit(tests::CancellationStage::Token, self.usage());
             }
             #[cfg(not(test))]
@@ -2392,7 +2461,10 @@ impl<'a> HtmlSemanticSession<'a> {
                     let types = if current == subject {
                         None
                     } else {
-                        let e = self.md_element(&items[current])?.expect("graph item");
+                        // Graph items are HTML elements (see `md_graph`).
+                        let Some(e) = self.md_element(&items[current])? else {
+                            return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                        };
                         Some(self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?)
                     };
                     let types = types.as_ref().unwrap_or(&own);
@@ -2405,7 +2477,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         // Reconstruct token evidence through its controlled owner,
                         // rather than cloning the variable token vector.
-                        let e = self.md_element(&items[current])?.expect("typed item");
+                        let Some(e) = self.md_element(&items[current])? else {
+                            return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                        };
                         let types = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
                         self.reserve_nested_output(&mut paths, 1)?;
                         self.charge(1)?;
@@ -2536,7 +2610,10 @@ impl<'a> HtmlSemanticSession<'a> {
             None => {
                 let mut rows = Vec::new();
                 for id in crawl.elements {
-                    let e = self.md_element(&id)?.expect("qualified property");
+                    // Crawled properties are HTML elements (see `md_crawl`).
+                    let Some(e) = self.md_element(&id)? else {
+                        return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                    };
                     let names = self.md_tokens(e, HtmlMicrodataTokenKind::ItemProp)?;
                     let value = self.md_property_value(&id, e)?;
                     self.reserve_nested_output(&mut rows, 1)?;
@@ -2564,20 +2641,21 @@ impl<'a> HtmlSemanticSession<'a> {
     }
 }
 
-impl crate::bounded::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
+impl surgeist_html::bounded::microdata::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
     type Error = HtmlSemanticFailure;
     fn work(&mut self, units: usize) -> Result<(), Self::Error> {
         self.charge(units)
     }
     fn reserve(
         &mut self,
-        reservation: &mut crate::bounded::HtmlMicrodataTokenReservation<'_>,
+        reservation: &mut surgeist_html::bounded::microdata::HtmlMicrodataTokenReservation<'_>,
     ) -> Result<(), Self::Error> {
+        let target = reservation.target_capacity();
         self.reserve_record_capacity(
             reservation.len(),
             reservation.capacity(),
             reservation.record_size(),
-            1,
+            target.saturating_sub(reservation.len()),
             HtmlSemanticResource::NestedOutputRecords,
             || {
                 reservation.try_reserve().map_err(|_| ())?;

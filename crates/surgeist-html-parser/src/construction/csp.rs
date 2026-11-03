@@ -1,10 +1,11 @@
 //! Ordinary-driver-owned Meta CSP service obligations and retained policy values.
 use super::*;
-use crate::meta_csp::{Account, Outcome, Service, Storage};
-use surgeist_html::{
+use crate::meta_csp::{Account, Caller, Outcome, Service, Storage};
+use surgeist_html::security::csp::{
     HtmlCspAssociation, HtmlCspOwner, HtmlCspPolicyId, HtmlCspPolicyRevision, HtmlMetaCspPrepared,
     HtmlMetaCspReceipt, HtmlMetaCspRequest,
 };
+use surgeist_html::values::DocumentString;
 
 pub(super) struct Policy {
     pub value: Option<HtmlCspAssociation>,
@@ -34,10 +35,13 @@ pub(super) struct State {
     initial: Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>,
     owner_usage: Storage,
 }
-fn protocol(c: &mut ParseControl, e: surgeist_html::HtmlCspError<ParseStop>) -> SessionError {
+fn protocol(
+    c: &mut ParseControl,
+    e: surgeist_html::security::csp::HtmlCspError<HtmlParseStop>,
+) -> SessionError {
     match e {
-        surgeist_html::HtmlCspError::Interrupted(s) => s.into(),
-        surgeist_html::HtmlCspError::Protocol(p) => {
+        surgeist_html::security::csp::HtmlCspError::Interrupted(s) => s.into(),
+        surgeist_html::security::csp::HtmlCspError::Protocol(p) => {
             c.csp_protocol_stop(p);
             SessionError::CspProtocol(p)
         }
@@ -55,10 +59,10 @@ fn native_storage(
     };
     let next = account.live.add(s).ok_or(SessionError::WrongToken)?;
     for (category, credits) in [
-        (WorkCategory::ReserveByte, bytes as u64),
-        (WorkCategory::CopyByte, bytes as u64),
-        (WorkCategory::RecordWrite, 1),
-        (WorkCategory::ProviderCall, 2),
+        (HtmlParseWorkCategory::ReserveByte, bytes as u64),
+        (HtmlParseWorkCategory::CopyByte, bytes as u64),
+        (HtmlParseWorkCategory::RecordWrite, 1),
+        (HtmlParseWorkCategory::ProviderCall, 2),
     ] {
         c.charge(category, credits)?;
     }
@@ -77,23 +81,44 @@ impl SessionStorage {
         f: impl FnOnce(&mut Self, &mut ParseControl, &mut State) -> Result<T, SessionError>,
     ) -> Result<T, SessionError> {
         let slot = self.csp_slot().ok_or(SessionError::WrongToken)?;
-        let RetainedPayload::CspState(value) = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let RetainedPayload::CspState(value) = self.payloads.row_mut(c, slot)? else {
+            return Err(latch_registry_row(c));
         };
         let mut value = value.take().ok_or(SessionError::WrongToken)?;
         let result = f(self, c, &mut value);
-        value.account.settle(c);
+        let settled = value.account.settle(c);
+        let result = match (result, settled) {
+            (Ok(out), Ok(())) => Ok(out),
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(stop)) => Err(stop.into()),
+        };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
+        // A row the closure replaced is a fault of the parser's own, found
+        // below, and is not an account to reconcile.
+        let row_kept = matches!(
+            self.payloads.values.get(slot),
+            Some(RetainedPayload::CspState(_))
+        );
         let result = result.and_then(|out| {
-            self.reconcile_csp(c, &mut value)?;
+            if row_kept {
+                self.reconcile_csp(c, &mut value)?;
+            }
             Ok(out)
         });
-        let RetainedPayload::CspState(original) = &mut self.payloads.values[slot] else {
-            unreachable!()
-        };
-        *original = Some(value);
-        result
+        match self.payloads.values.get_mut(slot) {
+            Some(RetainedPayload::CspState(original)) => {
+                *original = Some(value);
+                result
+            }
+            _ => {
+                // The state has no row left to return to: credit what it
+                // retained, as the registry's own release would have.
+                let invariant = latch_registry_row(c);
+                let _ = value.account.live.release(c);
+                Err(invariant)
+            }
+        }
     }
     fn reconcile_csp(&self, c: &mut ParseControl, state: &mut State) -> Result<(), SessionError> {
         let mut live = state
@@ -105,7 +130,7 @@ impl SessionStorage {
             })
             .ok_or(SessionError::WrongToken)?;
         for row in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let usage = match row {
                 RetainedPayload::CspPolicy(v) => {
                     let mut usage = Storage {
@@ -181,13 +206,15 @@ impl SessionStorage {
                 })
                 .ok_or(SessionError::WrongToken)?;
         }
+        // The account holds less than the graph the policies retain only if
+        // the processor released storage it never held.
         let retired = state
             .account
             .live
             .sub(live)
-            .ok_or(SessionError::WrongToken)?;
-        retired.release(c);
-        state.account.live = live;
+            .ok_or_else(|| crate::meta_csp::accounting_violation(c))?;
+        retired.release(c)?;
+        state.account.rebaseline(live);
         Ok(())
     }
     pub(super) fn csp_policy(
@@ -198,8 +225,8 @@ impl SessionStorage {
         let Some(index) = self.csp_policy_slot(c, document)? else {
             return Ok(None);
         };
-        let RetainedPayload::CspPolicy(value) = &self.payloads.values[index] else {
-            unreachable!("qualified CSP policy")
+        let RetainedPayload::CspPolicy(value) = self.payloads.row(c, index)? else {
+            return Err(latch_registry_row(c));
         };
         Ok(value.value.as_ref())
     }
@@ -209,7 +236,7 @@ impl SessionStorage {
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
         for row in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Document {
                 node: Some(node),
                 meta,
@@ -222,8 +249,14 @@ impl SessionStorage {
         }
         Ok(None)
     }
-    pub(super) fn csp_pending(&self) -> bool {
-        self.csp_slot().is_some_and(|slot|matches!(&self.payloads.values[slot],RetainedPayload::CspState(Some(v))if v.pending.is_some()))
+    pub(super) fn csp_pending(&self, c: &mut ParseControl) -> Result<bool, SessionError> {
+        let Some(slot) = self.csp_slot() else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            self.payloads.row(c, slot)?,
+            RetainedPayload::CspState(Some(state)) if state.pending.is_some()
+        ))
     }
     pub(super) fn ensure_csp_policy(
         &mut self,
@@ -238,25 +271,28 @@ impl SessionStorage {
                 .owner
                 .as_mut()
                 .ok_or(SessionError::WrongToken)?
-                .initial_document_with(&mut |a| state.account.admit(c, a))
+                .initial_document_with(&mut |a| state.account.admit(c, a, Caller::Parser))
                 .map_err(|e| protocol(c, e))?;
-            state.account.settle(c);
+            state.account.settle(c)?;
             if document == 0 {
                 payload_write::<Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>>(c, 1)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 state.initial = Some((
                     association.policy().id().clone(),
                     association.policy().revision(),
                 ));
             }
-            this.prepare_payload_slot_owned(c)?;
+            let prepared = this.prepare_payload_slot_owned(c)?;
             native_storage(c, &mut state.account, size_of::<Policy>())?;
-            let index = this.payloads.values.len();
-            this.payloads
-                .values
-                .push(RetainedPayload::CspPolicy(Box::new(Policy {
-                    value: Some(association),
-                })));
+            let index = this
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::CspPolicy(Box::new(Policy {
+                        value: Some(association),
+                    })),
+                )
+                .map_err(|_| latch_registry_row(c))?;
             let doc = this.document_slot(c, document)?;
             payload_write::<Option<usize>>(
                 c,
@@ -266,9 +302,13 @@ impl SessionStorage {
                     1
                 },
             )?;
-            this.meta_history_mut(doc).csp = Some(index);
+            this.meta_history_mut(doc)
+                .map_err(|_| latch_registry_row(c))?
+                .csp = Some(index);
             if state.initial_base && document == 0 {
-                this.meta_history_mut(doc).base_csp = Some(index);
+                this.meta_history_mut(doc)
+                    .map_err(|_| latch_registry_row(c))?
+                    .base_csp = Some(index);
             }
             Ok(())
         })
@@ -330,8 +370,8 @@ impl SessionStorage {
         let Some(index) = self.csp_slot() else {
             return Ok(true);
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::CspState(Some(state)) = &self.payloads.values[index] else {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let RetainedPayload::CspState(Some(state)) = self.payloads.row(c, index)? else {
             return Err(SessionError::WrongToken);
         };
         Ok(state.initial_base
@@ -354,23 +394,27 @@ impl ParserArenaSession {
         if s.csp_slot().is_some() {
             return Err(SessionError::WrongToken);
         }
-        s.prepare_payload_slot_owned(c)?;
+        let prepared = s.prepare_payload_slot_owned(c)?;
         let mut account = Account::default();
         payload_write::<Option<usize>>(c, 1)?;
         native_storage(c, &mut account, size_of::<State>())?;
-        s.csp_slot = Some(s.payloads.values.len());
-        s.payloads
-            .values
-            .push(RetainedPayload::CspState(Some(Box::new(State {
-                owner: None,
-                account,
-                pending: None,
-                initial_base,
-                initial: None,
-                owner_usage: Storage::ZERO,
-            }))));
+        let state_slot = s
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::CspState(Some(Box::new(State {
+                    owner: None,
+                    account,
+                    pending: None,
+                    initial_base,
+                    initial: None,
+                    owner_usage: Storage::ZERO,
+                }))),
+            )
+            .map_err(|_| latch_registry_row(c))?;
+        s.csp_slot = Some(state_slot);
         s.with_csp(c, |_, c, state| {
-            let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a))
+            let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a, Caller::Parser))
                 .map_err(|e| protocol(c, e))?;
             state.owner_usage = state.account.last;
             state.owner = Some(owner);
@@ -401,7 +445,7 @@ impl SessionStorage {
                     .map_err(|_| SessionError::WrongToken)?;
                 let storage = Storage::from(layout.storage());
                 c.charge(
-                    WorkCategory::ProviderCall,
+                    HtmlParseWorkCategory::ProviderCall,
                     layout
                         .disposal()
                         .work_credits()
@@ -437,7 +481,7 @@ impl SessionStorage {
                         &current,
                         profile,
                         pending.content.clone(),
-                        &mut |a| state.account.admit(c, a),
+                        &mut |a| state.account.admit(c, a, Caller::Parser),
                     )
                     .map_err(|e| protocol(c, e.error))?;
                 let prepared = match service.call(c, &mut state.account, &request)? {
@@ -447,20 +491,23 @@ impl SessionStorage {
                             c,
                             pending.document,
                             pending.subject,
-                            meta::MetaMissingKind::CspProcessing(reason),
+                            meta::HtmlParseMetaMissingKind::CspProcessing(reason),
                         )?;
                         return Ok(());
                     }
                     Outcome::Terminal => return Err(SessionError::CspService),
                 };
                 // All receivers and payload backing precede the policy fence.
-                s.prepare_payload_slot_owned(c)?;
+                let admission = s.prepare_payload_slot_owned(c)?;
                 native_storage(c, &mut state.account, size_of::<Policy>())?;
-                let next_slot = s.payloads.values.len();
-                s.payloads
-                    .values
-                    .push(RetainedPayload::CspPolicy(Box::new(Policy { value: None })));
-                s.prepare_payload_slot_owned(c)?;
+                let next_slot = s
+                    .payloads
+                    .push_row(
+                        admission,
+                        RetainedPayload::CspPolicy(Box::new(Policy { value: None })),
+                    )
+                    .map_err(|_| latch_registry_row(c))?;
+                let admission = s.prepare_payload_slot_owned(c)?;
                 native_storage(c, &mut state.account, size_of::<Transition>())?;
                 let transition_cause = pending
                     .cause
@@ -472,15 +519,18 @@ impl SessionStorage {
                             .copy_cause_ref(c, cause)
                     })
                     .transpose()?;
-                let transition_slot = s.payloads.values.len();
-                s.payloads
-                    .values
-                    .push(RetainedPayload::CspTransition(Box::new(Transition {
-                        value: None,
-                        _cause: transition_cause,
-                        _document: pending.document,
-                        _subject: pending.subject,
-                    })));
+                let transition_slot = s
+                    .payloads
+                    .push_row(
+                        admission,
+                        RetainedPayload::CspTransition(Box::new(Transition {
+                            value: None,
+                            _cause: transition_cause,
+                            _document: pending.document,
+                            _subject: pending.subject,
+                        })),
+                    )
+                    .map_err(|_| latch_registry_row(c))?;
                 let doc = s.document_slot(c, pending.document)?;
                 payload_write::<Option<usize>>(c, 1)?;
                 let publication = state
@@ -488,20 +538,23 @@ impl SessionStorage {
                     .as_mut()
                     .ok_or(SessionError::WrongToken)?
                     .prepare_publication_with(&mut current, request, prepared, &mut |a| {
-                        state.account.admit(c, a)
+                        state.account.admit(c, a, Caller::Parser)
                     })
                     .map_err(|e| protocol(c, e.error))?;
                 let completion = publication.publish();
-                let RetainedPayload::CspPolicy(value) = &mut s.payloads.values[next_slot] else {
-                    unreachable!()
+                let RetainedPayload::CspPolicy(value) = s.payloads.row_mut(c, next_slot)? else {
+                    return Err(latch_registry_row(c));
                 };
                 value.value = Some(current);
-                let RetainedPayload::CspTransition(value) = &mut s.payloads.values[transition_slot]
+                let RetainedPayload::CspTransition(value) =
+                    s.payloads.row_mut(c, transition_slot)?
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 value.value = Some(completion.into_parts());
-                s.meta_history_mut(doc).csp = Some(next_slot);
+                s.meta_history_mut(doc)
+                    .map_err(|_| latch_registry_row(c))?
+                    .csp = Some(next_slot);
                 let _ = current_slot;
                 Ok(())
             })();
@@ -510,5 +563,184 @@ impl SessionStorage {
             }
             result
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::construction::effects::tests::{graph, request};
+    use crate::construction::tests::storage_zero;
+    use surgeist_html::security::csp::HtmlCspOwner;
+
+    #[test]
+    fn a_meta_csp_state_row_replaced_during_its_use_reports_the_registry_row() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        let prepared = storage.prepare_payload_slot_owned(&mut c).unwrap();
+        let mut account = Account::default();
+        native_storage(&mut c, &mut account, size_of::<State>()).unwrap();
+        let slot = storage
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::CspState(Some(Box::new(State {
+                    owner: None,
+                    account,
+                    pending: None,
+                    initial_base: false,
+                    initial: None,
+                    owner_usage: Storage::ZERO,
+                }))),
+            )
+            .unwrap();
+        storage.csp_slot = Some(slot);
+        let result = storage.with_csp(&mut c, |this, _, _| {
+            this.payloads.values[slot] =
+                RetainedPayload::CspPolicy(Box::new(Policy { value: None }));
+            Ok(())
+        });
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant));
+        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn a_pending_query_with_a_state_slot_past_the_registry_reports_the_registry_row() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        assert_eq!(storage.csp_pending(&mut c), Ok(false));
+        storage.csp_slot = Some(storage.payloads.values.len());
+        let result = storage.csp_pending(&mut c);
+        let invariant = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant));
+        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    /// The stop for an owner call that the account cannot cover, with the
+    /// account an association was admitted to replaced by an empty one.
+    fn uncovered_owner_call() -> Option<HtmlParseStop> {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        // An account that never held the association cannot be asked to
+        // transfer its storage into the request.
+        let mut short = Account::default();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Parser),
+        );
+        assert!(refused.is_err());
+        c.stop()
+    }
+
+    /// An owner call the parser itself makes, that its own account cannot
+    /// cover, disagrees with what the parser charged. The processor is not
+    /// involved, so it is not a failed processing.
+    #[test]
+    fn an_owner_call_the_parser_account_cannot_cover_is_a_capacity_mismatch() {
+        assert_eq!(
+            uncovered_owner_call(),
+            Some(HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::CapacityMismatch
+            ))
+        );
+    }
+
+    /// The same call made through the processor's admission callback is the
+    /// processor's accounting failing.
+    #[test]
+    fn a_processor_call_the_account_cannot_cover_is_a_failed_processing() {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        let mut short = Account::default();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Processor),
+        );
+        assert!(refused.is_err());
+        assert_eq!(c.stop(), Some(HtmlParseStop::CspProcessing));
+    }
+
+    /// Once the processor has admitted or released through the account, a gap
+    /// that the parser's next owner call finds is the processor's: the account
+    /// differs from the graph only by what the processor did.
+    #[test]
+    fn a_parser_call_after_the_processor_touched_the_account_fails_the_processing() {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        let mut short = Account::default();
+        short
+            .admit(
+                &mut c,
+                surgeist_html::security::csp::HtmlCspLayout::processing(
+                    0,
+                    surgeist_html::security::csp::HtmlCspStorage::default(),
+                    surgeist_html::security::csp::HtmlCspDisposalWork::default(),
+                    0,
+                )
+                .unwrap(),
+                Caller::Processor,
+            )
+            .unwrap();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Parser),
+        );
+        assert!(refused.is_err());
+        assert_eq!(c.stop(), Some(HtmlParseStop::CspProcessing));
     }
 }

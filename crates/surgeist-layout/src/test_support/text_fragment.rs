@@ -18,12 +18,15 @@ pub(crate) fn fragment_for(
         crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
             Vec::new(),
             &[],
+            false,
         )
         .unwrap()
         .freeze(),
+        Default::default(),
     );
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,

@@ -29,7 +29,8 @@ fn boundary<S: LayoutScalar>(
         )
         .unwrap(),
         InlineControlAlignment::Baseline,
-        InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
+        InlineBoundaryEdgeOf::try_new(S::ZERO, n(border), n(padding)).unwrap(),
+        None,
     )
 }
 fn input<S: LayoutScalar>(
@@ -389,11 +390,12 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         tree.insert_input(
             control.source_index() as u32,
             crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::new(
+                crate::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),
                 )
+                .unwrap()
                 .with_direction(direction),
             ),
         );
@@ -404,6 +406,8 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         0,
         vec![],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
@@ -421,7 +425,15 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     .unwrap();
     let wrapping = flow
         .wrapping
-        .numeric_projection(&flow.graph, 0, &[1, 2])
+        .numeric_projection(
+            &flow.graph,
+            0,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2],
+                start: 0,
+            },
+            &[1, 2],
+        )
         .unwrap();
     let mut query = input::<S>(
         direction,
@@ -502,11 +514,12 @@ fn scoped_metric_witness<S: LayoutScalar>(
         tree.insert_input(
             control.source_index() as u32,
             crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::new(
+                crate::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),
                 )
+                .unwrap()
                 .with_direction(direction),
             ),
         );
@@ -517,6 +530,8 @@ fn scoped_metric_witness<S: LayoutScalar>(
         0,
         vec![],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
@@ -540,7 +555,15 @@ fn scoped_metric_witness<S: LayoutScalar>(
     .unwrap();
     let wrapping = flow
         .wrapping
-        .numeric_projection(&flow.graph, 0, &[1, 2])
+        .numeric_projection(
+            &flow.graph,
+            0,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2],
+                start: 0,
+            },
+            &[1, 2],
+        )
         .unwrap();
     let mut query = input::<S>(
         direction,

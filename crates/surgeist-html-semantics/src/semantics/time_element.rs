@@ -9,11 +9,18 @@
 //! outside that accounting.
 
 use super::*;
-use crate::bounded::{
-    HtmlTimeElementInterpretation, HtmlTimeElementInterpretationActionKind,
-    HtmlTimeElementInterpretationError, IntegerUnitStepError, NumericMaterializationError,
+use surgeist_html::bounded::{
+    numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
+    temporal::{
+        HtmlTimeElementInterpretation, HtmlTimeElementInterpretationActionKind,
+        HtmlTimeElementInterpretationError,
+    },
 };
-use crate::{HtmlMachineReadableTime, HtmlTimeElementValue, HtmlValueReport};
+use surgeist_html::microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue};
+use surgeist_html::{
+    values::{Attribute, DocumentString, HtmlValueReport},
+    vocabulary::KnownHtmlElement,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTimeElementValueOrigin {
@@ -177,39 +184,38 @@ impl HtmlSemanticSession<'_> {
         error: HtmlTimeElementInterpretationError,
         baseline: usize,
     ) -> HtmlSemanticFailure {
-        let kind = match error {
-            HtmlTimeElementInterpretationError::RepresentationExhausted => {
-                HtmlSemanticFailureKind::RepresentationExhausted
-            }
-            HtmlTimeElementInterpretationError::Processing(error) => match error {
-                NumericMaterializationError::Digits(_) => {
+        let kind = if error.is_representation_exhausted() {
+            HtmlSemanticFailureKind::RepresentationExhausted
+        } else if let Some(error) = error.processing_failure() {
+            match error {
+                HtmlNumericMaterializationError::Digits(_) => {
                     HtmlSemanticFailureKind::IntrinsicUnavailable
                 }
-                NumericMaterializationError::Boundary(error) => match error {
-                    IntegerUnitStepError::RepresentationExhausted => {
+                HtmlNumericMaterializationError::Boundary(error) => match error {
+                    HtmlIntegerUnitStepError::RepresentationExhausted => {
                         HtmlSemanticFailureKind::RepresentationExhausted
                     }
-                    IntegerUnitStepError::AllocationFailed { .. } => {
+                    HtmlIntegerUnitStepError::AllocationFailed { .. } => {
                         HtmlSemanticFailureKind::AllocationFailed
                     }
-                    IntegerUnitStepError::DigitLimitExceeded { limit, required } => {
+                    HtmlIntegerUnitStepError::DigitLimitExceeded { limit, required } => {
                         HtmlSemanticFailureKind::LimitExceeded {
                             resource: HtmlSemanticResource::IntegerDigits,
                             limit,
                             required,
                         }
                     }
-                    IntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
-                        match baseline.checked_add(required) {
-                            Some(required) => HtmlSemanticFailureKind::LimitExceeded {
-                                resource: HtmlSemanticResource::AllocatedBytes,
-                                limit: self.limits.allocated_bytes,
-                                required,
-                            },
-                            None => HtmlSemanticFailureKind::RepresentationExhausted,
-                        }
-                    }
-                    IntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
+                    HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                        required, ..
+                    } => match baseline.checked_add(required) {
+                        Some(required) => HtmlSemanticFailureKind::LimitExceeded {
+                            resource: HtmlSemanticResource::AllocatedBytes,
+                            limit: self.limits.allocated_bytes,
+                            required,
+                        },
+                        None => HtmlSemanticFailureKind::RepresentationExhausted,
+                    },
+                    HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                         HtmlSemanticFailureKind::LimitExceeded {
                             resource: HtmlSemanticResource::AllocatedBytes,
                             limit: self.limits.allocated_bytes,
@@ -217,8 +223,9 @@ impl HtmlSemanticSession<'_> {
                         }
                     }
                 },
-            },
-            _ => HtmlSemanticFailureKind::IntrinsicUnavailable,
+            }
+        } else {
+            HtmlSemanticFailureKind::IntrinsicUnavailable
         };
         self.stop(kind)
     }

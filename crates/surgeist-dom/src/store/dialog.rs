@@ -9,9 +9,13 @@ use super::*;
 use crate::dialog::DocumentInteractiveState;
 use crate::dialog::DomDialogState;
 use surgeist_html::{
-    HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
-    HtmlDialogOutcome, HtmlDialogReply as Reply, KnownHtmlAttribute,
+    elements::dialog::{
+        HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
+        HtmlDialogOutcome, HtmlDialogReply as Reply,
+    },
+    vocabulary::KnownHtmlAttribute,
 };
+
 mod empty_popovers;
 mod focusing;
 #[cfg(test)]
@@ -828,11 +832,11 @@ impl Draft {
             return Ok(None);
         }
         self.source_step(cancel)?;
-        Ok(surgeist_html::dialog_attribute_operation(
-            &name
-                .namespace_uri()
-                .cloned()
-                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+        Ok(surgeist_html::elements::dialog::dialog_attribute_operation(
+            &name.namespace_uri().cloned().map_or_else(
+                surgeist_html::values::Namespace::none,
+                surgeist_html::values::Namespace::from_uri,
+            ),
             KnownHtmlAttribute::Open,
             old_present,
             new_present,
@@ -877,7 +881,11 @@ mod tests {
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+        let dialog = batch.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "dialog",
+        );
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         (dom, commit.created(&dialog).unwrap().unwrap())
     }
@@ -902,8 +910,16 @@ mod tests {
             .unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
-            let first = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
-            let second = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
+            let first = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "dialog",
+            );
+            let second = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "dialog",
+            );
             batch.set_attribute(&first, "open", "");
             batch.set_attribute(&second, "open", "");
             let commit = dom.apply(batch, &cancel).unwrap();
