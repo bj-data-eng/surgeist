@@ -1,10 +1,12 @@
 //! Owning construction-to-capture import. Only immutable public HTML views are read.
 use super::*;
-use crate::{
-    HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
-    HtmlSemanticCancellation, HtmlTemplateContentsKind, bounded::HtmlConstructionResult,
-};
+use crate::HtmlSemanticCancellation;
 use std::collections::HashMap;
+use surgeist_html::construction::{
+    HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
+    HtmlTemplateContentsKind,
+};
+use surgeist_html::{bounded::construction::HtmlConstructionResult, values::DocumentString};
 
 /// Explicit document assignment at one coherent host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1146,11 +1148,16 @@ fn traverse<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        construction::{HtmlFragment, HtmlNodeId, HtmlNodeKind, HtmlShadowRootProperties},
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
     /// A fragment of `n` text siblings imported with generous limits.
     fn imported_siblings(n: usize) -> (HtmlConstructionCapturedResult, Vec<HtmlNodeId>) {
-        let mut source =
-            HtmlFragment::builder(crate::HtmlConstructionLimits::new(n + 1, n, 0, 4 * n, 4))
-                .unwrap();
+        let mut source = HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(n + 1, n, 0, 4 * n, 4),
+        )
+        .unwrap();
         let root = source.root();
         for _ in 0..n {
             source.append_text(&root, "x").unwrap();
@@ -1166,7 +1173,7 @@ mod tests {
         );
         let document = builder
             .add_document(
-                crate::HtmlDocumentMode::Quirks,
+                surgeist_html::construction::HtmlDocumentMode::Quirks,
                 HtmlScriptingStatus::Enabled,
                 HtmlCaptureRegistryInput::Unavailable,
             )
@@ -1253,8 +1260,10 @@ mod tests {
     }
     #[test]
     fn every_work_cutoff_rolls_back_new_records_and_retains_input_allocations() {
-        let mut source =
-            HtmlFragment::builder(crate::HtmlConstructionLimits::new(20, 40, 0, 100, 20)).unwrap();
+        let mut source = HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(20, 40, 0, 100, 20),
+        )
+        .unwrap();
         let root = source.root();
         let host = source
             .append_element(
@@ -1267,8 +1276,8 @@ mod tests {
             .attach_declarative_shadow(
                 &host,
                 HtmlShadowRootProperties::new(
-                    crate::HtmlShadowRootMode::Closed,
-                    crate::HtmlSlotAssignment::Manual,
+                    surgeist_html::construction::HtmlShadowRootMode::Closed,
+                    surgeist_html::construction::HtmlSlotAssignment::Manual,
                     false,
                     true,
                     false,
@@ -1296,7 +1305,7 @@ mod tests {
             );
             let document = builder
                 .add_document(
-                    crate::HtmlDocumentMode::Quirks,
+                    surgeist_html::construction::HtmlDocumentMode::Quirks,
                     HtmlScriptingStatus::Enabled,
                     HtmlCaptureRegistryInput::Unavailable,
                 )

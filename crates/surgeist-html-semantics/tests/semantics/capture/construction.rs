@@ -1,5 +1,13 @@
 use std::sync::Arc;
-use surgeist_html::{bounded::HtmlConstructionResult, *};
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{
+        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlElement,
+        HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildren, HtmlCapturedFragmentKind,
@@ -663,8 +671,8 @@ fn refused_finish_keeps_caller_facts_mapping_and_original_source() {
 
 // Drive the real controlled construction owner to create topology the ordinary
 // native authoring front door deliberately does not expose.
-fn storage() -> bounded::HtmlConstructionStorage {
-    use bounded::*;
+fn storage() -> surgeist_html::bounded::construction::HtmlConstructionStorage {
+    use surgeist_html::bounded::construction::HtmlConstructionStorage;
     let mut value = HtmlConstructionStorage::begin();
     while let Some(action) = value.next_action().unwrap() {
         action.perform().accept();
@@ -672,9 +680,9 @@ fn storage() -> bounded::HtmlConstructionStorage {
     value.try_ready().unwrap().commit()
 }
 fn command(
-    storage: bounded::HtmlConstructionStorage,
-    command: bounded::HtmlConstructionCommand,
-) -> bounded::HtmlConstructionCommit {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    command: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> surgeist_html::bounded::construction::HtmlConstructionCommit {
     let mut value = storage.prepare(command);
     while let Some(action) = value.next_action().unwrap() {
         action.perform().unwrap().accept();
@@ -682,38 +690,52 @@ fn command(
     value.try_ready().unwrap().commit()
 }
 fn change(
-    storage: bounded::HtmlConstructionStorage,
-    request: bounded::HtmlConstructionCommand,
-) -> (bounded::HtmlConstructionStorage, Option<HtmlBuilderNode>) {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> (
+    surgeist_html::bounded::construction::HtmlConstructionStorage,
+    Option<HtmlBuilderNode>,
+) {
     match command(storage, request) {
-        bounded::HtmlConstructionCommit::Changed { storage, created } => (storage, created),
+        surgeist_html::bounded::construction::HtmlConstructionCommit::Changed {
+            storage,
+            created,
+        } => (storage, created),
         _ => panic!("change"),
     }
 }
 fn create(
-    storage: bounded::HtmlConstructionStorage,
-    request: bounded::HtmlConstructionCommand,
-) -> (bounded::HtmlConstructionStorage, HtmlBuilderNode) {
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
+) -> (
+    surgeist_html::bounded::construction::HtmlConstructionStorage,
+    HtmlBuilderNode,
+) {
     let (storage, created) = change(storage, request);
     (storage, created.unwrap())
 }
 fn publish(
-    storage: bounded::HtmlConstructionStorage,
+    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
     root: HtmlBuilderNode,
 ) -> HtmlConstructionResult {
-    match command(storage, bounded::HtmlConstructionCommand::Publish { root }) {
-        bounded::HtmlConstructionCommit::Published { result, .. } => result,
+    match command(
+        storage,
+        surgeist_html::bounded::construction::HtmlConstructionCommand::Publish { root },
+    ) {
+        surgeist_html::bounded::construction::HtmlConstructionCommit::Published {
+            result, ..
+        } => result,
         _ => panic!("publish"),
     }
 }
-fn create_element(local: &str) -> bounded::HtmlConstructionCommand {
-    bounded::HtmlConstructionCommand::Create {
+fn create_element(local: &str) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
+    surgeist_html::bounded::construction::HtmlConstructionCommand::Create {
         kind: HtmlNodeKind::Element(HtmlElement::new(name(local), OrderedAttributes::default())),
     }
 }
 #[test]
 fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, detached) = create(storage(), C::CreateFragment);
     let (owner, doc) = create(
         owner,
@@ -752,7 +774,7 @@ fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
 }
 #[test]
 fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, shadow) = create(
         storage(),
         C::CreateShadowContents {
@@ -814,7 +836,7 @@ fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth
 }
 #[test]
 fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, selected) = create(storage(), C::CreateFragment);
     let (owner, template) = create(owner, create_element("template"));
     let (owner, host) = create(owner, create_element("div"));
@@ -976,7 +998,7 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
         },
         HtmlConstructionCaptureError::ForeignBuilder,
     );
-    use bounded::HtmlConstructionCommand as C;
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
     let (owner, shadow) = create(
         storage(),
         C::CreateShadowContents {

@@ -2,7 +2,13 @@ use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
     session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueRecoveryState, Namespace,
+        OrderedAttributes, QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlSemanticCancellation,

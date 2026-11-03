@@ -1,4 +1,11 @@
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{
+        HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode,
+        HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+    },
+    parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureFact,

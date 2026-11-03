@@ -1,4 +1,7 @@
-use surgeist_html::{HtmlDocumentMode, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlHostFactsRevision, HtmlLanguageDirectionError,

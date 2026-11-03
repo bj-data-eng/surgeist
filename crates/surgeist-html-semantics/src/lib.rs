@@ -2,8 +2,6 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
-use surgeist_html::bounded;
-use surgeist_html::*;
 mod base;
 mod bidi;
 mod capture;

@@ -1,7 +1,15 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, context,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{HtmlAttributeAuthorState, HtmlAttributeContextAuthorState},
+    construction::HtmlDocumentMode,
+    elements::native::HtmlCustomElementState,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureDefinitionInput,

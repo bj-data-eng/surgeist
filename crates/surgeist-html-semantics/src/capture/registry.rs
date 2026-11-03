@@ -1,6 +1,7 @@
 //! One finite registry-only capture, using the original capture owner.
 use super::*;
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 
 /// A genuine complete-empty Global registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
@@ -271,6 +272,7 @@ impl HtmlCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     #[test]
     fn requested_backing_is_admitted_before_growth_and_extra_capacity_is_checked() {

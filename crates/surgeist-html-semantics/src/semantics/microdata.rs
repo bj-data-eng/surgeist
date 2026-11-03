@@ -1,14 +1,26 @@
 //! Generic HTML §5.2 microdata over one qualified immutable ordinary tree.
 //! External URL/vocabulary observations are supplied facts, never URL guesses.
 use super::*;
-use crate::{HtmlCaptureDocumentId, HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
+use crate::HtmlCaptureDocumentId;
+use surgeist_html::attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
+use surgeist_html::{
+    values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
+    vocabulary::KnownHtmlElement,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        attributes::microdata::HtmlMicrodataTokenKind,
+        construction::HtmlDocumentMode,
+        values::{Attribute, HtmlValueInterpreter, OrderedAttributes},
+        vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+    };
+
     use crate::{
         HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-        HtmlDocumentMode, HtmlScriptingStatus, OrderedAttributes,
+        HtmlScriptingStatus,
     };
 
     #[derive(Clone, Copy, Eq, PartialEq)]
@@ -505,7 +517,11 @@ impl<'a> HtmlSemanticSession<'a> {
         self.admit_intrinsic(e, scope_raw, 1)?;
         let scope_report = self
             .interpreter
-            .boolean_attribute(crate::HtmlBooleanAttribute::Itemscope, e.name(), scope_raw)
+            .boolean_attribute(
+                surgeist_html::attributes::HtmlBooleanAttribute::Itemscope,
+                e.name(),
+                scope_raw,
+            )
             .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         self.poll()?;
         let itemscope_author = scope_report.author();
@@ -834,7 +850,7 @@ impl HtmlMicrodataRawBinding {
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Err(HtmlMicrodataFactsError::WrongRole);
         };
-        if element.name().namespace() != &crate::Namespace::html() {
+        if element.name().namespace() != &surgeist_html::values::Namespace::html() {
             return Err(HtmlMicrodataFactsError::WrongRole);
         }
         let raw = element
@@ -1103,7 +1119,7 @@ impl HtmlMicrodataPropertyFact {
             let HtmlCapturedNodeKind::Element(e) = node.kind() else {
                 return Err(HtmlMicrodataFactsError::WrongRole);
             };
-            if e.name().namespace() != &crate::Namespace::html()
+            if e.name().namespace() != &surgeist_html::values::Namespace::html()
                 || !e.attributes().iter().any(|a| {
                     a.name().namespace().uri().is_none()
                         && a.name()
@@ -1403,7 +1419,7 @@ impl HtmlMicrodataReceiverCheck {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataAuthor {
     itemscope: Option<Attribute>,
-    itemscope_author: crate::HtmlAttributeAuthorState,
+    itemscope_author: surgeist_html::attributes::HtmlAttributeAuthorState,
     itemid: Option<Attribute>,
     types: HtmlMicrodataTokenReport,
     names: HtmlMicrodataTokenReport,
@@ -1424,7 +1440,7 @@ impl HtmlMicrodataAuthor {
     pub fn itemscope(&self) -> Option<&Attribute> {
         self.itemscope.as_ref()
     }
-    pub fn itemscope_author(&self) -> crate::HtmlAttributeAuthorState {
+    pub fn itemscope_author(&self) -> surgeist_html::attributes::HtmlAttributeAuthorState {
         self.itemscope_author
     }
     pub fn itemid(&self) -> Option<&Attribute> {
@@ -1655,7 +1671,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             )?
             .map(Attribute::value);
-        use crate::bounded::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation};
+        use surgeist_html::bounded::microdata::{
+            HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation,
+        };
         let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
         loop {
             // Only `try_finish` below takes the owner, so it is retained here.
@@ -1675,7 +1693,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
             })?;
             #[cfg(test)]
-            if step == crate::bounded::HtmlMicrodataTokenStep::TokenCommitted {
+            if step == surgeist_html::bounded::microdata::HtmlMicrodataTokenStep::TokenCommitted {
                 tests::cancel_after_commit(tests::CancellationStage::Token, self.usage());
             }
             #[cfg(not(test))]
@@ -2623,14 +2641,14 @@ impl<'a> HtmlSemanticSession<'a> {
     }
 }
 
-impl crate::bounded::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
+impl surgeist_html::bounded::microdata::HtmlMicrodataTokenMeter for HtmlSemanticSession<'_> {
     type Error = HtmlSemanticFailure;
     fn work(&mut self, units: usize) -> Result<(), Self::Error> {
         self.charge(units)
     }
     fn reserve(
         &mut self,
-        reservation: &mut crate::bounded::HtmlMicrodataTokenReservation<'_>,
+        reservation: &mut surgeist_html::bounded::microdata::HtmlMicrodataTokenReservation<'_>,
     ) -> Result<(), Self::Error> {
         let target = reservation.target_capacity();
         self.reserve_record_capacity(

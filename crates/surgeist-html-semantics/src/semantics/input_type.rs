@@ -1,7 +1,8 @@
 //! Finite semantic admission for HTML-owned input-type reports.
 
 use super::*;
-use crate::{HtmlAttributeReport, HtmlInputType};
+use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
+use surgeist_html::values::Attribute;
 
 impl HtmlSemanticSession<'_> {
     pub(super) fn admitted_input_type_report(
@@ -29,9 +30,13 @@ impl HtmlSemanticSession<'_> {
 mod tests {
     use super::super::*;
     use crate::{
-        HtmlAttributeAuthorState, HtmlAttributeRecognition, HtmlCaptureBuilder, HtmlCaptureLimits,
-        HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlDocumentMode, HtmlInputType,
-        HtmlScriptingStatus, OrderedAttributes,
+        HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
+        HtmlScriptingStatus,
+    };
+    use surgeist_html::{
+        attributes::{HtmlAttributeAuthorState, HtmlAttributeRecognition, HtmlInputType},
+        construction::HtmlDocumentMode,
+        values::OrderedAttributes,
     };
 
     fn capture() -> (HtmlCapture, HtmlCaptureSubjectId) {

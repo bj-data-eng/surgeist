@@ -1,6 +1,10 @@
 //! Actual immutable capture payload, observed without allocation or caching.
 use super::*;
 use std::mem::size_of;
+use surgeist_html::{
+    security::nonce::HtmlCapturedNonce,
+    values::{DocumentString, OrderedAttributes, QualifiedName},
+};
 
 /// Actual capture-owned payload, independent of logical formation usage.
 ///
@@ -93,8 +97,8 @@ impl HtmlCaptureRetainedStorageUsage {
         self.name(name, step)?;
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
         let attributes = attributes.shared_attributes();
-        self.add_bytes(size_of::<Vec<surgeist_html::Attribute>>())?;
-        self.bank::<surgeist_html::Attribute, E>(attributes.capacity())?;
+        self.add_bytes(size_of::<Vec<surgeist_html::values::Attribute>>())?;
+        self.bank::<surgeist_html::values::Attribute, E>(attributes.capacity())?;
         for attribute in attributes.iter() {
             step().map_err(HtmlCaptureStorageError::Interrupted)?;
             self.name(attribute.name(), step)?;
@@ -224,8 +228,8 @@ pub(crate) fn option_value_element<E>(
     usage.name(name, step)?;
     step().map_err(HtmlCaptureStorageError::Interrupted)?;
     let values = attributes.shared_attributes();
-    usage.add_bytes(size_of::<Vec<surgeist_html::Attribute>>())?;
-    usage.bank::<surgeist_html::Attribute, E>(values.capacity())?;
+    usage.add_bytes(size_of::<Vec<surgeist_html::values::Attribute>>())?;
+    usage.bank::<surgeist_html::values::Attribute, E>(values.capacity())?;
     for attribute in values.iter() {
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
         usage.name(attribute.name(), step)?;

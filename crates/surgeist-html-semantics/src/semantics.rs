@@ -106,12 +106,10 @@ mod image_dimensions;
 pub use image_dimensions::*;
 
 use crate::{
-    Attribute, DocumentString, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord,
-    HtmlBooleanAttribute, HtmlCapture, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
-    HtmlCapturedBaseFacts, HtmlCapturedChildIds, HtmlCapturedChildren, HtmlCapturedElement,
-    HtmlCapturedNode, HtmlCapturedNodeKind, HtmlCapturedParent, HtmlCustomControlAttributeContext,
-    HtmlDocumentClass, HtmlHiddenState, HtmlHostFactsRevision, HtmlInteger, HtmlMetaMediaPlacement,
-    HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
+    HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
+    HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
 };
 use std::{
     error::Error,
@@ -122,9 +120,17 @@ use std::{
     },
 };
 use surgeist_html::bounded::{
-    HtmlOptionDisabledAncestor, IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError,
-    IntegerUnitStepResult, option_disabled_ancestor, select_display_size_default,
-    try_parse_integer,
+    numeric::{
+        HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
+        HtmlIntegerUnitStepResult, try_parse_integer,
+    },
+    select::{HtmlOptionDisabledAncestor, option_disabled_ancestor},
+};
+use surgeist_html::{
+    attributes::{HtmlBooleanAttribute, HtmlCustomControlAttributeContext, HtmlHiddenState},
+    microsyntax::numeric::HtmlInteger,
+    values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 /// Finite cumulative admission for one semantic session.
@@ -2107,39 +2113,39 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn numeric_result(
         &mut self,
-        result: Result<IntegerUnitStepResult, IntegerUnitStepError>,
+        result: Result<HtmlIntegerUnitStepResult, HtmlIntegerUnitStepError>,
     ) -> Result<HtmlInteger, HtmlSemanticFailure> {
         let capacity = match &result {
             Ok(result) => result.capacity_bytes(),
-            Err(IntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. }) => {
-                *capacity_bytes
-            }
+            Err(HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
+                capacity_bytes, ..
+            }) => *capacity_bytes,
             _ => 0,
         };
         self.record_allocated_bytes(capacity)?;
         let result = result.map_err(|error| {
             let kind = match error {
-                IntegerUnitStepError::RepresentationExhausted => {
+                HtmlIntegerUnitStepError::RepresentationExhausted => {
                     HtmlSemanticFailureKind::RepresentationExhausted
                 }
-                IntegerUnitStepError::AllocationFailed { .. } => {
+                HtmlIntegerUnitStepError::AllocationFailed { .. } => {
                     HtmlSemanticFailureKind::AllocationFailed
                 }
-                IntegerUnitStepError::DigitLimitExceeded { limit, required } => {
+                HtmlIntegerUnitStepError::DigitLimitExceeded { limit, required } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::IntegerDigits,
                         limit,
                         required,
                     }
                 }
-                IntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
                         required: self.usage.allocated_bytes.saturating_add(required),
                     }
                 }
-                IntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
+                HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
@@ -2168,9 +2174,9 @@ impl<'a> HtmlSemanticSession<'a> {
         let remaining = self.numeric_budget(value.magnitude().decimal_digits().len())?;
         self.numeric_result(value.try_unit_step(
             if reversed {
-                IntegerUnitStep::Decrement
+                HtmlIntegerUnitStep::Decrement
             } else {
-                IntegerUnitStep::Increment
+                HtmlIntegerUnitStep::Increment
             },
             self.limits.integer_digits,
             remaining,
@@ -2190,11 +2196,11 @@ impl<'a> HtmlSemanticSession<'a> {
         let remaining = self.numeric_budget(raw.value().len())?;
         match try_parse_integer(raw.value(), self.limits.integer_digits, remaining) {
             Ok(value) => self.numeric_result(Ok(value)).map(Some),
-            Err(IntegerRecoveryError::Syntax(_)) => {
+            Err(HtmlIntegerRecoveryError::Syntax(_)) => {
                 self.poll()?;
                 Ok(None)
             }
-            Err(IntegerRecoveryError::Allocation(error)) => {
+            Err(HtmlIntegerRecoveryError::Allocation(error)) => {
                 self.numeric_result(Err(error)).map(Some)
             }
         }
@@ -2497,14 +2503,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlSemanticQuery::DocumentFeeds => {
                     HtmlSemanticFact::DocumentFeeds(self.document_relationship_candidates(
                         &request.subject,
-                        crate::HtmlRelKeyword::Alternate,
+                        surgeist_html::elements::link::HtmlRelKeyword::Alternate,
                         false,
                     )?)
                 }
                 HtmlSemanticQuery::FirstManifest => HtmlSemanticFact::FirstManifest(
                     self.document_relationship_candidates(
                         &request.subject,
-                        crate::HtmlRelKeyword::Manifest,
+                        surgeist_html::elements::link::HtmlRelKeyword::Manifest,
                         true,
                     )?
                     .map(|v| v.into_iter().next()),

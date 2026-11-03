@@ -1,5 +1,12 @@
 use crate::semantics::support::builder_with;
-use surgeist_html::*;
+use surgeist_html::{
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlCapturedNonce, HtmlHeaderDeliveredCsp,
+        HtmlNonceAttributeEffect, HtmlNonceConnection, HtmlNonceDocumentEnvironment,
+        HtmlNonceInsertionEffect, HtmlNonceMissing, nonce_attribute_change, nonce_insertion_effect,
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureResource, HtmlCapturedIsValue, HtmlCapturedNodeKind,

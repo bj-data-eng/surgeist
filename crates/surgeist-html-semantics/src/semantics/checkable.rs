@@ -5,7 +5,7 @@
 //! [Radio](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#radio-button-state-(type=radio)).
 
 use super::*;
-use crate::HtmlInputType;
+use surgeist_html::{attributes::HtmlInputType, values::Attribute, vocabulary::KnownHtmlElement};
 
 enum RadioChecked {
     Known(bool),
@@ -299,6 +299,7 @@ impl<'a> HtmlSemanticSession<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::HtmlValueInterpreter;
 
     fn capture() -> HtmlCapture {
         crate::HtmlCaptureBuilder::new(

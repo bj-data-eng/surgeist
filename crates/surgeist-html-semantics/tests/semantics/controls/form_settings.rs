@@ -2,7 +2,17 @@ use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, moderate_semantic_limits as limits,
     result_record_bytes, small_builder_without_registries as builder,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeAuthorState, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeRecognition, HtmlButtonSubmitterContext,
+        HtmlFormEnctype, HtmlFormMethod, HtmlInputType,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,

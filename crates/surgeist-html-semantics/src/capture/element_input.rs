@@ -2,10 +2,11 @@
 
 use super::*;
 use std::mem::size_of;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
 };
-use surgeist_html::{Attribute, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
+use surgeist_html::values::{Attribute, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
+use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
 /// Refusal before an element's values or subject are committed to the builder.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -2,14 +2,22 @@
 //! This immutable captured operation does not execute content patching.
 use super::*;
 use crate::HtmlCapturedProcessingInstruction;
-use crate::bounded::{
-    HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
-    HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
-    HtmlPiPseudoAttributeReply as Reply, HtmlTemplateMarkerFirst as First,
-    HtmlTemplateMarkerSiblings as Siblings, HtmlTemplateMarkerTarget as Target,
-    template_marker_first,
-};
 use std::ops::Range;
+use surgeist_html::bounded::{
+    lexical::{
+        HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
+        HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
+        HtmlPiPseudoAttributeReply as Reply,
+    },
+    template::{
+        HtmlTemplateMarkerFirst as First, HtmlTemplateMarkerSiblings as Siblings,
+        HtmlTemplateMarkerTarget as Target, template_marker_first,
+    },
+};
+use surgeist_html::{
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 /// A sufficient same-tree name witness; Match does not promise first selection.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,6 +32,10 @@ pub enum HtmlTemplateForNameRelation {
 mod tests {
     use super::*;
     use crate::*;
+    use surgeist_html::construction::HtmlDocumentMode;
+    use surgeist_html::values::{
+        Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+    };
     fn fixture(point: CancellationPoint) -> (HtmlCapture, HtmlCaptureSubjectId) {
         let mut b = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
@@ -402,10 +414,10 @@ impl<'a> HtmlSemanticSession<'a> {
                 };
                 cursor.reply(reply).map_err(|error| {
                     self.stop(match error {
-                        crate::bounded::HtmlPiPseudoAttributeError::Integrity => {
+                        surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError::Integrity => {
                             HtmlSemanticFailureKind::IntrinsicUnavailable
                         }
-                        crate::bounded::HtmlPiPseudoAttributeError::Representation => {
+                        surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError::Representation => {
                             HtmlSemanticFailureKind::RepresentationExhausted
                         }
                     })

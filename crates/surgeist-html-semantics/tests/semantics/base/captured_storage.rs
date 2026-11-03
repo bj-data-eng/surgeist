@@ -1,6 +1,9 @@
 //! Owner storage receipts include unused inputs and capacity, independently of queries.
 use crate::semantics::support::tenth_capture_limits;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn limits() -> HtmlBaseFactsLimits {

@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn envelope() -> HtmlOptionValueEnvelope {
     HtmlOptionValueEnvelope::new(16_000_000, 1_000_000, 10_000_000)

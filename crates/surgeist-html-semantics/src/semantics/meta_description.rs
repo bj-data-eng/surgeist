@@ -2,7 +2,11 @@
 //! Raw metadata, author requirements and contextual evidence remain independent.
 
 use super::*;
-use crate::bounded::ascii_case_insensitive_unit;
+use surgeist_html::{
+    bounded::lexical::ascii_case_insensitive_unit,
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 /// The selected name requires content; a specified empty content satisfies this
 /// presence rule. This is not an assessment of the description's meaning.
@@ -55,8 +59,10 @@ impl HtmlMetaDescriptionAuthorReport {
     }
     /// Whether prose describes this page appropriately is a human semantic author
     /// obligation. No lexical validity or overall conformance is inferred here.
-    pub fn content_appropriateness(&self) -> crate::HtmlAttributeContextAuthorState {
-        crate::HtmlAttributeContextAuthorState::Unchecked
+    pub fn content_appropriateness(
+        &self,
+    ) -> surgeist_html::attributes::HtmlAttributeContextAuthorState {
+        surgeist_html::attributes::HtmlAttributeContextAuthorState::Unchecked
     }
     pub fn uniqueness(&self) -> &HtmlMetaDescriptionUniqueness {
         &self.data[0].uniqueness

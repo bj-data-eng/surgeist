@@ -1,6 +1,7 @@
 //! Admission and immutable identity of capture-qualified semantic inputs.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
 /// One producer-established custom-control classification at the context revision.
 #[derive(Clone, Debug, Eq, PartialEq)]

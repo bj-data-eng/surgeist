@@ -3,9 +3,11 @@
 
 use super::*;
 use crate::bidi::{BidiClass, bidi_class};
-use crate::{
-    DocumentString, HtmlCapturedFragmentKind, HtmlCapturedHost, HtmlDir, HtmlDirState,
-    HtmlInputType,
+use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::attributes::{HtmlDir, HtmlDirState, HtmlInputType};
+use surgeist_html::{
+    values::{DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 /// Established processing history, rather than a scan of current meta elements.
@@ -219,8 +221,8 @@ impl LanguageValidation {
                 && let HtmlCapturedFragmentKind::ShadowRoot(properties) = fragment.kind()
             {
                 self.charge(1)?;
-                let named =
-                    properties.properties().slot_assignment() == crate::HtmlSlotAssignment::Named;
+                let named = properties.properties().slot_assignment()
+                    == surgeist_html::construction::HtmlSlotAssignment::Named;
                 return match node.host() {
                     Some(HtmlCapturedHost::Element(host)) => Ok((host.subject().clone(), named)),
                     _ => Err(HtmlLanguageDirectionError::UnavailableRelation(current)),

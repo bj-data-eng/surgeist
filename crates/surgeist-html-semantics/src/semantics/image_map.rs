@@ -1,6 +1,7 @@
 //! Immutable map area membership, HTML 877d6146487f. No geometry or activation.
 
 use super::*;
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// Source-ordered HTML area subjects from one qualified immutable capture.
 /// This is not a live HTMLCollection or a named lookup/image-map association.
@@ -112,7 +113,7 @@ pub enum HtmlUsemapSelectedTargetDiagnostic {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlUsemapReferenceResult {
     raw: Option<Attribute>,
-    reference: crate::HtmlHashNameReferenceReport,
+    reference: surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport,
     author_definition: HtmlUsemapAuthorDefinition,
     processing: HtmlUsemapProcessingResult,
 }
@@ -120,7 +121,7 @@ impl HtmlUsemapReferenceResult {
     pub fn raw_attribute(&self) -> Option<&Attribute> {
         self.raw.as_ref()
     }
-    pub fn reference(&self) -> &crate::HtmlHashNameReferenceReport {
+    pub fn reference(&self) -> &surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport {
         &self.reference
     }
     pub fn author_definition(&self) -> &HtmlUsemapAuthorDefinition {
@@ -147,7 +148,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlUsemapReferenceResult>, HtmlSemanticFailure> {
-        use crate::bounded::{HashNameScan, HashNameScanStep};
+        use surgeist_html::bounded::attributes::{HtmlHashNameScan, HtmlHashNameScanStep};
         let node = self.node(subject)?;
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
             return Ok(HtmlSemanticValue::Inapplicable);
@@ -167,18 +168,18 @@ impl<'a> HtmlSemanticSession<'a> {
             .admit_attribute_raw(raw.map(Attribute::value))
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let reference = if let Some(raw) = raw {
-            self.charge(HashNameScan::BEGIN_WORK)?;
-            let mut scan = HashNameScan::new(raw.value());
+            self.charge(HtmlHashNameScan::BEGIN_WORK)?;
+            let mut scan = HtmlHashNameScan::new(raw.value());
             loop {
-                self.charge(HashNameScan::STEP_WORK)?;
+                self.charge(HtmlHashNameScan::STEP_WORK)?;
                 match scan.step() {
-                    HashNameScanStep::Continue(next) => scan = next,
-                    HashNameScanStep::Complete(report) => break report,
+                    HtmlHashNameScanStep::Continue(next) => scan = next,
+                    HtmlHashNameScanStep::Complete(report) => break report,
                 }
             }
         } else {
             self.charge(1)?;
-            crate::HtmlHashNameReferenceReport::missing()
+            surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport::missing()
         };
         let mut frames = Vec::new();
         let result = self.usemap_inner(subject, raw, reference, &mut frames);
@@ -191,10 +192,12 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
         raw: Option<&'a Attribute>,
-        reference: crate::HtmlHashNameReferenceReport,
+        reference: surgeist_html::attributes::hash_name::HtmlHashNameReferenceReport,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
     ) -> Result<HtmlSemanticValue<HtmlUsemapReferenceResult>, HtmlSemanticFailure> {
-        use crate::{HtmlHashNameAuthorForm as Author, HtmlHashNameProcessing as Processing};
+        use surgeist_html::attributes::hash_name::{
+            HtmlHashNameAuthorForm as Author, HtmlHashNameProcessing as Processing,
+        };
         self.charge(1)?;
         let mut author_definition = match reference.author_form() {
             Author::Missing => HtmlUsemapAuthorDefinition::Missing,

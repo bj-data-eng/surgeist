@@ -9,7 +9,7 @@
 
 use super::scope_work::{cell, element, fixture, limits, query, usage};
 use crate::semantics::support::wide_builder_without_registries;
-use surgeist_html::bounded::{HtmlTableSpanRule, th_scope_work_bound};
+use surgeist_html::bounded::attributes::{HtmlTableSpanRule, th_scope_work_bound};
 use surgeist_html_semantics::{HtmlCapture, HtmlCaptureBuilderSubject, HtmlSemanticUsage};
 
 const SHORT: usize = 3;

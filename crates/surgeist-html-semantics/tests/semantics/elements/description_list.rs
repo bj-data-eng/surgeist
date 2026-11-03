@@ -5,7 +5,11 @@ use crate::semantics::support::{
 // The grouping algorithm consumes no attribute/text values, so zero is a
 // meaningful unrelated raw-input cap even for nodes with large contents.
 use crate::semantics::support::session_without_raw_values as session;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildren, HtmlCapturedIsValue, HtmlCapturedNodeKind,

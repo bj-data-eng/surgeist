@@ -2,7 +2,10 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, result_record_bytes,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 fn limits() -> HtmlSemanticLimits {

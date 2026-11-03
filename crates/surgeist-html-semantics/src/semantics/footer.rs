@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::HtmlCaptureDocumentId;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 /// Source-selected scope of a captured HTML footer.
 /// A null document body is established absence, not unavailable evidence.

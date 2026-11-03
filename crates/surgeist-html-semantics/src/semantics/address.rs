@@ -6,6 +6,7 @@
 //! This predicate does not certify flow content or contact-information meaning.
 
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn address_has_forbidden_descendant(

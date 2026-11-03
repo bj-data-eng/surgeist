@@ -1,4 +1,9 @@
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{
+        HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureDefinitionId, HtmlCaptureError,

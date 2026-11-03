@@ -2,7 +2,21 @@ use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, capture_limits,
     semantic_limits as limits,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability,
+        media::{HtmlMediaElementRole, HtmlMediaPlacementObservation},
+    },
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    elements::media::{
+        HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMediaValueCursor, HtmlMetaMediaPlacement,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::KnownHtmlElement,
+};
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -194,7 +208,7 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
         i.media_for_meta(
             &KnownHtmlElement::Meta.qualified_name(),
             Some(&media),
-            None::<&surgeist_html::Attribute>
+            None::<&surgeist_html::values::Attribute>
         )
         .unwrap()
         .meta_placement(),
@@ -224,7 +238,7 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
         HtmlValueInterpreter::new(1)
             .media_for_meta(
                 &KnownHtmlElement::Div.qualified_name(),
-                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::values::Attribute>,
                 Some(&n)
             )
             .is_err()

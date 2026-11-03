@@ -2,6 +2,7 @@
 //! No fallback UI, activation, toggle events or exclusivity mutation.
 
 use super::*;
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// Exact selected name and same-tree member subjects in ordinary tree order.
 /// Membership includes the subject even when its name is absent or empty.

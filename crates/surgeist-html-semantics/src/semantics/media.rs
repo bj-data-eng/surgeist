@@ -1,12 +1,17 @@
 //! HTML 877d #mq, link/style/source/meta surrounding rules over one capture.
 //! No stylesheet, resource selection, rel classification or theme UI is executed.
 use super::*;
-use crate::bounded::{
+use surgeist_html::bounded::media::{
     HtmlMediaActionError, HtmlMediaField, HtmlMediaFieldMatch, HtmlMediaInterpretation,
     match_media_field,
 };
-use crate::{
-    HtmlMediaAttributeReport, HtmlMediaCursorAction, HtmlMediaElementRole, HtmlMediaValue,
+use surgeist_html::{
+    attributes::media::{HtmlMediaAttributeReport, HtmlMediaElementRole},
+    elements::media::{HtmlMediaCursorAction, HtmlMediaValue},
+};
+use surgeist_html::{
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,8 +189,10 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         element: &'a HtmlCapturedElement,
         field: HtmlMediaField,
-    ) -> Result<Option<HtmlMediaFieldMatch<'a, surgeist_html::Attribute>>, HtmlSemanticFailure>
-    {
+    ) -> Result<
+        Option<HtmlMediaFieldMatch<'a, surgeist_html::values::Attribute>>,
+        HtmlSemanticFailure,
+    > {
         for candidate in element.attributes().iter() {
             if let Some(matched) = match_media_field(candidate, field, |work| self.charge(work))? {
                 return Ok(Some(matched));
