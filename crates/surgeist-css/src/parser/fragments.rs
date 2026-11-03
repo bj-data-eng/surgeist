@@ -159,7 +159,7 @@ fn read_document_block<T>(
                 opening,
             ));
         }
-        let mut depth = state.enter_rule_block(source, Offset::new(start), production)?;
+        let mut depth = state.enter_rule_block(Offset::new(start), production)?;
         let (body, found) = root
             .within_block(|contents| {
                 let at = contents.site();
@@ -246,7 +246,7 @@ pub(crate) fn parse_group_block_with_context(
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
-            conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
+            conditional_chains::completed_list(&snapshot, body.rules_mut(), &mut diagnostics);
             crate::rule::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
@@ -323,7 +323,7 @@ fn scoped_block_with_context(
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
-            conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
+            conditional_chains::completed_list(&snapshot, body.rules_mut(), &mut diagnostics);
             crate::rule::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
@@ -825,9 +825,11 @@ fn never_media_query(snapshot: &crate::source::CssSourceSnapshot) -> CssMediaQue
     CssMediaQuery::Never(CssNeverMediaQuery::new(
         crate::source::CssParsedOrigin::from_range(
             snapshot,
-            recovery::first_non_trivia_position(source, 0, source.len())
-                .byte_offset()
-                .value()..source.len(),
+            recovery::first_non_trivia_position(source, 0, source.len(), |offset| {
+                crate::source::CssSourcePosition::from_byte_offset_in(source, offset)
+            })
+            .byte_offset()
+            .value()..source.len(),
         )
         .expect("parsed media recovery origin"),
     ))
@@ -854,9 +856,11 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
                 CssMediaQuery::Never(CssNeverMediaQuery::new(
                     crate::source::CssParsedOrigin::from_range(
                         state.source_snapshot(),
-                        recovery::first_non_trivia_position(source, 0, source.len())
-                            .byte_offset()
-                            .value()..source.len(),
+                        recovery::first_non_trivia_position(source, 0, source.len(), |offset| {
+                            crate::source::CssSourcePosition::from_byte_offset_in(source, offset)
+                        })
+                        .byte_offset()
+                        .value()..source.len(),
                     )
                     .expect("parsed media recovery origin"),
                 )),
@@ -902,9 +906,13 @@ pub(crate) fn parse_media_query_list_snapshot(
                     CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
                         crate::source::CssParsedOrigin::from_range(
                             state.source_snapshot(),
-                            recovery::first_non_trivia_position(source, 0, source.len())
-                                .byte_offset()
-                                .value()..source.len(),
+                            recovery::first_non_trivia_position(source, 0, source.len(), |offset| {
+                                crate::source::CssSourcePosition::from_byte_offset_in(
+                                    source, offset,
+                                )
+                            })
+                            .byte_offset()
+                            .value()..source.len(),
                         )
                         .expect("parsed media recovery origin"),
                     ))])
@@ -1372,7 +1380,7 @@ pub(crate) fn parse_rule_with_context(
             unreachable!("exact-one replay preserves its fragment carrier")
         };
         match rule {
-            Some(rule) => conditional_chains::rule(source, rule, diagnostics),
+            Some(rule) => conditional_chains::rule(&snapshot, rule, diagnostics),
             None => crate::CssParseReport::new(None, diagnostics),
         }
     })
@@ -1450,7 +1458,7 @@ pub(crate) fn parse_style_block_with_context(
             unreachable!("style-block replay preserves its brace carrier")
         };
         match block {
-            Some(block) => conditional_chains::style_block(source, block, diagnostics),
+            Some(block) => conditional_chains::style_block(&snapshot, block, diagnostics),
             None => crate::CssParseReport::new(None, diagnostics),
         }
     })

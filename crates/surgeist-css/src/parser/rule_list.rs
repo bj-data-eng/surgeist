@@ -61,7 +61,7 @@ use crate::rule::{
     CssNestedDeclarationsRule, CssRule, CssScopeRule, CssSheet, CssSupportsRule,
 };
 use crate::selector::CssStyleSelectorList;
-use crate::source::CssSourcePosition;
+use crate::source::{CssSourcePosition, CssSourceSnapshot};
 use surgeist_css_parser::Offset;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
@@ -472,7 +472,7 @@ pub(crate) trait RuleListSink<I> {
     fn retain(
         &mut self,
         item: I,
-        source: &str,
+        snapshot: &CssSourceSnapshot,
         unit_end: usize,
         diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     );
@@ -594,7 +594,7 @@ pub(crate) fn recover_rule_list<'i, G, S>(
                 if boundary.partitions(false) {
                     sink.partition();
                 }
-                sink.retain(item, source, after_offset.value(), grammar.diagnostics());
+                sink.retain(item, &snapshot, after_offset.value(), grammar.diagnostics());
                 if outcome == RecoveryLoopOutcome::Terminated {
                     break;
                 }
@@ -618,7 +618,7 @@ pub(crate) fn recover_rule_list<'i, G, S>(
             && unit_state.qualified_resource_error.is_none();
         if declaration_unit {
             if let Some(diagnostic) = block_item_diagnostic(
-                source,
+                &snapshot,
                 facts.error,
                 facts.text,
                 facts.unit_end,
@@ -637,7 +637,7 @@ pub(crate) fn recover_rule_list<'i, G, S>(
                 facts.error
             };
             if let Some(diagnostic) = structural_rule_diagnostic(
-                source,
+                &snapshot,
                 error,
                 facts.text,
                 facts.unit_start,
@@ -720,7 +720,7 @@ fn report_returned_nothing<'i, G: RuleListGrammar<'i>>(
         let (from, to) = (offset_of(from), offset_of(to));
         let error = crate::diagnostic::error::invalid_syntax(location_at(&snapshot, from));
         if let Some(diagnostic) = structural_rule_diagnostic(
-            source,
+            &snapshot,
             error,
             &source[from..to],
             from,
@@ -1012,9 +1012,7 @@ fn block_refused(
     expectation: &'static str,
 ) -> NativeError {
     let snapshot = recovery.source_snapshot();
-    let position =
-        crate::source::CssSourcePosition::from_byte_offset_in(snapshot.as_str(), contents)
-            .previous_ascii_byte();
+    let position = snapshot.position_or_walk(contents).previous_ascii_byte();
     invalid_at_rule_body_at(position, position, name, production, expectation)
 }
 
@@ -1470,7 +1468,13 @@ impl<'s> RuleParser<'s> {
             | AtRulePrelude::Scope(_) => Err(()),
         };
         if result.is_ok() {
-            retain_statement_eof(self.source, rule_end, start, end, &mut self.diagnostics);
+            retain_statement_eof(
+                self.recovery.source_snapshot(),
+                rule_end,
+                start,
+                end,
+                &mut self.diagnostics,
+            );
         }
         result
     }
@@ -1482,17 +1486,14 @@ impl<'s> RuleParser<'s> {
         opening: usize,
         block: RuleBlock<'i>,
     ) -> Result<RuleListItem, NativeError> {
-        let mut depth = self.recovery.enter_rule_block(
-            self.source,
-            Offset::new(opening),
-            prelude.production(),
-        )?;
+        let mut depth = self
+            .recovery
+            .enter_rule_block(Offset::new(opening), prelude.production())?;
         let RuleBlock::Open { contents, .. } = block else {
             // The document kept no contents for the block, so the structural
             // ceiling is the failure.
             return Err(crate::diagnostic::error::nesting_limit(
-                self.source,
-                opening,
+                self.recovery.source_position(opening),
                 crate::parser::recovery::STRUCTURAL_NESTING_LIMIT,
                 prelude.production(),
             ));
@@ -1653,15 +1654,12 @@ impl<'s> RuleParser<'s> {
         opening: usize,
         block: RuleBlock<'i>,
     ) -> Result<RuleListItem, NativeError> {
-        let mut depth = self.recovery.enter_rule_block(
-            self.source,
-            Offset::new(opening),
-            "baseline.rule.style",
-        )?;
+        let mut depth = self
+            .recovery
+            .enter_rule_block(Offset::new(opening), "baseline.rule.style")?;
         let RuleBlock::Open { contents, .. } = block else {
             return Err(crate::diagnostic::error::nesting_limit(
-                self.source,
-                opening,
+                self.recovery.source_position(opening),
                 crate::parser::recovery::STRUCTURAL_NESTING_LIMIT,
                 "baseline.rule.style",
             ));
@@ -1852,7 +1850,7 @@ pub(super) fn collect_at_keyword(start: Site<'_>) -> Option<crate::component::Cs
 /// Reports the statement at-rule that the end of its list ended (Syntax 3
 /// §5.5.2: this is a parse error), retained all the same.
 fn retain_statement_eof(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     rule_end: RuleEnd,
     start: Site<'_>,
     end: Site<'_>,
@@ -1863,13 +1861,13 @@ fn retain_statement_eof(
     }
     let (from, to) = (offset_of(start), offset_of(end));
     let Some(span) = crate::source::CssSourceSpan::new(
-        crate::source::CssSourcePosition::from_byte_offset_in(source, from),
-        crate::source::CssSourcePosition::from_byte_offset_in(source, to),
+        snapshot.position_or_walk(from),
+        snapshot.position_or_walk(to),
     ) else {
         return;
     };
     if let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
-        crate::diagnostic::error::unterminated_at_rule(source, to),
+        crate::diagnostic::error::unterminated_at_rule(span.end()),
         span,
         crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
     ) {
@@ -1884,7 +1882,7 @@ impl RuleListSink<RuleListItem> for GroupSink {
     fn retain(
         &mut self,
         item: RuleListItem,
-        _: &str,
+        _: &CssSourceSnapshot,
         _: usize,
         _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
@@ -1900,7 +1898,7 @@ impl RuleListSink<RuleListItem> for SheetSink {
     fn retain(
         &mut self,
         item: RuleListItem,
-        source: &str,
+        snapshot: &CssSourceSnapshot,
         unit_end: usize,
         diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
@@ -1924,7 +1922,7 @@ impl RuleListSink<RuleListItem> for SheetSink {
                 let previous_position = previous.position().expect("parsed namespace rule");
                 let span = crate::source::CssSourceSpan::new(
                     position,
-                    crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
+                    snapshot.position_or_walk(unit_end),
                 )
                 .expect("retained namespace rule lies within its source unit");
                 diagnostics.push(
@@ -1995,7 +1993,7 @@ impl RuleListSink<RuleListItem> for StyleSink {
     fn retain(
         &mut self,
         item: RuleListItem,
-        _: &str,
+        _: &CssSourceSnapshot,
         _: usize,
         _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
@@ -2044,7 +2042,7 @@ impl RuleListSink<RuleListItem> for ScopedSink {
     fn retain(
         &mut self,
         item: RuleListItem,
-        _: &str,
+        _: &CssSourceSnapshot,
         _: usize,
         _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {

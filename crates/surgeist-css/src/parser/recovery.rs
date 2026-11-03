@@ -80,30 +80,34 @@ pub(crate) fn finish_report<T>(
                     | Token::Dimension { .. }
             );
         }
+        // The errors come in source order, so each position is found from
+        // the one before it.
+        let mut cursor = CssSourcePosition::START;
+        let mut eof = None;
         for error in lexer.errors() {
             let range = error.range();
             let (start, end) = (range.start.value(), range.end.value());
+            let at = cursor.resolved_near(source, start);
+            let after = at.resolved_near(source, end);
+            cursor = after;
             if error.is_escaped_newline() {
                 diagnostics.push(escape_diagnostic(
-                    source,
-                    start..end,
+                    (at, after),
                     crate::diagnostic::CssEscapeFailure::Newline,
                 ));
             } else if error.is_escaped_eof() && ends_in_name {
                 diagnostics.push(escape_diagnostic(
-                    source,
-                    start..end,
+                    (at, after),
                     crate::diagnostic::CssEscapeFailure::EndOfInput,
                 ));
             } else if error.is_unterminated_comment() {
-                let span = crate::source::CssSourceSpan::new(
-                    CssSourcePosition::from_byte_offset_in(source, start),
-                    CssSourcePosition::from_byte_offset_in(source, source.len()),
-                )
-                .expect("comment ends at source EOF");
+                let end_of_input =
+                    *eof.get_or_insert_with(|| after.resolved_near(source, source.len()));
+                let span = crate::source::CssSourceSpan::new(at, end_of_input)
+                    .expect("comment ends at source EOF");
                 diagnostics.push(
                     crate::diagnostic::CssRecoveryDiagnostic::new(
-                        crate::diagnostic::error::implicit_eof(source),
+                        crate::diagnostic::error::implicit_eof(end_of_input),
                         span,
                         crate::diagnostic::CssRecoveryAction::IgnoreUnterminatedComment,
                     )
@@ -116,21 +120,17 @@ pub(crate) fn finish_report<T>(
 }
 
 fn escape_diagnostic(
-    source: &str,
-    range: std::ops::Range<usize>,
+    (start, end): (CssSourcePosition, CssSourcePosition),
     detail: crate::diagnostic::CssEscapeFailure,
 ) -> crate::diagnostic::CssRecoveryDiagnostic {
     let responsible = match detail {
-        crate::diagnostic::CssEscapeFailure::Newline => range.start,
-        crate::diagnostic::CssEscapeFailure::EndOfInput => range.end,
+        crate::diagnostic::CssEscapeFailure::Newline => start,
+        crate::diagnostic::CssEscapeFailure::EndOfInput => end,
     };
-    let span = crate::source::CssSourceSpan::new(
-        CssSourcePosition::from_byte_offset_in(source, range.start),
-        CssSourcePosition::from_byte_offset_in(source, range.end),
-    )
-    .expect("consumed escape ranges are ordered UTF-8 boundaries");
+    let span = crate::source::CssSourceSpan::new(start, end)
+        .expect("consumed escape ranges are ordered UTF-8 boundaries");
     crate::diagnostic::CssRecoveryDiagnostic::new(
-        crate::diagnostic::error::escape_parse_error(source, responsible, detail),
+        crate::diagnostic::error::escape_parse_error(responsible, detail),
         span,
         crate::diagnostic::CssRecoveryAction::RecoverEscape,
     )
@@ -164,8 +164,6 @@ pub(crate) struct RecoveryState {
     /// The token tree the rule grammars read: the same tree, or the tree of
     /// the view of the source whose components past the nesting limit are masked.
     syntax_document: Rc<RefCell<Option<Rc<crate::parser::syntax_types::Document<'static>>>>>,
-    /// The last position [`source_position`](Self::source_position) found.
-    position_cursor: Rc<Cell<Option<(usize, crate::source::CssSourcePosition)>>>,
 }
 
 impl RecoveryState {
@@ -196,7 +194,6 @@ impl RecoveryState {
             syntax_base_depth: depth,
             structure: Rc::new(RefCell::new(None)),
             syntax_document: Rc::new(RefCell::new(None)),
-            position_cursor: Rc::new(Cell::new(None)),
         }
     }
 
@@ -242,7 +239,6 @@ impl RecoveryState {
             syntax_base_depth: self.syntax_base_depth,
             structure: Rc::clone(&self.structure),
             syntax_document: Rc::clone(&self.syntax_document),
-            position_cursor: Rc::clone(&self.position_cursor),
         }
     }
 
@@ -263,7 +259,6 @@ impl RecoveryState {
             syntax_base_depth: self.depth.get(),
             structure: Rc::new(RefCell::new(None)),
             syntax_document: Rc::new(RefCell::new(None)),
-            position_cursor: Rc::new(Cell::new(None)),
         }
     }
 
@@ -367,26 +362,10 @@ impl RecoveryState {
         &self.source_snapshot
     }
 
-    /// The position of the byte `byte_offset` of the source. Positions are asked
-    /// for in source order, so the walk continues from the last one found.
+    /// The position of the byte `byte_offset` of the source, found from the
+    /// checkpoint of the snapshot before it.
     pub(super) fn source_position(&self, byte_offset: usize) -> crate::source::CssSourcePosition {
-        let text = self.source_snapshot.as_str();
-        let target = byte_offset.min(text.len());
-        if text.is_char_boundary(target) {
-            if let Some((at, position)) = self.position_cursor.get()
-                && at <= target
-                // A walk that stopped between the bytes of a CRLF restarts.
-                && (at == 0 || text.as_bytes()[at - 1] != b'\r')
-            {
-                let found = position.advanced_by(&text[at..target]);
-                self.position_cursor.set(Some((target, found)));
-                return found;
-            }
-            let found = crate::source::CssSourcePosition::from_byte_offset_in(text, target);
-            self.position_cursor.set(Some((target, found)));
-            return found;
-        }
-        crate::source::CssSourcePosition::from_byte_offset_in(text, byte_offset)
+        self.source_snapshot.position_or_walk(byte_offset)
     }
 
     pub(super) fn activate_namespace(
@@ -421,11 +400,10 @@ impl RecoveryState {
     /// Enters the rule block whose opening token starts at `at`.
     pub(super) fn enter_rule_block(
         &self,
-        source: &str,
         at: Offset,
         enclosing_production: &'static str,
     ) -> Result<RecoveryDepthGuard, NativeError> {
-        self.enter(source, at.value(), enclosing_production)
+        self.enter(at.value(), enclosing_production)
     }
 
     /// Current entered structural block depth, including the active rule body.
@@ -437,11 +415,10 @@ impl RecoveryState {
     /// `opening_offset`, its last byte.
     pub(super) fn enter_component_block_at(
         &self,
-        source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
     ) -> Result<RecoveryDepthGuard, NativeError> {
-        self.enter(source, opening_offset, enclosing_production)
+        self.enter(opening_offset, enclosing_production)
     }
 
     /// Checks the nesting of a declaration value that starts at the byte
@@ -573,7 +550,7 @@ impl RecoveryState {
         &self,
         source: &str,
     ) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
-        let eof = CssSourcePosition::from_byte_offset_in(source, source.len());
+        let eof = self.source_position(source.len());
         let Some(span) = crate::source::CssSourceSpan::new(eof, eof) else {
             return Vec::new();
         };
@@ -583,7 +560,7 @@ impl RecoveryState {
             .drain(..)
             .filter_map(|opening| {
                 crate::diagnostic::CssRecoveryDiagnostic::new(
-                    crate::diagnostic::error::implicit_eof(source),
+                    crate::diagnostic::error::implicit_eof(eof),
                     span,
                     crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure,
                 )
@@ -605,8 +582,7 @@ impl RecoveryState {
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
             return Some(nesting_limit(
-                source,
-                opening_offset,
+                self.source_position(opening_offset),
                 STRUCTURAL_NESTING_LIMIT,
                 enclosing_production,
             ));
@@ -641,15 +617,13 @@ impl RecoveryState {
 
     fn enter(
         &self,
-        source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
     ) -> Result<RecoveryDepthGuard, NativeError> {
         let depth = self.depth.get();
         if depth >= STRUCTURAL_NESTING_LIMIT {
             return Err(nesting_limit(
-                source,
-                opening_offset,
+                self.source_position(opening_offset),
                 STRUCTURAL_NESTING_LIMIT,
                 enclosing_production,
             ));
@@ -746,19 +720,26 @@ pub(crate) fn recovery_action_for_error(
     }
 }
 
+/// The position of the first token of the member `member_start..member_end`
+/// of `source` that is no trivia, which `locate` finds.
 pub(super) fn first_non_trivia_position(
     source: &str,
     member_start: usize,
     member_end: usize,
+    locate: impl Fn(usize) -> CssSourcePosition,
 ) -> CssSourcePosition {
-    CssSourcePosition::from_byte_offset_in(
+    locate(structure::first_non_trivia(
         source,
-        structure::first_non_trivia(source, member_start, member_end),
-    )
+        member_start,
+        member_end,
+    ))
 }
 
+/// The span of the member `member_start..member_end` of a comma-separated
+/// list, or of the comma beside it when the member is empty; `locate` finds
+/// the position of a byte.
 pub(super) fn comma_member_span(
-    source: &str,
+    locate: impl Fn(usize) -> CssSourcePosition,
     member_start: usize,
     member_end: usize,
     following_comma: Option<(usize, usize)>,
@@ -773,10 +754,7 @@ pub(super) fn comma_member_span(
     } else {
         (member_start, member_end)
     };
-    crate::source::CssSourceSpan::new(
-        CssSourcePosition::from_byte_offset_in(source, span_start),
-        CssSourcePosition::from_byte_offset_in(source, span_end),
-    )
+    crate::source::CssSourceSpan::new(locate(span_start), locate(span_end))
 }
 
 #[cfg(test)]
@@ -1024,7 +1002,7 @@ mod tests {
         assert!(state.has_default_namespace());
         {
             let _guard = probe
-                .enter_component_block_at("(", 0, "baseline.selector.complex")
+                .enter_component_block_at(0, "baseline.selector.complex")
                 .unwrap();
             assert_eq!(state.structural_depth(), 8);
         }

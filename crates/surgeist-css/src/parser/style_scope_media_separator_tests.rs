@@ -55,7 +55,7 @@ fn bounded(source: &str) -> CssParseReport<CssSheet> {
         SharedNamespaces::default(),
         CssParserContext::default(),
     );
-    recovery::finish_report(source, conditional_chains::sheet(source, report))
+    recovery::finish_report(source, conditional_chains::sheet(&snapshot, report))
 }
 
 fn on_two_mib(run: impl FnOnce() + Send + 'static) {

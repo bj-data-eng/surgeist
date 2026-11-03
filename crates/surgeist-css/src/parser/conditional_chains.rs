@@ -4,29 +4,30 @@
 use crate::CssParseReport;
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::rule::{CssRule, CssSheet, CssStyleBlock};
-use crate::source::{CssSourcePosition, CssSourceSpan};
+use crate::source::{CssSourceSnapshot, CssSourceSpan};
 use std::ops::Range;
 use surgeist_css_parser::Token;
 use surgeist_css_parser::lexer::{Lexer, Options};
 
-pub(super) fn sheet(source: &str, report: CssParseReport<CssSheet>) -> CssParseReport<CssSheet> {
+pub(super) fn sheet(
+    snapshot: &CssSourceSnapshot,
+    report: CssParseReport<CssSheet>,
+) -> CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) = report.into_parts();
-    completed_list(source, sheet.rules_mut(), &mut diagnostics);
+    completed_list(snapshot, sheet.rules_mut(), &mut diagnostics);
     CssParseReport::new(sheet, diagnostics)
 }
 pub(crate) fn rule(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     mut rule: CssRule,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssRule>> {
     if matches!(rule, CssRule::Else(_)) {
-        let position = CssSourcePosition::from_byte_offset_in(
-            source,
-            crate::parser::reconstruction::rule_start(&rule),
-        );
+        let source = snapshot.as_str();
+        let position = snapshot.position_or_walk(crate::parser::reconstruction::rule_start(&rule));
         let span = CssSourceSpan::new(
-            CssSourcePosition::from_byte_offset_in(source, 0),
-            CssSourcePosition::from_byte_offset_in(source, source.len()),
+            snapshot.position_or_walk(0),
+            snapshot.position_or_walk(source.len()),
         )
         .expect("whole input span");
         let diagnostic = CssRecoveryDiagnostic::new(
@@ -38,27 +39,31 @@ pub(crate) fn rule(
         return CssParseReport::new(None, vec![diagnostic]);
     }
     if let Some(children) = rule.parser_children_mut() {
-        completed_list(source, children, &mut diagnostics);
+        completed_list(snapshot, children, &mut diagnostics);
     }
     CssParseReport::new(Some(rule), diagnostics)
 }
 pub(super) fn style_block(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     mut block: CssStyleBlock,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssStyleBlock>> {
-    completed_list(source, block.rules_mut(), &mut diagnostics);
+    completed_list(snapshot, block.rules_mut(), &mut diagnostics);
     CssParseReport::new(Some(block), diagnostics)
 }
 pub(super) fn completed_list(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     list: &mut Vec<CssRule>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
 ) {
-    admit(source, list, diagnostics);
+    admit(snapshot, list, diagnostics);
 }
 
-fn admit(source: &str, list: &mut Vec<CssRule>, diagnostics: &mut Vec<CssRecoveryDiagnostic>) {
+fn admit(
+    snapshot: &CssSourceSnapshot,
+    list: &mut Vec<CssRule>,
+    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+) {
     let mut work = vec![list];
     let mut rejected = Vec::new();
     let mut placements = Vec::new();
@@ -75,7 +80,7 @@ fn admit(source: &str, list: &mut Vec<CssRule>, diagnostics: &mut Vec<CssRecover
             );
             let start = conditional.then(|| crate::parser::reconstruction::rule_start(rule));
             check(
-                source,
+                snapshot,
                 matches!(rule, CssRule::Else(_)),
                 conditional,
                 start,
@@ -101,8 +106,9 @@ fn admit(source: &str, list: &mut Vec<CssRule>, diagnostics: &mut Vec<CssRecover
     });
     diagnostics.extend(placements);
 }
+
 fn check(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     is_else: bool,
     conditional: bool,
     start: Option<usize>,
@@ -115,16 +121,14 @@ fn check(
         return true;
     }
     let start = start.expect("conditional parsed start");
+    let source = snapshot.as_str();
     let end = balanced_unit_end(source, start);
     if is_else && !previous_end.is_some_and(|previous| trivia_gap(source, previous, start)) {
         *previous_end = None;
         rejected.push(start..end);
-        let position = CssSourcePosition::from_byte_offset_in(source, start);
-        let span = CssSourceSpan::new(
-            position,
-            CssSourcePosition::from_byte_offset_in(source, end),
-        )
-        .expect("balanced original rule span");
+        let position = snapshot.position_or_walk(start);
+        let span = CssSourceSpan::new(position, snapshot.position_or_walk(end))
+            .expect("balanced original rule span");
         placements.push(
             CssRecoveryDiagnostic::new(
                 crate::diagnostic::error::invalid_free_else(source, position),
@@ -206,6 +210,7 @@ fn balanced_unit_end(source: &str, offset: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source::CssSourcePosition;
     #[test]
     fn discarded_else_suppresses_owned_eof_closures_and_keeps_lexical_comment() {
         let source = "@else { .lost { color: rgb(1 2 3); /*";
@@ -253,7 +258,7 @@ mod tests {
         let source = "{";
         let eof = CssSourcePosition::from_byte_offset_in(source, 1);
         let diagnostic = CssRecoveryDiagnostic::new(
-            crate::diagnostic::error::implicit_eof(source),
+            crate::diagnostic::error::implicit_eof(eof),
             CssSourceSpan::new(eof, eof).unwrap(),
             CssRecoveryAction::RetainWithImplicitClosure,
         )

@@ -557,7 +557,7 @@ fn stack_bounded(source: &str) -> CssParseReport<CssSheet> {
             )
         },
     );
-    recovery::finish_report(source, conditional_chains::sheet(source, report))
+    recovery::finish_report(source, conditional_chains::sheet(&snapshot, report))
 }
 
 fn bounded_depth_on_two_mib(depth: usize) {

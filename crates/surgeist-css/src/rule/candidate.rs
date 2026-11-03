@@ -130,7 +130,9 @@ impl CssRuleSyntax {
                 unreachable!("candidate replay retains its carrier")
             };
             let (rule, diagnostics) = match rule {
-                Some(rule) => conditional_chains::rule(source, rule, diagnostics).into_parts(),
+                Some(rule) => {
+                    conditional_chains::rule(self.origin.source(), rule, diagnostics).into_parts()
+                }
                 None => (None, diagnostics),
             };
             CssParseReport::new(rule, diagnostics)

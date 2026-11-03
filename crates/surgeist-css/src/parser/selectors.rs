@@ -248,7 +248,7 @@ impl<'a> SelectorRecovery<'a> {
         let action = recovery_action_for_error(&error, ordinary_action);
         let error = from_parse_error(self.source, error);
         let Some(span) = comma_member_span(
-            self.source,
+            |offset| self.state.source_position(offset),
             member_start,
             member_end,
             following_comma,
@@ -1158,11 +1158,7 @@ fn parse_pseudo_element<'i>(
         {
             let mut depth = recovery
                 .state
-                .enter_component_block_at(
-                    recovery.source,
-                    opening_end(state.site()),
-                    "baseline.selector.complex",
-                )
+                .enter_component_block_at(opening_end(state.site()), "baseline.selector.complex")
                 .map_err(|error| SyntaxError::custom(state.site(), error))?;
             let result = input.within_block(|input| {
                 if name.eq_ignore_ascii_case("slotted") {
@@ -1426,11 +1422,7 @@ fn parse_pseudo_class_with_options<'i>(
         Ok(Token::Function(name)) => {
             let mut depth = recovery
                 .state
-                .enter_component_block_at(
-                    recovery.source,
-                    opening_end(state.site()),
-                    "baseline.selector.complex",
-                )
+                .enter_component_block_at(opening_end(state.site()), "baseline.selector.complex")
                 .map_err(|error| SyntaxError::custom(state.site(), error))?;
             let result = input.within_block(|input| {
                 parse_function_pseudo_class(name, state.site(), input, options, recovery)

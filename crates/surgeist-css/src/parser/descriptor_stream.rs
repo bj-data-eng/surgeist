@@ -746,14 +746,9 @@ where
         } else {
             CssRecoveryAction::DropQualifiedRule
         };
-        if let Some(diagnostic) = structural_rule_diagnostic(
-            context.source,
-            error,
-            text,
-            dropped.start,
-            dropped.end,
-            action,
-        ) {
+        if let Some(diagnostic) =
+            structural_rule_diagnostic(snapshot, error, text, dropped.start, dropped.end, action)
+        {
             sink.borrow_mut().push(diagnostic);
         }
     });
@@ -908,7 +903,7 @@ where
         // The span starts where the dropped unit does, whatever part of it the
         // text names.
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(source, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(snapshot, dropped.error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }

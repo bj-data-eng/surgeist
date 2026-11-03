@@ -608,7 +608,7 @@ fn parse_font_face_source_list<'i>(
                 let error =
                     from_parse_error(source, with_descriptor_context(error, "font-face", "src"));
                 if let Some(span) = comma_member_span(
-                    source,
+                    |offset| numeric.position_in(source, offset),
                     member_start,
                     member_end,
                     following_comma,

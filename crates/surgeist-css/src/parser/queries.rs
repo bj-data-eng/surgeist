@@ -191,7 +191,7 @@ pub(super) fn media_query_list<'i>(
                     with_media_query_context(error, None)
                 };
                 let Some(span) = comma_member_span(
-                    source,
+                    |offset| recovery.source_position(offset),
                     member_start,
                     member_end,
                     following_comma,
@@ -202,7 +202,10 @@ pub(super) fn media_query_list<'i>(
                 if span.start() == span.end() {
                     return Err(SyntaxError::custom(input.site(), error));
                 }
-                let position = first_non_trivia_position(source, member_start, member_end);
+                let position =
+                    first_non_trivia_position(source, member_start, member_end, |offset| {
+                        recovery.source_position(offset)
+                    });
                 let error = from_parse_error(source, error);
                 let Some(diagnostic) =
                     crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)

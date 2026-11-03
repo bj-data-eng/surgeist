@@ -123,7 +123,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
             .span();
         diagnostics.push(
             CssRecoveryDiagnostic::new(
-                crate::diagnostic::error::unterminated_at_rule(source, end),
+                crate::diagnostic::error::unterminated_at_rule(span.end()),
                 span,
                 CssRecoveryAction::RetainSyntaxCandidate,
             )

@@ -179,8 +179,7 @@ impl ParserThreadUnavailable {
         let error = crate::diagnostic::error::from_parse_error(
             source,
             crate::diagnostic::error::parser_unavailable(
-                source,
-                opening,
+                CssSourcePosition::from_byte_offset_in(source, opening),
                 self.direct_depth,
                 REFUSED_PRODUCTION,
             ),

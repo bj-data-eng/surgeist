@@ -635,7 +635,7 @@ pub(crate) fn parse_supports_test_contents_with_limits(
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin
                 && let Some(diagnostic) = CssRecoveryDiagnostic::new(
-                    crate::diagnostic::error::implicit_eof(source),
+                    crate::diagnostic::error::implicit_eof(at.span().end()),
                     crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
                         .expect("actual implicit source extent"),
                     CssRecoveryAction::RetainWithImplicitClosure,

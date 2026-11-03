@@ -98,7 +98,7 @@ pub(crate) fn parse_bounded(
     // but can change UTF-16 columns. Resolve coordinates from original bytes
     // without repeating token inference or changing responsible-token ownership.
     for diagnostic in &mut diagnostics {
-        diagnostic.resolve_original_coordinates(source_snapshot.as_str());
+        diagnostic.resolve_original_coordinates(source_snapshot);
     }
     let eof_limit = diagnostics.iter().any(|diagnostic| {
         diagnostic.action() == crate::diagnostic::CssRecoveryAction::StopAtNestingLimit
@@ -147,8 +147,7 @@ fn parse_over(
         let error = from_parse_error(
             source,
             crate::diagnostic::error::nesting_limit(
-                source,
-                limit.opening_offset,
+                state.source_position(limit.opening_offset),
                 recovery::STRUCTURAL_NESTING_LIMIT,
                 limit.enclosing_production,
             ),

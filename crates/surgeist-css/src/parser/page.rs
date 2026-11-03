@@ -231,7 +231,7 @@ pub(super) fn drive_margin_body<'i>(
         // text names: a rejected prelude names less than the unit, which runs
         // to the end of its block.
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(source, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(snapshot, dropped.error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }
@@ -481,9 +481,9 @@ impl DetachedMarginParser<'_> {
             });
         };
         let opening = offset_of(block.start_site()).saturating_sub(1);
-        let mut depth =
-            self.recovery
-                .enter_rule_block(self.source, Offset::new(opening), "later.rule.page")?;
+        let mut depth = self
+            .recovery
+            .enter_rule_block(Offset::new(opening), "later.rule.page")?;
         let (declarations, mut recovered) =
             drive_margin_body(&mut block, self.source, &self.recovery);
         self.diagnostics.append(&mut recovered);
@@ -635,7 +635,7 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
         let opening = offset_of(block.start_site()).saturating_sub(1);
         let mut depth = self
             .recovery
-            .enter_rule_block(self.source, Offset::new(opening), "later.rule.page")
+            .enter_rule_block(Offset::new(opening), "later.rule.page")
             .map_err(fail)?;
         let (declarations, mut recovered) =
             drive_margin_body(&mut block, self.source, &self.recovery);
