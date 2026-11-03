@@ -353,6 +353,22 @@ impl<K: Eq + std::hash::Hash> Positions<K> {
         self.slots.insert(node, position);
     }
 }
+/// Test-only instrument: the entries or probes examined by mapping lookups on
+/// this thread. It exists so a test can observe the shape of lookup cost without
+/// timing; it is compiled out of every other build.
+#[cfg(test)]
+mod lookup_steps {
+    use std::cell::Cell;
+    thread_local! {
+        static STEPS: Cell<usize> = const { Cell::new(0) };
+    }
+    pub(super) fn count() {
+        STEPS.with(|steps| steps.set(steps.get() + 1));
+    }
+    pub(super) fn take() -> usize {
+        STEPS.with(|steps| steps.replace(0))
+    }
+}
 #[derive(Debug)]
 struct Entry {
     node: HtmlNodeId,
@@ -379,11 +395,19 @@ impl HtmlConstructionCaptureMap {
         &self,
         node: &HtmlNodeId,
     ) -> Result<&HtmlCaptureBuilderSubject, HtmlConstructionCaptureError> {
-        self.entries
-            .iter()
-            .find(|entry| &entry.node == node)
+        self.entry(node)
             .and_then(|entry| entry.subject.as_ref())
             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)
+    }
+    fn entry(&self, node: &HtmlNodeId) -> Option<&Entry> {
+        for entry in &self.entries {
+            #[cfg(test)]
+            lookup_steps::count();
+            if &entry.node == node {
+                return Some(entry);
+            }
+        }
+        None
     }
     pub fn subject(
         &self,
@@ -1085,6 +1109,71 @@ fn traverse<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A fragment of `n` text siblings imported with generous limits.
+    fn imported_siblings(n: usize) -> (HtmlConstructionCapturedResult, Vec<HtmlNodeId>) {
+        let mut source =
+            HtmlFragment::builder(crate::HtmlConstructionLimits::new(n + 1, n, 0, 4 * n, 4))
+                .unwrap();
+        let root = source.root();
+        for _ in 0..n {
+            source.append_text(&root, "x").unwrap();
+        }
+        let source = source.finish();
+        let root_id = source.root().id();
+        let mut ids = vec![root_id.clone()];
+        ids.extend(source.node(&root_id).unwrap().children());
+        let revision = HtmlHostFactsRevision::fresh();
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(n + 4, 4 * n + 8, 0, 4 * n + 8, 8, 0, 0, 16 * 1024 * 1024),
+            revision.clone(),
+        );
+        let document = builder
+            .add_document(
+                crate::HtmlDocumentMode::Quirks,
+                HtmlScriptingStatus::Enabled,
+                HtmlCaptureRegistryInput::Unavailable,
+            )
+            .unwrap();
+        let nodes = ids
+            .iter()
+            .map(|id| {
+                HtmlConstructionCaptureNodeFacts::new(
+                    id.clone(),
+                    HtmlConstructionCaptureDocument::Existing(document.clone()),
+                    None,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+        let import = HtmlConstructionCaptureAdapter::fragment(
+            builder,
+            source,
+            HtmlConstructionCaptureFacts::new(revision, nodes),
+            HtmlConstructionCaptureLimits::new(n + 1, 8 * n + 64, 100 * n + 1000),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        (import.finish().unwrap(), ids)
+    }
+    #[test]
+    fn looking_up_every_mapped_subject_costs_constant_steps_per_node() {
+        // Independent oracle: each lookup of one node must cost a bounded number
+        // of steps whatever the number of mapped nodes, so n lookups cost O(n);
+        // a scan examines up to n entries per lookup, about n^2 / 2 in total.
+        let n = 200;
+        let (result, ids) = imported_siblings(n);
+        lookup_steps::take();
+        for id in &ids {
+            result.mapping().builder_subject(id).unwrap();
+        }
+        let steps = lookup_steps::take();
+        assert!(
+            steps <= 2 * ids.len(),
+            "{} lookups examined {steps} steps",
+            ids.len()
+        );
+    }
     #[test]
     fn every_work_cutoff_rolls_back_new_records_and_retains_input_allocations() {
         let mut source =
