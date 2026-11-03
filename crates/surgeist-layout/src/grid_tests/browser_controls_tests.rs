@@ -13,13 +13,26 @@ mod fri06_c12_t08_browser_front_door {
     ));
 }
 
-fn fri08_c05_later_owned_browser_parity_disposition(relative_path: &str) -> String {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(path)
-        .expect("later-owned browser control parses");
-    fri06_c12_t08_browser_front_door::assert_surgeist_matches(&golden)
-        .expect_err("later-owned behavior must remain visibly unresolved during FRI-08")
-        .to_string()
+#[test]
+fn captured_root_context_edition_matches_native_geometry_without_generator() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/captured/root-context-v4/xml");
+    let fixtures = fri06_c12_t08_browser_front_door::fixture_files_in(&root, "xml")
+        .expect("the source-qualified edition is available to ordinary XML consumers");
+    assert!(
+        !fixtures.is_empty(),
+        "the captured edition has Native cases"
+    );
+    eprintln!(
+        "captured root-context edition: {} strict Native XML comparisons",
+        fixtures.len()
+    );
+    for path in fixtures {
+        let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(&path)
+            .unwrap_or_else(|error| panic!("{} must parse: {error}", path.display()));
+        fri06_c12_t08_browser_front_door::assert_surgeist_matches(&golden)
+            .unwrap_or_else(|error| panic!("{} must match: {error}", path.display()));
+    }
 }
 
 #[test]
@@ -35,7 +48,7 @@ fn fixed_grid_contributions_preserve_baseline_distribution() {
             "content_box_rtl",
         ] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/layout/browser_parity/xml/grid")
+                .join("tests/layout/browser_parity/captured/root-context-v4/xml/grid")
                 .join(format!("{family}__{variant}.xml"));
             let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(&path)
                 .unwrap_or_else(|error| panic!("{} must parse: {error}", path.display()));
@@ -46,19 +59,13 @@ fn fixed_grid_contributions_preserve_baseline_distribution() {
 }
 
 #[test]
-fn fri10_c05_control_records_grid_absolute_percentage_and_static_position_mismatches() {
-    assert_eq!(
-        fri08_c05_later_owned_browser_parity_disposition(
-            "tests/layout/browser_parity/xml/grid/absolute_correct_cross_child_size_with_percentage__content_box_ltr.xml",
-        ),
-        "absolute_correct_cross_child_size_with_percentage__content_box_ltr/0: x mismatch, expected 50, got 0"
-    );
-    assert_eq!(
-        fri08_c05_later_owned_browser_parity_disposition(
-            "tests/layout/browser_parity/xml/grid/grid_absolute_layout_within_border_static__content_box_ltr.xml",
-        ),
-        "grid_absolute_layout_within_border_static__content_box_ltr/0: x mismatch, expected 10, got 0"
-    );
+fn grid_absolute_percentage_and_static_position_controls_match_public_layout() {
+    for relative_path in [
+        "tests/layout/browser_parity/captured/root-context-v4/xml/grid/absolute_correct_cross_child_size_with_percentage__content_box_ltr.xml",
+        "tests/layout/browser_parity/captured/root-context-v4/xml/grid/grid_absolute_layout_within_border_static__content_box_ltr.xml",
+    ] {
+        assert_fri06_c12_t08_complete_fixture_geometry(relative_path);
+    }
 }
 
 #[test]
@@ -74,7 +81,7 @@ fn fri08_c03_intrinsic_checked_in_min_max_container_variants_use_candidate_proje
             "content_box_rtl",
         ] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/layout/browser_parity/xml/grid-lanes")
+                .join("tests/layout/browser_parity/captured/root-context-v4/xml/grid-lanes")
                 .join(format!("{family}__{variant}.xml"));
             let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(&path)
                 .unwrap_or_else(|error| panic!("{} must parse: {error}", path.display()));
@@ -93,7 +100,7 @@ fn fri08_c04_standalone_column_autoflow_measures_the_local_grid_container() {
         "content_box_rtl",
     ] {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/layout/browser_parity/xml/subgrid")
+            .join("tests/layout/browser_parity/captured/root-context-v4/xml/subgrid")
             .join(format!(
                 "subgrid_standalone_axis_column_autoflow__{variant}.xml"
             ));
@@ -125,7 +132,7 @@ fn fri08_c04_overflow_frozen_grid_and_subgrid_controls_match_public_layout() {
             "content_box_rtl",
         ] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/layout/browser_parity/xml")
+                .join("tests/layout/browser_parity/captured/root-context-v4/xml")
                 .join(suite)
                 .join(format!("{source}__{variant}.xml"));
             let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(&path)
@@ -140,7 +147,7 @@ fn fri08_c04_overflow_frozen_grid_and_subgrid_controls_match_public_layout() {
 fn fri08_c06_collapsed_gutter_automatic_and_absolute_spans_use_the_same_line_offsets() {
     let golden = fri06_c12_t08_browser_front_door::Golden::parse(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/layout/browser_parity/xml/grid/fri08_auto_fit_occupied_track_collapse__border_box_ltr.xml"
+        "/tests/layout/browser_parity/captured/root-context-v4/xml/grid/fri08_auto_fit_occupied_track_collapse__border_box_ltr.xml"
     )))
     .expect("authoritative collapsed-gutter fixture parses");
     fri06_c12_t08_browser_front_door::assert_surgeist_matches(&golden)
@@ -189,18 +196,9 @@ fn fri08_c06_collapsed_gutter_automatic_and_absolute_spans_use_the_same_line_off
     assert_eq!((absolute.location.x, absolute.size.width), (25.0, 90.0));
 }
 
-fn assert_fri06_c12_t08_ordinary_fixture_geometry(relative_path: &str) {
-    fn clear_browser_control_observations(
-        expectation: &mut fri06_c12_t08_browser_front_door::Expectation,
-    ) {
-        expectation.browser_control = None;
-        for child in &mut expectation.children {
-            clear_browser_control_observations(child);
-        }
-    }
-
+fn assert_fri06_c12_t08_complete_fixture_geometry(relative_path: &str) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    let mut golden = fri06_c12_t08_browser_front_door::Golden::parse_file(path)
+    let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(path)
         .expect("reviewed T08 fixture parses");
     let _ = (
         fri06_c12_t08_browser_front_door::fixture_files,
@@ -210,36 +208,35 @@ fn assert_fri06_c12_t08_ordinary_fixture_geometry(relative_path: &str) {
         golden.root.style.display(),
         golden.root.style.width(),
     );
-    clear_browser_control_observations(&mut golden.expectations);
     fri06_c12_t08_browser_front_door::assert_surgeist_matches(&golden)
-        .unwrap_or_else(|error| panic!("{} ordinary geometry: {error}", golden.name));
+        .unwrap_or_else(|error| panic!("{} complete geometry: {error}", golden.name));
 }
 
 #[test]
 fn horizontal_auto_rows_composed_target_places_later_item_at_y128_without_moving_first_row() {
-    assert_fri06_c12_t08_ordinary_fixture_geometry(
-        "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_auto_rows_inner_row1_first__border_box_ltr.xml",
+    assert_fri06_c12_t08_complete_fixture_geometry(
+        "tests/layout/browser_parity/captured/root-context-v4/xml/subgrid/subgrid_baseline_auto_rows_inner_row1_first__border_box_ltr.xml",
     );
 }
 
 #[test]
 fn rtl_inline_column_composed_target_places_first_item_at_x265() {
-    assert_fri06_c12_t08_ordinary_fixture_geometry(
-        "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_rtl.xml",
+    assert_fri06_c12_t08_complete_fixture_geometry(
+        "tests/layout/browser_parity/captured/root-context-v4/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_rtl.xml",
     );
 }
 
 #[test]
 fn ltr_inline_column_composed_target_remains_x265() {
-    assert_fri06_c12_t08_ordinary_fixture_geometry(
-        "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_ltr.xml",
+    assert_fri06_c12_t08_complete_fixture_geometry(
+        "tests/layout/browser_parity/captured/root-context-v4/xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_ltr.xml",
     );
 }
 
 #[test]
 fn vertical_auto_rows_composed_target_remains_x308() {
-    assert_fri06_c12_t08_ordinary_fixture_geometry(
-        "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_ltr.xml",
+    assert_fri06_c12_t08_complete_fixture_geometry(
+        "tests/layout/browser_parity/captured/root-context-v4/xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_ltr.xml",
     );
 }
 

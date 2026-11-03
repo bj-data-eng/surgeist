@@ -1,0 +1,12 @@
+<test name="logical-inline-maximum__content_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" box-sizing="content-box" direction="ltr" position="absolute" width="100px" height="10px" max-width="80px"/>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="80" height="10"/>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="80" height="10" scroll-width="80" scroll-height="10" client-width="80" client-height="10"/>
+  </diagnostics>
+</test>
