@@ -57,7 +57,6 @@ enum OwnerFault {
     InvalidContentsReference,
     ParentChildConflict,
     InvalidOutputRoot,
-    OperationConsumed,
     OperationNotReady,
     ForeignAllocation,
     CapacityMismatch,
@@ -74,7 +73,7 @@ enum OwnerFault {
 type CausePredicate = fn(&HtmlConstructionError) -> bool;
 
 /// The owner's cause predicates, each with the fault it names.
-const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
+const OWNER_CAUSES: [(CausePredicate, OwnerFault); 28] = [
     (
         HtmlConstructionError::is_foreign_builder,
         OwnerFault::ForeignBuilder,
@@ -148,10 +147,6 @@ const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
     (
         HtmlConstructionError::is_invalid_output_root,
         OwnerFault::InvalidOutputRoot,
-    ),
-    (
-        HtmlConstructionError::is_operation_consumed,
-        OwnerFault::OperationConsumed,
     ),
     (
         HtmlConstructionError::is_operation_not_ready,
@@ -254,7 +249,6 @@ fn disposition(fault: OwnerFault) -> Disposition {
         | OwnerFault::InvalidShadowAssociation
         | OwnerFault::InvalidContentsReference
         | OwnerFault::InvalidOutputRoot
-        | OwnerFault::OperationConsumed
         | OwnerFault::OperationNotReady
         | OwnerFault::Unlisted => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,
@@ -359,11 +353,8 @@ fn ticket_work(control: &mut ParseControl) -> Result<(), SessionError> {
 impl ConstructionOwner {
     pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        let mut initialization = Some(HtmlConstructionStorage::begin());
-        let Some(owner) = initialization.as_mut() else {
-            return Err(latch_registry_row(control));
-        };
-        let Some(action) = owner
+        let mut initialization = HtmlConstructionStorage::begin();
+        let Some(action) = initialization
             .next_action()
             .map_err(|error| construction_error(control, error))?
         else {
@@ -395,7 +386,7 @@ impl ConstructionOwner {
             payload_bytes,
         ) {
             drop(observation);
-            if let Some(receipt) = initialization.take().and_then(|owner| owner.abort()) {
+            if let Some(receipt) = initialization.abort() {
                 let Some(ticket) = identity.take() else {
                     return Err(latch_registry_row(control));
                 };
@@ -404,8 +395,9 @@ impl ConstructionOwner {
             return Err(stop.into());
         }
         observation.accept();
-        let owner = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .map_err(|error| construction_error(control, error))?
+        let owner = initialization
+            .try_ready()
+            .map_err(|refusal| construction_error(control, refusal.into_parts().1))?
             .commit();
         let (children, children_allocation) = match control.new_vector() {
             Ok(value) => value,
@@ -560,9 +552,7 @@ impl ConstructionOwner {
                 // A mutation never publishes. The published storage is taken
                 // back through its lease, so the owner keeps every record.
                 let invariant = latch_registry_row(control);
-                let mut result = Some(result);
-                let mut lease = Some(lease);
-                if let Ok(recovery) = HtmlConstructionLease::try_recover(&mut result, &mut lease) {
+                if let Ok(recovery) = HtmlConstructionLease::try_recover(result, lease) {
                     // A refused recovery cannot displace the invariant above,
                     // which is already the reported first stop.
                     let _ = self.recovered(control, recovery);
@@ -584,18 +574,10 @@ impl ConstructionOwner {
             return Err(latch_registry_row(control));
         };
         let before_edges = storage.usage().edges();
-        match storage.prepare(command) {
-            Ok(operation) => Ok(PendingConstruction {
-                operation: Some(operation),
-                before_edges,
-            }),
-            Err(rejection) => {
-                // A refusal returns the unchanged storage.
-                let (storage, _, reason) = rejection.into_parts();
-                self.owner = Some(storage);
-                Err(construction_error(control, reason))
-            }
-        }
+        Ok(PendingConstruction {
+            operation: Some(storage.prepare(command)),
+            before_edges,
+        })
     }
     pub(super) fn perform_action(
         &mut self,
@@ -874,13 +856,15 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         pending: &mut PendingConstruction,
     ) -> Result<HtmlConstructionReadyOperation, SessionError> {
-        match HtmlConstructionOperation::try_ready(&mut pending.operation) {
+        let Some(operation) = pending.operation.take() else {
+            return Err(latch_registry_row(control));
+        };
+        match operation.try_ready() {
             Ok(ready) => Ok(ready),
-            Err(error) => {
-                let error = construction_error(control, error);
-                if let Some(operation) = pending.operation.take() {
-                    self.restore_aborted(control, operation.abort())?;
-                }
+            Err(refusal) => {
+                let (operation, reason) = refusal.into_parts();
+                let error = construction_error(control, reason);
+                self.restore_aborted(control, operation.abort())?;
                 Err(error)
             }
         }

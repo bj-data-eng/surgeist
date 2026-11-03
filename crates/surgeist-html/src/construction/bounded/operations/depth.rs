@@ -552,19 +552,13 @@ mod tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
         let HtmlConstructionCommit::Changed {
             storage, created, ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        } = slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("mutation published")
         };
@@ -581,9 +575,7 @@ mod tests {
             .unwrap()
             .perform()
             .accept();
-        HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit()
+        slots::initialization(&mut initialization).unwrap().commit()
     }
 
     fn element(local: &str) -> HtmlConstructionCommand {
@@ -627,11 +619,7 @@ mod tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, bool) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         let mut refused = false;
         loop {
             match operation.as_mut().unwrap().next_action() {
@@ -654,9 +642,7 @@ mod tests {
             return (storage, false);
         }
         let HtmlConstructionCommit::Changed { storage, .. } =
-            HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            slots::operation(&mut operation).unwrap().commit()
         else {
             panic!("mutation published")
         };

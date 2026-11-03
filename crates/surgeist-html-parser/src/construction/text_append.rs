@@ -531,34 +531,29 @@ impl SessionStorage {
             self.retire_text_append_group(control, old_slot, index)?;
             Ok(())
         })();
-        let ready = match &result {
-            Ok(()) => match Append::try_ready(&mut operation) {
-                Ok(ready) => Some(ready),
-                Err(error) => {
+        let completion = match operation.take() {
+            None => {
+                // The exclusive owner went with the operation; the tickets
+                // are all that is left to hand back.
+                let error = latch_registry_row(control);
+                let tickets = CommittedTickets {
+                    pending: pending_allocation,
+                    original: original_allocation,
+                    discarded: None,
+                };
+                tickets.release(control);
+                return Err(error);
+            }
+            Some(operation) if result.is_ok() => match operation.try_ready() {
+                Ok(ready) => ready.commit(),
+                Err(refusal) => {
                     // Not ready after all: abort it like any other failure.
+                    let (operation, error) = refusal.into_parts();
                     result = Err(construction_error(control, error));
-                    None
+                    operation.abort()
                 }
             },
-            Err(_) => None,
-        };
-        let completion = match ready {
-            Some(ready) => ready.commit(),
-            None => {
-                let Some(operation) = operation.take() else {
-                    // The exclusive owner went with the operation; the tickets
-                    // are all that is left to hand back.
-                    let error = latch_registry_row(control);
-                    let tickets = CommittedTickets {
-                        pending: pending_allocation,
-                        original: original_allocation,
-                        discarded: None,
-                    };
-                    tickets.release(control);
-                    return Err(error);
-                };
-                operation.abort()
-            }
+            Some(operation) => operation.abort(),
         };
         let (storage, handle, incoming, discarded) = completion.into_parts();
         self.construction.owner = Some(storage);

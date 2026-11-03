@@ -1200,7 +1200,7 @@ fn cancelled_spent_work_and_unaccepted_preparation_do_not_mutate_or_replace_inpu
             }
         }
     }
-    assert!(operation.inner.prepared.is_some());
+    assert!(matches!(operation.inner.state, State::Commit(_)));
     drop(operation);
     assert_eq!(pool.heap_usage().bytes(), 0);
     assert!(Arc::ptr_eq(&backing, input.shared_code_units()));
@@ -1223,7 +1223,7 @@ fn stale_actions_bypass_and_foreign_actions_are_protocol_errors() {
         HtmlStringPoolResult::Bypassed
     ));
     let mut operation = pool.probe(&input);
-    while operation.inner.phase == Phase::Hash {
+    while operation.inner.state.phase() == Phase::Hash {
         let action = pool.next_action(&mut operation).unwrap().unwrap();
         operation.read(action).unwrap();
     }
@@ -1234,7 +1234,7 @@ fn stale_actions_bypass_and_foreign_actions_are_protocol_errors() {
         HtmlValuePoolError::ForeignOwner
     );
     let mut operation = pool.probe(&input);
-    while operation.inner.phase == Phase::Hash {
+    while operation.inner.state.phase() == Phase::Hash {
         let action = pool.next_action(&mut operation).unwrap().unwrap();
         operation.read(action).unwrap();
     }
@@ -1347,7 +1347,7 @@ fn exhausted_entry_generation_does_not_allocate_and_existing_authority_can_abort
             }
         }
     }
-    assert!(operation.inner.prepared.is_none());
+    assert!(!matches!(operation.inner.state, State::Commit(_)));
     assert_eq!(pool.heap_usage().bytes(), 0);
     pool.abort_root(root).unwrap();
     assert_eq!(pool.inner.next, u64::MAX);

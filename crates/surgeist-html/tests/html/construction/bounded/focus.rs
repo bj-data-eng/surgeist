@@ -77,9 +77,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let mut value = Some(value);
     let mut lease = Some(lease);
     assert!(has_cause(
-        HtmlConstructionLease::try_recover(&mut value, &mut lease)
-            .err()
-            .as_ref(),
+        slots::recover(&mut value, &mut lease).err().as_ref(),
         cause::SHARED_ALLOCATION_ALIASED
     ));
     assert_eq!(
@@ -87,9 +85,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
         Some(HtmlFocusedAreaDesignation::KnownNull)
     );
     drop(alias);
-    let (owner, retired_wrapper) = HtmlConstructionLease::try_recover(&mut value, &mut lease)
-        .unwrap()
-        .into_parts();
+    let (owner, retired_wrapper) = slots::recover(&mut value, &mut lease).unwrap().into_parts();
     drop(retired_wrapper);
     let document = owner.node_by_result_id(&id).unwrap().handle();
     let (owner, _) = change(

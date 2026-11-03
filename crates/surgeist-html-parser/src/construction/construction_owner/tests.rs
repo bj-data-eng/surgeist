@@ -688,7 +688,6 @@ fn every_owner_fault_reports_what_it_violates() {
         (F::InvalidShadowAssociation, refusal, true),
         (F::InvalidContentsReference, refusal, true),
         (F::InvalidOutputRoot, refusal, true),
-        (F::OperationConsumed, refusal, true),
         (F::OperationNotReady, refusal, true),
         (F::Unlisted, refusal, true),
     ] {

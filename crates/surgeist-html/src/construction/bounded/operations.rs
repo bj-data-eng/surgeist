@@ -338,7 +338,7 @@ pub enum HtmlConstructionGrowth {
     Geometric,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 enum Phase {
     Operand(usize),
     ClassifyNamespace,
@@ -401,18 +401,169 @@ enum Phase {
     Topology,
     PrepareRecordsReport,
     PrepareWrapperReport,
-    ReserveRecords,
+    /// Reserves the records vector; the snapshot is the bank as reported just before.
+    ReserveRecords(HtmlConstructionAllocationSnapshot),
     PrepareChildrenReport,
-    ReserveChildren,
+    /// Reserves the new parent's child order; the snapshot is the bank as reported just before.
+    ReserveChildren(HtmlConstructionAllocationSnapshot),
     Preflight,
     Layout,
     References,
     Children(usize),
-    Share,
+    /// Creates the shared arena; the snapshot is the wrapper as reported just before.
+    Share(HtmlConstructionAllocationSnapshot),
     Commit,
     Observing,
     Ready,
     Failed,
+}
+
+/// The shared node identities that the reference-sharing action minted. Each variant belongs to
+/// the commands that share identities; every other command stages nothing.
+#[derive(Debug, Default)]
+enum Staged {
+    #[default]
+    Nothing,
+    /// A creation: the template element's identity, stored as the owner of its contents, when the
+    /// created element is a template.
+    Created { template_owner: Option<HtmlNodeId> },
+    /// A shadow attachment: the host, the contents and the contents' owner.
+    Shadow {
+        host: HtmlNodeId,
+        contents: HtmlNodeId,
+        owner: HtmlNodeId,
+    },
+    /// A template contents reassignment: the template, which owns the new contents.
+    Template(HtmlNodeId),
+}
+/// What a ready operation's commit stores beyond the command's own operands, paired with the
+/// command by `try_ready`. A creation's template identity is an option because only a template
+/// has contents to own; the association is applied by itself, so the commit needs no pairing of
+/// the command with it.
+#[derive(Debug)]
+struct Resolved {
+    template_owner: Option<HtmlNodeId>,
+    association: Association,
+}
+/// The identities and releases of the commands that associate fragments.
+#[derive(Debug)]
+enum Association {
+    None,
+    AttachShadow {
+        host: HtmlNodeId,
+        contents: HtmlNodeId,
+        owner: HtmlNodeId,
+    },
+    AttachTemplateShadow {
+        host: HtmlNodeId,
+        contents: HtmlNodeId,
+        owner: HtmlNodeId,
+        old_contents: usize,
+    },
+    SetTemplateShadowContents {
+        old_contents: usize,
+    },
+    ReassignTemplateContents {
+        template: HtmlNodeId,
+        old_contents: Option<usize>,
+    },
+}
+impl Resolved {
+    fn only(association: Association) -> Self {
+        Self {
+            template_owner: None,
+            association,
+        }
+    }
+}
+/// Pairs the command with what planning staged and released. Every command is listed, so a new
+/// one must say what it stages. A mismatch hands the staged identities back.
+fn resolve(
+    command: &HtmlConstructionCommand,
+    staged: Staged,
+    old_contents: Option<usize>,
+) -> Result<Resolved, Staged> {
+    use HtmlConstructionCommand as Command;
+    match command {
+        Command::Create { .. } | Command::CreateElement { .. } => match staged {
+            Staged::Created { template_owner } => Ok(Resolved {
+                template_owner,
+                association: Association::None,
+            }),
+            staged => Err(staged),
+        },
+        // The other creations mint their record's identity too, but share nothing with it.
+        Command::CreateDocument { .. }
+        | Command::CreateFragment
+        | Command::CreateShadowContents { .. } => match staged {
+            Staged::Created {
+                template_owner: None,
+            } => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
+        Command::AttachShadow { .. } => match (staged, old_contents) {
+            (
+                Staged::Shadow {
+                    host,
+                    contents,
+                    owner,
+                },
+                None,
+            ) => Ok(Resolved::only(Association::AttachShadow {
+                host,
+                contents,
+                owner,
+            })),
+            (staged, _) => Err(staged),
+        },
+        Command::AttachTemplateShadow { .. } => match (staged, old_contents) {
+            (
+                Staged::Shadow {
+                    host,
+                    contents,
+                    owner,
+                },
+                Some(old_contents),
+            ) => Ok(Resolved::only(Association::AttachTemplateShadow {
+                host,
+                contents,
+                owner,
+                old_contents,
+            })),
+            (staged, _) => Err(staged),
+        },
+        Command::SetTemplateShadowContents { .. } => match (staged, old_contents) {
+            (Staged::Nothing, Some(old_contents)) => {
+                Ok(Resolved::only(Association::SetTemplateShadowContents {
+                    old_contents,
+                }))
+            }
+            (staged, _) => Err(staged),
+        },
+        Command::ReassignTemplateContents { .. } => match staged {
+            Staged::Template(template) => {
+                Ok(Resolved::only(Association::ReassignTemplateContents {
+                    template,
+                    old_contents,
+                }))
+            }
+            // A reassignment to the contents already owned plans nothing and commits nothing.
+            Staged::Nothing => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
+        Command::ReserveRecords { .. }
+        | Command::CheckChildTransfer { .. }
+        | Command::Insert { .. }
+        | Command::Detach { .. }
+        | Command::ReplaceContent { .. }
+        | Command::ReplaceAttributes { .. }
+        | Command::SetDocumentMode { .. }
+        | Command::SetLinkFlags { .. }
+        | Command::Publish { .. } => match staged {
+            Staged::Nothing => Ok(Resolved::only(Association::None)),
+            staged => Err(staged),
+        },
+    }
 }
 
 #[derive(Debug, Default)]
@@ -444,7 +595,8 @@ struct Plan {
     record_writes: usize,
     reserve_required: usize,
     references: usize,
-    ids: [Option<HtmlNodeId>; 3],
+    /// The identities that the sharing action minted for the commit to store.
+    staged: Staged,
     created: Option<HtmlBuilderNode>,
     new_children: [VecDeque<usize>; 2],
     new_children_generations: [u64; 2],
@@ -457,19 +609,25 @@ struct Plan {
 #[derive(Debug)]
 enum StorageOwner {
     Mutable(HtmlConstructionStorage),
-    Shared(Arc<Arena>),
+    /// Publication shared the arena. The lease is the weak recovery capability issued with it.
+    Shared {
+        arena: Arc<Arena>,
+        lease: HtmlConstructionLease,
+    },
 }
 impl StorageOwner {
     fn arena(&self) -> &Arena {
         match self {
             Self::Mutable(v) => &v.arena,
-            Self::Shared(v) => v,
+            Self::Shared { arena, .. } => arena,
         }
     }
-    fn mutable(&mut self) -> &mut HtmlConstructionStorage {
+    /// The mutable storage. A published arena has no later mutation, so asking for it then is a
+    /// protocol misuse that reports the not-ready error.
+    fn mutable(&mut self) -> Result<&mut HtmlConstructionStorage, HtmlConstructionError> {
         match self {
-            Self::Mutable(v) => v,
-            Self::Shared(_) => unreachable!("shared publication has no later mutation"),
+            Self::Mutable(v) => Ok(v),
+            Self::Shared { .. } => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
         }
     }
 }
@@ -477,46 +635,12 @@ impl StorageOwner {
 /// A pending operation retains its exact storage and command through refusal.
 #[derive(Debug)]
 pub struct HtmlConstructionOperation {
-    owner: Option<StorageOwner>,
+    owner: StorageOwner,
     command: HtmlConstructionCommand,
     phase: Phase,
     failure: Option<HtmlConstructionError>,
     plan: Plan,
-    snapshot: Option<HtmlConstructionAllocationSnapshot>,
-    lease: Option<HtmlConstructionLease>,
 }
-/// No rejected command loses its input or storage owner.
-#[derive(Debug)]
-pub struct HtmlConstructionRejection {
-    storage: HtmlConstructionStorage,
-    command: HtmlConstructionCommand,
-    reason: HtmlConstructionError,
-}
-impl HtmlConstructionRejection {
-    /// Returns the owned storage, the command and the refusal cause. Nothing the caller supplied
-    /// is lost.
-    pub fn into_parts(
-        self,
-    ) -> (
-        HtmlConstructionStorage,
-        HtmlConstructionCommand,
-        HtmlConstructionError,
-    ) {
-        (self.storage, self.command, self.reason)
-    }
-}
-impl HtmlConstructionRejection {
-    /// The cause the command was refused for; the owners stay recoverable.
-    pub fn reason(&self) -> &HtmlConstructionError {
-        &self.reason
-    }
-}
-impl fmt::Display for HtmlConstructionRejection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "construction command rejected: {}", self.reason)
-    }
-}
-impl std::error::Error for HtmlConstructionRejection {}
 /// The storage and command of an abandoned operation, plus retirement evidence for any allocation
 /// the operation had already created.
 #[derive(Debug)]
@@ -542,6 +666,7 @@ impl HtmlConstructionAbort {
 #[derive(Debug)]
 pub struct HtmlConstructionReadyOperation {
     operation: HtmlConstructionOperation,
+    resolved: Resolved,
 }
 /// The outcome of committing an operation.
 #[derive(Debug)]
@@ -632,24 +757,19 @@ impl HtmlConstructionOperation {
             Phase::ClassifyNamespace
         };
         Self {
-            owner: Some(StorageOwner::Mutable(storage)),
+            owner: StorageOwner::Mutable(storage),
             command,
             phase,
             failure: None,
             plan: Plan::default(),
-            snapshot: None,
-            lease: None,
         }
     }
     fn arena(&self) -> &Arena {
-        self.owner.as_ref().expect("pending storage").arena()
+        self.owner.arena()
     }
     /// The pending arena, for scratch writes that are not logical state.
     fn arena_mut(&mut self) -> Result<&mut Arena, HtmlConstructionError> {
-        match self.owner.as_mut() {
-            Some(StorageOwner::Mutable(storage)) => Ok(&mut storage.arena),
-            _ => Err(HtmlConstructionErrorKind::OperationConsumed.into()),
-        }
+        Ok(&mut self.owner.mutable()?.arena)
     }
     /// The least child-order capacity that holds the pushed child.
     fn push_required(&self) -> usize {
@@ -681,11 +801,9 @@ impl HtmlConstructionOperation {
         }
     }
     fn fail<T>(&mut self, error: HtmlConstructionError) -> Result<T, HtmlConstructionError> {
-        if self.failure.is_none() {
-            self.failure = Some(error);
-        }
+        let latched = self.failure.get_or_insert(error).clone();
         self.phase = Phase::Failed;
-        Err(self.failure.clone().expect("latched failure"))
+        Err(latched)
     }
     /// The next action to describe and perform. `Ok(None)` means the operation is ready. It
     /// returns the latched failure, or the not-ready error while an observation awaits `accept`.
@@ -703,37 +821,62 @@ impl HtmlConstructionOperation {
         }
         Ok(Some(HtmlConstructionAction { operation: self }))
     }
-    /// Takes a ready operation out of `owner`. Returns the latched failure, the consumed error for
-    /// an empty owner, or the not-ready error before the last action was accepted; on error the
-    /// owner is left in place.
+    /// Consumes a ready operation. Returns the latched failure, or the not-ready error before the
+    /// last action was accepted; either way the operation is handed back unchanged, so the caller
+    /// can abort it and recover the storage and command.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
     pub fn try_ready(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionError> {
-        let operation = owner
-            .as_ref()
-            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
-        if let Some(error) = &operation.failure {
-            return Err(error.clone());
+        mut self,
+    ) -> Result<HtmlConstructionReadyOperation, HtmlConstructionRefusal<Self>> {
+        if let Some(error) = &self.failure {
+            let error = error.clone();
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
-        if !matches!(operation.phase, Phase::Ready) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        if !matches!(self.phase, Phase::Ready) {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
         }
-        Ok(HtmlConstructionReadyOperation {
-            operation: owner.take().expect("occupied operation"),
-        })
+        // Only publication shares the arena, and its last action does. A ready operation whose
+        // command and owner disagree, or whose staged identities do not belong to its command,
+        // was driven outside the protocol and reports the same not-ready error.
+        let publishes = matches!(self.command, HtmlConstructionCommand::Publish { .. });
+        let shared = matches!(self.owner, StorageOwner::Shared { .. });
+        if publishes != shared {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
+        }
+        let staged = std::mem::take(&mut self.plan.staged);
+        match resolve(&self.command, staged, self.plan.old_contents) {
+            Ok(resolved) => Ok(HtmlConstructionReadyOperation {
+                operation: self,
+                resolved,
+            }),
+            Err(staged) => {
+                self.plan.staged = staged;
+                Err(HtmlConstructionRefusal::new(
+                    self,
+                    HtmlConstructionErrorKind::OperationNotReady,
+                ))
+            }
+        }
     }
     /// Abandons the operation and returns its storage and command. If a publication had already
     /// created the shared arena, it is reclaimed and the retirement evidence is returned.
-    pub fn abort(mut self) -> HtmlConstructionAbort {
-        let (storage, retired) = match self.owner.take().expect("pending storage") {
+    pub fn abort(self) -> HtmlConstructionAbort {
+        let (storage, retired) = match self.owner {
             StorageOwner::Mutable(storage) => (storage, None),
-            StorageOwner::Shared(arena) => {
-                let lease = self
-                    .lease
-                    .take()
-                    .expect("actual unescaped publication lease");
+            StorageOwner::Shared { arena, lease } => {
                 let snapshot = lease.snapshot;
                 drop(lease.arena);
+                // The publication was never handed out, and the lease holds only a weak
+                // reference, so the arena is uniquely owned.
                 let arena =
                     Arc::try_unwrap(arena).expect("unescaped publication is uniquely owned");
                 (
@@ -757,16 +900,16 @@ impl<'a> HtmlConstructionAction<'a> {
         if !matches!(self.operation.phase, Phase::Preflight) {
             return None;
         }
-        match self.operation.owner.as_ref()? {
+        match &self.operation.owner {
             StorageOwner::Mutable(storage) => Some(storage),
-            StorageOwner::Shared(_) => None,
+            StorageOwner::Shared { .. } => None,
         }
     }
     /// Describes the work of the pending action. The consumer admits that work and its storage
     /// before calling `perform`, and polls cancellation then.
     pub fn description(&self) -> HtmlConstructionActionDescription<'_> {
         let operation = &self.operation;
-        match operation.phase {
+        match &operation.phase {
             Phase::NamespaceUnit(_) | Phase::LocalUnit(_) => {
                 HtmlConstructionActionDescription::Compare { inspected_bytes: 3 }
             }
@@ -791,26 +934,26 @@ impl<'a> HtmlConstructionAction<'a> {
                     copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
                 }
             }
-            Phase::ReserveChildren => {
+            Phase::ReserveChildren(snapshot) => {
                 let required = operation.push_required();
                 HtmlConstructionActionDescription::Reserve {
                     report_provider_calls: 1,
-                    allocation: operation.snapshot.as_ref().expect("issued actual snapshot"),
+                    allocation: snapshot,
                     required_len: required,
                     minimum_capacity: required,
                     growth: HtmlConstructionGrowth::Geometric,
                 }
             }
-            Phase::ReserveRecords => HtmlConstructionActionDescription::Reserve {
+            Phase::ReserveRecords(snapshot) => HtmlConstructionActionDescription::Reserve {
                 report_provider_calls: 1,
-                allocation: operation.snapshot.as_ref().expect("issued actual snapshot"),
+                allocation: snapshot,
                 required_len: operation.plan.reserve_required,
                 minimum_capacity: operation.plan.reserve_required,
                 growth: HtmlConstructionGrowth::Exact,
             },
-            Phase::Share => HtmlConstructionActionDescription::Share {
+            Phase::Share(snapshot) => HtmlConstructionActionDescription::Share {
                 report_provider_calls: 3,
-                allocation: operation.snapshot.as_ref().expect("issued actual snapshot"),
+                allocation: snapshot,
             },
             Phase::References => HtmlConstructionActionDescription::ShareReferences {
                 provider_calls: operation.plan.references,
@@ -820,7 +963,7 @@ impl<'a> HtmlConstructionAction<'a> {
                 provider_calls: 1,
                 copied_bytes: 2 * size_of::<u64>(),
                 record_writes: 2,
-                position: operation.plan.positions[0] + offset,
+                position: operation.plan.positions[0] + *offset,
                 element_size: size_of::<usize>(),
                 element_alignment: align_of::<usize>(),
             },
@@ -896,7 +1039,7 @@ impl<'a> HtmlConstructionAction<'a> {
         capacity: usize,
     ) -> Result<HtmlConstructionObservation<'a>, HtmlConstructionActionFailure> {
         let operation = self.operation;
-        if !matches!(operation.phase, Phase::ReserveChildren)
+        if !matches!(operation.phase, Phase::ReserveChildren(_))
             || capacity < operation.push_required()
         {
             let reason = operation
@@ -1073,7 +1216,8 @@ impl HtmlConstructionOperation {
                             plan.new_attributes = attributes.len();
                             name_units(name)?
                         }
-                        _ => unreachable!("creation command"),
+                        // The outer arm admits only the two creation commands.
+                        _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
                     };
                     plan.record_count = 1 + usize::from(plan.template);
                     plan.positions[0] = arena.records.len();
@@ -1532,17 +1676,15 @@ impl HtmlConstructionOperation {
     > {
         match self.phase {
             Phase::PrepareRecordsReport => {
-                let snapshot = self.owner.as_ref().expect("actual storage").arena();
-                self.snapshot = Some(
-                    HtmlConstructionAllocationSnapshot::vector(
-                        &snapshot.identity,
-                        AllocationRole::Records,
-                        snapshot.records_generation,
-                        &snapshot.records,
-                    )
-                    .map_err(|error| (error, None))?,
-                );
-                Ok((Phase::ReserveRecords, None))
+                let arena = self.arena();
+                let snapshot = HtmlConstructionAllocationSnapshot::vector(
+                    &arena.identity,
+                    AllocationRole::Records,
+                    arena.records_generation,
+                    &arena.records,
+                )
+                .map_err(|error| (error, None))?;
+                Ok((Phase::ReserveRecords(snapshot), None))
             }
             Phase::PrepareWrapperReport => {
                 let arena = self.arena();
@@ -1558,8 +1700,7 @@ impl HtmlConstructionOperation {
                 snapshot.initialized_len = 0;
                 snapshot.capacity = 0;
                 snapshot.payload_bytes = 0;
-                self.snapshot = Some(snapshot);
-                Ok((Phase::Share, None))
+                Ok((Phase::Share(snapshot), None))
             }
             Phase::PrepareChildrenReport => {
                 let arena = self.arena();
@@ -1568,25 +1709,23 @@ impl HtmlConstructionOperation {
                     .records
                     .get(parent)
                     .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
-                self.snapshot = Some(
-                    HtmlConstructionAllocationSnapshot::deque(
-                        &arena.identity,
-                        AllocationRole::Children(parent),
-                        record.children_generation,
-                        &record.children,
-                    )
-                    .map_err(|error| (error, None))?,
-                );
-                Ok((Phase::ReserveChildren, None))
+                let snapshot = HtmlConstructionAllocationSnapshot::deque(
+                    &arena.identity,
+                    AllocationRole::Children(parent),
+                    record.children_generation,
+                    &record.children,
+                )
+                .map_err(|error| (error, None))?;
+                Ok((Phase::ReserveChildren(snapshot), None))
             }
-            Phase::ReserveChildren => self.reserve_children(),
-            Phase::ReserveRecords => {
+            Phase::ReserveChildren(_) => self.reserve_children(),
+            Phase::ReserveRecords(_) => {
                 let required = self.plan.reserve_required;
                 let reserve_only = matches!(
                     self.command(),
                     HtmlConstructionCommand::ReserveRecords { .. }
                 );
-                let storage = self.owner.as_mut().expect("storage").mutable();
+                let storage = self.owner.mutable().map_err(|error| (error, None))?;
                 let count = required.checked_sub(storage.arena.records.len()).ok_or((
                     HtmlConstructionErrorKind::RepresentationExhausted.error(),
                     None,
@@ -1621,37 +1760,33 @@ impl HtmlConstructionOperation {
                     )),
                 }
             }
-            Phase::Share => {
-                let StorageOwner::Mutable(mut storage) = self.owner.take().expect("storage") else {
-                    unreachable!("one publication action")
-                };
-                storage.arena.wrapper_generation = self
-                    .snapshot
-                    .as_ref()
-                    .expect("issued wrapper snapshot")
-                    .id
-                    .generation;
+            Phase::Share(ref snapshot) => {
+                let wrapper_generation = snapshot.id.generation;
+                let storage = self.owner.mutable().map_err(|error| (error, None))?;
+                storage.arena.wrapper_generation = wrapper_generation;
                 storage.arena.usage = self.plan.usage;
-                let arena = Arc::new(storage.arena);
+                // The arena moves into its shared wrapper. The storage keeps an empty arena of the
+                // same identity only until the owner is replaced a few statements below, which
+                // drops it. Nothing can observe the vacated arena in between: this action holds
+                // the only reference to the operation, the code between the swap and the
+                // replacement calls no user code and returns no early error, and a failed
+                // allocation aborts the process instead of unwinding.
+                let vacated = Arena::vacated(&storage.arena.identity);
+                let arena = Arc::new(std::mem::replace(&mut storage.arena, vacated));
                 let snapshot = HtmlConstructionAllocationSnapshot::shared::<Arena>(
                     &arena.identity,
                     AllocationRole::ArenaWrapper,
                     arena.wrapper_generation,
                 );
-                self.lease = Some(HtmlConstructionLease {
+                let lease = HtmlConstructionLease {
                     arena: Arc::downgrade(&arena),
                     snapshot: snapshot.clone(),
-                });
-                self.owner = Some(StorageOwner::Shared(arena));
+                };
+                self.owner = StorageOwner::Shared { arena, lease };
                 Ok((Phase::Commit, Some(snapshot)))
             }
             Phase::Children(offset) => {
-                let arena = &mut self
-                    .owner
-                    .as_mut()
-                    .expect("pending storage")
-                    .mutable()
-                    .arena;
+                let arena = &mut self.owner.mutable().map_err(|error| (error, None))?.arena;
                 let generation = arena.temporary_generation.checked_add(1).ok_or((
                     HtmlConstructionErrorKind::RepresentationExhausted.error(),
                     None,
@@ -1688,7 +1823,7 @@ impl HtmlConstructionOperation {
                 let handle = self
                     .command()
                     .operand(index)
-                    .expect("described actual operand");
+                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
                 let arena = self.arena();
                 if handle.identity.as_ptr() != Arc::as_ptr(&arena.identity) {
                     return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
@@ -1721,12 +1856,11 @@ impl HtmlConstructionOperation {
             }
             Phase::NamespaceUnit(offset) => {
                 const HTML: &[u8] = HTML_NAMESPACE_URI.as_bytes();
+                // The classification step found a name whose namespace has the expected length.
                 let uri = self
                     .name()
-                    .expect("name comparison")
-                    .namespace()
-                    .uri()
-                    .expect("namespace length checked");
+                    .and_then(|name| name.namespace().uri())
+                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
                 Ok(if uri.code_units()[offset] != u16::from(HTML[offset]) {
                     Phase::Command
                 } else if offset + 1 == HTML.len() {
@@ -1736,7 +1870,9 @@ impl HtmlConstructionOperation {
                 })
             }
             Phase::ClassifyLocal => {
-                let name = self.name().expect("HTML namespace was compared");
+                let name = self
+                    .name()
+                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
                 self.plan.local_expected = match name.local_name().len() {
                     8 => b"template",
                     4 => b"link",
@@ -1745,7 +1881,10 @@ impl HtmlConstructionOperation {
                 Ok(Phase::LocalUnit(0))
             }
             Phase::LocalUnit(offset) => {
-                let local = self.name().expect("local name comparison").local_name();
+                let local = self
+                    .name()
+                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?
+                    .local_name();
                 let expected = self.plan.local_expected;
                 if local.code_units()[offset] != u16::from(expected[offset]) {
                     return Ok(Phase::Command);
@@ -1788,9 +1927,9 @@ impl HtmlConstructionOperation {
                         identity: Arc::downgrade(&arena.identity),
                         index: p[0],
                     };
-                    let owner = self.plan.template.then(|| arena.id(p[0]));
+                    let template_owner = self.plan.template.then(|| arena.id(p[0]));
                     self.plan.created = Some(created);
-                    self.plan.ids[0] = owner;
+                    self.plan.staged = Staged::Created { template_owner };
                     return Ok(Phase::Children(0));
                 }
                 match self.command() {
@@ -1804,12 +1943,17 @@ impl HtmlConstructionOperation {
                         let host_id = arena.id(host);
                         let contents_id = arena.id(contents);
                         let owner = host_id.clone();
-                        self.plan.ids = [Some(host_id), Some(contents_id), Some(owner)];
+                        self.plan.staged = Staged::Shadow {
+                            host: host_id,
+                            contents: contents_id,
+                            owner,
+                        };
                     }
                     Command::ReassignTemplateContents { .. } => {
-                        self.plan.ids[0] = Some(arena.id(p[0]))
+                        self.plan.staged = Staged::Template(arena.id(p[0]));
                     }
-                    _ => unreachable!("fixed reference-sharing plan"),
+                    // Only the commands above plan reference sharing.
+                    _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
                 }
                 Ok(Phase::Commit)
             }
@@ -1820,7 +1964,8 @@ impl HtmlConstructionOperation {
                     } => &element.attributes().as_slice()[index],
                     Command::CreateElement { attributes, .. } => &attributes.as_slice()[index],
                     Command::ReplaceAttributes { attributes, .. } => &attributes.as_slice()[index],
-                    _ => unreachable!("only real new attributes are counted"),
+                    // Only a command with new attributes enters this phase.
+                    _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
                 };
                 self.plan.new_units = add(self.plan.new_units, attribute_units(attribute)?)?;
                 if index + 1 < self.plan.new_attributes {
@@ -1838,7 +1983,8 @@ impl HtmlConstructionOperation {
                 let HtmlNodeKind::Element(element) =
                     &self.arena().records[self.plan.positions[0]].kind
                 else {
-                    unreachable!("old attribute kind checked");
+                    // The command phase checked that the target is an element.
+                    return Err(HtmlConstructionErrorKind::OperationNotReady.into());
                 };
                 self.plan.old_units = add(
                     self.plan.old_units,
@@ -2105,28 +2251,27 @@ impl HtmlConstructionReadyOperation {
     /// Applies only the fixed writes and owning moves described before readiness.
     pub fn commit(self) -> HtmlConstructionCommit {
         use HtmlConstructionCommand as Command;
-        let mut operation = self.operation;
-        if matches!(operation.command(), Command::Publish { .. }) {
-            let StorageOwner::Shared(arena) = operation.owner.take().expect("ready publication")
-            else {
-                unreachable!("publication provider completed");
-            };
-            let root = operation.plan.positions[0];
-            let result = if operation.plan.output_document {
-                HtmlConstructionResult::Document(HtmlDocument { arena, root })
-            } else {
-                HtmlConstructionResult::Fragment(HtmlFragment { arena, root })
-            };
-            return HtmlConstructionCommit::Published {
-                result,
-                lease: operation.lease.take().expect("observed actual lease"),
-            };
-        }
-        let StorageOwner::Mutable(mut storage) = operation.owner.take().expect("ready storage")
-        else {
-            unreachable!("only publication shares an arena");
+        let HtmlConstructionOperation {
+            owner,
+            command,
+            mut plan,
+            ..
+        } = self.operation;
+        let resolved = self.resolved;
+        // `try_ready` paired the owner with the command: only a publication has shared its arena.
+        let mut storage = match owner {
+            StorageOwner::Shared { arena, lease } => {
+                let root = plan.positions[0];
+                let result = if plan.output_document {
+                    HtmlConstructionResult::Document(HtmlDocument { arena, root })
+                } else {
+                    HtmlConstructionResult::Fragment(HtmlFragment { arena, root })
+                };
+                return HtmlConstructionCommit::Published { result, lease };
+            }
+            StorageOwner::Mutable(storage) => storage,
         };
-        let command = match operation.command {
+        let command = match command {
             Command::CreateElement {
                 name,
                 attributes,
@@ -2140,7 +2285,7 @@ impl HtmlConstructionReadyOperation {
             },
             command => command,
         };
-        let plan = &mut operation.plan;
+        let plan = &mut plan;
         let p = plan.positions;
         if plan.edits_order && !plan.no_op && plan.check_order_edits(&storage.arena).is_err() {
             // The Commit action refuses this state first; were it ever reached,
@@ -2160,29 +2305,34 @@ impl HtmlConstructionReadyOperation {
             );
             // Depths move while the edges are the ones planning walked.
             plan.commit_depths(arena);
+            let Resolved {
+                template_owner,
+                association,
+            } = resolved;
             match command {
-                Command::CreateElement { .. } => unreachable!("element operands formed at Ready"),
+                // The element form was converted to `Create` above.
+                Command::CreateElement { .. } => {}
                 Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
                 Command::Create { kind } => {
+                    // A template's identity, staged for its contents, is what makes the created
+                    // element a template here.
                     let mut record = Record::new(kind, None, 0);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
-                    if plan.template {
+                    if template_owner.is_some() {
                         record.template_contents = Some(TemplateContents::Owned(p[0] + 1));
                     }
                     arena.records.push(record);
-                    if plan.template {
+                    if let Some(owner) = template_owner {
                         let mut contents = Record::new(HtmlNodeKind::Fragment, None, 1);
                         contents.children = std::mem::take(&mut plan.new_children[1]);
                         contents.children_generation = plan.new_children_generations[1];
-                        contents.owner = Some(HtmlFragmentOwner::Template(
-                            plan.ids[0].take().expect("preadmitted template owner"),
-                        ));
+                        contents.owner = Some(HtmlFragmentOwner::Template(owner));
                         arena.records.push(contents);
-                    }
-                    arena.populate(0);
-                    if plan.template {
+                        arena.populate(0);
                         arena.populate(1);
+                    } else {
+                        arena.populate(0);
                     }
                 }
                 Command::CreateDocument { mode } => {
@@ -2196,13 +2346,18 @@ impl HtmlConstructionReadyOperation {
                     arena.records.push(record);
                     arena.populate(0);
                 }
-                Command::CreateFragment | Command::CreateShadowContents { .. } => {
+                Command::CreateFragment => {
                     let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
-                    if let Command::CreateShadowContents { properties } = command {
-                        record.shadow_properties = Some(properties);
-                    }
+                    arena.records.push(record);
+                    arena.populate(0);
+                }
+                Command::CreateShadowContents { properties } => {
+                    let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
+                    record.children = std::mem::take(&mut plan.new_children[0]);
+                    record.children_generation = plan.new_children_generations[0];
+                    record.shadow_properties = Some(properties);
                     arena.records.push(record);
                     arena.populate(0);
                 }
@@ -2244,40 +2399,11 @@ impl HtmlConstructionReadyOperation {
                     };
                     element.attributes = attributes.into_attributes();
                 }
-                Command::AttachShadow { .. } | Command::AttachTemplateShadow { .. } => {
-                    let (host, contents) = if matches!(command, Command::AttachShadow { .. }) {
-                        (p[0], p[1])
-                    } else {
-                        (p[1], p[2])
-                    };
-                    if let Some(old) = plan.old_contents {
-                        arena.records[old].owner = None;
-                        arena.records[p[0]].template_contents =
-                            Some(TemplateContents::ShadowReference(contents));
-                    }
-                    arena.records[contents].owner = Some(HtmlFragmentOwner::ShadowHost(
-                        plan.ids[2].take().expect("preadmitted shadow owner"),
-                    ));
-                    arena.records[host].shadow = Some(ShadowAssociation {
-                        host: plan.ids[0].take().expect("preadmitted host ID"),
-                        contents: plan.ids[1].take().expect("preadmitted contents ID"),
-                    });
-                }
-                Command::SetTemplateShadowContents { .. } => {
-                    arena.records[plan.old_contents.expect("ordinary owning contents")].owner =
-                        None;
-                    arena.records[p[0]].template_contents =
-                        Some(TemplateContents::ShadowReference(p[1]));
-                }
-                Command::ReassignTemplateContents { .. } => {
-                    if let Some(old) = plan.old_contents {
-                        arena.records[old].owner = None;
-                    }
-                    arena.records[p[0]].template_contents = Some(TemplateContents::Owned(p[1]));
-                    arena.records[p[1]].owner = Some(HtmlFragmentOwner::Template(
-                        plan.ids[0].take().expect("preadmitted template ID"),
-                    ));
-                }
+                // The associations are applied below, from what planning resolved.
+                Command::AttachShadow { .. }
+                | Command::AttachTemplateShadow { .. }
+                | Command::SetTemplateShadowContents { .. }
+                | Command::ReassignTemplateContents { .. } => {}
                 Command::SetDocumentMode { mode, .. } => {
                     arena.records[p[0]].kind = HtmlNodeKind::Document(mode)
                 }
@@ -2287,7 +2413,46 @@ impl HtmlConstructionReadyOperation {
                     };
                     element.link_flags = Some(flags);
                 }
-                Command::Publish { .. } => unreachable!("publication handled separately"),
+                // A publication returned above, where its owner is shared.
+                Command::Publish { .. } => {}
+            }
+            match association {
+                Association::None => {}
+                Association::AttachShadow {
+                    host,
+                    contents,
+                    owner,
+                } => {
+                    arena.records[p[1]].owner = Some(HtmlFragmentOwner::ShadowHost(owner));
+                    arena.records[p[0]].shadow = Some(ShadowAssociation { host, contents });
+                }
+                Association::AttachTemplateShadow {
+                    host,
+                    contents,
+                    owner,
+                    old_contents,
+                } => {
+                    arena.records[old_contents].owner = None;
+                    arena.records[p[0]].template_contents =
+                        Some(TemplateContents::ShadowReference(p[2]));
+                    arena.records[p[2]].owner = Some(HtmlFragmentOwner::ShadowHost(owner));
+                    arena.records[p[1]].shadow = Some(ShadowAssociation { host, contents });
+                }
+                Association::SetTemplateShadowContents { old_contents } => {
+                    arena.records[old_contents].owner = None;
+                    arena.records[p[0]].template_contents =
+                        Some(TemplateContents::ShadowReference(p[1]));
+                }
+                Association::ReassignTemplateContents {
+                    template,
+                    old_contents,
+                } => {
+                    if let Some(old) = old_contents {
+                        arena.records[old].owner = None;
+                    }
+                    arena.records[p[0]].template_contents = Some(TemplateContents::Owned(p[1]));
+                    arena.records[p[1]].owner = Some(HtmlFragmentOwner::Template(template));
+                }
             }
             if assigns_usage {
                 arena.usage = plan.usage;
@@ -2300,25 +2465,39 @@ impl HtmlConstructionReadyOperation {
     }
 }
 
+/// Which bank cleanup releases next, from the last record down.
 #[derive(Clone, Copy, Debug)]
 enum RetirementPhase {
     Children(usize),
     Payload(usize),
     Records,
     Identity,
+}
+/// The storage that cleanup still holds. Releasing the identity drops it, which completes cleanup.
+#[derive(Debug)]
+enum RetirementState {
+    Active {
+        storage: HtmlConstructionStorage,
+        phase: RetirementPhase,
+    },
     Complete,
 }
 /// Deterministic cleanup of the original banks; it never resumes construction.
 #[derive(Debug)]
 pub struct HtmlConstructionRetirement {
-    storage: Option<HtmlConstructionStorage>,
-    phase: RetirementPhase,
+    state: RetirementState,
 }
 /// One pending cleanup action. It borrows the retirement exclusively; `perform` consumes it.
 #[derive(Debug)]
 pub struct HtmlConstructionRetirementAction<'a> {
     owner: &'a mut HtmlConstructionRetirement,
-    snapshot: Option<HtmlConstructionAllocationSnapshot>,
+    release: Release,
+}
+/// What the pending action releases: an allocation with its snapshot, or one record's payload.
+#[derive(Debug)]
+enum Release {
+    Allocation(HtmlConstructionAllocationSnapshot),
+    Payload { position: usize },
 }
 /// What a cleanup action releases.
 #[derive(Debug)]
@@ -2341,8 +2520,7 @@ impl HtmlConstructionRetirement {
             RetirementPhase::Children(storage.arena.records.len() - 1)
         };
         Self {
-            storage: Some(storage),
-            phase,
+            state: RetirementState::Active { storage, phase },
         }
     }
     /// The next cleanup action, or `Ok(None)` once cleanup completed. It returns an error only if
@@ -2350,24 +2528,18 @@ impl HtmlConstructionRetirement {
     pub fn next_action(
         &mut self,
     ) -> Result<Option<HtmlConstructionRetirementAction<'_>>, HtmlConstructionError> {
-        let snapshot = match self.phase {
-            RetirementPhase::Complete => return Ok(None),
-            RetirementPhase::Children(index) => Some(
-                self.storage
-                    .as_ref()
-                    .expect("cleanup owner")
-                    .children_snapshot(index)?,
-            ),
-            RetirementPhase::Payload(_) => None,
-            RetirementPhase::Records => Some(
-                self.storage
-                    .as_ref()
-                    .expect("cleanup owner")
-                    .records_snapshot()?,
-            ),
+        let RetirementState::Active { storage, phase } = &self.state else {
+            return Ok(None);
+        };
+        let release = match *phase {
+            RetirementPhase::Children(index) => {
+                Release::Allocation(storage.children_snapshot(index)?)
+            }
+            RetirementPhase::Payload(position) => Release::Payload { position },
+            RetirementPhase::Records => Release::Allocation(storage.records_snapshot()?),
             RetirementPhase::Identity => {
-                Some(HtmlConstructionAllocationSnapshot::shared::<Identity>(
-                    &self.storage.as_ref().expect("cleanup owner").arena.identity,
+                Release::Allocation(HtmlConstructionAllocationSnapshot::shared::<Identity>(
+                    &storage.arena.identity,
                     AllocationRole::Identity,
                     0,
                 ))
@@ -2375,80 +2547,62 @@ impl HtmlConstructionRetirement {
         };
         Ok(Some(HtmlConstructionRetirementAction {
             owner: self,
-            snapshot,
+            release,
         }))
     }
 }
 impl HtmlConstructionRetirementAction<'_> {
     /// Describes the allocation or payload that the pending action releases.
     pub fn description(&self) -> HtmlConstructionRetirementDescription<'_> {
-        match self.owner.phase {
-            RetirementPhase::Payload(position) => HtmlConstructionRetirementDescription::Payload {
-                position,
+        match &self.release {
+            Release::Payload { position } => HtmlConstructionRetirementDescription::Payload {
+                position: *position,
                 initialized_bytes: size_of::<Record>(),
             },
-            _ => HtmlConstructionRetirementDescription::Allocation(
-                self.snapshot.as_ref().expect("actual cleanup allocation"),
-            ),
+            Release::Allocation(snapshot) => {
+                HtmlConstructionRetirementDescription::Allocation(snapshot)
+            }
         }
     }
     /// Performs the cleanup. It returns the retirement evidence for an allocation release and
     /// `None` for a payload reset.
     pub fn perform(self) -> Option<HtmlConstructionRetired> {
-        match self.owner.phase {
+        let RetirementState::Active { storage, phase } = &mut self.owner.state else {
+            // An action is issued only while cleanup is active, and nothing else can complete it.
+            return None;
+        };
+        match *phase {
             RetirementPhase::Children(index) => {
-                drop(std::mem::take(
-                    &mut self
-                        .owner
-                        .storage
-                        .as_mut()
-                        .expect("cleanup owner")
-                        .arena
-                        .records[index]
-                        .children,
-                ));
-                self.owner.phase = RetirementPhase::Payload(index);
+                drop(std::mem::take(&mut storage.arena.records[index].children));
+                *phase = RetirementPhase::Payload(index);
             }
             RetirementPhase::Payload(index) => {
-                let record = &mut self
-                    .owner
-                    .storage
-                    .as_mut()
-                    .expect("cleanup owner")
-                    .arena
-                    .records[index];
+                let record = &mut storage.arena.records[index];
                 record.kind = HtmlNodeKind::Fragment;
                 record.document_focused_area_designation = None;
                 record.owner = None;
                 record.shadow = None;
                 record.template_contents = None;
                 record.shadow_properties = None;
-                self.owner.phase = if index == 0 {
+                *phase = if index == 0 {
                     RetirementPhase::Records
                 } else {
                     RetirementPhase::Children(index - 1)
                 };
             }
             RetirementPhase::Records => {
-                drop(std::mem::take(
-                    &mut self
-                        .owner
-                        .storage
-                        .as_mut()
-                        .expect("cleanup owner")
-                        .arena
-                        .records,
-                ));
-                self.owner.phase = RetirementPhase::Identity;
+                drop(std::mem::take(&mut storage.arena.records));
+                *phase = RetirementPhase::Identity;
             }
             RetirementPhase::Identity => {
-                drop(self.owner.storage.take().expect("cleanup owner"));
-                self.owner.phase = RetirementPhase::Complete;
+                // Replacing the state drops the storage, which releases the identity.
+                self.owner.state = RetirementState::Complete;
             }
-            RetirementPhase::Complete => unreachable!("completed cleanup cannot issue an action"),
         }
-        self.snapshot
-            .map(|snapshot| HtmlConstructionRetired { snapshot })
+        match self.release {
+            Release::Allocation(snapshot) => Some(HtmlConstructionRetired { snapshot }),
+            Release::Payload { .. } => None,
+        }
     }
 }
 
@@ -2479,9 +2633,7 @@ mod reference_admission_tests {
             };
             action.perform().unwrap().accept();
         }
-        HtmlConstructionOperation::try_ready(&mut Some(operation))
-            .unwrap()
-            .commit()
+        slots::operation(&mut Some(operation)).unwrap().commit()
     }
 
     #[test]
@@ -2495,14 +2647,10 @@ mod reference_admission_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let identity = storage.arena.identity.clone();
         let HtmlConstructionCommit::Changed { storage, .. } = drive(
-            storage
-                .prepare(HtmlConstructionCommand::ReserveRecords { additional: 4 })
-                .unwrap_or_else(|_| panic!("retained reserve command")),
+            storage.prepare(HtmlConstructionCommand::ReserveRecords { additional: 4 }),
             &identity,
         ) else {
             panic!("reserve retains actual storage")
@@ -2512,24 +2660,18 @@ mod reference_admission_tests {
             created: Some(root),
             ..
         } = drive(
-            storage
-                .prepare(HtmlConstructionCommand::CreateFragment)
-                .unwrap_or_else(|_| panic!("retained create command")),
+            storage.prepare(HtmlConstructionCommand::CreateFragment),
             &identity,
         )
         else {
             panic!("created actual root")
         };
-        let HtmlConstructionCommit::Published { result, lease } = drive(
-            storage
-                .prepare_finish(root)
-                .unwrap_or_else(|_| panic!("retained publish command")),
-            &identity,
-        ) else {
+        let HtmlConstructionCommit::Published { result, lease } =
+            drive(storage.prepare_finish(root), &identity)
+        else {
             panic!("published actual storage")
         };
-        let recovery =
-            HtmlConstructionLease::try_recover(&mut Some(result), &mut Some(lease)).unwrap();
+        let recovery = slots::recover(&mut Some(result), &mut Some(lease)).unwrap();
         assert_eq!(recovery.storage.len(), 1);
     }
 }
@@ -2542,18 +2684,11 @@ mod publish_membership_tests {
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
     ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| panic!("retained command")),
-        );
+        let mut operation = Some(storage.prepare(command));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        match HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
-        {
+        match slots::operation(&mut operation).unwrap().commit() {
             HtmlConstructionCommit::Changed {
                 storage, created, ..
             } => (storage, created),
@@ -2572,9 +2707,7 @@ mod publish_membership_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let (mut storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
         let root = root.unwrap();
         for local in ["a", "b"] {
@@ -2605,11 +2738,7 @@ mod publish_membership_tests {
         storage: HtmlConstructionStorage,
         root: HtmlBuilderNode,
     ) -> (HtmlConstructionStorage, Result<(), HtmlConstructionError>) {
-        let mut operation = Some(
-            storage
-                .prepare_finish(root)
-                .unwrap_or_else(|_| panic!("retained publish command")),
-        );
+        let mut operation = Some(storage.prepare_finish(root));
         let result = loop {
             match operation.as_mut().unwrap().next_action() {
                 Ok(Some(action)) => match action.perform() {
@@ -2622,14 +2751,11 @@ mod publish_membership_tests {
         };
         if result.is_ok() {
             let HtmlConstructionCommit::Published { result, lease } =
-                HtmlConstructionOperation::try_ready(&mut operation)
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut operation).unwrap().commit()
             else {
                 panic!("publication produced mutation")
             };
-            let recovery =
-                HtmlConstructionLease::try_recover(&mut Some(result), &mut Some(lease)).unwrap();
+            let recovery = slots::recover(&mut Some(result), &mut Some(lease)).unwrap();
             return (recovery.storage, Ok(()));
         }
         (operation.unwrap().abort().storage, result)
@@ -2698,19 +2824,13 @@ mod order_commit_guard_tests {
             storage: HtmlConstructionStorage,
             command: HtmlConstructionCommand,
         ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-            let mut operation = Some(
-                storage
-                    .prepare(command)
-                    .unwrap_or_else(|_| panic!("retained command")),
-            );
+            let mut operation = Some(storage.prepare(command));
             while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
                 action.perform().unwrap().accept();
             }
             let HtmlConstructionCommit::Changed {
                 storage, created, ..
-            } = HtmlConstructionOperation::try_ready(&mut operation)
-                .unwrap()
-                .commit()
+            } = slots::operation(&mut operation).unwrap().commit()
             else {
                 panic!("mutation published")
             };
@@ -2733,9 +2853,7 @@ mod order_commit_guard_tests {
             .unwrap()
             .perform()
             .accept();
-        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
-            .unwrap()
-            .commit();
+        let storage = slots::initialization(&mut initialization).unwrap().commit();
         let (storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
         let root = root.unwrap();
         let (storage, first) = drive(storage, element("first"));
@@ -2816,9 +2934,7 @@ mod order_commit_guard_tests {
     ) {
         let (storage, root, children, node) = parts();
         let usage = storage.usage();
-        let mut operation = storage
-            .prepare(build(&root, &children, &node))
-            .unwrap_or_else(|_| panic!("retained command"));
+        let mut operation = storage.prepare(build(&root, &children, &node));
         loop {
             let action = operation.next_action().unwrap().unwrap();
             if matches!(
@@ -2884,9 +3000,7 @@ mod order_commit_guard_tests {
             // Bypass the refusing action to reach the commit itself.
             operation.phase = Phase::Ready;
             let HtmlConstructionCommit::Changed { storage, .. } =
-                HtmlConstructionOperation::try_ready(&mut Some(operation))
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut Some(operation)).unwrap().commit()
             else {
                 panic!("mutation published")
             };
@@ -2935,9 +3049,7 @@ mod order_commit_guard_tests {
                 .collect();
             operation.phase = Phase::Ready;
             let HtmlConstructionCommit::Changed { storage, .. } =
-                HtmlConstructionOperation::try_ready(&mut Some(operation))
-                    .unwrap()
-                    .commit()
+                slots::operation(&mut Some(operation)).unwrap().commit()
             else {
                 panic!("mutation published")
             };
@@ -2951,5 +3063,75 @@ mod order_commit_guard_tests {
             assert_eq!(after, nodes, "no parent link changes");
             assert_eq!(storage.usage(), usage);
         }
+    }
+}
+
+#[cfg(test)]
+mod pairing_tests {
+    use super::*;
+
+    fn ready_creation() -> HtmlConstructionOperation {
+        let mut initialization = HtmlConstructionStorage::begin();
+        while let Some(action) = initialization.next_action().unwrap() {
+            action.perform().accept();
+        }
+        let storage = initialization.try_ready().unwrap().commit();
+        let mut operation = storage.prepare(HtmlConstructionCommand::CreateFragment);
+        while let Some(action) = operation.next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        operation
+    }
+
+    #[test]
+    fn staged_identities_that_do_not_belong_to_the_command_are_handed_back() {
+        let creation = HtmlConstructionCommand::CreateFragment;
+        let reserve = HtmlConstructionCommand::ReserveRecords { additional: 1 };
+        assert!(matches!(
+            resolve(&creation, Staged::Nothing, None),
+            Err(Staged::Nothing)
+        ));
+        assert!(matches!(
+            resolve(
+                &reserve,
+                Staged::Created {
+                    template_owner: None
+                },
+                None
+            ),
+            Err(Staged::Created {
+                template_owner: None
+            })
+        ));
+        assert!(matches!(
+            resolve(&reserve, Staged::Nothing, None),
+            Ok(Resolved {
+                template_owner: None,
+                association: Association::None
+            })
+        ));
+    }
+
+    #[test]
+    fn a_ready_operation_whose_staged_identities_do_not_fit_its_command_is_refused_unchanged() {
+        let mut operation = ready_creation();
+        assert!(matches!(operation.phase, Phase::Ready));
+        operation.plan.staged = Staged::Nothing;
+        let refusal = operation.try_ready().unwrap_err();
+        assert!(refusal.reason().is_operation_not_ready());
+        assert!(matches!(refusal.owner().plan.staged, Staged::Nothing));
+        // The refusal handed the operation back intact: restoring what the creation staged
+        // lets the same operation commit.
+        let (mut operation, _) = refusal.into_parts();
+        operation.plan.staged = Staged::Created {
+            template_owner: None,
+        };
+        let HtmlConstructionCommit::Changed { storage, created } =
+            operation.try_ready().unwrap().commit()
+        else {
+            panic!("creation");
+        };
+        assert!(created.is_some());
+        assert_eq!(storage.len(), 1);
     }
 }

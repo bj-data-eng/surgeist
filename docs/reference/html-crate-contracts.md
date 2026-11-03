@@ -196,15 +196,15 @@ record. HTML never applies parser placement, recovery or language conformance
 rules to native authoring.
 
 `HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>` is the `Publish`
-command's consuming convenience entry point. It starts a publication
-operation. It checks that the selected root is the proper document/fragment
+HtmlConstructionOperation` is the `Publish` command's consuming convenience
+entry point. It starts a publication operation and cannot fail, because it
+inspects nothing. It checks that the selected root is the proper document/fragment
 kind, that all retained owning links are reciprocal and in range, that
 association roots have the right owner, that each non-owning contents reference
 targets a live result-local shadow-contents fragment, and that no pending generic operation
 exists. Its bounded actions use the original controller. The ready operation
 retains the original storage until every required check and arena-sharing
-allocation is admitted. The guarded `try_ready` transition below produces the
+allocation is admitted. The consuming `try_ready` transition below produces the
 distinct ready owner. Its `commit` consumes that owner and returns
 the published `HtmlConstructionResult::{Document(HtmlDocument), Fragment(HtmlFragment)}`
 and recovery lease with no later fallible work. Invalid structure yields
@@ -353,11 +353,12 @@ operation, actual reservation, identity qualification and initialized slot move
 has a bounded description admitted by the original controller before execution.
 Reserve reports actual before/after capacity and leaves the actual enlarged
 owner recoverable after a post-provider stop. A slot action reaches a guarded
-`try_ready(&mut Option<_>)` transition only after its validation, write admission
-and post-provider observations complete. Pending, failed, consumed, foreign or
-out-of-order requests return a typed refusal; every occupied owner/input slot
-remains occupied, including an incoming replacement `Option<Attribute>` or the
-real last staged attribute. Only the private ready owner exposes infallible
+consuming `try_ready(self)` transition only after its validation, write admission
+and post-provider observations complete. Pending, failed, foreign or
+out-of-order requests return a `HtmlConstructionRefusal` that hands the slot back
+with its typed cause; every owner and input slot stays owned by the caller,
+including an incoming replacement `Option<Attribute>` or the real last staged
+attribute. Only the private ready owner exposes infallible
 commit. That owner retains or exclusively borrows the actual incoming slot and
 group through commit, so a caller cannot substitute an attribute after its name
 was qualified. Commit moves one actual slot and its prepaid fixed progress update with
@@ -457,25 +458,29 @@ not establish the same amortized bound.
 
 The public operation signature is
 `HtmlConstructionStorage::prepare(self, HtmlConstructionCommand) ->
-Result<HtmlConstructionOperation, HtmlConstructionRejection>`. A rejection owns
-the unchanged storage, the unconsumed command and `HtmlConstructionError`;
-`into_parts` returns all three without allocation. Operations consume storage
-rather than borrowing a vector or returning mutable record references. Parser
-keeps this owner in its existing `Option` slot and restores it after a refusal.
+HtmlConstructionOperation`. Preparation inspects and allocates nothing, so it
+cannot fail; the operation's first action qualifies the operands, and a refusal
+surfaces from the action, after which `HtmlConstructionOperation::abort`
+returns the unchanged storage and the unconsumed command without allocation.
+Operations consume storage rather than borrowing a vector or returning mutable
+record references.
 `HtmlConstructionStorage::begin() -> HtmlConstructionInitialization` creates an
 allocation-free initialization owner. It uses the same action/observation
 sequence to create the zero-payload shared identity.
-`HtmlConstructionInitialization::try_ready(&mut Option<Self>) ->
-Result<HtmlConstructionReadyInitialization, HtmlConstructionError>` removes
+`HtmlConstructionInitialization::try_ready(self) ->
+Result<HtmlConstructionReadyInitialization,
+HtmlConstructionRefusal<HtmlConstructionInitialization>>` consumes
 the initialization owner only after all initialization actions and its
 post-provider observation are complete. The ready owner's infallible
 `commit(self) -> HtmlConstructionStorage` returns empty storage. Pending or
 failed initialization cannot call that method. Native document/fragment builders then create their
 explicit root through the commands below. Failed or cancelled initialization
-retains its owner. Both initialization types expose
-`abort(self) -> Option<HtmlConstructionRetired>`, dropping any actually created,
-unescaped identity owner and returning its zero-payload receipt. A not-yet-created
-identity returns `None`; abort cannot manufacture usable construction storage.
+retains its owner. `HtmlConstructionInitialization::abort(self) ->
+Option<HtmlConstructionRetired>` drops any actually created, unescaped identity
+owner and returns its zero-payload receipt; a not-yet-created identity returns
+`None`. A ready initialization always holds an identity, so
+`HtmlConstructionReadyInitialization::abort(self)` returns the receipt itself.
+Abort cannot manufacture usable construction storage.
 
 `HtmlConstructionCommand` is a closed, non-exhaustive enum with the following
 payloads. Every handle belongs to the storage; all payload fields below are
@@ -626,7 +631,7 @@ causes never break a caller. A caller asks `is_foreign_builder`,
 `is_wrong_sibling`, `is_cycle`, `is_association_already_owned`,
 `is_invalid_template_association`, `is_invalid_shadow_association`,
 `is_invalid_contents_reference`, `is_parent_child_conflict`,
-`is_invalid_output_root`, `is_operation_consumed`, `is_operation_not_ready`,
+`is_invalid_output_root`, `is_operation_not_ready`,
 `is_foreign_allocation`, `is_capacity_mismatch`, `is_attribute_name_mismatch`,
 `is_attribute_order_mismatch`, `is_shared_allocation_aliased`,
 `is_release_underflow`, `is_parent_cannot_have_children`,
@@ -662,17 +667,21 @@ Descriptions are closed variants for inspection, comparison, reserve, fixed
 sharing and commit; they state record visits, inspected/copied/initialized bytes,
 logical node/edge/attribute/unit deltas and the exact allocation descriptors
 below. `next_action` does not perform the described read or mutation.
-`HtmlConstructionOperation::try_ready(&mut Option<Self>) ->
-Result<HtmlConstructionReadyOperation, HtmlConstructionError>` checks that
+`HtmlConstructionOperation::try_ready(self) ->
+Result<HtmlConstructionReadyOperation,
+HtmlConstructionRefusal<HtmlConstructionOperation>>` checks that
 every validation, provider action and allocation observation has completed, and
 that the complete fixed final-write description has been issued and admitted
 through its action. It performs no additional useful work, allocation,
 reserve or clone. Pending returns `OperationNotReady`; a failed operation
-returns its latched construction reason; an empty slot returns
-`OperationConsumed`. Every refusal leaves the original `Some` owner, command,
-actual allocations and capacities untouched. Only success removes it and
-issues the private-field ready owner. Initialization uses the same refusal and
-slot-retention rules.
+returns its latched construction reason. Every refusal hands the original
+owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
+allocations and capacities untouched; a consumed operation cannot be presented
+again because the check takes it by value. Only success issues the
+private-field ready owner. Initialization, text append, attribute slots,
+candidate planning, attribute edits and lease recovery use the same refusal
+rules: `HtmlConstructionRefusal<T>` carries the owner or owners, `reason`,
+`owner` and `into_parts`.
 
 Only `HtmlConstructionReadyOperation` exposes
 `commit(self) -> HtmlConstructionCommit`; the commit enum is
@@ -794,11 +803,12 @@ fallible-Arc-allocation promise. Only successful commit returns the result and
 arena reference and issued wrapper descriptor; parser tickets no longer need
 `SharedAllocation<Arena>` or `SharedAllocation<Identity>`.
 
-`HtmlConstructionLease::try_recover(result: &mut Option<HtmlConstructionResult>,
-lease: &mut Option<Self>) -> Result<HtmlConstructionRecovery,
-HtmlConstructionError>` checks exact arena/lease identity before taking either
-slot. A result clone, associated fragment view or other strong arena alias
-returns `SharedAllocationAliased`, leaving both slots and all tickets intact.
+`HtmlConstructionLease::try_recover(result: HtmlConstructionResult, lease: Self)
+-> Result<HtmlConstructionRecovery,
+HtmlConstructionRefusal<(HtmlConstructionResult, HtmlConstructionLease)>>` checks
+exact arena/lease identity first. A result clone, associated fragment view or
+other strong arena alias returns `SharedAllocationAliased`, handing back both the
+result and the lease with all tickets intact.
 After aliases disappear the same cleanup can be retried, including after a
 sticky parser stop. Successful recovery returns the exact unwrapped storage
 together with its non-forgeable wrapper-retirement receipt. Identity handles may
@@ -1044,15 +1054,21 @@ value outcomes are the report's author/recovery states, not a failed publication
 transition.
 No public report constructor accepts caller-asserted raw/attempt pairs.
 
-All consuming fallible boundaries in this contract follow one of two concrete
-forms: a guarded `&mut Option<Owner>` transition that leaves `Some` unchanged
-on refusal, or an error value containing the complete unconsumed owner/input.
-Borrowing action failure leaves ownership in its enclosing operation. There is
-no infallible consuming `commit` or `finish` on a pending/failed owner, and no
-ready-proof constructor outside the owner. This applies to initialization,
-attribute validation, complete attribute edits and slot commits, tree
-mutation/publication, interpretation, lease recovery
-and semantic import/finalization; it does not add a generic public typestate
+All consuming fallible boundaries in this contract follow one of three concrete
+forms. The construction owners (initialization, tree mutation and publication,
+text append, complete attribute edits with their candidates and slots, and lease
+recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
+holds the complete unconsumed owner and the cause, so a refusal loses nothing and
+a consumed owner cannot be presented again. The other owner families
+(attribute validation, interpretation and the value pools) keep a guarded
+`&mut Option<Owner>` transition that leaves `Some` unchanged on refusal. The
+remaining boundaries return an error value containing the complete unconsumed
+owner/input. Borrowing action failure leaves ownership in its enclosing
+operation. There is no infallible consuming `commit` or `finish` on a
+pending/failed owner, and no ready-proof constructor outside the owner. This
+applies to initialization, attribute validation, complete attribute edits and
+slot commits, tree mutation/publication, interpretation, lease recovery and
+semantic import/finalization; it does not add a generic public typestate
 framework.
 
 The input-type semantic adapter required by #1173 performs one HTML-owned rule
@@ -1655,7 +1671,7 @@ and otherwise that it names a rule or vocabulary.
 
 | Family | Shape | Evolution |
 | --- | --- | --- |
-| `HtmlConstructionRejection`, `HtmlConstructionAttributeRejection`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionRefusal`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
 | `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
 | Resource accounting that a consumer matches exhaustively: `IntegerUnitStepError` and `NumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `FloatingPointAllocationError` (semantics `range.rs`), `IntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `AutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
 | Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
