@@ -709,3 +709,6 @@ fn mixed_span_visible_explicit_zero_minimum_a_end_f32() {
 fn mixed_span_visible_explicit_zero_minimum_a_end_f64() {
     mixed_span_visible_explicit_zero_minimum::<f64>(true);
 }
+
+#[path = "../tracks_intrinsic/native_maximum_bound.rs"]
+mod native_maximum_bound;
