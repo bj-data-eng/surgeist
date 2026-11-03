@@ -23,12 +23,14 @@ use surgeist_html_semantics::{
 /// One element subtree with attributes, nested elements and two text nodes.
 const SUBTREE: &str = "<div id=a class=b><p>t</p><span>x</span></div>";
 
-/// `Work` is charged to one parse: total credits, bytes reserved and records
-/// visited.
+/// `Work` is charged to one parse: total credits, bytes reserved, bytes copied,
+/// bytes inspected and records visited.
 #[derive(Clone, Copy)]
 struct Work {
     total: u64,
     reserved: u64,
+    copied: u64,
+    inspected: u64,
     visited: u64,
 }
 
@@ -136,6 +138,8 @@ fn work_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Work {
     Work {
         total: usage.resource(HtmlParseResource::WorkCredits).current(),
         reserved: usage.work(HtmlParseWorkCategory::ReserveByte),
+        copied: usage.work(HtmlParseWorkCategory::CopyByte),
+        inspected: usage.work(HtmlParseWorkCategory::InspectByte),
         visited: usage.work(HtmlParseWorkCategory::RecordVisit),
     }
 }
@@ -710,6 +714,9 @@ fn assert_each_doubling_costs_at_most_two_point_two_times(
 
 const TOTAL_WORK: Measure = ("total work", |work| work.total);
 const RESERVATION_WORK: Measure = ("reservation work", |work| work.reserved);
+const COPY_WORK: Measure = ("copy work", |work| work.copied);
+const INSPECTION_WORK: Measure = ("inspection work", |work| work.inspected);
+const VISIT_WORK: Measure = ("record visits", |work| work.visited);
 
 /// As `assert_each_doubling_costs_at_most_two_point_two_times`, for the given measures only.
 fn assert_measures_at_most_two_point_two_times(
@@ -832,17 +839,80 @@ fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_t
 #[test]
 fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doubles() {
     // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
-    // the `x` that follows reconstructs it, copying every attribute to the new element.
-    // Only the reservation work is measured: copying the attributes also visits records
-    // quadratically in their number, which no reservation causes. Issue #1731 restores the
-    // total-work measure.
+    // the `x` that follows reconstructs it, copying every attribute to the new element. Every
+    // measure of the work is linear in the number of attributes: the replay compares no name
+    // pairwise.
     assert_measures_at_most_two_point_two_times(
         [250, 500, 1_000, 2_000],
         |n| {
             let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
             format!("<!doctype html><p><b{attributes}></p>x")
         },
-        &[RESERVATION_WORK],
+        &[
+            TOTAL_WORK,
+            RESERVATION_WORK,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+/// One start tag of `tag` with `n` distinct attributes after `prefix`.
+fn start_tag_with_attributes(prefix: &str, tag: &str, n: usize) -> String {
+    let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
+    format!("<!doctype html>{prefix}<{tag}{attributes}>")
+}
+
+#[test]
+fn work_of_an_input_start_tag_with_many_attributes_at_most_doubles() {
+    // `input` installs its attributes one at a time, so that each can run its element-specific
+    // effects. The installation must not compare each against every earlier one.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "input", n),
+        &[TOTAL_WORK, COPY_WORK, INSPECTION_WORK, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_details_start_tag_with_many_attributes_at_most_doubles() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "details", n),
+        &[TOTAL_WORK, COPY_WORK, INSPECTION_WORK, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_select_start_tag_with_many_attributes_at_most_doubles() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "select", n),
+        &[TOTAL_WORK, COPY_WORK, INSPECTION_WORK, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_div_start_tag_with_many_attributes_at_most_doubles() {
+    // The bulk installation path every other element takes.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "div", n),
+        &[TOTAL_WORK, COPY_WORK, INSPECTION_WORK, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_merging_the_attributes_of_a_second_html_start_tag_at_most_doubles() {
+    // A second `html` start tag merges its attributes into the first element ("in body"
+    // insertion mode, `html` start tag, retained HTML Standard capture
+    // `html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`, line 4306); the tokenizer
+    // already guarantees the candidates' names are distinct.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("<html><body>", "html", n),
+        &[TOTAL_WORK, COPY_WORK, INSPECTION_WORK, VISIT_WORK],
     );
 }
 
