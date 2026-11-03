@@ -10,7 +10,7 @@ use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
 
-/// Digit visits made by the decimal kernels on this thread, for work-growth tests.
+// Digit visits made by the decimal kernels on this thread, for work-growth tests.
 #[cfg(test)]
 thread_local! {
     static DIGIT_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
