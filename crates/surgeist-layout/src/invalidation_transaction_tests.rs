@@ -144,11 +144,40 @@ impl LayoutTree for InvalidationTree {
 }
 
 fn invalidation_request() -> LayoutRootRequest {
-    LayoutRootRequest::viewport(Size::new(
-        Available::definite(200.0),
-        Available::definite(120.0),
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(200.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            Some(
+                crate::NonNegativeFiniteOf::new(120.0)
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(200.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequest::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(120.0)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
     ))
-    .unwrap()
 }
 
 #[test]
@@ -505,7 +534,20 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     CompletedLayoutBatch::from_entries(
         vec![crate::test_support::layout_tree::ordinary_unrounded_box(

@@ -14,9 +14,11 @@ fn parses_browser_parity_xml() {
 
     assert_eq!(golden.name, "block_basic__border_box_ltr");
     assert!(golden.use_rounding);
-    assert_eq!(golden.viewport.width, support::Available::MaxContent);
-    assert_eq!(golden.viewport.height, support::Available::MaxContent);
-    assert_eq!(golden.viewport.root_context, support::RootContext::Root);
+    assert!(matches!(
+        &golden.viewport.root_context,
+        support::RootContext::UnqualifiedCapture { raw_viewport, .. }
+            if raw_viewport == r#"<viewport width="max-content" height="max-content"/>"#
+    ));
     assert_eq!(golden.root.style.display(), Some("block".to_string()));
     assert_eq!(golden.root.style.width(), Some("50px".to_string()));
     assert_eq!(golden.root.children.len(), 2);
@@ -24,6 +26,28 @@ fn parses_browser_parity_xml() {
     assert_eq!(golden.expectations.height, Some(20.0));
     assert_eq!(golden.expectations.children[1].x, Some(0.0));
     assert_eq!(golden.expectations.children[1].y, Some(10.0));
+}
+
+// These tests author a formal Native query independently of historical XML.
+// Nothing here converts viewport metadata into a captured browser operation.
+fn authored_max_content_request() -> surgeist_layout::LayoutRootRequest {
+    use surgeist_layout as layout;
+    let axis = layout::AxisSizingRequest::new(
+        layout::AvailableSpace::Indefinite,
+        layout::SizingOperation::MaxContent,
+    );
+    layout::LayoutRootRequest::standalone(
+        layout::SizingRequest::new(
+            layout::Size::splat(axis),
+            layout::OrthogonalFallbackOf::new(
+                layout::Size::NONE,
+                layout::NearestScrollportOf::Absent,
+                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::Size::NONE,
+    )
 }
 
 fn fri08_c05_adapter_template_areas_xml(name: &str, root_width: &str, head_width: &str) -> String {
@@ -79,7 +103,7 @@ fn fri08_c05_adapter_template_areas_reach_public_layout() {
     ))
     .expect("finite serialized template areas should parse");
 
-    support::assert_surgeist_matches(&golden)
+    support::assert_native_input_matches(&golden, authored_max_content_request())
         .expect("serialized template areas should drive area-generated public placement");
 }
 
@@ -95,7 +119,7 @@ fn fri08_c05_adapter_template_areas_reject_identifier_without_name_start() {
     .expect("well-formed XML should reach the existing adapter consumer");
 
     assert!(
-        support::assert_surgeist_matches(&golden).is_err(),
+        support::assert_native_input_matches(&golden, authored_max_content_request()).is_err(),
         "a double hyphen without a following name-start must fail closed"
     );
 }
@@ -125,7 +149,7 @@ fn fri08_c05_adapter_template_area_identifier_boundaries_match_finite_helper() {
         let golden = support::Golden::parse(&fri08_c05_adapter_template_area_ident_xml(value))
             .expect("well-formed XML should reach the existing adapter consumer");
         assert!(
-            support::assert_surgeist_matches(&golden).is_ok(),
+            support::assert_native_input_matches(&golden, authored_max_content_request()).is_ok(),
             "helper-valid {case} {value:?} must reach public layout"
         );
     }
@@ -148,7 +172,7 @@ fn fri08_c05_adapter_template_area_identifier_boundaries_match_finite_helper() {
         let golden = support::Golden::parse(&fri08_c05_adapter_template_area_ident_xml(value))
             .expect("well-formed XML should reach the existing adapter consumer");
         assert!(
-            support::assert_surgeist_matches(&golden).is_err(),
+            support::assert_native_input_matches(&golden, authored_max_content_request()).is_err(),
             "helper-invalid {case} {value:?} must fail closed"
         );
     }
@@ -177,7 +201,7 @@ fn fri08_c05_adapter_template_areas_reject_malformed_unknown_and_contradictory_v
         let golden = support::Golden::parse(&xml)
             .expect("well-formed XML should reach the existing adapter consumer");
         assert!(
-            support::assert_surgeist_matches(&golden).is_err(),
+            support::assert_native_input_matches(&golden, authored_max_content_request()).is_err(),
             "explicit grid-template-areas value {value:?} must fail closed"
         );
     }
@@ -322,7 +346,7 @@ fn fri07_c04_fixture_input_normalized_collapse_reaches_public_layout_behavior() 
     ))
     .expect("normalized collapsed input should parse");
 
-    support::assert_surgeist_matches(&golden)
+    support::assert_native_input_matches(&golden, authored_max_content_request())
         .expect("normalized collapsed input should drive collapsed public layout");
 }
 
@@ -2512,7 +2536,7 @@ fn fri06_c08_recovery_characterization_float_browser_rows() -> Vec<String> {
 // replacement shaping input. Genuine version-2 comparisons are separate below.
 fn assert_historical_measured_source_refused(golden: &support::Golden) {
     assert_eq!(
-        support::assert_surgeist_matches(golden)
+        support::assert_native_input_matches(golden, authored_max_content_request())
             .unwrap_err()
             .to_string(),
         "historical measured-width text has no original source/font capture; it cannot enter production Text"
@@ -2569,9 +2593,10 @@ fn fri06_c08_recovery_characterization_vertical_browser_geometry_matches_all_var
     assert_eq!(rows.len(), 4);
     for xml in rows {
         let golden = support::Golden::parse(&xml).expect("exact C08 vertical fixture should parse");
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} browser geometry mismatch: {error}\n{xml}", golden.name)
-        });
+        support::assert_native_input_matches(&golden, authored_max_content_request())
+            .unwrap_or_else(|error| {
+                panic!("{} browser geometry mismatch: {error}\n{xml}", golden.name)
+            });
     }
 }
 
@@ -3341,7 +3366,7 @@ fn historical_mixed_wrap_strut_rows_remain_distinct_from_real_native_successors(
                 .advance,
             64.0
         );
-        support::assert_surgeist_matches(&native).unwrap();
+        support::assert_native_input_matches(&native, authored_max_content_request()).unwrap();
     }
     let exact = fri06_c08_recovery_adapter_mixed_wrap_xml("border_box_ltr");
     let altered_name = exact.replacen(
@@ -3437,7 +3462,7 @@ fn historical_direct_range_identity_is_retained_and_real_native_identity_remains
         assert_historical_measured_source_refused(&changed);
     }
     let native = native_mixed_successor("border_box_ltr");
-    support::assert_surgeist_matches(&native).unwrap();
+    support::assert_native_input_matches(&native, authored_max_content_request()).unwrap();
     for field in ["source", "line", "edge", "advance"] {
         let mut changed = native.clone();
         let rect = &mut changed.expectations.children[0]
@@ -3452,7 +3477,7 @@ fn historical_direct_range_identity_is_retained_and_real_native_identity_remains
             _ => unreachable!(),
         }
         assert!(
-            support::assert_surgeist_matches(&changed).is_err(),
+            support::assert_native_input_matches(&changed, authored_max_content_request()).is_err(),
             "native {field} identity must remain strict"
         );
     }

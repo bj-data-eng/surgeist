@@ -17,6 +17,12 @@ pub(super) fn ordinary_grid_axis_alignment<S: LayoutScalar>(
     gutters: &OrdinaryGridAxisGuttersOf<S>,
     alignment: AlignContent,
 ) -> OrdinaryGridAxisAlignment<S> {
+    // An empty axis has only its start line, not an alignment subject.
+    let free_space = if gutters.collapsed().is_empty() {
+        S::ZERO
+    } else {
+        free_space
+    };
     let active_boundaries = gutters
         .active_boundary_after()
         .iter()

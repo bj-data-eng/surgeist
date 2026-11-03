@@ -142,3 +142,43 @@ impl_layout_scalar!(f64);
 mod private {
     pub trait Sealed {}
 }
+
+// Private numeric consumers share the actual sealed nonnegative finite rank domain.
+pub(crate) fn max_nonnegative_finite_rank<S: LayoutScalar>() -> u64 {
+    use core::any::TypeId;
+    if TypeId::of::<S>() == TypeId::of::<f32>() {
+        u64::from(f32::MAX.to_bits())
+    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
+        f64::MAX.to_bits()
+    } else {
+        unreachable!("LayoutScalar is sealed to f32 and f64")
+    }
+}
+
+pub(crate) fn nonnegative_finite_rank<S: LayoutScalar>(value: S) -> u64 {
+    use core::any::TypeId;
+    if value == S::ZERO {
+        return 0;
+    }
+    if TypeId::of::<S>() == TypeId::of::<f32>() {
+        u64::from((value.to_f64() as f32).to_bits())
+    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
+        value.to_f64().to_bits()
+    } else {
+        unreachable!("LayoutScalar is sealed to f32 and f64")
+    }
+}
+
+pub(crate) fn from_nonnegative_finite_rank<S: LayoutScalar>(rank: u64) -> S {
+    use core::any::TypeId;
+    if TypeId::of::<S>() == TypeId::of::<f32>() {
+        // Every rank is bounded by this actual scalar's max_nonnegative_finite_rank.
+        S::from_f32(f32::from_bits(
+            u32::try_from(rank).expect("bounded finite f32 rank"),
+        ))
+    } else if TypeId::of::<S>() == TypeId::of::<f64>() {
+        S::from_f64(f64::from_bits(rank))
+    } else {
+        unreachable!("LayoutScalar is sealed to f32 and f64")
+    }
+}

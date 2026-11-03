@@ -86,11 +86,25 @@ fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
             inputs: [block(), incoming, bfc, internal],
             children: [vec![1, 2], vec![], vec![3], vec![]],
         };
-        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(100.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::WritingMode::HorizontalTb,
+                    surgeist_layout::Direction::Ltr,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         let batch = l::compute_layout(&tree, 0, request).unwrap();
         let entries = batch.unrounded_entries();
         let root = output(entries, 0);

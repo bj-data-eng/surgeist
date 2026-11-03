@@ -42,7 +42,16 @@ where
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow_invalidated(&capture, 0, request(80.0), dirty).unwrap()
+    compute_layout_with_flow_invalidated(
+        &capture,
+        0,
+        request(80.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+        dirty,
+    )
+    .unwrap()
 }
 
 fn insets<S: LayoutScalar>() {

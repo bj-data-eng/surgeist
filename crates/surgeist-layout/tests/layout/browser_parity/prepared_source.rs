@@ -873,7 +873,7 @@ mod tests {
                 .control_views()
                 .map(|view| view.handle())
                 .collect::<Vec<_>>();
-            let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
+            let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
             let capture = layout::LayoutFlowInput::try_new(
                 &tree,
                 0,
@@ -887,11 +887,32 @@ mod tests {
                 Vec::new(),
             )
             .unwrap();
-            let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-                layout::Available::definite(100.0),
-                layout::Available::MaxContent,
-            ))
-            .unwrap();
+            let request = layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(100.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Indefinite,
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(
+                    tree.box_node_input(0).writing_mode,
+                    tree.box_node_input(0).direction,
+                ),
+                layout::Size::new(Some(layout::NonNegativeFiniteOf::new(100.0).unwrap()), None),
+            );
             let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
             assert!(batch.unrounded_inline_fragments().is_empty());
             assert!(batch.final_inline_fragments().is_empty());
@@ -1186,7 +1207,7 @@ mod tests {
                 text::ParagraphControlKind::ForcedBreak
             ));
 
-            let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
+            let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
             assert_eq!(tree.paragraphs.len(), 1);
             let binding = &tree.paragraphs[0];
             assert_eq!(binding.nodes, [1, 2, 3]);
@@ -1207,11 +1228,37 @@ mod tests {
                 Vec::new(),
             )
             .unwrap();
-            let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-                layout::Available::definite(120.0),
-                layout::Available::definite(120.0),
-            ))
-            .unwrap();
+            let request = layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(
+                                layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                            ),
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    layout::OrthogonalFallbackOf::new(
+                        layout::Size::NONE,
+                        layout::NearestScrollportOf::Absent,
+                        layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                layout::FlowAxes::new(
+                    tree.box_node_input(0).writing_mode,
+                    tree.box_node_input(0).direction,
+                ),
+                layout::Size::new(
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                ),
+            );
             let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
             assert_eq!(batch.placed_text().len(), 1);
             let placed = batch.placed_text()[0].layout();
@@ -1487,7 +1534,7 @@ mod tests {
                 assert_eq!(origins[0].local_range(), text::Range::new(0, 3));
                 assert_eq!(origins[1].source().text().code_units(), &[10]);
                 assert_eq!(origins[1].local_range(), text::Range::new(0, 1));
-                let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
+                let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
                 let binding = &tree.paragraphs[0];
                 assert_eq!((binding.origins[0].node, binding.origins[1].node), (1, 5));
                 assert_eq!((binding.atomics[0].node, binding.atomics[1].node), (2, 4));
@@ -1500,11 +1547,30 @@ mod tests {
                     Vec::new(),
                 )
                 .unwrap();
-                let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-                    layout::Available::MAX_CONTENT,
-                    layout::Available::MAX_CONTENT,
-                ))
-                .unwrap();
+                let request = layout::LayoutRootRequest::standalone(
+                    layout::SizingRequest::new(
+                        layout::Size::new(
+                            layout::AxisSizingRequest::new(
+                                layout::AvailableSpace::Indefinite,
+                                layout::SizingOperation::Normal,
+                            ),
+                            layout::AxisSizingRequest::new(
+                                layout::AvailableSpace::Indefinite,
+                                layout::SizingOperation::Normal,
+                            ),
+                        ),
+                        layout::OrthogonalFallbackOf::new(
+                            layout::Size::NONE,
+                            layout::NearestScrollportOf::Absent,
+                            layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    layout::FlowAxes::new(
+                        tree.box_node_input(0).writing_mode,
+                        tree.box_node_input(0).direction,
+                    ),
+                    layout::Size::new(None, None),
+                );
                 let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
                 let placed = batch.placed_text()[0].layout();
                 assert_eq!(placed.source().text().code_units(), &[10, 32, 32, 10]);
@@ -1627,7 +1693,7 @@ mod tests {
         );
         let golden =
             super::super::Golden::parse(&source_context_xml(&raw, root_attrs, &children)).unwrap();
-        let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
+        let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
         let flow = layout::LayoutFlowInput::try_new(
             &tree,
             0,
@@ -1636,11 +1702,37 @@ mod tests {
             Vec::new(),
         )
         .unwrap();
-        let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::definite(120.0),
-            layout::Available::definite(120.0),
-        ))
-        .unwrap();
+        let request = layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::new(
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                    layout::AxisSizingRequest::new(
+                        layout::AvailableSpace::Definite(
+                            layout::NonNegativeFiniteOf::new(120.0).unwrap(),
+                        ),
+                        layout::SizingOperation::Normal,
+                    ),
+                ),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(
+                tree.box_node_input(0).writing_mode,
+                tree.box_node_input(0).direction,
+            ),
+            layout::Size::new(
+                Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+                Some(layout::NonNegativeFiniteOf::new(120.0).unwrap()),
+            ),
+        );
         let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
         assert_eq!(batch.placed_text()[0].layout().lines().len(), 2);
         let control = batch
@@ -1698,7 +1790,27 @@ mod tests {
     #[test]
     fn source_bound_br_band_retains_geometry_but_refuses_only_the_unavailable_query() {
         let golden = opaque_break_observation_golden();
-        let error = super::super::assert_surgeist_matches(&golden)
+        // Explicit Native query for this authored Source/font/control fixture:
+        // 120px physical availability and percentage parents, not historical
+        // XML root authority or a replacement for a captured browser request.
+        let extent = layout::NonNegativeFiniteOf::new(120.0).unwrap();
+        let normal = layout::AxisSizingRequest::new(
+            layout::AvailableSpace::Definite(extent),
+            layout::SizingOperation::Normal,
+        );
+        let request = layout::LayoutRootRequest::standalone(
+            layout::SizingRequest::new(
+                layout::Size::splat(normal),
+                layout::OrthogonalFallbackOf::new(
+                    layout::Size::NONE,
+                    layout::NearestScrollportOf::Absent,
+                    layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            layout::Size::splat(Some(extent)),
+        );
+        let error = super::super::assert_native_input_matches(&golden, request)
             .unwrap_err()
             .to_string();
         assert!(
@@ -1708,10 +1820,10 @@ mod tests {
         assert!(error.contains("x=10, y=5, width=0, height=20"));
         let mut relations = golden.clone();
         relations.expectations.children[1].browser_br_font_band = None;
-        super::super::assert_surgeist_matches(&relations).unwrap();
+        super::super::assert_native_input_matches(&relations, request).unwrap();
         let mut wrong_geometry = golden.clone();
         wrong_geometry.expectations.children[2].width = Some(11.0);
-        let error = super::super::assert_surgeist_matches(&wrong_geometry)
+        let error = super::super::assert_native_input_matches(&wrong_geometry, request)
             .unwrap_err()
             .to_string();
         assert!(error.contains("width mismatch"), "{error}");
@@ -1722,7 +1834,7 @@ mod tests {
             .as_mut()
             .unwrap()
             .next_line = super::super::BrowserNeighborLine::Same;
-        let error = super::super::assert_surgeist_matches(&wrong_relation)
+        let error = super::super::assert_native_input_matches(&wrong_relation, request)
             .unwrap_err()
             .to_string();
         assert!(error.contains("next neighbor line mismatch"), "{error}");
@@ -1738,11 +1850,11 @@ mod tests {
         actual.terminal_visual_slot = None;
         actual.previous_line = super::super::BrowserNeighborLine::Absent;
         actual.next_line = super::super::BrowserNeighborLine::Unobserved;
-        let error = super::super::assert_surgeist_matches(&misbound)
+        let error = super::super::assert_native_input_matches(&misbound, request)
             .unwrap_err()
             .to_string();
         assert!(error.contains("browser control source mismatch"), "{error}");
         assert!(!error.contains("unsupported browser BR font-band observation"));
-        super::super::assert_surgeist_matches(&relations).unwrap();
+        super::super::assert_native_input_matches(&relations, request).unwrap();
     }
 }

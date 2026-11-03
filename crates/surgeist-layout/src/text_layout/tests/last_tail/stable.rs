@@ -15,7 +15,12 @@ fn identified(text: &str, revision: u64) -> PreparedParagraph {
 }
 fn terminal_constraint<S: LayoutScalar>() {
     let original = identified("as\u{ad}sociate", 1);
-    let width = AvailableOf::definite(S::from_f64(70.0));
+    let width = crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(S::from_f64(70.0)).unwrap(),
+        ),
+        crate::SizingOperation::Normal,
+    );
     let unconstrained = batch_with_style::<S>(
         &original,
         width,

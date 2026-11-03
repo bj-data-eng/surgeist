@@ -20,7 +20,12 @@ fn boundary<S: LayoutScalar>(
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             direction,
-            AvailableOf::definite(n(60.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(60.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         ),
         InlineMetricsOf::try_new(
             crate::InlineBaselineContext::Physical,
@@ -47,7 +52,10 @@ fn input<S: LayoutScalar>(
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: AvailableOf::definite(n(60.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
@@ -75,9 +83,18 @@ fn phantom<S: LayoutScalar>(direction: Direction) {
         ],
     );
     for available in [
-        AvailableOf::definite(n(60.0)),
-        AvailableOf::MIN_CONTENT,
-        AvailableOf::MAX_CONTENT,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
     ] {
         let mut query = original.clone();
         query.available_inline_extent = available;
@@ -224,7 +241,12 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             direction,
-            AvailableOf::definite(n(60.0)),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(60.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
         ),
         InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
         InlineControlAlignment::Baseline,

@@ -56,7 +56,7 @@ fn tree<S: LayoutScalar>(
 fn compute<Tree: LayoutTree<Node = u32>>(
     tree: &Tree,
     paragraph: &PreparedParagraph,
-    available: AvailableOf<Tree::Scalar>,
+    available: crate::AxisSizingRequestOf<Tree::Scalar>,
     dirty: &[u32],
 ) -> CompletedLayoutBatchOf<u32, Tree::Scalar>
 where
@@ -78,7 +78,39 @@ where
     compute_layout_with_flow_invalidated(
         &capture,
         0,
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),
+        {
+            let containing_flow_axes = {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            };
+            let requested_axes = Size::new(
+                available,
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            );
+            let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+            // These fixtures perform ordinary block-size layout independently of
+            // the explicitly requested inline contribution operation.
+            logical_requests.block = logical_requests
+                .block
+                .with_operation(crate::SizingOperation::Normal);
+            let axes = containing_flow_axes.physical_size(logical_requests);
+            // The old Native NoParent fixture explicitly supplied these percentage
+            // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+            let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+            let fallback = crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            );
+            crate::LayoutRootRequestOf::standalone(
+                crate::SizingRequestOf::new(axes, fallback),
+                containing_flow_axes,
+                percentage_parent,
+            )
+        },
         dirty,
     )
     .unwrap()
@@ -92,7 +124,12 @@ fn finite<S: LayoutScalar>(
     compute(
         &tree(paragraph, input),
         paragraph,
-        AvailableOf::definite(S::from_f64(width)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         &[],
     )
 }
@@ -406,7 +443,16 @@ fn line_roles<S: LayoutScalar>() {
     let mut input = block::<S>(34.0, TextAlignLast::Justify, false);
     input.size.width = PreferredSizeOf::AUTO;
     let p = paragraph("A\u{a0}B", 4.0, Wrap::None);
-    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+    for available in [
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+    ] {
         let actual = compute(&tree(&p, input.clone()), &p, available, &[]);
         let root = actual
             .final_entries()
@@ -806,7 +852,12 @@ fn cached_float<S: LayoutScalar>() {
         .children(9, [])
         .style(9, float_input(10.0));
     let mut host = CachedHost::new(tree);
-    let available = AvailableOf::definite(S::from_f64(80.0));
+    let available = crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Definite(
+            crate::NonNegativeFiniteOf::new(S::from_f64(80.0)).unwrap(),
+        ),
+        crate::SizingOperation::Normal,
+    );
     let cold = compute(&host, &p, available, &[]);
     assert_eq!(
         positions(&cold),

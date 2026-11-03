@@ -94,7 +94,15 @@ fn float_split_runs<S: LayoutScalar>() {
     assert_eq!(actual.display, crate::Display::Block);
     assert_eq!(actual.atomic_inline_participation, None);
     let flow = f.flow();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // The first real run consumes33: two borders20 + Start3 + border10.
     // The subsequent8x4 float begins at block10. Its exclusion shifts the
     // second ten-pixel line right8; the three odd operands reverse there.
@@ -202,7 +210,15 @@ fn real_float_splits_fitting_runs_without_splitting_native_body_f64() {
 fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
     let f = interrupted_fixture::<S>(kind);
     let flow = f.flow();
-    let batch = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let second_top = match kind {
         Interruption::VisibleBreak => 10.0,
         Interruption::Block => 17.0,
@@ -372,7 +388,15 @@ fn nested_auto_ancestors<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let wide = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let wide = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&wide),
         [
@@ -451,7 +475,15 @@ fn nested_auto_ancestors<S: LayoutScalar>() {
         ]
     );
 
-    let narrow = compute_layout_with_flow(&flow, 0, request(n(30.0))).unwrap();
+    let narrow = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(30.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&narrow),
         [

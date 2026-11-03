@@ -3,8 +3,8 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::{
-    InlineBoundaryInputOf, LayoutInputOf, LayoutRootRequestOf, LengthAutoOf, NodeInputOf,
-    NodeOutputOf, Point, PreferredSizeOf, compute_layout,
+    InlineBoundaryInputOf, LayoutInputOf, LengthAutoOf, NodeInputOf, NodeOutputOf, Point,
+    PreferredSizeOf, compute_layout,
 };
 
 fn signed_margin<S: LayoutScalar>(direction: Direction) -> Edges<S> {
@@ -37,7 +37,12 @@ fn numeric_input<S: LayoutScalar>(
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         direction,
-        AvailableOf::definite(S::from_f64(25.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
     );
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
@@ -75,7 +80,12 @@ fn numeric_input<S: LayoutScalar>(
         ),
         observe_tail: true,
         wrapping: None,
-        available_inline_extent: AvailableOf::definite(S::from_f64(25.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
@@ -257,11 +267,47 @@ fn assert_layout_placement<S: LayoutScalar>(
             ),
         );
     }
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(25.0)),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input(&tree, 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout(&tree, 0, request).unwrap();
     for entries in [batch.unrounded_entries(), batch.final_entries()] {
         let output = |node| -> NodeOutputOf<S> {

@@ -84,7 +84,12 @@ pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
             InlineFlowOf::new(
                 boundary.writing_mode(),
                 boundary.direction(),
-                AvailableOf::definite(f.width),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(f.width).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             ),
             boundary.metrics(),
             InlineControlAlignment::Baseline,

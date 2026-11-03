@@ -83,15 +83,45 @@ fn tab_batch(
         Vec::new(),
     )
     .unwrap();
-    crate::compute_layout_with_flow(
-        &flow,
-        0,
-        crate::LayoutRootRequestOf::viewport(crate::Size::new(
-            crate::AvailableOf::definite(60.0),
-            crate::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    crate::compute_layout_with_flow(&flow, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = crate::Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -222,7 +252,10 @@ fn fitting_ordinary_trials(
             prepared: &paragraph.prepared,
             segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: Available::Definite(60.0),
+            available: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(60.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
             alignment: TextAlign::Start,
@@ -454,14 +487,33 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
         )
         .unwrap();
         let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
-        crate::engine::compute_root(
-            &mut session,
-            0,
-            crate::Size::new(
-                crate::AvailableOf::Definite(S::from_f64(60.0)),
-                crate::AvailableOf::MAX_CONTENT,
-            ),
-        )
+        crate::engine::compute_root(&mut session, 0, {
+            let width = crate::NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap();
+            let root_input = crate::LayoutTree::node_input(&tree, 0);
+            // This is the actual fixture's Native NoParent frame. Its
+            // declared percentage width supplies no independent ICB size.
+            crate::LayoutRootRequestOf::standalone(
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(width),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction),
+                crate::Size::new(Some(width), None),
+            )
+        })
         .unwrap();
 
         let state = session.text_computation().unwrap();

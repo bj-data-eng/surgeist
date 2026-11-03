@@ -1,0 +1,12 @@
+<test name="logical-vertical-inline-minimum__content_box_rtl" measurement-version="4" observation-frame="root-border" use-rounding="true">
+  <viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" box-sizing="content-box" direction="rtl" writing-mode="vertical-rl" width="10px" height="40px" min-height="80px"/>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="10" height="80"/>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="10" height="80" scroll-width="10" scroll-height="80" client-width="10" client-height="80"/>
+  </diagnostics>
+</test>

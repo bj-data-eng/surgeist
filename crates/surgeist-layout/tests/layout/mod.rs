@@ -21,3 +21,6 @@ mod numeric_line_sides;
 mod shared_float_context;
 mod text_group_align;
 mod text_group_text;
+
+#[path = "../support/native_request.rs"]
+mod native_request;

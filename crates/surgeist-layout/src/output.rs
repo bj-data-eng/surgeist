@@ -1,6 +1,7 @@
 use super::{
-    AvailableOf, CacheKeyContext, DefaultScalar, Edges, LayoutScalar, NonNegativeFiniteOf,
-    NonNegativeFiniteScalarErrorOf, PhysicalAxis, Point, ScrollGeometryOf, ScrollRectOf, Size,
+    AvailableSpaceOf, AxisSizingRequestOf, CacheKeyContext, DefaultScalar, Edges, LayoutScalar,
+    NonNegativeFiniteOf, NonNegativeFiniteScalarErrorOf, PhysicalAxis, Point, ScrollGeometryOf,
+    ScrollRectOf, Size, SizingOperation, SizingRequestOf,
 };
 use crate::geometry::{FlowAxes, PhysicalSide};
 use crate::scroll::SettledAutoScrollbarState;
@@ -164,7 +165,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     known: Size<Option<S>>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
-    available: Size<AvailableOf<S>>,
+    sizing_request: SizingRequestOf<S>,
     named_baseline_demand: NamedBaselineDemand,
     block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
@@ -184,16 +185,16 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         known: Size<Option<S>>,
         parent: Size<Option<S>>,
         containing_layout_context: ContainingLayoutContext,
-        available: Size<AvailableOf<S>>,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
+        sizing_request: SizingRequestOf<S>,
+    ) -> Result<Self, LayoutSizeInputErrorOf<S>> {
         Ok(Self {
             run_mode: RunMode::PerformLayout,
             sizing_mode: SizingMode::InherentSize,
             axis: RequestedAxis::Both,
-            known: validate_optional_size(known)?,
-            parent: validate_optional_size(parent)?,
+            known: validate_optional_size(LayoutSizeInput::Known, known)?,
+            parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
-            available: validate_root_available_size(available)?,
+            sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
@@ -209,16 +210,16 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         known: Size<Option<S>>,
         parent: Size<Option<S>>,
         containing_layout_context: ContainingLayoutContext,
-        available: Size<AvailableOf<S>>,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
+        sizing_request: SizingRequestOf<S>,
+    ) -> Result<Self, LayoutSizeInputErrorOf<S>> {
         Ok(Self {
             run_mode: RunMode::ComputeSize,
             sizing_mode: SizingMode::ContentSize,
             axis: RequestedAxis::Both,
-            known: validate_optional_size(known)?,
-            parent: validate_optional_size(parent)?,
+            known: validate_optional_size(LayoutSizeInput::Known, known)?,
+            parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
-            available: validate_root_available_size(available)?,
+            sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
@@ -249,7 +250,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         known: Size<Option<S>>,
         parent: Size<Option<S>>,
         containing_layout_context: ContainingLayoutContext,
-        available: Size<AvailableOf<S>>,
+        sizing_request: SizingRequestOf<S>,
     ) -> Self {
         Self::for_child(
             RunMode::PerformRootLayout,
@@ -258,18 +259,8 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             known,
             parent,
             containing_layout_context,
-            available,
+            sizing_request,
         )
-    }
-
-    #[must_use]
-    pub(crate) const fn flex_item_root(
-        known: Size<Option<S>>,
-        parent: Size<Option<S>>,
-        containing_layout_context: ContainingLayoutContext,
-        available: Size<AvailableOf<S>>,
-    ) -> Self {
-        Self::root_layout(known, parent, containing_layout_context, available)
     }
 
     #[must_use]
@@ -280,7 +271,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         known: Size<Option<S>>,
         parent: Size<Option<S>>,
         containing_layout_context: ContainingLayoutContext,
-        available: Size<AvailableOf<S>>,
+        sizing_request: SizingRequestOf<S>,
     ) -> Self {
         Self {
             run_mode,
@@ -289,7 +280,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             known,
             parent,
             containing_layout_context,
-            available,
+            sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
@@ -306,7 +297,17 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             Size::NONE,
             Size::NONE,
             containing_layout_context,
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
     }
 
@@ -374,8 +375,8 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     }
 
     #[must_use]
-    pub(crate) const fn available(&self) -> Size<AvailableOf<S>> {
-        self.available
+    pub(crate) const fn sizing_request(&self) -> SizingRequestOf<S> {
+        self.sizing_request
     }
 
     #[must_use]
@@ -413,81 +414,265 @@ pub enum LayoutRoundingMode {
     NearestCssPixel,
 }
 
+/// The independent scalar-sized input rejected by a direct compute constructor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutSizeInput {
+    Known,
+    PercentageParent,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct RootAvailabilityErrorOf<S: LayoutScalar = DefaultScalar> {
+pub struct LayoutSizeInputErrorOf<S: LayoutScalar = DefaultScalar> {
+    input: LayoutSizeInput,
     axis: PhysicalAxis,
     scalar: NonNegativeFiniteScalarErrorOf<S>,
 }
 
-pub type RootAvailabilityError = RootAvailabilityErrorOf<DefaultScalar>;
+pub type LayoutSizeInputError = LayoutSizeInputErrorOf<DefaultScalar>;
 
-impl<S: LayoutScalar> RootAvailabilityErrorOf<S> {
-    /// Returns the rejected physical availability axis.
+impl<S: LayoutScalar> LayoutSizeInputErrorOf<S> {
+    #[must_use]
+    pub const fn input(&self) -> LayoutSizeInput {
+        self.input
+    }
     #[must_use]
     pub const fn axis(&self) -> PhysicalAxis {
         self.axis
     }
-
     #[must_use]
     pub const fn scalar(&self) -> NonNegativeFiniteScalarErrorOf<S> {
         self.scalar
     }
 }
 
-/// Explicit context for a root that participates as an item in a viewport's flex layout.
-///
-/// The flex parent's resolved axes are required separately from the root item's
-/// own writing mode so containing-boundary resolution cannot infer the wrong
-/// logical mapping.
-///
-/// ```compile_fail
-/// use surgeist_layout::{Available, FlexItemRootContext, Size};
-///
-/// let viewport = Size::splat(Available::definite(100.0));
-/// let _ = FlexItemRootContext::under_viewport(viewport);
-/// ```
+/// Actual flex-parent authority, independent from the current sizing operation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FlexItemRootContextOf<S: LayoutScalar = DefaultScalar> {
-    viewport_available: Size<AvailableOf<S>>,
     parent_flow_axes: FlowAxes,
+    percentage_parent: Size<Option<NonNegativeFiniteOf<S>>>,
+    allocated_size: Size<Option<NonNegativeFiniteOf<S>>>,
 }
 
 pub type FlexItemRootContext = FlexItemRootContextOf<DefaultScalar>;
 
 impl<S: LayoutScalar> FlexItemRootContextOf<S> {
-    pub fn under_viewport(
-        viewport_available: Size<AvailableOf<S>>,
+    #[must_use]
+    pub const fn new(
         parent_flow_axes: FlowAxes,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
-        Ok(Self {
-            viewport_available: validate_root_available_size(viewport_available)?,
+        percentage_parent: Size<Option<NonNegativeFiniteOf<S>>>,
+        allocated_size: Size<Option<NonNegativeFiniteOf<S>>>,
+    ) -> Self {
+        Self {
             parent_flow_axes,
-        })
+            percentage_parent,
+            allocated_size,
+        }
     }
-
     #[must_use]
-    pub const fn viewport_available(&self) -> Size<AvailableOf<S>> {
-        self.viewport_available
-    }
-
-    /// Returns the explicitly supplied flow mapping of the flex parent.
-    #[must_use]
-    pub const fn parent_flow_axes(&self) -> FlowAxes {
+    pub const fn parent_flow_axes(self) -> FlowAxes {
         self.parent_flow_axes
     }
+    #[must_use]
+    pub const fn percentage_parent(self) -> Size<Option<NonNegativeFiniteOf<S>>> {
+        self.percentage_parent
+    }
+    #[must_use]
+    pub const fn allocated_size(self) -> Size<Option<NonNegativeFiniteOf<S>>> {
+        self.allocated_size
+    }
+}
+
+/// First zero-edge in-flow child of a horizontal block parent with Auto block size.
+///
+/// The producer certifies the initial normal-flow origin, absence of preceding
+/// flow/float displacement, and the stated parent geometry. HTML/body proof is
+/// the capture adapter's responsibility, not part of this host-agnostic value.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockFlowRootContextOf<S: LayoutScalar = DefaultScalar> {
+    parent_inline_extent: NonNegativeFiniteOf<S>,
+    parent_direction: crate::Direction,
+    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+}
+
+pub type BlockFlowRootContext = BlockFlowRootContextOf<DefaultScalar>;
+
+impl<S: LayoutScalar> BlockFlowRootContextOf<S> {
+    #[must_use]
+    pub const fn horizontal_auto_block(
+        parent_inline_extent: NonNegativeFiniteOf<S>,
+        parent_direction: crate::Direction,
+        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    ) -> Self {
+        Self {
+            parent_inline_extent,
+            parent_direction,
+            orthogonal_fallback,
+        }
+    }
+    #[must_use]
+    pub const fn parent_flow_axes(self) -> FlowAxes {
+        FlowAxes::new(crate::WritingMode::HorizontalTb, self.parent_direction)
+    }
+    #[must_use]
+    pub const fn parent_inline_extent(self) -> NonNegativeFiniteOf<S> {
+        self.parent_inline_extent
+    }
+    #[must_use]
+    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+        self.orthogonal_fallback
+    }
+}
+
+/// Zero-edge, non-replaced horizontal absolute root with Auto insets, at the
+/// initial containing/static-position frame's initial block/inline start.
+///
+/// Containing extents include applicable scrollbar reservation. The producer
+/// certifies the real unshifted frame and shared containing/static-position
+/// direction; no used/expected root rectangle supplies these operands.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PositionedRootContextOf<S: LayoutScalar = DefaultScalar> {
+    containing_size: Size<NonNegativeFiniteOf<S>>,
+    containing_direction: crate::Direction,
+    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+}
+
+pub type PositionedRootContext = PositionedRootContextOf<DefaultScalar>;
+
+impl<S: LayoutScalar> PositionedRootContextOf<S> {
+    #[must_use]
+    pub const fn horizontal_auto_insets(
+        containing_size: Size<NonNegativeFiniteOf<S>>,
+        containing_direction: crate::Direction,
+        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    ) -> Self {
+        Self {
+            containing_size,
+            containing_direction,
+            orthogonal_fallback,
+        }
+    }
+    #[must_use]
+    pub const fn containing_size(self) -> Size<NonNegativeFiniteOf<S>> {
+        self.containing_size
+    }
+    #[must_use]
+    pub const fn containing_flow_axes(self) -> FlowAxes {
+        FlowAxes::new(crate::WritingMode::HorizontalTb, self.containing_direction)
+    }
+    #[must_use]
+    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+        self.orthogonal_fallback
+    }
+}
+
+/// A horizontal absolute root observed in its own border-box frame.
+///
+/// The producer certifies the authentic containing block and a signed offset
+/// along the independently authenticated hypothetical inline progression, mapped
+/// over the same full physical containing width. This progression need not have
+/// the containing block's direction. The producer retains the hypothetical
+/// direction, anchor, and mapping proof; the projected scalar is sufficient for
+/// local sizing. The containing direction still supplies the actual containing
+/// flow axes, not a global static-anchor alignment.
+///
+/// Every observed descendant must be independent of the omitted static block
+/// translation. This capability does not establish document-space placement,
+/// external clipping, or containing parent overflow. Source-specific hypothetical
+/// layout proof belongs to the producer; computed blockification alone does not
+/// supply it.
+///
+/// All root insets are Auto and margins are zero. Padding and border require
+/// the root's own inline preferred size to resolve genuinely definite against
+/// the full containing width; authored box-sizing and min/max constraints then
+/// retain their normal meaning. Auto or intrinsic inline preferred sizes require
+/// zero padding and border: this profile does not supply a general edge-aware
+/// shrink-to-fit formula.
+///
+/// Root-local continuous coordinates are established
+/// before canonical geometry and publication rounding. Percentage bases use the
+/// full containing size, independently of reduced inline fitting space; Auto
+/// block sizing has indefinite physical availability, not invented remaining
+/// block space. Profiles needing the omitted translation require another real
+/// capability rather than this one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RootLocalPositionedContextOf<S: LayoutScalar = DefaultScalar> {
+    containing_size: Size<NonNegativeFiniteOf<S>>,
+    containing_direction: crate::Direction,
+    hypothetical_inline_offset: S,
+    orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+}
+
+pub type RootLocalPositionedContext = RootLocalPositionedContextOf<DefaultScalar>;
+
+impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
+    pub fn horizontal_auto_insets(
+        containing_size: Size<NonNegativeFiniteOf<S>>,
+        containing_direction: crate::Direction,
+        hypothetical_inline_offset: S,
+        orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        if !hypothetical_inline_offset.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite {
+                value: hypothetical_inline_offset,
+            });
+        }
+        Ok(Self {
+            containing_size,
+            containing_direction,
+            hypothetical_inline_offset: crate::scalar::canonical_zero(hypothetical_inline_offset),
+            orthogonal_fallback,
+        })
+    }
+    #[must_use]
+    pub const fn containing_size(self) -> Size<NonNegativeFiniteOf<S>> {
+        self.containing_size
+    }
+    #[must_use]
+    pub const fn containing_flow_axes(self) -> FlowAxes {
+        FlowAxes::new(crate::WritingMode::HorizontalTb, self.containing_direction)
+    }
+    #[must_use]
+    pub const fn hypothetical_inline_offset(self) -> S {
+        self.hypothetical_inline_offset
+    }
+    #[must_use]
+    pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
+        self.orthogonal_fallback
+    }
+}
+
+/// A declared root context disagrees with the actual root input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RootContextMismatch {
+    Position,
+    WritingMode,
+    Display,
+    BoxEdges,
+    Insets,
+    AspectRatio,
+    Replaced,
+    Float,
+    Clearance,
+    Alignment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutRootContextOf<S: LayoutScalar = DefaultScalar> {
-    Viewport,
-    FlexItemUnderViewport(FlexItemRootContextOf<S>),
+    Standalone {
+        containing_flow_axes: FlowAxes,
+        percentage_parent: Size<Option<NonNegativeFiniteOf<S>>>,
+    },
+    FlexItem(FlexItemRootContextOf<S>),
+    BlockFlow(BlockFlowRootContextOf<S>),
+    PositionedAutoInsets(PositionedRootContextOf<S>),
+    RootLocalPositioned(RootLocalPositionedContextOf<S>),
 }
 
 pub type LayoutRootContext = LayoutRootContextOf<DefaultScalar>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutRootRequestOf<S: LayoutScalar = DefaultScalar> {
-    available: Size<AvailableOf<S>>,
+    sizing_request: SizingRequestOf<S>,
     context: LayoutRootContextOf<S>,
     rounding_mode: LayoutRoundingMode,
 }
@@ -495,114 +680,142 @@ pub struct LayoutRootRequestOf<S: LayoutScalar = DefaultScalar> {
 pub type LayoutRootRequest = LayoutRootRequestOf<DefaultScalar>;
 
 impl<S: LayoutScalar> LayoutRootRequestOf<S> {
-    pub fn viewport(available: Size<AvailableOf<S>>) -> Result<Self, RootAvailabilityErrorOf<S>> {
+    #[must_use]
+    pub const fn standalone(
+        sizing_request: SizingRequestOf<S>,
+        containing_flow_axes: FlowAxes,
+        percentage_parent: Size<Option<NonNegativeFiniteOf<S>>>,
+    ) -> Self {
         Self::new(
-            available,
-            LayoutRootContextOf::Viewport,
-            LayoutRoundingMode::NearestCssPixel,
+            sizing_request,
+            LayoutRootContextOf::Standalone {
+                containing_flow_axes,
+                percentage_parent,
+            },
         )
-    }
-
-    pub fn flex_item_under_viewport(
-        available: Size<AvailableOf<S>>,
-        context: FlexItemRootContextOf<S>,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
-        Self::new(
-            available,
-            LayoutRootContextOf::FlexItemUnderViewport(context),
-            LayoutRoundingMode::NearestCssPixel,
-        )
-    }
-
-    pub fn with_rounding_mode(
-        self,
-        rounding_mode: LayoutRoundingMode,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
-        Self::new(self.available, self.context, rounding_mode)
-    }
-
-    fn new(
-        available: Size<AvailableOf<S>>,
-        context: LayoutRootContextOf<S>,
-        rounding_mode: LayoutRoundingMode,
-    ) -> Result<Self, RootAvailabilityErrorOf<S>> {
-        Ok(Self {
-            available: validate_root_available_size(available)?,
-            context,
-            rounding_mode,
-        })
     }
 
     #[must_use]
-    pub const fn available(&self) -> Size<AvailableOf<S>> {
-        self.available
+    pub const fn flex_item(
+        sizing_request: SizingRequestOf<S>,
+        context: FlexItemRootContextOf<S>,
+    ) -> Self {
+        Self::new(sizing_request, LayoutRootContextOf::FlexItem(context))
     }
 
+    #[must_use]
+    pub const fn block_flow(
+        operations: Size<SizingOperation>,
+        context: BlockFlowRootContextOf<S>,
+    ) -> Self {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(context.parent_inline_extent),
+                operations.width,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operations.height),
+        );
+        Self::new(
+            SizingRequestOf::new(axes, context.orthogonal_fallback),
+            LayoutRootContextOf::BlockFlow(context),
+        )
+    }
+
+    #[must_use]
+    pub const fn positioned_auto_insets(context: PositionedRootContextOf<S>) -> Self {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(context.containing_size.width),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(context.containing_size.height),
+                SizingOperation::Normal,
+            ),
+        );
+        Self::new(
+            SizingRequestOf::new(axes, context.orthogonal_fallback),
+            LayoutRootContextOf::PositionedAutoInsets(context),
+        )
+    }
+
+    /// Constructs the actual root-local Normal request. Checked subtraction is
+    /// performed once here; a negative remaining span is exhausted space, while
+    /// unrepresentable arithmetic refuses before a request is issued.
+    pub fn positioned_root_local(
+        context: RootLocalPositionedContextOf<S>,
+    ) -> Result<Self, NonNegativeFiniteScalarErrorOf<S>> {
+        let available = match NonNegativeFiniteOf::new(
+            context.containing_size.width.get() - context.hypothetical_inline_offset,
+        ) {
+            Ok(value) => value,
+            Err(NonNegativeFiniteScalarErrorOf::Negative { .. }) => NonNegativeFiniteOf::ZERO,
+            Err(error @ NonNegativeFiniteScalarErrorOf::NonFinite { .. }) => return Err(error),
+        };
+        Ok(Self::new(
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(available),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                context.orthogonal_fallback,
+            ),
+            LayoutRootContextOf::RootLocalPositioned(context),
+        ))
+    }
+
+    #[must_use]
+    pub const fn with_rounding_mode(mut self, rounding_mode: LayoutRoundingMode) -> Self {
+        self.rounding_mode = rounding_mode;
+        self
+    }
+
+    const fn new(sizing_request: SizingRequestOf<S>, context: LayoutRootContextOf<S>) -> Self {
+        Self {
+            sizing_request,
+            context,
+            rounding_mode: LayoutRoundingMode::NearestCssPixel,
+        }
+    }
+
+    #[must_use]
+    pub const fn sizing_request(&self) -> SizingRequestOf<S> {
+        self.sizing_request
+    }
     #[must_use]
     pub const fn context(&self) -> LayoutRootContextOf<S> {
         self.context
     }
-
     #[must_use]
     pub const fn rounding_mode(&self) -> LayoutRoundingMode {
         self.rounding_mode
     }
 }
 
-fn validate_root_available_size<S>(
-    available: Size<AvailableOf<S>>,
-) -> Result<Size<AvailableOf<S>>, RootAvailabilityErrorOf<S>>
-where
-    S: LayoutScalar,
-{
-    Ok(Size::new(
-        validate_root_available_axis(PhysicalAxis::Horizontal, available.width)?,
-        validate_root_available_axis(PhysicalAxis::Vertical, available.height)?,
-    ))
-}
-
-fn validate_optional_size<S>(
+fn validate_optional_size<S: LayoutScalar>(
+    input: LayoutSizeInput,
     size: Size<Option<S>>,
-) -> Result<Size<Option<S>>, RootAvailabilityErrorOf<S>>
-where
-    S: LayoutScalar,
-{
+) -> Result<Size<Option<S>>, LayoutSizeInputErrorOf<S>> {
+    let axis = |axis, value: Option<S>| {
+        value
+            .map(|value| {
+                NonNegativeFiniteOf::new(value)
+                    .map(NonNegativeFiniteOf::get)
+                    .map_err(|scalar| LayoutSizeInputErrorOf {
+                        input,
+                        axis,
+                        scalar,
+                    })
+            })
+            .transpose()
+    };
     Ok(Size::new(
-        validate_optional_axis(PhysicalAxis::Horizontal, size.width)?,
-        validate_optional_axis(PhysicalAxis::Vertical, size.height)?,
+        axis(PhysicalAxis::Horizontal, size.width)?,
+        axis(PhysicalAxis::Vertical, size.height)?,
     ))
-}
-
-fn validate_optional_axis<S>(
-    axis: PhysicalAxis,
-    value: Option<S>,
-) -> Result<Option<S>, RootAvailabilityErrorOf<S>>
-where
-    S: LayoutScalar,
-{
-    value
-        .map(|value| {
-            NonNegativeFiniteOf::new(value)
-                .map(NonNegativeFiniteOf::get)
-                .map_err(|scalar| RootAvailabilityErrorOf { axis, scalar })
-        })
-        .transpose()
-}
-
-fn validate_root_available_axis<S>(
-    axis: PhysicalAxis,
-    available: AvailableOf<S>,
-) -> Result<AvailableOf<S>, RootAvailabilityErrorOf<S>>
-where
-    S: LayoutScalar,
-{
-    match available {
-        AvailableOf::Definite(value) => NonNegativeFiniteOf::new(value)
-            .map(|value| AvailableOf::Definite(value.get()))
-            .map_err(|scalar| RootAvailabilityErrorOf { axis, scalar }),
-        AvailableOf::MinContent => Ok(AvailableOf::MinContent),
-        AvailableOf::MaxContent => Ok(AvailableOf::MaxContent),
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

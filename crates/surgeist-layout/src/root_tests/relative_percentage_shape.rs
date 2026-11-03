@@ -98,11 +98,34 @@ fn percentage_shape_facts<S: LayoutScalar>(
 }
 
 fn final_percentage_uses_actual_shape_height<S: LayoutScalar>() {
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(40.0)),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            None,
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0))
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::Normal,
+        ),
+    ));
     for shape in [true, false] {
         let control_tree = percentage_shape_tree::<S>(shape, LengthAutoOf::AUTO);
         let control = control_tree.compute(request).unwrap();

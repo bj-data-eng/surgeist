@@ -590,7 +590,15 @@ fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -760,7 +768,15 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(500.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let generated: Vec<_> = batch
             .final_inline_fragments()
             .iter()
@@ -832,7 +848,15 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         batch
             .final_inline_fragments()
@@ -861,7 +885,15 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 50, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        50,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 50);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -914,7 +946,15 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()

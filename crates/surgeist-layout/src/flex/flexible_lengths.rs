@@ -244,6 +244,7 @@ fn clamp_main_size<Node, S: LayoutScalar>(
         item.automatic_min_main_size,
         axes.main_size(item.min_size),
         axes.main_size(item.max_size),
+        axes.main_size((item.padding + item.border).sum_axes()),
     )
 }
 
@@ -259,10 +260,21 @@ pub(super) fn clamp_main_size_axes<S: LayoutScalar>(
     automatic_min: Option<S>,
     min: Option<S>,
     max: Option<S>,
+    padding_border: S,
 ) -> S {
     let value = max.map_or(value, |max| value.min(max));
     let value = automatic_min.map_or(value, |min| value.max(min));
-    min.map_or(value, |min| value.max(min))
+    let value = min.map_or(value, |min| value.max(min));
+    // Hypothetical and final used main sizes floor the content box at zero.
+    // Raw flex-base arithmetic is a separate phase. Keep non-finite failures
+    // available to the existing checked publication boundary.
+    if !value.is_finite() {
+        value
+    } else if !padding_border.is_finite() {
+        padding_border
+    } else {
+        value.max(padding_border)
+    }
 }
 
 pub(super) fn flex_main_size<S: LayoutScalar>(constants: &Constants<S>) -> Option<S> {

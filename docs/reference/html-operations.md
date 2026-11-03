@@ -2054,7 +2054,9 @@ layout and full table author conformance remain separate.
 retaining its context and target documents, integration facts and nearest form.
 It derives the initial tokenizer/insertion state and checked scripting mode:
 Inert is the fragment default, disabled context forces Disabled, and unavailable
-execution is a typed error. Captured processing-instruction target/data preserve
+execution is a typed error. The effective mode is the one the tree builder
+reads: `noscript` is RAWTEXT under Inert and an ordinary or InHeadNoscript
+element under Disabled. Captured processing-instruction target/data preserve
 producer values independently of strict native author syntax. Capture and context
 selection perform no parsing, live mutation, script execution or effect
 publication. The parser still owns recovered metadata, contextual construction
@@ -2502,10 +2504,11 @@ frozen transfer.
 
 The owning head-stage driver consumes that continuation and the same paused
 tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
-Disabled InHeadNoscript and RCDATA/RAWTEXT Text processing. Text restores its
-actual return mode, including delegated noscript processing. It transfers an
-owned AfterHead continuation, or stops with the untouched script/template token
-for further dispatch. These boundaries retain the actual tree, head pointer,
+InHeadNoscript for Disabled scripting and RCDATA/RAWTEXT Text processing; under
+any other scripting mode (Inert) a `noscript` start tag is RAWTEXT. Text
+restores its actual return mode, including delegated noscript processing. It
+transfers an owned AfterHead continuation, or stops with the untouched
+script/template token for further dispatch. These boundaries retain the actual tree, head pointer,
 lexical input and diagnostics; they are unfinished execution states.
 Head-stage `html` delegation adds missing attributes to managed root storage,
 preserving expanded-name matching, order and origins under the shared controller.
@@ -2551,7 +2554,9 @@ and eligible InBody entry lead to InFrameset, AfterFrameset and AfterAfterFrames
 Body removal runs the existing form effects while retaining the current-form
 pointer and formatting list; trailing whitespace can reconstruct formatting.
 Frame insertion returns at the actual node-document's null browsing-context
-guard. Noframes uses RAWTEXT and restores its saved caller mode. Mixed character
+guard. In a fragment the `</frameset>` switch to AfterFrameset needs a null
+context element, so a frameset or html context stays in InFrameset. Noframes
+uses RAWTEXT and restores its saved caller mode. Mixed character
 runs preserve exact origins while diagnosing and omitting nonwhitespace and NULL.
 Generic or imported owners cannot establish the required constructor proof.
 This ordinary specialization adds no hosted navigation. Contextual fragments use
@@ -3505,7 +3510,9 @@ at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains all 56 top-level
 tree-construction data files with 1,775 cases and 13 complete tokenizer files,
 every top-level tokenizer file except `xmlViolation.test`, with 6,806 cases.
 Every retained tree-construction case except the eight `#script-on` cases runs
-in both encodings: 1,575 through the completed ordinary
+in both encodings (those eight are ordinary documents whose Normal scripting
+mode needs the unsupported script-processing profile above; the fragment API
+covers the same `noscript` rules under Inert): 1,575 through the completed ordinary
 parser with scripting Disabled, and all 192 `#document-fragment` cases through
 the actual captured-context fragment owner with their corpus HTML, SVG or
 MathML context. Every bundled tokenizer case runs through the private tokenizer in each

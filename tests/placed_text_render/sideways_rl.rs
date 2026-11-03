@@ -136,11 +136,14 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(40.0),
-            layout::Available::Definite(15.0),
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), Some(15.0)),
+            layout::FlowAxes::new(layout::WritingMode::SidewaysRl, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     assert_eq!(batch.placed_text().len(), 1);

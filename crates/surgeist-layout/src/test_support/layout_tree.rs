@@ -4,11 +4,11 @@ use crate::LayoutOutputEntryOf;
 use crate::output::NormalGeometryOf;
 
 use crate::{
-    AvailableOf, Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Display,
+    AvailableSpaceOf, Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Display,
     InlineBoundaryInputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInputOf,
     LayoutInternalInvariant, LayoutOperation, LayoutScalar, LayoutTree, LeafMeasureInputOf,
     LineBreakInput, LineBreakInputOf, NodeInputOf, NodeOutputOf, RequestedAxis, Round, RunMode,
-    Size, SizingMode, Traverse, compute_block, compute_flex, compute_grid,
+    Size, SizingMode, SizingOperation, Traverse, compute_block, compute_flex, compute_grid,
 };
 
 /// The fake retained no current-trial custody for this actual request.
@@ -178,8 +178,8 @@ pub struct OracleMeasurementOf<S: LayoutScalar = DefaultScalar> {
     axis: Option<RequestedAxis>,
     known: Option<Size<Option<S>>>,
     parent: Option<Size<Option<S>>>,
-    available: Option<Size<AvailableOf<S>>>,
-    available_width: Option<AvailableOf<S>>,
+    operations: Size<Option<SizingOperation>>,
+    spaces: Size<Option<AvailableSpaceOf<S>>>,
     output: ComputeOutputOf<S>,
 }
 
@@ -191,8 +191,8 @@ impl<S: LayoutScalar> OracleMeasurementOf<S> {
             axis: None,
             known: None,
             parent: None,
-            available: None,
-            available_width: None,
+            operations: Size::new(None, None),
+            spaces: Size::new(None, None),
             output,
         }
     }
@@ -212,24 +212,27 @@ impl<S: LayoutScalar> OracleMeasurementOf<S> {
         self
     }
 
-    pub const fn available(mut self, available: Size<AvailableOf<S>>) -> Self {
-        self.available = Some(available);
+    pub const fn operations(mut self, operations: Size<Option<SizingOperation>>) -> Self {
+        self.operations = operations;
         self
     }
 
-    pub const fn available_width(mut self, width: AvailableOf<S>) -> Self {
-        self.available_width = Some(width);
+    pub const fn spaces(mut self, spaces: Size<Option<AvailableSpaceOf<S>>>) -> Self {
+        self.spaces = spaces;
         self
     }
 
     fn matches(self, input: ComputeInputOf<S>) -> bool {
+        let axes = input.sizing_request().axes();
         matches_or_any(self.run_mode, input.run_mode())
             && matches_or_any(self.sizing_mode, input.sizing_mode())
             && matches_or_any(self.axis, input.requested_axis())
             && matches_or_any(self.known, input.known())
             && matches_or_any(self.parent, input.parent())
-            && matches_or_any(self.available, input.available())
-            && matches_or_any(self.available_width, input.available().width)
+            && matches_or_any(self.operations.width, axes.width.operation())
+            && matches_or_any(self.operations.height, axes.height.operation())
+            && matches_or_any(self.spaces.width, axes.width.space())
+            && matches_or_any(self.spaces.height, axes.height.space())
     }
 }
 
@@ -617,8 +620,25 @@ mod tests {
         assert!(!ordinary.has_leaf_measurement(1));
 
         let request = || {
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(100.0))))
-                .expect("finite viewport request")
+            let viewport = Size::splat(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                    .expect("the declared native viewport is finite and nonnegative"),
+            );
+            LayoutRootRequestOf::standalone(
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(viewport.width),
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        viewport.map(Some),
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                viewport.map(Some),
+            )
         };
         let ordinary_batch =
             compute_layout(&ordinary, 1, request()).expect("ordinary fixed box lays out");
@@ -631,8 +651,21 @@ mod tests {
         assert!(measured.has_leaf_measurement(2));
 
         let measured_request = || {
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-                .expect("max-content viewport request")
+            LayoutRootRequestOf::standalone(
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        Size::new(None, None),
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                Size::new(None, None),
+            )
         };
         let first =
             compute_layout(&measured, 2, measured_request()).expect("measured leaf lays out");
@@ -657,6 +690,8 @@ mod tests {
     }
 
     fn fri06_mr01_oracle_generic_input<S: LayoutScalar>() -> ComputeInputOf<S> {
+        // This neutral scalar query has no supplied ICB, scrollport or local-bound
+        // authority. Missing fallback facts are not inferred from its query space.
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
             SizingMode::InherentSize,
@@ -667,7 +702,17 @@ mod tests {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    Size::new(None, None),
+                    crate::NearestScrollportOf::Unknown,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
     }
 

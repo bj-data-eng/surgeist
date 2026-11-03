@@ -143,15 +143,25 @@ fn check<S: LayoutScalar>(case: Case) {
         case.first_row_override.then_some(AlignItems::Baseline)
     );
     assert_eq!(tree.node_input(6).align_self, Some(AlignItems::Baseline));
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .unwrap();
     assert_eq!(batch.unrounded_entries().len(), 7);
     assert_eq!(batch.final_entries().len(), 7);
@@ -244,7 +254,23 @@ fn check<S: LayoutScalar>(case: Case) {
                 Size::NONE,
                 Size::NONE,
                 ContainingLayoutContext::new(axes, ParentFormattingContext::NoParent),
-                Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -268,7 +294,23 @@ fn check<S: LayoutScalar>(case: Case) {
                 Size::NONE,
                 Size::new(Some(n::<S>(100.0)), Some(n::<S>(100.0))),
                 ContainingLayoutContext::new(axes, ParentFormattingContext::Grid),
-                Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .unwrap();

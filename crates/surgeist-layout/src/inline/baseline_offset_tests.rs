@@ -18,7 +18,12 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
         ),
         observe_tail: false,
         wrapping: None,
-        available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: axes,
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Start,
@@ -49,7 +54,14 @@ fn input<S: LayoutScalar>(mode: WritingMode, amount: S) -> MixedInlineRunInputOf
             // the selected named child contributes raw6/4, without scaling.
             MixedInlineParticipantOf::ForcedLineBreak(ForcedLineBreakControlOf::new(
                 1,
-                InlineFlowOf::new(mode, Direction::Ltr, AvailableOf::MAX_CONTENT),
+                InlineFlowOf::new(
+                    mode,
+                    Direction::Ltr,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
+                ),
                 InlineMetricsOf::try_new(reference, S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
                 InlineControlAlignment::Baseline,
                 Clear::None,
@@ -157,9 +169,20 @@ fn axes<S: LayoutScalar>() {
     ] {
         let axes = FlowAxes::new(mode, Direction::Ltr);
         for available in [
-            AvailableOf::definite(n(100.0)),
-            AvailableOf::MIN_CONTENT,
-            AvailableOf::MAX_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
         ] {
             let mut request = input(mode, n(3.0));
             request.available_inline_extent = available;
@@ -248,7 +271,12 @@ fn raw_fallback_centering_precedes_shift_and_envelope_normalization_both_scalars
         ] {
             let mut request = input(WritingMode::HorizontalTb, n(amount));
             request.inline_baseline_context = crate::InlineBaselineContext::Physical;
-            request.available_inline_extent = AvailableOf::definite(n(110.0));
+            request.available_inline_extent = crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            );
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut request.participants[0] else {
                 unreachable!()
             };
@@ -338,7 +366,12 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
             ),
         ] {
             let mut request = input(WritingMode::HorizontalTb, S::ZERO);
-            request.available_inline_extent = AvailableOf::definite(n(110.0));
+            request.available_inline_extent = crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            );
             request.participants.pop();
             let MixedInlineParticipantOf::Atomic { item, .. } = &mut request.participants[0] else {
                 unreachable!()
@@ -353,7 +386,10 @@ fn actual_boundary_shift_and_zero_share_the_common_float_reference_both_scalars(
                     InlineFlowOf::new(
                         WritingMode::HorizontalTb,
                         Direction::Ltr,
-                        AvailableOf::MAX_CONTENT,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
                     ),
                     InlineMetricsOf::try_new(request.inline_baseline_context, n(8.0), n(10.0))
                         .unwrap(),
@@ -446,7 +482,10 @@ fn large_real_clearance_anchor_cannot_absorb_the_shifted_line_both_scalars() {
                 InlineFlowOf::new(
                     WritingMode::HorizontalTb,
                     Direction::Ltr,
-                    AvailableOf::MAX_CONTENT,
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::MaxContent,
+                    ),
                 ),
                 InlineMetricsOf::try_new(request.inline_baseline_context, S::ZERO, S::ZERO)
                     .unwrap(),

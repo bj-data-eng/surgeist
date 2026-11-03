@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 
 fn helper_response(has_root: bool) -> Value {
     // `describeElement` owns geometry and style capture. This recorder leaves
-    // the real `getTestData` in charge of root discovery, body mutation, variant
+    // the real `getTestData` in charge of missing-source refusal, body mutation, variant
     // order, and JSON transport, which are the protocol contracts under test.
     let script = r#"
 const vm = require('node:vm');
@@ -82,7 +82,7 @@ fn decode_envelope(result: &Value) -> Value {
         .expect("getTestData retains JSON-string transport");
     let envelope: Value =
         serde_json::from_str(response).expect("measurement envelope is valid JSON");
-    assert_eq!(envelope["schemaVersion"].as_u64(), Some(2));
+    assert_eq!(envelope["schemaVersion"].as_u64(), Some(4));
     assert_eq!(
         envelope
             .as_object()
@@ -102,7 +102,7 @@ fn decode_envelope(result: &Value) -> Value {
 }
 
 #[test]
-fn present_root_returns_version_two_with_four_ordered_measurements() {
+fn present_root_without_source_authority_returns_four_precise_refusals() {
     let result = helper_response(true);
     let envelope = decode_envelope(&result);
     let expected_classes = json!([
@@ -113,19 +113,22 @@ fn present_root_returns_version_two_with_four_ordered_measurements() {
     ]);
     assert_eq!(result["rootQueries"], json!(["test-root"]));
     assert_eq!(result["bodyClasses"], expected_classes);
-    assert_eq!(result["measurements"], expected_classes);
-    for (key, class_name) in [
-        ("borderBoxLtrData", "border-box ltr"),
-        ("contentBoxLtrData", "content-box ltr"),
-        ("borderBoxRtlData", "border-box rtl"),
-        ("contentBoxRtlData", "content-box rtl"),
+    assert_eq!(result["measurements"], json!([]));
+    for key in [
+        "borderBoxLtrData",
+        "contentBoxLtrData",
+        "borderBoxRtlData",
+        "contentBoxRtlData",
     ] {
-        assert_eq!(envelope[key], json!({ "observedClass": class_name }));
+        assert_eq!(
+            envelope[key],
+            json!({ "layoutInput": "unsupported", "unsupportedReason": "Root context: MissingSourceAuthority" })
+        );
     }
 }
 
 #[test]
-fn missing_root_returns_version_two_with_four_unsupported_variants() {
+fn missing_root_returns_version_four_with_four_unsupported_variants() {
     let result = helper_response(false);
     let envelope = decode_envelope(&result);
     assert_eq!(result["rootQueries"], json!(["test-root"]));
@@ -235,5 +238,32 @@ fn explicit_br_font_band_observation_is_independent_of_input_participation() {
             {"request":null,"participating":null,"unparticipating":null},
             {"request":"font-band","participating":"font-band","unparticipating":"font-band"},
         ]),
+    );
+}
+
+#[test]
+fn analytic_profile_keeps_orthogonal_ancestry_distinct_from_known_glyph_free_boxes() {
+    let result = helper_probe(
+        r#"(() => {
+      const attempt = node => {
+        try { qualifyAnalyticCaptureText(node, 'horizontal-tb'); return 'accepted'; }
+        catch (error) { return error.message; }
+      };
+      return [
+        attempt({style:{writingMode:'horizontal-tb'},textContent:'X'}),
+        attempt({style:{writingMode:'vertical-rl'},textContent:'X'}),
+        attempt({style:{writingMode:'vertical-rl'},children:[{style:{writingMode:'horizontal-tb'},textContent:'X'}]}),
+        attempt({style:{writingMode:'vertical-rl'},children:[]}),
+      ];
+    })()"#,
+    );
+    assert_eq!(
+        result,
+        json!([
+            "accepted",
+            "Root context: UnsupportedAnalyticOrthogonalTextProfile",
+            "Root context: UnsupportedAnalyticOrthogonalTextProfile",
+            "accepted",
+        ])
     );
 }

@@ -116,11 +116,25 @@ fn assert_placement<S: l::LayoutScalar>(
         assert_eq!(actual.bidi_level().get(), level);
         assert_eq!(actual.following_break(), l::InlineBreakOpportunity::Allowed);
     }
-    let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-        l::AvailableOf::definite(S::from_f64(capacity)),
-        l::AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let sizing_request = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(capacity)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&tree, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&tree, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    };
     let batch = l::compute_layout(&tree, 0, request).unwrap();
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());

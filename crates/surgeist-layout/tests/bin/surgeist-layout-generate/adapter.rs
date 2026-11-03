@@ -49,16 +49,11 @@ pub(super) const GRID_TEMPLATE_AREA_CAPTURE_SCRIPT: &str = r#"(() => {
 
 #[cfg(test)]
 pub(super) fn browser_fixture_document(raw: &str, base_url: &str) -> Result<String, String> {
-    fixture_document(raw, base_url, TEST_BASE_STYLE_SOURCE)
+    fixture_document(raw, base_url)
 }
 
-fn fixture_document(raw: &str, base_url: &str, base_style: &str) -> Result<String, String> {
-    let mut head_injection = format!("<base href=\"{}\">", escape_attr(base_url));
-    if raw.contains("test_base_style.css") {
-        head_injection.push_str("<style>");
-        head_injection.push_str(base_style);
-        head_injection.push_str("</style>");
-    }
+fn fixture_document(raw: &str, base_url: &str) -> Result<String, String> {
+    let head_injection = format!("<base href=\"{}\">", escape_attr(base_url));
 
     let lower = raw.to_ascii_lowercase();
     if let Some(index) = lower.find("<head>") {
@@ -193,7 +188,7 @@ impl BrowserCorpusAdapter for LayoutAdapter {
             AdapterError::Preparation(format!("base stylesheet is not UTF-8: {error}"))
         })?;
         let document =
-            fixture_document(source, input.base_url(), style).map_err(AdapterError::Preparation)?;
+            fixture_document(source, input.base_url()).map_err(AdapterError::Preparation)?;
         let resources = match linked_resources(input.fixture().source(), source) {
             Ok(paths) => ResourceDependencies::Paths(paths),
             Err(reason) => ResourceDependencies::Invalid { reason },
@@ -203,7 +198,8 @@ impl BrowserCorpusAdapter for LayoutAdapter {
         let font_bytes = input.input_bytes(&font_path).ok_or_else(|| {
             AdapterError::Preparation("captured pinned font resource is missing".into())
         })?;
-        let setup = helper_setup_expression(helper, font_bytes)?;
+        let setup =
+            helper_setup_expression(helper, font_bytes, source, style, input.fixture().source())?;
         PreparedFixture::new(
             document,
             "document.readyState !== 'loading' && !!document.body".to_string(),
@@ -339,7 +335,22 @@ fn resolve_reference(source: &RelativePath, reference: &str) -> Result<RelativeP
     RelativePath::new(path.to_string_lossy().replace('\\', "/")).map_err(|error| error.to_string())
 }
 
-fn helper_setup_expression(helper: &str, bytes: &[u8]) -> Result<String, AdapterError> {
+fn helper_setup_expression(
+    helper: &str,
+    bytes: &[u8],
+    source: &str,
+    base_style: &str,
+    source_path: &RelativePath,
+) -> Result<String, AdapterError> {
+    // This capture version qualifies one exact zero-edge base document profile.
+    // A changed stylesheet needs an explicit new source-profile qualification.
+    if surgeist_generator::Sha256Digest::from_bytes(base_style.as_bytes()).to_string()
+        != "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6"
+    {
+        return Err(AdapterError::Preparation(
+            "root-context source profile does not qualify the captured base stylesheet".into(),
+        ));
+    }
     let helper = serde_json::to_string(helper).map_err(|error| {
         AdapterError::Preparation(format!("failed to encode helper script: {error}"))
     })?;
@@ -351,8 +362,17 @@ fn helper_setup_expression(helper: &str, bytes: &[u8]) -> Result<String, Adapter
     }
     let bytes = serde_json::to_string(bytes)
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+    let depth = source_path.as_str().split('/').count().saturating_sub(1);
+    let prefix = "../".repeat(depth);
+    let context = serde_json::to_string(&serde_json::json!([
+        source,
+        base_style,
+        format!("{prefix}scripts/gentest/test_helper.js"),
+        format!("{prefix}scripts/gentest/test_base_style.css"),
+    ]))
+    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
@@ -392,11 +412,12 @@ mod tests {
             "clientWidth": 10, "clientHeight": 20,
         });
         serde_json::json!({
-            "layoutInput": "box", "tagName": "div", "useRounding": true,
-            "viewport": {"width": {"unit": "px", "value": 100}, "height": {"unit": "px", "value": 100}, "rootContext": "root"},
-            "style": {"display": "block", "boxSizing": "border-box", "writingMode": "horizontal-tb", "direction": "ltr"},
+            "layoutInput": "box", "tagName": "div", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": "block", "boxSizing": "border-box", "writingMode": "horizontal-tb", "direction": "ltr"},
             "unroundedLayout": geometry.clone(),
             "smartRoundedLayout": geometry.clone(),
+            "worldRoundedLayout": geometry.clone(),
             "naivelyRoundedLayout": geometry,
             "children": [],
         })
@@ -519,11 +540,17 @@ mod tests {
         let original = helper_setup_expression(
             &original,
             include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+            "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+            TEST_BASE_STYLE_SOURCE,
+            &RelativePath::new("html/grid/example.html").unwrap(),
         )
         .unwrap();
         let replacement = helper_setup_expression(
             TEST_HELPER_SOURCE,
             include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+            "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+            TEST_BASE_STYLE_SOURCE,
+            &RelativePath::new("html/grid/example.html").unwrap(),
         )
         .unwrap();
         let script = format!(
@@ -557,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_requires_a_closed_version_two_measurement_envelope() {
+    fn adapter_requires_a_closed_measurement_envelope() {
         let variants = fixture_cases()
             .into_iter()
             .map(|(_, key)| format!("\"{key}\":{{\"layoutInput\":\"unsupported\",\"unsupportedReason\":\"known unsupported\"}}"))
@@ -566,10 +593,11 @@ mod tests {
         for extra in [
             "",
             "\"schemaVersion\":3,",
-            "\"schemaVersion\":2.0,",
+            "\"schemaVersion\":5,",
+            "\"schemaVersion\":4.0,",
             "\"schemaVersion\":null,",
-            "\"schemaVersion\":2,\"unexpected\":true,",
-            "\"schemaVersion\":2,\"schemaVersion\":2,",
+            "\"schemaVersion\":4,\"unexpected\":true,",
+            "\"schemaVersion\":4,\"schemaVersion\":4,",
         ] {
             let payload = format!("{{{extra}{variants}}}");
             assert!(
@@ -597,7 +625,7 @@ mod tests {
         let error = LayoutAdapter
             .lower(
                 &fixture(),
-                Value::String("{\"schemaVersion\":2}".to_string()),
+                Value::String("{\"schemaVersion\":4}".to_string()),
             )
             .unwrap_err();
         assert_eq!(
@@ -689,14 +717,38 @@ mod tests {
     #[test]
     fn captured_font_bytes_are_authenticated_before_browser_setup() {
         let original = include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf");
-        assert!(helper_setup_expression(TEST_HELPER_SOURCE, original).is_ok());
+        assert!(
+            helper_setup_expression(
+                TEST_HELPER_SOURCE,
+                original,
+                "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+                TEST_BASE_STYLE_SOURCE,
+                &RelativePath::new("html/grid/example.html").unwrap(),
+            )
+            .is_ok()
+        );
         let mut changed = original.to_vec();
         changed[0] ^= 1;
         assert!(matches!(
-            helper_setup_expression(TEST_HELPER_SOURCE, &changed),
+            helper_setup_expression(
+                TEST_HELPER_SOURCE,
+                &changed,
+                "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+                TEST_BASE_STYLE_SOURCE,
+                &RelativePath::new("html/grid/example.html").unwrap(),
+            ),
             Err(AdapterError::Preparation(_))
         ));
-        assert!(helper_setup_expression(TEST_HELPER_SOURCE, &[]).is_err());
+        assert!(
+            helper_setup_expression(
+                TEST_HELPER_SOURCE,
+                &[],
+                "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+                TEST_BASE_STYLE_SOURCE,
+                &RelativePath::new("html/grid/example.html").unwrap(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -705,7 +757,14 @@ mod tests {
         // This load/add/ready recorder qualifies exact-byte transport; real
         // browser execution independently qualifies FontFace decoding/loading.
         let font = include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf");
-        let setup = helper_setup_expression(TEST_HELPER_SOURCE, font).unwrap();
+        let setup = helper_setup_expression(
+            TEST_HELPER_SOURCE,
+            font,
+            "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+            TEST_BASE_STYLE_SOURCE,
+            &RelativePath::new("html/grid/example.html").unwrap(),
+        )
+        .unwrap();
         let script = format!(
             r#"const assert=require('node:assert/strict'); const vm=require('node:vm');
 const expected={}; const loaded=[]; const faces=[]; faces.add=face=>faces.push(face); faces.ready=Promise.resolve();
@@ -729,10 +788,13 @@ FontFace:class{{constructor(family,buffer,descriptors){{this.family=family;this.
 
     #[test]
     fn setup_injects_a_missing_helper_and_preserves_an_existing_helper() {
-        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }",include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf")).unwrap();
+        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }",include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"), "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>", TEST_BASE_STYLE_SOURCE, &RelativePath::new("html/grid/example.html").unwrap(),).unwrap();
         let second = helper_setup_expression(
             "function getTestData() { return 'replacement'; }",
             include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+            "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
+            TEST_BASE_STYLE_SOURCE,
+            &RelativePath::new("html/grid/example.html").unwrap(),
         )
         .unwrap();
         let script = format!(

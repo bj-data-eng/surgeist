@@ -383,12 +383,23 @@ fn normal_prepare(processed: &Arc<text::ProcessedSource>) -> text::PreparedText 
         .prepare(&a, text::PreparationOptions::default())
         .unwrap()
 }
-fn request<S: layout::LayoutScalar>() -> layout::LayoutRootRequestOf<S> {
-    layout::LayoutRootRequestOf::viewport(layout::Size::new(
-        layout::AvailableOf::definite(S::from_f64(40.0)),
-        layout::AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap()
+fn request<S: layout::LayoutScalar>(frame: layout::FlowAxes) -> layout::LayoutRootRequestOf<S> {
+    {
+        let sizing_request = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(40.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        layout::LayoutRootRequestOf::standalone(
+            sizing_request,
+            frame,
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 fn finish<S: layout::LayoutScalar>(
     host: &Host<S>,
@@ -408,7 +419,15 @@ fn finish<S: layout::LayoutScalar>(
         receipt,
     )
     .unwrap();
-    let result = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
+    let result = layout::compute_layout_with_flow(
+        &flow,
+        0,
+        request(surgeist_layout::FlowAxes::new(
+            surgeist_layout::LayoutTree::node_input(&tree, 0).writing_mode,
+            surgeist_layout::LayoutTree::node_input(&tree, 0).direction,
+        )),
+    )
+    .unwrap();
     assert!(
         result.placed_text()[0]
             .layout()

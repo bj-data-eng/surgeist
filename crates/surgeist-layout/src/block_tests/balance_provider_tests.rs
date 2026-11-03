@@ -124,11 +124,28 @@ impl<S: LayoutScalar> LayoutTree for ContourTree<S> {
 }
 
 fn request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(100.0)),
-        AvailableOf::MAX_CONTENT,
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            None,
+        ),
+        OrthogonalFallbackOf::new(
+            Size::new(
+                Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                None,
+            ),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
     ))
-    .unwrap()
 }
 
 fn output<S: LayoutScalar>(

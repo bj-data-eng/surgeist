@@ -100,7 +100,8 @@ fn capture(
     transform: text::TextTransform,
     white_space: text::WhiteSpace,
     word_break: text::WordBreak,
-    available: layout::Available,
+    authored_width: Option<f32>,
+    request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
     text::PreparedOrigin,
@@ -167,11 +168,11 @@ fn capture(
             layout::LayoutInput::box_input(layout::NodeInput {
                 display: layout::Display::Block,
                 size: layout::Size::new(
-                    match available {
-                        layout::Available::Definite(width) => layout::PreferredSizeOf::value(
+                    match authored_width {
+                        Some(width) => layout::PreferredSizeOf::value(
                             layout::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        _ => layout::PreferredSizeOf::AUTO,
+                        None => layout::PreferredSizeOf::AUTO,
                     },
                     layout::PreferredSizeOf::AUTO,
                 ),
@@ -206,16 +207,7 @@ fn capture(
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(
-        &capture,
-        0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            available,
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
-    )
-    .unwrap();
+    let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     (batch, origin, source)
 }
 
@@ -274,7 +266,15 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
             text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
             text::WhiteSpace::Preserve,
             text::WordBreak::Normal,
-            layout::Available::Definite(30.0),
+            Some(30.0),
+            NativeViewport::new(
+                layout::Size::new(Some(30.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         let advance = if enabled { 20.0 } else { 10.0 };
@@ -413,7 +413,15 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             transform,
             text::WhiteSpace::Preserve,
             text::WordBreak::BreakAll,
-            layout::Available::Definite(16.0),
+            Some(16.0),
+            NativeViewport::new(
+                layout::Size::new(Some(16.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(glyphs(placed, &bytes), expected_glyphs);
@@ -469,8 +477,8 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
             );
         }
         for (purpose, expected) in [
-            (layout::Available::MinContent, min),
-            (layout::Available::MaxContent, max),
+            (layout::SizingOperation::MinContent, min),
+            (layout::SizingOperation::MaxContent, max),
         ] {
             let (intrinsic, _, _) = capture(
                 &mut system,
@@ -478,7 +486,15 @@ fn case_then_width_expansion_drives_fit_intrinsics_and_receiving_original_custod
                 transform,
                 text::WhiteSpace::Preserve,
                 text::WordBreak::BreakAll,
-                purpose,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -500,7 +516,15 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
             transform,
             text::WhiteSpace::Preserve,
             text::WordBreak::Normal,
-            layout::Available::Definite(25.0),
+            Some(25.0),
+            NativeViewport::new(
+                layout::Size::new(Some(25.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(
@@ -525,9 +549,9 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
         );
         assert_eq!(placed.source(), &source);
         for (purpose, expected) in [
-            (layout::Available::MinContent, 20.0),
+            (layout::SizingOperation::MinContent, 20.0),
             (
-                layout::Available::MaxContent,
+                layout::SizingOperation::MaxContent,
                 if enabled { 40.0 } else { 20.0 },
             ),
         ] {
@@ -537,7 +561,15 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
                 transform,
                 text::WhiteSpace::Preserve,
                 text::WordBreak::Normal,
-                purpose,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             assert_eq!(intrinsic_width(&intrinsic), expected);
         }
@@ -585,7 +617,15 @@ fn genuine_preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
             text::TextTransform::Set(text::TextTransformSet::none().with_full_width(enabled)),
             mode,
             text::WordBreak::Normal,
-            layout::Available::Definite(100.0),
+            Some(100.0),
+            NativeViewport::new(
+                layout::Size::new(Some(100.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
         );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(glyphs(placed, &bytes), expected);
@@ -665,7 +705,15 @@ fn width_accessibility_keeps_original_sharp_s_with_actual_thirty_pixel_geometry(
         ),
         text::WhiteSpace::Preserve,
         text::WordBreak::Normal,
-        layout::Available::Definite(40.0),
+        Some(40.0),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     );
     let placed = batch.placed_text()[0].layout();
     drop(system);

@@ -224,27 +224,6 @@ fn validate_dimension_use(
 }
 
 impl Dimension {
-    pub fn validate_viewport_wire(
-        &self,
-        context: &Context<'_>,
-        field: &str,
-    ) -> Result<(), MeasurementError> {
-        self.validate(context, field)?;
-        context.ensure(
-            matches!(self.unit, Unit::Px | Unit::MinContent | Unit::MaxContent),
-            field,
-            "viewport dimension must be px, min-content, or max-content",
-        )
-    }
-
-    pub fn validate_viewport_semantic(
-        &self,
-        context: &Context<'_>,
-        field: &str,
-    ) -> Result<(), MeasurementError> {
-        self.validate_nonnegative(context, field)
-    }
-
     fn validate_xml_strings(
         &self,
         context: &Context<'_>,
@@ -288,6 +267,11 @@ enum Scalar {
 pub(super) struct InlineMetrics {
     baseline: f64,
     line_height: f64,
+}
+impl InlineMetrics {
+    pub(super) fn is_zero(&self) -> bool {
+        self.baseline == 0.0 && self.line_height == 0.0
+    }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1741,3 +1725,19 @@ pub(super) fn test_position(raw: &str) -> Result<Option<String>, MeasurementErro
 #[cfg(test)]
 #[path = "style_tests.rs"]
 mod tests;
+
+impl Style {
+    pub(super) fn has_reference_font(&self) -> bool {
+        self.font_family.as_deref() == Some("ahem")
+            && matches!(&self.font_size, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(size)) }) if *size == 10.0)
+    }
+    pub(super) fn has_atomic_metric_font(&self) -> bool {
+        self.has_reference_font()
+            && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 0.0)
+    }
+    pub(super) fn has_zero_inline_metrics(&self) -> bool {
+        self.inline_metrics
+            .as_ref()
+            .is_some_and(InlineMetrics::is_zero)
+    }
+}

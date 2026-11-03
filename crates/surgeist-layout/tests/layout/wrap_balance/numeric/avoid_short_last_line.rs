@@ -105,7 +105,13 @@ fn literal_profiles<S: l::LayoutScalar>() {
         } in profiles
         {
             let mut tree = profile_tree::<S>(direction, width, widths);
-            let capacity = l::AvailableOf::definite(S::from_f64(width));
+            let capacity = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(width)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
             let auto = numeric_compute(&tree, capacity, &[]);
             geometry(&auto, direction, width, widths, ordinary);
             let actual = numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, capacity);
@@ -130,7 +136,13 @@ fn avoid_short_last_line_native_repair_transfer_and_frozen_prefix_f64() {
 
 fn forced_and_permission<S: l::LayoutScalar>() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+        let capacity = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
         let mut tree = partition_tree::<S>(direction, 2, l::InlineBreakOpportunity::Allowed);
         let auto = numeric_compute(&tree, capacity, &[]);
         assert_partition(&auto, direction, 2, false);
@@ -213,7 +225,13 @@ fn ordinary_domains<S: l::LayoutScalar>() {
         // A genuine oversized first atom is valid ordinary overflow. Optional
         // quality must not turn advance70/capacity60 into a geometry error.
         let mut overflow = profile_tree::<S>(direction, 60.0, &[70.0, 10.0]);
-        let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+        let capacity = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
         let ordinary = numeric_compute(&overflow, capacity, &[]);
         geometry(&ordinary, direction, 60.0, &[70.0, 10.0], &[&[1], &[2]]);
         let selected = numeric_style(
@@ -225,7 +243,13 @@ fn ordinary_domains<S: l::LayoutScalar>() {
         // Zero capacity is independently admitted by actual ordinary layout;
         // all real overflowing boxes and their source entries remain present.
         let mut zero = profile_tree::<S>(direction, 0.0, &[10.0, 10.0]);
-        let zero_capacity = l::AvailableOf::definite(S::ZERO);
+        let zero_capacity = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::ZERO), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
         let ordinary = numeric_compute(&zero, zero_capacity, &[]);
         geometry(&ordinary, direction, 0.0, &[10.0, 10.0], &[&[1], &[2]]);
         let selected = numeric_style(
@@ -242,9 +266,21 @@ fn ordinary_domains<S: l::LayoutScalar>() {
                 ..root
             });
             let available = if minimum {
-                l::AvailableOf::MIN_CONTENT
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MinContent,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                )
             } else {
-                l::AvailableOf::MAX_CONTENT
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MaxContent,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                )
             };
             let ordinary = numeric_compute(&tree, available, &[]);
             let selected =
@@ -287,7 +323,13 @@ fn long_final_group<S: l::LayoutScalar>() {
         let ordinary_rows = ordinary.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let repaired_rows = repaired.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let mut tree = profile_tree::<S>(direction, 60.0, &widths);
-        let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+        let capacity = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
         let auto = numeric_compute(&tree, capacity, &[]);
         geometry(&auto, direction, 60.0, &widths, &ordinary_rows);
         let actual = numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, capacity);

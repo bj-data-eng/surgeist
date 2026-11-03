@@ -158,8 +158,15 @@ fn empty_suffix_member<S: LayoutScalar>(
 fn selected_closing_suffix<S: LayoutScalar>() {
     let f = empty_float_fixture::<S>(false);
     let ordinary_flow = f.flow();
-    let prior = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0)))
-        .expect("the genuine ordinary Start/float/End sequence must complete first");
+    let prior = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect("the genuine ordinary Start/float/End sequence must complete first");
     ordinary_empty_float_geometry(&prior, false);
     assert_eq!(prior.native_inline_box_families().count(), 0);
     assert_eq!(prior.native_inline_box_pieces().count(), 0);
@@ -172,11 +179,26 @@ fn selected_closing_suffix<S: LayoutScalar>() {
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], demanded, Vec::new())
         .expect("the actual complete normal family must admit without fabricated content");
-    let result = compute_layout_with_flow(&flow, 0, request(n(100.0)));
+    let result = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    );
     // A failed family computation must leave the prior ordinary publication and
     // its still-valid operation usable; this check also precedes the success gate.
     ordinary_empty_float_geometry(&prior, false);
-    let retry = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0))).unwrap();
+    let retry = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     ordinary_empty_float_geometry(&retry, false);
     let accepted = result
         .expect("the selected closing End/body-end witness must retain the genuine empty fragment");
@@ -279,8 +301,15 @@ fn ordering_empty_native_family_keeps_selected_closing_suffix_around_real_float_
 fn nested_selected_closing_suffix<S: LayoutScalar>() {
     let f = empty_float_fixture::<S>(true);
     let ordinary_flow = f.flow();
-    let prior = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0)))
-        .expect("ordinary nested empty boxes must complete both real runs around the float");
+    let prior = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect("ordinary nested empty boxes must complete both real runs around the float");
     ordinary_empty_float_geometry(&prior, true);
     assert_eq!(prior.native_inline_box_families().count(), 0);
     assert_eq!(prior.native_inline_box_pieces().count(), 0);
@@ -289,9 +318,24 @@ fn nested_selected_closing_suffix<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], demanded, Vec::new()).unwrap();
-    let result = compute_layout_with_flow(&flow, 0, request(n(100.0)));
+    let result = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    );
     ordinary_empty_float_geometry(&prior, true);
-    let retry = compute_layout_with_flow(&ordinary_flow, 0, request(n(100.0))).unwrap();
+    let retry = compute_layout_with_flow(
+        &ordinary_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     ordinary_empty_float_geometry(&retry, true);
     let accepted = result
         .expect("P's selected End must retain P without borrowing the unselected C row or edges");

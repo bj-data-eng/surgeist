@@ -23,8 +23,22 @@ fn fri07_c01_absolute_auto_margin_layout<S: LayoutScalar>(
     let batch = compute_layout(
         &tree,
         1,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(300.0))))
-            .expect("absolute auto-margin viewport is finite"),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(1).writing_mode,
+                tree.node_input(1).direction,
+            ),
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap()),
+            SizingOperation::Normal,
+        ))),
     )
     .expect("absolute auto-margin layout succeeds");
 
@@ -571,11 +585,14 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01IntrinsicTree<S> {
                 Some(Ok(Size::new(Self::Scalar::INFINITY, Self::Scalar::ONE)))
             }
             Fri07C01IntrinsicMeasureMode::Values => {
-                let available = input.available_content_size();
-                let intrinsic = |available| match available {
-                    MeasurementAvailableOf::MinContent => Some(Self::Scalar::from_f64(20.0)),
-                    MeasurementAvailableOf::MaxContent => Some(Self::Scalar::from_f64(100.0)),
-                    MeasurementAvailableOf::Definite(_) => None,
+                let available = input.content_sizing_request().axes();
+                let intrinsic = |request: AxisSizingRequestOf<S>| match request.operation() {
+                    SizingOperation::MinContent => Some(Self::Scalar::from_f64(20.0)),
+                    SizingOperation::MaxContent => Some(Self::Scalar::from_f64(100.0)),
+                    SizingOperation::Normal => match request.space() {
+                        AvailableSpaceOf::Definite(_) => None,
+                        AvailableSpaceOf::Indefinite => Some(Self::Scalar::from_f64(100.0)),
+                    },
                 };
                 Some(Ok(Size::new(
                     intrinsic(available.width).unwrap_or(Self::Scalar::from_f64(10.0)),
@@ -744,8 +761,19 @@ fn fri07_c01_intrinsic_child_container_tree<S: LayoutScalar>(
 }
 
 fn fri07_c01_intrinsic_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(300.0))))
-        .expect("intrinsic test viewport is finite")
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap()),
+        SizingOperation::Normal,
+    )))
 }
 
 fn fri07_c01_intrinsic_recomputation_tree<S: LayoutScalar>(
@@ -781,60 +809,105 @@ fn fri07_c01_intrinsic_recomputation_tree<S: LayoutScalar>(
         .measured(2)
 }
 
-fn assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation<S: LayoutScalar>() {
-    let scenarios = [
-        (
-            FlexBasisOf::<S>::MIN_CONTENT,
-            MeasurementAvailableOf::MIN_CONTENT,
-        ),
-        (
-            FlexBasisOf::<S>::MAX_CONTENT,
-            MeasurementAvailableOf::MAX_CONTENT,
-        ),
-    ];
-    let observed = scenarios
-        .iter()
-        .map(|(flex_basis, _)| {
-            let tree = fri07_c01_intrinsic_recomputation_tree(flex_basis.clone());
-            let batch = compute_layout(&tree, 1, fri07_c01_intrinsic_request())
-                .expect("intrinsic flex basis remains supported through final layout");
-            let requests = tree
-                .leaf_requests(2)
-                .into_iter()
-                .map(|input| {
-                    (
-                        input.known_content_size().width,
-                        input.available_content_size().width,
-                    )
-                })
-                .collect::<Vec<_>>();
-            (requests, fri07_c01_intrinsic_output(&batch, 2).size.width)
-        })
-        .collect::<Vec<_>>();
-    let expected = scenarios
-        .into_iter()
-        .map(|(_, expected)| {
-            (
-                vec![
-                    (None, expected),
-                    (Some(S::from_f64(200.0)), expected),
-                    (None, expected),
-                ],
-                S::from_f64(200.0),
-            )
-        })
-        .collect::<Vec<_>>();
-
+fn assert_fri07_c01_allocated_provider_space<S: LayoutScalar>(
+    flex_basis: FlexBasisOf<S>,
+    intrinsic: SizingOperation,
+    known_width: Option<S>,
+) {
+    let tree = fri07_c01_intrinsic_recomputation_tree(flex_basis);
+    let batch = compute_layout(&tree, 1, fri07_c01_intrinsic_request())
+        .expect("a genuine intrinsic basis supports actual grown allocation");
+    let requests = tree.leaf_requests(2);
+    assert!(
+        requests.iter().any(|input| {
+            input.known_content_size().width.is_none()
+                && input.content_sizing_request().axes().width.operation() == intrinsic
+        }),
+        "the authored basis still issues a genuine {intrinsic:?} native query; requests={requests:?}"
+    );
     assert_eq!(
-        observed, expected,
-        "the provider must receive each selected intrinsic main-axis constraint for initial, cross-recomputation, and final requests while grown final geometry remains 200px",
+        fri07_c01_intrinsic_output(&batch, 2).size.width,
+        S::from_f64(200.0),
+        "actual Flex growth allocates child2 width200 independently of its basis"
+    );
+    // An intrinsic basis selects the base. Actual allocated width200 supplies
+    // normal content space even when the leaf's known-content field is cleared.
+    let allocated =
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap());
+    assert!(
+        requests.iter().any(|input| {
+            input.known_content_size().width == known_width
+                && input.content_sizing_request().axes().width.operation()
+                    == SizingOperation::Normal
+                && input.content_sizing_request().axes().width.space() == allocated
+        }),
+        "allocated200 with known-content width{known_width:?} must issue normal definite200 space; basis={intrinsic:?}; requests={requests:?}"
     );
 }
 
 #[test]
-fn fri07_c01_intrinsic_public_layout_retains_provider_constraint_through_final_layout() {
-    assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation::<f32>();
-    assert_fri07_c01_intrinsic_provider_constraint_survives_recomputation::<f64>();
+fn fri07_c01_min_basis_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MIN_CONTENT,
+        SizingOperation::MinContent,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_min_basis_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MIN_CONTENT,
+        SizingOperation::MinContent,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_max_basis_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MAX_CONTENT,
+        SizingOperation::MaxContent,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_max_basis_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MAX_CONTENT,
+        SizingOperation::MaxContent,
+        Some(200.0),
+    );
+}
+#[test]
+fn fri07_c01_min_basis_without_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MIN_CONTENT,
+        SizingOperation::MinContent,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_min_basis_without_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MIN_CONTENT,
+        SizingOperation::MinContent,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_max_basis_without_known_width_uses_normal_allocated_space_f32() {
+    assert_fri07_c01_allocated_provider_space::<f32>(
+        FlexBasisOf::MAX_CONTENT,
+        SizingOperation::MaxContent,
+        None,
+    );
+}
+#[test]
+fn fri07_c01_max_basis_without_known_width_uses_normal_allocated_space_f64() {
+    assert_fri07_c01_allocated_provider_space::<f64>(
+        FlexBasisOf::MAX_CONTENT,
+        SizingOperation::MaxContent,
+        None,
+    );
 }
 
 fn assert_fri07_c01_intrinsic_leaf_geometry<S: LayoutScalar>() {
@@ -1042,8 +1115,19 @@ impl<S: LayoutScalar> Fri07C01CompositionTree<S> {
     }
 
     fn request() -> LayoutRootRequestOf<S> {
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(200.0))))
-            .expect("composition viewport is finite")
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap()),
+            SizingOperation::Normal,
+        )))
     }
 
     fn apply_cache_entry(
@@ -1104,10 +1188,14 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
             return Some(Err(Fri07C01CompositionMeasureError::ProviderFailure));
         }
 
-        let width = match input.available_content_size().width {
-            MeasurementAvailableOf::MinContent => S::from_f64(40.4),
-            MeasurementAvailableOf::MaxContent => S::from_f64(100.4),
-            MeasurementAvailableOf::Definite(width) => width.get(),
+        let request = input.content_sizing_request().axes().width;
+        let width = match request.operation() {
+            SizingOperation::MinContent => S::from_f64(40.4),
+            SizingOperation::MaxContent => S::from_f64(100.4),
+            SizingOperation::Normal => match request.space() {
+                AvailableSpaceOf::Definite(width) => width.get(),
+                AvailableSpaceOf::Indefinite => S::from_f64(100.4),
+            },
         };
         Some(Ok(Size::new(width, S::from_f64(50.4))))
     }
@@ -1334,7 +1422,8 @@ fn assert_fri07_c01_composition_replaced_intrinsic_sizing<S: LayoutScalar>() {
         assert_eq!(absolute.location, Point::ZERO);
         assert!(
             tree.leaf_requests(2).iter().any(|input| {
-                input.available_content_size().width == MeasurementAvailableOf::MAX_CONTENT
+                input.content_sizing_request().axes().width.operation()
+                    == SizingOperation::MaxContent
             }),
             "max-content basis must reach the provider for replaced={replaced}"
         );
@@ -1372,15 +1461,27 @@ fn assert_fri07_c01_composition_cache_and_atomicity<S: LayoutScalar>() {
     assert!(
         tree.measurement_requests.borrow()[cold_measurements..]
             .iter()
-            .all(|(node, input)| match node {
-                2 => input.available_content_size().width == MeasurementAvailableOf::MIN_CONTENT,
-                4 => matches!(
-                    input.available_content_size().width,
-                    MeasurementAvailableOf::MinContent | MeasurementAvailableOf::MaxContent
-                ),
-                _ => false,
+            .all(|(node, input)| {
+                let request = input.content_sizing_request().axes().width;
+                match (*node, request.operation()) {
+                    (2, SizingOperation::MinContent) => true,
+                    (4, SizingOperation::MinContent | SizingOperation::MaxContent) => true,
+                    (2, SizingOperation::Normal) => {
+                        request.space()
+                            == AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(40.4)).unwrap(),
+                            )
+                    }
+                    (4, SizingOperation::Normal) => {
+                        request.space()
+                            == AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(100.4)).unwrap(),
+                            )
+                    }
+                    _ => false,
+                }
             }),
-        "warm recomputation must preserve intrinsic measurement constraints"
+        "warm recomputation preserves true bases and actual zero-grow/shrink allocations"
     );
 
     tree.measure_mode
@@ -1544,12 +1645,22 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
             }
             _ => {}
         }
-        let main = match (node, self.axes.main_size(input.available_content_size())) {
-            (2, MeasurementAvailableOf::MinContent) => S::from_f64(20.0),
-            (2, MeasurementAvailableOf::MaxContent) => S::from_f64(45.0),
-            (3, MeasurementAvailableOf::MinContent) => S::from_f64(25.0),
-            (3, MeasurementAvailableOf::MaxContent) => S::from_f64(60.0),
-            (_, MeasurementAvailableOf::Definite(value)) => value.get(),
+        let request = self.axes.main_size(input.content_sizing_request().axes());
+        let main = match (node, request.operation()) {
+            (2, SizingOperation::MinContent) => S::from_f64(20.0),
+            (2, SizingOperation::MaxContent) => S::from_f64(45.0),
+            (3, SizingOperation::MinContent) => S::from_f64(25.0),
+            (3, SizingOperation::MaxContent) => S::from_f64(60.0),
+            (_, SizingOperation::Normal) => match request.space() {
+                AvailableSpaceOf::Definite(value) => value.get(),
+                AvailableSpaceOf::Indefinite => {
+                    if node == 2 {
+                        S::from_f64(45.0)
+                    } else {
+                        S::from_f64(60.0)
+                    }
+                }
+            },
             _ => unreachable!("only composed intrinsic leaves are measured"),
         };
         let cross = if node == 2 { 20.0 } else { 30.0 };
@@ -1804,8 +1915,15 @@ fn fri07_c03_composed_layout_snapshot<S: LayoutScalar>(
     collapsed_main: f64,
 ) -> Fri07C03ComposedSnapshot<S> {
     let tree = fri07_c03_composed_layout_tree::<S>(case, collapsed_main);
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("all four completed flex capabilities compose");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("all four completed flex capabilities compose");
     let outputs = core::array::from_fn(|index| {
         fri07_c01_composition_output(batch.unrounded_entries(), (index + 1) as u32)
     });
@@ -1823,13 +1941,10 @@ fn fri07_c03_composed_layout_snapshot<S: LayoutScalar>(
     }
 }
 
-fn fri07_c03_expected_intrinsic<S: LayoutScalar>(
-    case: Fri07C03ComposedCase,
-    node: u32,
-) -> MeasurementAvailableOf<S> {
+fn fri07_c03_expected_intrinsic(case: Fri07C03ComposedCase, node: u32) -> SizingOperation {
     match (case.swap_intrinsic_bases, node) {
-        (false, 2) | (true, 3) => MeasurementAvailableOf::MIN_CONTENT,
-        (false, 3) | (true, 2) => MeasurementAvailableOf::MAX_CONTENT,
+        (false, 2) | (true, 3) => SizingOperation::MinContent,
+        (false, 3) | (true, 2) => SizingOperation::MaxContent,
         _ => unreachable!("only the two intrinsic items have basis expectations"),
     }
 }
@@ -1860,12 +1975,16 @@ fn assert_fri07_c03_composed_layout_case<S: LayoutScalar>(
     }
 
     for node in [2, 3] {
-        let expected = fri07_c03_expected_intrinsic::<S>(case, node);
+        let expected = fri07_c03_expected_intrinsic(case, node);
         let intrinsic_count = snapshot
             .requests
             .iter()
             .filter(|(request_node, input)| {
-                *request_node == node && axes.main_size(input.available_content_size()) == expected
+                *request_node == node
+                    && axes
+                        .main_size(input.content_sizing_request().axes())
+                        .operation()
+                        == expected
             })
             .count();
         assert!(
@@ -1878,13 +1997,20 @@ fn assert_fri07_c03_composed_layout_case<S: LayoutScalar>(
             .iter()
             .filter(|(request_node, input)| {
                 *request_node == node
-                    && axes.main_size(input.available_content_size()) == expected
+                    && axes
+                        .main_size(input.content_sizing_request().axes())
+                        .operation()
+                        == expected
                     && axes.main_size(input.known_content_size()).is_none()
-                    && match axes.cross_size(input.available_content_size()) {
-                        MeasurementAvailableOf::Definite(value) => value.get() > S::from_f64(50.0),
-                        MeasurementAvailableOf::MinContent | MeasurementAvailableOf::MaxContent => {
-                            false
-                        }
+                    && {
+                        let cross = axes.cross_size(input.content_sizing_request().axes());
+                        cross.operation() == SizingOperation::Normal
+                            && match cross.space() {
+                                AvailableSpaceOf::Definite(value) => {
+                                    value.get() > S::from_f64(50.0)
+                                }
+                                AvailableSpaceOf::Indefinite => false,
+                            }
                     }
             })
             .count();
@@ -2369,8 +2495,62 @@ struct Fri07C03ComposedStateMeasurement<S: LayoutScalar> {
     node: u32,
     known_main: Option<S>,
     known_cross: Option<S>,
-    available_main: MeasurementAvailableOf<S>,
-    available_cross: MeasurementAvailableOf<S>,
+    available_main: AxisSizingRequestOf<S>,
+    available_cross: AxisSizingRequestOf<S>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Fri07C03ComposedStateMeasurementExpectation<S: LayoutScalar> {
+    node: u32,
+    known_main: Option<S>,
+    known_cross: Option<S>,
+    main_operation: SizingOperation,
+    main_space: Option<AvailableSpaceOf<S>>,
+    cross_operation: SizingOperation,
+    cross_space: Option<AvailableSpaceOf<S>>,
+}
+
+fn fri07_c03_composed_state_assert_trace<S: LayoutScalar>(
+    actual: &[Fri07C03ComposedStateMeasurement<S>],
+    expected: &[Fri07C03ComposedStateMeasurementExpectation<S>],
+    context: &str,
+) {
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "{context}: actual protocol records {actual:?}"
+    );
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert_eq!(
+            (actual.node, actual.known_main, actual.known_cross),
+            (expected.node, expected.known_main, expected.known_cross),
+            "{context}: record{index} actual owner/known fields"
+        );
+        assert_eq!(
+            actual.available_main.operation(),
+            expected.main_operation,
+            "{context}: record{index} main operation"
+        );
+        assert_eq!(
+            actual.available_cross.operation(),
+            expected.cross_operation,
+            "{context}: record{index} cross operation"
+        );
+        if let Some(space) = expected.main_space {
+            assert_eq!(
+                actual.available_main.space(),
+                space,
+                "{context}: record{index} main space"
+            );
+        }
+        if let Some(space) = expected.cross_space {
+            assert_eq!(
+                actual.available_cross.space(),
+                space,
+                "{context}: record{index} cross space"
+            );
+        }
+    }
 }
 
 fn fri07_c03_composed_state_measurements<S: LayoutScalar>(
@@ -2383,53 +2563,73 @@ fn fri07_c03_composed_state_measurements<S: LayoutScalar>(
             node: *node,
             known_main: tree.axes.main_size(input.known_content_size()),
             known_cross: tree.axes.cross_size(input.known_content_size()),
-            available_main: tree.axes.main_size(input.available_content_size()),
-            available_cross: tree.axes.cross_size(input.available_content_size()),
+            available_main: tree.axes.main_size(input.content_sizing_request().axes()),
+            available_cross: tree.axes.cross_size(input.content_sizing_request().axes()),
         })
         .collect()
 }
 
-fn fri07_c03_composed_state_definite<S: LayoutScalar>(value: f64) -> MeasurementAvailableOf<S> {
-    MeasurementAvailableOf::definite(S::from_f64(value))
-        .expect("composed state measurement target is finite and non-negative")
+fn fri07_c03_composed_state_definite<S: LayoutScalar>(
+    value: f64,
+) -> (SizingOperation, Option<AvailableSpaceOf<S>>) {
+    (
+        SizingOperation::Normal,
+        Some(AvailableSpaceOf::Definite(
+            NonNegativeFiniteOf::new(S::from_f64(value)).unwrap(),
+        )),
+    )
 }
 
 fn assert_fri07_c03_composed_state_exact_round_bounds<S: LayoutScalar>() {
     let tree = fri07_c03_composed_layout_tree::<S>(Fri07C03ComposedCase::deterministic(), 70.0);
-    compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("bounded composed state layout succeeds");
-    let measurement = |node, available_main, available_cross| Fri07C03ComposedStateMeasurement {
-        node,
-        known_main: None,
-        known_cross: None,
-        available_main,
-        available_cross,
-    };
-    assert_eq!(
-        fri07_c03_composed_state_measurements(&tree),
-        [
+    compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("bounded composed state layout succeeds");
+    let measurement =
+        |node,
+         available_main: (SizingOperation, Option<AvailableSpaceOf<S>>),
+         available_cross: (SizingOperation, Option<AvailableSpaceOf<S>>)| {
+            Fri07C03ComposedStateMeasurementExpectation {
+                node,
+                known_main: None,
+                known_cross: None,
+                main_operation: available_main.0,
+                main_space: available_main.1,
+                cross_operation: available_cross.0,
+                cross_space: available_cross.1,
+            }
+        };
+    fri07_c03_composed_state_assert_trace(
+        &fri07_c03_composed_state_measurements(&tree),
+        &[
             measurement(
                 2,
-                MeasurementAvailableOf::MIN_CONTENT,
+                (SizingOperation::MinContent, None),
                 fri07_c03_composed_state_definite(300.0),
             ),
             measurement(
                 3,
-                MeasurementAvailableOf::MAX_CONTENT,
+                (SizingOperation::MaxContent, None),
                 fri07_c03_composed_state_definite(300.0),
             ),
             measurement(
                 2,
-                MeasurementAvailableOf::MIN_CONTENT,
+                fri07_c03_composed_state_definite(20.0),
                 fri07_c03_composed_state_definite(20.0),
             ),
             measurement(
                 3,
-                MeasurementAvailableOf::MAX_CONTENT,
+                fri07_c03_composed_state_definite(60.0),
                 fri07_c03_composed_state_definite(30.0),
             ),
         ],
-        "the complete composed tree performs only the existing intrinsic pass and one finite collapsed replay"
+        "the composed provider sequence retains genuine basis queries and actual normal allocations",
     );
 }
 
@@ -2468,7 +2668,10 @@ fn assert_fri07_c03_composed_state_cache_rounding_and_scalar<S: LayoutScalar>() 
         ..Fri07C03ComposedCase::deterministic()
     };
     let mut tree = fri07_c03_composed_layout_tree::<S>(case, 70.25);
-    let request = fri07_c02_collapse_round_request();
+    let request = fri07_c02_collapse_round_request(FlowAxes::new(
+        tree.node_input(1).writing_mode,
+        tree.node_input(1).direction,
+    ));
     let cold = compute_layout(&tree, 1, request).expect("cold composed state layout succeeds");
     let cold_unrounded = cold.unrounded_entries().to_vec();
     let cold_final = cold.final_entries().to_vec();
@@ -2575,7 +2778,7 @@ fn assert_fri07_c03_composed_state_failure_is_atomic<S: LayoutScalar>(
     expected_requests: usize,
 ) {
     let case = Fri07C03ComposedCase::deterministic();
-    let request = fri07_c02_collapse_round_request();
+    let request = fri07_c02_collapse_round_request(case.flow);
     let mut tree = fri07_c03_composed_layout_tree::<S>(case, 70.0);
     let initial =
         compute_layout(&tree, 1, request).expect("initial composed state layout succeeds");
@@ -2680,8 +2883,15 @@ fn fri07_c03_composed_state_batch<S: LayoutScalar>(
     let mut absolute = tree.tree.node_input(5).clone();
     absolute.flex_item_collapse = absolute_collapse;
     tree.tree = core::mem::take(&mut tree.tree).style(5, absolute);
-    compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("composed state control layout succeeds")
+    compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("composed state control layout succeeds")
 }
 
 fn assert_fri07_c03_composed_state_settlement_and_inert_absolute<S: LayoutScalar>() {
@@ -2735,8 +2945,15 @@ fn fri07_c03_composed_state_assert_unsupported_basis(
     let mut intrinsic = tree.tree.node_input(2).clone();
     intrinsic.flex_basis = flex_basis;
     tree.tree = core::mem::take(&mut tree.tree).style(2, intrinsic);
-    let error = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect_err("later-owned flex basis remains unsupported in the composed tree");
+    let error = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect_err("later-owned flex basis remains unsupported in the composed tree");
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
     assert_eq!(error.operation(), LayoutOperation::ValueResolution);
     let LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::SizingBehavior(
@@ -2872,7 +3089,19 @@ fn assert_fri06_mr02_geometry_error_flex_child<S: LayoutScalar>() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            size.map(AvailableOf::definite),
+            SizingRequestOf::new(
+                size.map(|value| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .expect_err("invalid retained flex child geometry must fail");
@@ -2987,7 +3216,19 @@ fn assert_fri08_c07_t02_scroll_source_flex_paths<S: LayoutScalar>() {
             Size::NONE,
             size.map(Some),
             ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-            size.map(AvailableOf::definite),
+            SizingRequestOf::new(
+                size.map(|value| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3116,7 +3357,19 @@ fn assert_fri06_mr02_scroll_padding_flex<S: LayoutScalar>() {
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                size.map(AvailableOf::definite),
+                SizingRequestOf::new(
+                    size.map(|value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                            SizingOperation::Normal,
+                        )
+                    }),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .expect("flex scroll-padding characterization succeeds");
@@ -3191,7 +3444,20 @@ fn flex_content_size_includes_visible_child_overflow_content() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3258,7 +3524,20 @@ fn flex_final_content_size_uses_rerun_output() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(80.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(80.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3313,7 +3592,20 @@ fn flex_relative_child_inset_offsets_final_layout_location() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3369,7 +3661,20 @@ fn flex_relative_child_trailing_inset_offsets_negative() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3419,7 +3724,20 @@ fn flex_container_reserves_scrollbar_gutter_from_inner_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3475,7 +3793,20 @@ fn flex_scrollbar_gutter_uses_left_inset_for_rtl_containers() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3528,7 +3859,20 @@ fn flex_child_layout_records_scrollbar_size_for_scroll_overflow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3596,7 +3940,20 @@ fn flex_absolute_child_uses_insets_without_affecting_flow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3660,7 +4017,20 @@ fn flex_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3724,7 +4094,20 @@ fn flex_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3792,7 +4175,20 @@ fn flex_absolute_child_max_height_shrinks_flex_grandchild() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3860,7 +4256,23 @@ fn flex_absolute_child_cross_alignment_honors_wrap_reverse() {
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -3933,7 +4345,20 @@ fn flex_absolute_child_cross_start_margin_uses_physical_edge_in_rtl_column() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3991,7 +4416,20 @@ fn flex_absolute_child_uses_min_size_when_min_exceeds_max_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4034,7 +4472,23 @@ fn flex_absolute_child_size_cannot_shrink_below_padding_and_border() {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -4126,7 +4580,20 @@ fn flex_absolute_child_layout_records_scrollbar_size_for_scroll_overflow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4181,7 +4648,20 @@ fn flex_absolute_child_can_resolve_from_trailing_insets() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4244,7 +4724,20 @@ fn fri07_c01_absolute_auto_margin_original_auto_end_inset_zeroes_inline_margins(
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4302,7 +4795,20 @@ fn flex_absolute_child_without_insets_uses_flex_alignment() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4823,7 +5329,19 @@ fn fri05_c04_flex_child_geometry_direct_auto_max_tiny_gutter_keeps_absolute_inpu
                 Size::NONE,
                 available_size.map(Some),
                 ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-                available_size.map(Available::definite),
+                SizingRequestOf::new(
+                    available_size.map(|value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                            SizingOperation::Normal,
+                        )
+                    }),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap_or_else(|error| panic!("tiny absolute flex succeeds for {flow_axes:?}: {error:?}"));
@@ -4867,8 +5385,14 @@ fn fri05_c04_flex_child_geometry_direct_auto_max_tiny_gutter_keeps_absolute_inpu
             "final canonical content-box basis for {flow_axes:?}"
         );
         assert_eq!(
-            child_input.available(),
-            root_geometry.scrollport().size().map(Available::definite),
+            child_input.sizing_request().axes(),
+            root_geometry
+                .scrollport()
+                .size()
+                .map(|value| AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                    SizingOperation::Normal
+                )),
             "final canonical available space for {flow_axes:?}"
         );
 
@@ -4891,7 +5415,19 @@ fn fri05_c04_flex_child_geometry_direct_auto_max_tiny_gutter_keeps_absolute_inpu
                 Size::NONE,
                 available_size.map(Some),
                 ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-                available_size.map(Available::definite),
+                SizingRequestOf::new(
+                    available_size.map(|value| {
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                            SizingOperation::Normal,
+                        )
+                    }),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap_or_else(|error| {
@@ -6041,7 +6577,17 @@ fn fri05_c04_flex_tiny_induced_reservations_saturate_without_extra_evaluations()
             Size::splat(Some(2.0)),
             Size::splat(Some(2.0)),
             ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-            Size::splat(Available::definite(2.0)),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(2.0).unwrap()),
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .expect("fixed flex measurement remains geometry-free");
@@ -6082,7 +6628,17 @@ where
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap_or_else(|_| panic!("finite flex sizing must succeed"));
@@ -6115,7 +6671,20 @@ where
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::new(AvailableOf::definite(largest), AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(largest).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .expect_err("non-finite flex sizing must preserve its error");

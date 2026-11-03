@@ -44,7 +44,15 @@ fn closing_cut<S: LayoutScalar>() {
     assert_eq!(f.nodes, [10, 11, 20, 12, 13, 21, 14, 15]);
     let flow = f.flow();
     assert!(flow.paragraphs().is_empty());
-    let wide = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let wide = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         positions(&wide),
         [
@@ -64,7 +72,15 @@ fn closing_cut<S: LayoutScalar>() {
     // Actual soft opportunities follow atomics1 and3. The second line must
     // retain End21: 3 + 10 + 10 + 5 = 28. Leaving End21 for the third line
     // gives it no selected owner and cannot authenticate an empty gap there.
-    let narrow = compute_layout_with_flow(&flow, 0, request(n(30.0))).unwrap();
+    let narrow = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(30.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         positions(&narrow),
         [

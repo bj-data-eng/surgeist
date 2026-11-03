@@ -16,7 +16,7 @@ use crate::sizing::resolve::{
     resolve_preferred_optional,
 };
 use crate::{
-    AlignContent, AlignItems, AvailableOf, BoxSizing, Compute, ComputeInputOf,
+    AlignContent, AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf,
     ContainingLayoutContext, Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf,
     ParentFormattingContext, Point, Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
@@ -36,7 +36,13 @@ where
     let mut contributions = Vec::new();
     let absolute_containing_size = final_scroll_box.scrollport().size();
     let inset_relative_size = absolute_containing_size.map(Some);
-    let available = absolute_containing_size.map(AvailableOf::definite);
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        node,
+        absolute_containing_size.map(|value| {
+            crate::layout_math::checked_available_space(value)
+                .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
+        }),
+    )?;
 
     for (source_index, child) in children.into_iter().enumerate() {
         let contribution = with_flex_item_projection::<Tree, M, _>(tree, child, |tree, style| {
@@ -181,7 +187,15 @@ where
                         constants.flow_axes,
                         ParentFormattingContext::Flex,
                     ),
-                    available,
+                    constants
+                        .sizing_request
+                        .with_axes(available)
+                        .with_orthogonal_fallback(
+                            constants.sizing_request.orthogonal_fallback().for_child(
+                                constants.positioned_fallback_limits,
+                                crate::ScrollportFallbackChangeOf::Preserve,
+                            ),
+                        ),
                 )
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?;

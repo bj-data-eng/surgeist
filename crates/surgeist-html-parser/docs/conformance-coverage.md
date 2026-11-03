@@ -105,8 +105,12 @@ both UTF-8 and UTF-16:
   select, frameset, raw-text and template contexts), `svg …` and `math …`. The
   capture is a NoQuirks, Disabled document whose root is the context element.
 * The eight `#script-on` ordinary cases (tests16 ×6, tests5 ×1, webkit02 ×1)
-  select Enabled scripting construction, an unsupported public profile, and
-  are not run. Cases without a scripting marker run with Disabled scripting.
+  need the Normal scripting mode that HTML877d gives a Document whose scripting
+  is enabled. The document profile supports Disabled scripting only (it
+  processes no scripts), so they are excluded; the same `noscript` raw-text
+  rules run through the fragment API's Inert mode in
+  `tests/parser/parse/frameset_noscript.rs`. Cases without a scripting marker
+  run with Disabled scripting.
 
 The corpus format does not carry document mode. Each ordinary case binds it in
 this order:

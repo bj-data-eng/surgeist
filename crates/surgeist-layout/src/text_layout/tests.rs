@@ -157,11 +157,28 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let cold = compute_layout_with_flow(&capture, 70, request(40.0)).unwrap();
+    let cold = compute_layout_with_flow(
+        &capture,
+        70,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 70);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Native Text and its ancestor bypass geometry caches; the independent
     // atomic remains eligible until it is an actual invalidation seed.
     assert_eq!(cold.invalidated_nodes(), &[70, 90, 44]);
-    let dirty = compute_layout_with_flow_invalidated(&capture, 70, request(40.0), &[3, 3]).unwrap();
+    let dirty = compute_layout_with_flow_invalidated(
+        &capture,
+        70,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 70);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+        &[3, 3],
+    )
+    .unwrap();
     // This is actual tree order, neither numeric order nor concatenated closure
     // order. Caller duplicate seeds do not duplicate any output subject.
     assert_eq!(dirty.invalidated_nodes(), &[70, 90, 3, 44]);
@@ -205,7 +222,15 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
     // The actual Forced line uses Ahem ascent8/descent2. Its strut-only
@@ -309,15 +334,45 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    let batch = compute_layout_with_flow(&capture, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.lines().len(), 1);
@@ -377,7 +432,10 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-            available: AvailableOf::MAX_CONTENT,
+            available: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,
             justification: TextJustification::None,
@@ -565,7 +623,15 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(20.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let placed = batch.placed_text()[0].layout();
         let lines = placed.lines();
         assert_eq!(lines.len(), if explicit_clear { 2 } else { 1 });
@@ -652,7 +718,15 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 10, 88, 10, 88]);
     let lines = placed.lines();
@@ -750,7 +824,15 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 10, 88]);
     assert_eq!(placed.lines().len(), 2);
@@ -828,7 +910,15 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(35.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();
@@ -939,7 +1029,15 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 88]);
     let lines = placed.lines();
@@ -1036,12 +1134,47 @@ fn semantic_control_tree<S: LayoutScalar>(paragraph: &PreparedParagraph) -> Publ
     tree
 }
 
-fn request<S: LayoutScalar>(width: f64) -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(width)),
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap()
+fn request<S: LayoutScalar>(
+    width: f64,
+    containing_flow_axes: crate::FlowAxes,
+) -> LayoutRootRequestOf<S> {
+    {
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        logical_requests.inline = logical_requests
+            .inline
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    }
 }
 
 fn assert_optional_control<S: LayoutScalar>() {
@@ -1072,7 +1205,15 @@ fn assert_optional_control<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
@@ -1132,7 +1273,15 @@ fn assert_directional_controls<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 66]);
     assert_eq!(placed.lines().len(), 1);
@@ -1217,7 +1366,15 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(30.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(30.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88; 6]);
     assert_eq!(placed.lines().len(), 2);
@@ -1312,7 +1469,15 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(100.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.lines()[0].baseline(), baseline, "{vertical_align:?}");
         assert_eq!(
@@ -1386,7 +1551,15 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.lines()[0].bounds().origin.x, 3.0);
     assert_eq!(placed.lines()[0].bounds().size.width, 90.0);
@@ -1478,7 +1651,15 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     let line = &placed.lines()[0];
     assert_eq!(line.bounds().origin.x, 3.0);
@@ -1587,7 +1768,15 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 2);
     let first = &batch.placed_text()[0];
     let second = &batch.placed_text()[1];
@@ -1677,7 +1866,15 @@ fn assert_genuine_out_of_flow<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[65, 66]);
     assert_eq!(placed.lines().len(), 1);
@@ -1953,7 +2150,15 @@ fn assert_terminal_break<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     let lines = placed.lines();
     assert_eq!(lines.len(), 1);
@@ -2042,7 +2247,15 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(35.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();
@@ -2221,7 +2434,15 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(35.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text().code_units(), &[88, 88, 32, 88, 88]);
     let lines = placed.lines();

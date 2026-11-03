@@ -60,7 +60,15 @@ fn batch<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(&capture, 0, request(width)).unwrap()
+    compute_layout_with_flow(
+        &capture,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 
 fn xs<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(usize, f64)> {
@@ -299,7 +307,15 @@ fn assert_block_alignment<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
-        let batch = compute_layout(&tree, 0, request(50.0)).unwrap();
+        let batch = compute_layout(
+            &tree,
+            0,
+            request(50.0, {
+                let root_input = crate::LayoutTree::node_input(&tree, 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         assert_eq!(
             batch
                 .final_entries()
@@ -506,7 +522,15 @@ fn assert_float_amounts<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(45.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(45.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let first = lines(&batch).remove(0);
         let slot = first.spacing_slots().next().unwrap();
         assert_eq!(slot.advance, advance);
@@ -647,7 +671,15 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(31.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(31.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let actual = lines(&batch);
     let first = &actual[0];
     assert_eq!(

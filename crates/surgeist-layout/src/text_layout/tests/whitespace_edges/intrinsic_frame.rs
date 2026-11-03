@@ -4,7 +4,7 @@ use super::*;
 fn observed<S: LayoutScalar>(
     source: &str,
     whitespace: surgeist_text::WhiteSpace,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
 ) -> (f64, f64, f64, f64, f64) {
     let mut style = ahem_style(10.0, 10.0);
     style.white_space = whitespace;
@@ -166,7 +166,10 @@ fn intrinsic_frame<S: LayoutScalar>() {
         observed::<S>(
             "X",
             surgeist_text::WhiteSpace::Collapse,
-            AvailableOf::MAX_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent
+            )
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -176,7 +179,10 @@ fn intrinsic_frame<S: LayoutScalar>() {
         observed::<S>(
             "X\u{2003}",
             surgeist_text::WhiteSpace::Collapse,
-            AvailableOf::MAX_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent
+            )
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -197,7 +203,10 @@ fn separate_allocation<S: LayoutScalar>() {
         observed::<S>(
             "X",
             surgeist_text::WhiteSpace::Preserve,
-            AvailableOf::MIN_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent
+            )
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
@@ -206,7 +215,10 @@ fn separate_allocation<S: LayoutScalar>() {
         observed::<S>(
             "X ",
             surgeist_text::WhiteSpace::Preserve,
-            AvailableOf::MIN_CONTENT
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent
+            )
         ),
         (90.0, 90.0, 10.0, 80.0, 20.0)
     );
