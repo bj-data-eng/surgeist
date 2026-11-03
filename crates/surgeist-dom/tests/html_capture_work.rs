@@ -5,7 +5,14 @@
 //! runs and refuses only when the bound would be exceeded.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html_semantics::HtmlCaptureLimits;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Namespace as HtmlNamespace, OrderedAttributes, QualifiedName},
+};
+use surgeist_html_semantics::{
+    HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
+    HtmlHostFactsRevision, HtmlScriptingStatus,
+};
 
 /// Four sizes, so three doublings. Large enough that a quadratic planner is far
 /// from the linear growth bound and small enough that its RED run stays short.
@@ -24,11 +31,13 @@ enum Shape {
     WideParentFirst,
     /// One parent with `n` children, the parent created last.
     WideParentLast,
+    /// `n` elements that no parent holds.
+    Detached,
 }
 
 fn document(shape: Shape, n: usize) -> (DomSnapshot, DocumentId) {
     let names = DomNameLimits::new(16_777_216, 16_384, 4_000_000, 16_777_216).unwrap();
-    let limits = DomLimits::new(2 * n + 64, 1 << 22, 8 * n + 256, 0, 0, 16, 131072, names).unwrap();
+    let limits = DomLimits::new(3 * n + 64, 1 << 22, 8 * n + 256, 0, 0, 16, 131072, names).unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -46,6 +55,11 @@ fn document(shape: Shape, n: usize) -> (DomSnapshot, DocumentId) {
                 batch.insert_before(at_depth(depth), at_depth(depth - 1), None);
             }
             batch.insert_before(at_depth(0), &document, None);
+        }
+        Shape::Detached => {
+            for _ in 0..n {
+                batch.create_element_ns(&document, Namespace::html(), "div");
+            }
         }
         Shape::WideParentFirst | Shape::WideParentLast => {
             let parent_first = matches!(shape, Shape::WideParentFirst);
@@ -74,8 +88,17 @@ fn captures_within(snapshot: &DomSnapshot, document: DocumentId, n: usize, work:
     let result = snapshot.html_capture(
         document,
         None,
-        HtmlCaptureLimits::new(n + 8, 16 * n + 64, 0, 100 * n + 100, n + 8, 0, 0, 1 << 30),
-        DomHtmlCaptureLimits::new(n + 8, work),
+        HtmlCaptureLimits::new(
+            4 * n + 16,
+            16 * n + 64,
+            0,
+            100 * n + 100,
+            4 * n + 16,
+            0,
+            0,
+            1 << 30,
+        ),
+        DomHtmlCaptureLimits::new(4 * n + 16, work),
         &AtomicBool::new(false),
     );
     match result {
@@ -144,4 +167,105 @@ fn wide_capture_charges_work_linear_in_nodes_when_the_parent_is_created_first() 
 #[test]
 fn wide_capture_charges_work_linear_in_nodes_when_the_parent_is_created_last() {
     assert_linear(Shape::WideParentLast);
+}
+
+/// The steps the capture builder reports when it establishes the children of
+/// the document and of each of `n` elements in order: one chain when `chained`,
+/// no edge at all otherwise. This is the capture's own attach order, measured
+/// on a builder the adapter is not part of.
+fn builder_edge_steps(n: usize, chained: bool) -> usize {
+    let limits = HtmlCaptureLimits::new(n + 8, 16 * n + 64, 0, 100 * n + 100, n + 8, 0, 0, 1 << 30);
+    let mut builder = HtmlCaptureBuilder::new(limits, HtmlHostFactsRevision::fresh());
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let elements: Vec<_> = (0..n)
+        .map(|_| {
+            builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(HtmlNamespace::html(), None, "div"),
+                    OrderedAttributes::default(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap()
+        })
+        .collect();
+    let mut steps = 0;
+    let mut count = || {
+        steps += 1;
+        Ok::<(), ()>(())
+    };
+    let first = if chained { &elements[..1] } else { &[] };
+    builder
+        .establish_children_with(&document, first, &mut count)
+        .unwrap();
+    for (at, element) in elements.iter().enumerate() {
+        let next = if chained && at + 1 < n {
+            &elements[at + 1..at + 2]
+        } else {
+            &[]
+        };
+        builder
+            .establish_children_with(element, next, &mut count)
+            .unwrap();
+    }
+    steps
+}
+
+#[test]
+fn the_steps_the_builder_takes_to_attach_edges_are_charged_to_the_work_limit() {
+    for n in [64, 128] {
+        let (chain, chain_document) = document(Shape::ChainParentFirst, n);
+        let (loose, loose_document) = document(Shape::Detached, n);
+        // Both documents plan, stage and export the same `n` divs, and both
+        // establish the children of every element; only the chain has edges.
+        let attached = charged_work(&chain, chain_document, n);
+        let baseline = charged_work(&loose, loose_document, n);
+        let edges = builder_edge_steps(n, true) - builder_edge_steps(n, false);
+        assert!(edges > n, "the chain's edges take builder steps");
+        assert!(
+            attached >= baseline + edges,
+            "{n} nodes: the chain charged {attached}, the same nodes without edges {baseline}, \
+             and the builder reports {edges} steps for the edges alone"
+        );
+        // One step below the minimum is refused for want of work.
+        assert!(!captures_within(&chain, chain_document, n, attached - 1));
+    }
+}
+
+#[test]
+fn every_work_limit_on_an_attach_heavy_document_refuses_for_work_or_finishes() {
+    let n = 24;
+    let (snapshot, document) = document(Shape::ChainParentFirst, n);
+    let needed = charged_work(&snapshot, document, n);
+    let stride = (needed / 300).max(1);
+    for limit in (0..needed + stride)
+        .step_by(stride)
+        .chain([needed - 1, needed])
+    {
+        assert_eq!(
+            captures_within(&snapshot, document, n, limit),
+            limit >= needed,
+            "limit {limit} of {needed}"
+        );
+    }
+}
+
+#[test]
+fn a_cancelled_capture_is_refused_as_cancelled() {
+    let (snapshot, document) = document(Shape::ChainParentFirst, 8);
+    let result = snapshot.html_capture(
+        document,
+        None,
+        HtmlCaptureLimits::new(64, 256, 0, 1024, 64, 0, 0, 1 << 30),
+        DomHtmlCaptureLimits::new(64, usize::MAX),
+        &AtomicBool::new(true),
+    );
+    assert!(matches!(result, Err(DomHtmlCaptureError::Cancelled)));
 }
