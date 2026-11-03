@@ -375,6 +375,25 @@ fn work_added_by_each_doubling_of_repeated_tables_with_cells_is_near_double() {
 }
 
 #[test]
+fn work_added_by_each_doubling_of_a_processing_instructions_distinct_pseudo_attributes_is_near_double()
+ {
+    // XML-stylesheet 20101028 section 3 makes a repeated name an error, so each name is checked
+    // against the earlier ones; that check must not compare every pair of names.
+    assert_parses_add_near_double(
+        [100, 200, 400, 800],
+        |pairs| {
+            let names: Vec<String> = (0..pairs).map(|n| format!("p{n}=''")).collect();
+            format!("<?marker {}?>", names.join(" "))
+        },
+        parse_fragment_work,
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
 fn work_added_by_each_doubling_of_declarative_shadow_roots_is_near_double() {
     // Each template becomes the shadow root of its parent div: the parser gives
     // the host a shadow root and releases the template's contents.
