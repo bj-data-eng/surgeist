@@ -5,5 +5,6 @@ mod indices;
 mod model_work;
 mod scope_work;
 mod sections;
+mod slot_index;
 mod spans_scope;
 mod structure;
