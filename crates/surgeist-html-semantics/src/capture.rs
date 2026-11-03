@@ -481,7 +481,10 @@ pub enum HtmlCaptureSubjectKind {
 /// is the caller's own first refusal, returned without translation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureEdgeError<E> {
+    /// The builder refused the edge itself, for example as a cycle or beyond
+    /// a capture limit.
     Capture(HtmlCaptureError),
+    /// The caller's step refused to continue; the edge was not established.
     Interrupted(E),
 }
 impl<E> From<HtmlCaptureError> for HtmlCaptureEdgeError<E> {
@@ -497,7 +500,14 @@ impl<E: fmt::Display> fmt::Display for HtmlCaptureEdgeError<E> {
         }
     }
 }
-impl<E: Error + 'static> Error for HtmlCaptureEdgeError<E> {}
+impl<E: Error + 'static> Error for HtmlCaptureEdgeError<E> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Capture(error) => Some(error),
+            Self::Interrupted(error) => Some(error),
+        }
+    }
+}
 /// Rejected assembly, lookup or source-derived context admission.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureError {

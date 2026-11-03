@@ -2,6 +2,7 @@
 //! These readbacks execute no activation, events, form transition or target effect.
 
 use super::control::ControlStop;
+use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{
@@ -152,7 +153,9 @@ impl HtmlElementReferenceFacts {
             work = required;
             Ok(())
         };
-        for (index, fact) in records.iter().enumerate() {
+        let mut seen = Seen::new(records.len())
+            .map_err(|_| HtmlElementReferenceFactsError::RepresentationExhausted)?;
+        for fact in records.iter() {
             charge(2)?; // record and source lookup
             let node = capture
                 .node(&fact.subject)
@@ -187,14 +190,14 @@ impl HtmlElementReferenceFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &records[..index] {
-                charge(1)?;
-                if previous.subject == fact.subject && previous.key == fact.key {
-                    return Err(HtmlElementReferenceFactsError::DuplicateReference {
-                        subject: fact.subject.clone(),
-                        key: fact.key,
-                    });
-                }
+            if !seen.first((
+                fact.subject.ordinal(),
+                fact.key == HtmlElementReferenceKey::PopoverTarget,
+            )) {
+                return Err(HtmlElementReferenceFactsError::DuplicateReference {
+                    subject: fact.subject.clone(),
+                    key: fact.key,
+                });
             }
             if let HtmlExplicitElementReference::Element(target) = &fact.state {
                 charge(1)?;

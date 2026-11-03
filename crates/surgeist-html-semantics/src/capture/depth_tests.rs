@@ -642,6 +642,66 @@ fn a_metered_edge_returns_the_first_refusal_unchanged_and_establishes_nothing() 
 }
 
 #[test]
+fn a_refused_metered_edge_can_be_established_again_with_a_permissive_step() {
+    for edge in [Edge::Parent, Edge::Children, Edge::TemplateContents] {
+        for stop in 0..reported_work(edge) {
+            let (mut builder, child, parent) = edge_builder(edge);
+            let mut at = 0;
+            let mut refuse = || {
+                at += 1;
+                if at == stop + 1 { Err(stop) } else { Ok(()) }
+            };
+            let refused = match edge {
+                Edge::Parent => builder.establish_parent_with(&child, &parent, &mut refuse),
+                Edge::Children => builder.establish_children_with(
+                    &parent,
+                    std::slice::from_ref(&child),
+                    &mut refuse,
+                ),
+                Edge::TemplateContents => {
+                    builder.establish_template_contents_with(&parent, &child, &mut refuse)
+                }
+            };
+            assert_eq!(
+                refused,
+                Err(HtmlCaptureEdgeError::Interrupted(stop)),
+                "{edge:?} at {stop}"
+            );
+            let mut permissive = || Ok::<_, usize>(());
+            let again = match edge {
+                Edge::Parent => builder.establish_parent_with(&child, &parent, &mut permissive),
+                Edge::Children => builder.establish_children_with(
+                    &parent,
+                    std::slice::from_ref(&child),
+                    &mut permissive,
+                ),
+                Edge::TemplateContents => {
+                    builder.establish_template_contents_with(&parent, &child, &mut permissive)
+                }
+            };
+            assert_eq!(again, Ok(()), "{edge:?} retried after {stop}");
+        }
+    }
+}
+
+#[test]
+fn a_metered_edge_error_exposes_its_cause() {
+    use std::error::Error as _;
+    let capture: HtmlCaptureEdgeError<HtmlCaptureError> =
+        HtmlCaptureEdgeError::Capture(HtmlCaptureError::Cycle);
+    let interrupted: HtmlCaptureEdgeError<HtmlCaptureError> =
+        HtmlCaptureEdgeError::Interrupted(HtmlCaptureError::DuplicateChild);
+    assert_eq!(
+        capture.source().unwrap().to_string(),
+        HtmlCaptureError::Cycle.to_string()
+    );
+    assert_eq!(
+        interrupted.source().unwrap().to_string(),
+        HtmlCaptureError::DuplicateChild.to_string()
+    );
+}
+
+#[test]
 fn a_metered_edge_reports_a_capture_refusal_as_such() {
     let (mut builder, document) = builder(8);
     let element = element(&mut builder, &document, "div");

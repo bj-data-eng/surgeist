@@ -3,6 +3,7 @@
 //! state transitions are executed. Ordinary and shadow-host traversal remain
 //! distinct where the selected algorithms require them.
 
+use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{
@@ -219,7 +220,9 @@ impl HtmlGlobalInheritanceFacts {
             work: 0,
             limit: limits.validation_work,
         };
-        for (i, fact) in design_modes.iter().enumerate() {
+        let mut seen = Seen::new(design_modes.len())
+            .map_err(|_| HtmlGlobalInheritanceError::RepresentationExhausted)?;
+        for fact in design_modes.iter() {
             let node = validation.node(capture, &fact.document)?;
             validation.charge(1)?;
             if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
@@ -227,16 +230,15 @@ impl HtmlGlobalInheritanceFacts {
                     fact.document.clone(),
                 ));
             }
-            for previous in &design_modes[..i] {
-                validation.charge(1)?;
-                if previous.document == fact.document {
-                    return Err(HtmlGlobalInheritanceError::DuplicateSubject(
-                        fact.document.clone(),
-                    ));
-                }
+            if !seen.first(fact.document.ordinal()) {
+                return Err(HtmlGlobalInheritanceError::DuplicateSubject(
+                    fact.document.clone(),
+                ));
             }
         }
-        for (i, fact) in spellcheck_defaults.iter().enumerate() {
+        let mut seen = Seen::new(spellcheck_defaults.len())
+            .map_err(|_| HtmlGlobalInheritanceError::RepresentationExhausted)?;
+        for fact in spellcheck_defaults.iter() {
             let node = validation.node(capture, &fact.subject)?;
             validation.charge(1)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -249,13 +251,10 @@ impl HtmlGlobalInheritanceFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &spellcheck_defaults[..i] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlGlobalInheritanceError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlGlobalInheritanceError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
             validation.charge(1)?;
             if fact.behavior == Some(HtmlSpellcheckDefaultBehavior::InheritByDefault) {
