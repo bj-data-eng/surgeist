@@ -3,28 +3,54 @@
 //! The parent's actual child order is edited in place by the atomic commit, so
 //! nothing is written before it: a refused or aborted operation leaves the old
 //! order untouched, and the work an operation does is the work of the entries
-//! it shifts. Planning finds each position by walking the order from its end,
-//! one entry per action, so locating a position costs the entries behind it,
-//! which the edit shifts anyway.
+//! it shifts. An order is a deque, which makes room for an entry by moving the
+//! entries between its place and the nearer end, so a place near either end
+//! shifts few entries. Planning finds each position by walking the order from
+//! both ends alternately, one entry per action, so locating a position costs
+//! about twice the entries between it and the nearer end, which the edit
+//! shifts anyway: moving every child from the front of one order to the end of
+//! another costs a constant for each.
 use super::*;
 
+impl Phase {
+    /// The walk over all `length` entries of `parent`'s order, which starts at
+    /// the last entry: appending and reordering near the end are the common
+    /// cases.
+    pub(super) fn order(parent: usize, length: usize, old: bool) -> Self {
+        Self::Order {
+            parent,
+            front: 0,
+            back: length,
+            old,
+            from_back: true,
+        }
+    }
+}
+
 impl HtmlConstructionOperation {
-    /// One backward step of the walk that finds the moving node's old place in
-    /// its old parent (`old`), or the reference sibling's place in the new
-    /// parent. `remaining` entries have not been examined; the next one is the
-    /// last of them.
+    /// One step of the walk that finds the moving node's old place in its old
+    /// parent (`old`), or the reference sibling's place in the new parent. The
+    /// entries from `front` up to `back` have not been examined; the step
+    /// examines the last of them when `from_back` and the first otherwise.
     pub(super) fn locate_order(
         &mut self,
         parent: usize,
-        remaining: usize,
+        front: usize,
+        back: usize,
         old: bool,
+        from_back: bool,
     ) -> Result<Phase, HtmlConstructionError> {
         let wanted = if old {
             self.plan.positions[0]
         } else {
             self.plan.positions[2]
         };
-        let Some(index) = remaining.checked_sub(1) else {
+        let index = if from_back {
+            back.checked_sub(1).filter(|index| *index >= front)
+        } else {
+            Some(front).filter(|index| *index < back)
+        };
+        let Some(index) = index else {
             return Err(if old {
                 HtmlConstructionErrorKind::ParentChildConflict.error()
             } else {
@@ -42,8 +68,10 @@ impl HtmlConstructionOperation {
         if !found {
             return Ok(Phase::Order {
                 parent,
-                remaining: index,
+                front: if from_back { front } else { index + 1 },
+                back: if from_back { index } else { back },
                 old,
+                from_back: !from_back,
             });
         }
         if old {
@@ -76,11 +104,7 @@ impl HtmlConstructionOperation {
                 .ok_or(HtmlConstructionErrorKind::UnknownNode)?
                 .children
                 .len();
-            return Ok(Phase::Order {
-                parent,
-                remaining,
-                old: false,
-            });
+            return Ok(Phase::order(parent, remaining, false));
         }
         self.after_new_place()
     }
@@ -140,7 +164,7 @@ impl HtmlConstructionOperation {
             .records
             .get(parent)
             .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
-        let snapshot = HtmlConstructionAllocationSnapshot::vector(
+        let snapshot = HtmlConstructionAllocationSnapshot::deque(
             &arena.identity,
             AllocationRole::Children(parent),
             record.children_generation,
@@ -160,7 +184,9 @@ impl HtmlConstructionOperation {
 impl Plan {
     /// The entries the commit's in-place edits write: the node's parent link,
     /// the removed and inserted entries, and every entry moved to close or
-    /// open their places.
+    /// open their places. A deque closes or opens a place by moving the
+    /// entries between it and the nearer end of the order (documented for
+    /// `VecDeque::remove` and `VecDeque::insert`).
     pub(super) fn order_writes(&self, arena: &Arena) -> Result<usize, HtmlConstructionError> {
         let length = |parent: usize| {
             arena
@@ -174,15 +200,15 @@ impl Plan {
         let mut target = if self.inserts { length(parent)? } else { 0 };
         if let Some(old) = self.old_parent {
             let old_length = length(old)?;
-            let moved = old_length.saturating_sub(self.old_position.saturating_add(1));
-            writes = add(add(writes, 1)?, moved)?;
+            let behind = old_length.saturating_sub(self.old_position.saturating_add(1));
+            writes = add(add(writes, 1)?, behind.min(self.old_position))?;
             if old == parent {
                 target = old_length.saturating_sub(1);
             }
         }
         if self.inserts {
-            let moved = target.saturating_sub(self.insertion_position);
-            writes = add(add(writes, 1)?, moved)?;
+            let behind = target.saturating_sub(self.insertion_position);
+            writes = add(add(writes, 1)?, behind.min(self.insertion_position))?;
         }
         Ok(writes)
     }
