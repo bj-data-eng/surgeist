@@ -364,10 +364,12 @@ impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
     }
 }
 
-/// The only reservation allowed by a pending token is one additional record.
+/// The only reservation allowed by a pending token is one additional record, together with the
+/// duplicate-index entry that record may need.
 #[derive(Debug)]
 pub struct HtmlMicrodataTokenReservation<'a> {
     values: &'a mut Vec<HtmlMicrodataToken>,
+    index: &'a mut Vec<IndexNode>,
     attempted: bool,
     completed: bool,
 }
@@ -384,11 +386,14 @@ impl HtmlMicrodataTokenReservation<'_> {
     pub fn capacity(&self) -> usize {
         self.values.capacity()
     }
-    /// The size in bytes of one token record, for charging the reservation.
+    /// The size in bytes of one token record, for charging the reservation: the published record
+    /// plus the entry of the unpublished duplicate index that grows with it. The index is released
+    /// when the report is assembled or the interpretation is dropped, and is never published.
     pub fn record_size(&self) -> usize {
-        std::mem::size_of::<HtmlMicrodataToken>()
+        std::mem::size_of::<HtmlMicrodataToken>() + std::mem::size_of::<IndexNode>()
     }
-    /// Performs this guard's fixed request at most once, on its actual vector.
+    /// Performs this guard's fixed request at most once, on its actual vectors. The index grows to
+    /// the token vector's capacity, so [`capacity`](Self::capacity) states both.
     pub fn try_reserve(&mut self) -> Result<(), HtmlMicrodataTokenInterpretationError> {
         if self.attempted {
             return Err(
@@ -404,6 +409,15 @@ impl HtmlMicrodataTokenReservation<'_> {
         if needed > self.values.capacity() {
             self.values
                 .try_reserve_exact(1)
+                .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
+        }
+        let target = self.values.capacity();
+        if target > self.index.capacity() {
+            // The index never holds more entries than there are tokens, so `target` covers the
+            // entry the pending token may add.
+            let additional = target.saturating_sub(self.index.len());
+            self.index
+                .try_reserve_exact(additional)
                 .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
         }
         self.completed = true;
@@ -448,14 +462,81 @@ pub enum HtmlMicrodataTokenStep {
     Complete,
 }
 
+/// Every token is read as a string of 17-bit symbols: a present unit is `0x1_0000 | unit`, and every
+/// position at or beyond the token's end is `0`. Equal bit strings are exactly equal tokens, so
+/// `a` and `a\0` differ, and a token that is a prefix of another differs from it at the first
+/// position the shorter one lacks.
+const PRESENT: u32 = 0x1_0000;
+
+/// A bit of the symbol string: the code-unit index and the bit within its symbol, counted from the
+/// most significant bit. The derived order is the order of the bits in the string.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct BitPosition {
+    unit: usize,
+    bit: u8,
+}
+
+/// The first bit at which two symbols differ, or `None` when they are equal.
+fn first_difference(a: u32, b: u32) -> Option<u8> {
+    let differing = a ^ b;
+    if differing == 0 {
+        return None;
+    }
+    // Symbols have 17 bits, so the count is at least 15 and the result is at most 16.
+    u8::try_from(differing.leading_zeros().saturating_sub(15)).ok()
+}
+
+/// A subtree of the duplicate index: an internal node or the leaf for one distinct token.
+#[derive(Clone, Copy, Debug)]
+enum Child {
+    Node(usize),
+    Leaf(usize),
+}
+
+/// Where a subtree hangs: the root, or one side of an internal node.
+#[derive(Clone, Copy, Debug)]
+enum Link {
+    Root,
+    Side(usize, usize),
+}
+
+/// An internal node of the duplicate index, a path-compressed binary trie over the tokens' symbol
+/// strings. Every token below the node agrees on all bits before `pos`, and differs there between
+/// the two children. Leaves are the first occurrences of the distinct tokens.
+#[derive(Clone, Copy, Debug)]
+struct IndexNode {
+    pos: BitPosition,
+    /// Any token below this node, which stands for the bits the node's subtree shares.
+    member: usize,
+    children: [Child; 2],
+}
+
+/// How the pending token joins the duplicate index when it is committed.
+#[derive(Clone, Copy, Debug)]
+enum Placement {
+    /// The index is empty: the token becomes its only leaf.
+    Root,
+    /// The token differs from the subtree `at` first at `crit`, and takes `side` of a new node
+    /// there.
+    Split {
+        crit: BitPosition,
+        link: Link,
+        at: Child,
+        side: usize,
+    },
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Phase {
     Begin,
     Header,
     Scan,
-    PriorVisit(usize),
-    PriorLength(usize),
-    PriorUnit(usize, usize),
+    /// One step of the duplicate search: compare the pending token with `at` from code unit `unit`.
+    Walk {
+        link: Link,
+        at: Child,
+        unit: usize,
+    },
     Punctuation(usize),
     Reserve,
     Commit,
@@ -474,9 +555,14 @@ pub struct HtmlMicrodataTokenInterpretation<'raw> {
     units: &'raw [u16],
     cursor: SpaceTokenCursor<'raw>,
     tokens: Vec<HtmlMicrodataToken>,
+    /// Scratch for duplicate detection: the internal nodes of an index over the distinct tokens
+    /// committed so far. It is dropped when the report is assembled and never published.
+    index: Vec<IndexNode>,
+    root: Option<Child>,
     start: usize,
     end: usize,
     duplicate_of: Option<usize>,
+    placement: Placement,
     dot_or_colon: bool,
     phase: Phase,
     report: Option<HtmlMicrodataTokenReport>,
@@ -491,9 +577,12 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             units,
             cursor: SpaceTokenCursor::new(units),
             tokens: Vec::new(),
+            index: Vec::new(),
+            root: None,
             start: 0,
             end: 0,
             duplicate_of: None,
+            placement: Placement::Root,
             dot_or_colon: false,
             phase: if raw.is_some() {
                 Phase::Begin
@@ -545,12 +634,137 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             _ => Err(HtmlMicrodataTokenInterpretationErrorKind::NotReady.error()),
         }
     }
-    fn next_prior(&mut self, index: usize) {
-        self.phase = if index < self.tokens.len() {
-            Phase::PriorVisit(index)
-        } else {
-            Phase::Punctuation(0)
+    /// The symbol at `index` of the token occupying `start..end`.
+    fn symbol(&self, start: usize, end: usize, index: usize) -> u32 {
+        match start.checked_add(index) {
+            Some(at) if at < end => self
+                .units
+                .get(at)
+                .map_or(0, |&unit| PRESENT | u32::from(unit)),
+            _ => 0,
+        }
+    }
+    /// The side of a node at `pos` that the pending token takes: its bit there.
+    fn side_at(&self, pos: BitPosition) -> usize {
+        let symbol = self.symbol(self.start, self.end, pos.unit);
+        let mask = PRESENT.checked_shr(u32::from(pos.bit)).unwrap_or(0);
+        usize::from(symbol & mask != 0)
+    }
+    /// The first occurrence of the distinct token with record `token`, as its range.
+    fn span(&self, token: usize) -> (usize, usize) {
+        let record = &self.tokens[token];
+        (record.start, record.end)
+    }
+    /// Begins the duplicate search for the token just scanned.
+    fn begin_search(&mut self) {
+        self.duplicate_of = None;
+        self.placement = Placement::Root;
+        self.phase = match self.root {
+            Some(at) => Phase::Walk {
+                link: Link::Root,
+                at,
+                unit: 0,
+            },
+            None => Phase::Punctuation(0),
         };
+    }
+    /// The pending token first differs from the subtree `at` at `crit`.
+    fn split_at(&mut self, crit: BitPosition, link: Link, at: Child) {
+        self.placement = Placement::Split {
+            crit,
+            link,
+            at,
+            side: self.side_at(crit),
+        };
+        self.phase = Phase::Punctuation(0);
+    }
+    /// One bounded step of the duplicate search. It compares one code unit of the pending token
+    /// with the same unit of a token below `at`, and at a node whose bit it has reached it also
+    /// descends one level. The shared bits of an edge are verified before the node's own bit
+    /// picks a side, so the search never passes a bit the pending token does not have: it ends
+    /// at or before the first position the token lacks, and descends at most 17 levels per code
+    /// unit of the token. Its cost follows the pending token's length, not the index's size.
+    fn walk(&mut self, link: Link, at: Child, unit: usize) {
+        let here = self.symbol(self.start, self.end, unit);
+        match at {
+            Child::Leaf(token) => {
+                let (start, end) = self.span(token);
+                match first_difference(here, self.symbol(start, end, unit)) {
+                    Some(bit) => self.split_at(BitPosition { unit, bit }, link, at),
+                    None if unit + 1 >= (self.end - self.start).max(end - start) => {
+                        self.duplicate_of = Some(token);
+                        self.phase = Phase::Punctuation(0);
+                    }
+                    None => {
+                        self.phase = Phase::Walk {
+                            link,
+                            at,
+                            unit: unit + 1,
+                        }
+                    }
+                }
+            }
+            Child::Node(node) => {
+                let IndexNode {
+                    pos,
+                    member,
+                    children,
+                } = self.index[node];
+                let (start, end) = self.span(member);
+                let difference = first_difference(here, self.symbol(start, end, unit));
+                if unit < pos.unit {
+                    match difference {
+                        Some(bit) => self.split_at(BitPosition { unit, bit }, link, at),
+                        None => {
+                            self.phase = Phase::Walk {
+                                link,
+                                at,
+                                unit: unit + 1,
+                            }
+                        }
+                    }
+                } else {
+                    match difference {
+                        Some(bit) if bit < pos.bit => {
+                            self.split_at(BitPosition { unit, bit }, link, at);
+                        }
+                        _ => {
+                            let side = self.side_at(pos);
+                            self.phase = Phase::Walk {
+                                link: Link::Side(node, side),
+                                at: children[side],
+                                unit: pos.unit,
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /// Adds the committed distinct token `token` to the duplicate index.
+    fn index_token(&mut self, token: usize) {
+        let leaf = Child::Leaf(token);
+        let (link, subtree) = match self.placement {
+            Placement::Root => (Link::Root, leaf),
+            Placement::Split {
+                crit,
+                link,
+                at,
+                side,
+            } => {
+                let node = self.index.len();
+                self.index.push(IndexNode {
+                    pos: crit,
+                    member: token,
+                    children: if side == 0 { [leaf, at] } else { [at, leaf] },
+                });
+                (link, Child::Node(node))
+            }
+        };
+        match link {
+            Link::Root => self.root = Some(subtree),
+            Link::Side(parent, side) => self.index[parent].children[side] = subtree,
+        }
     }
 }
 
@@ -570,7 +784,8 @@ impl HtmlMicrodataTokenAction<'_, '_> {
             } else {
                 2
             }),
-            Phase::PriorUnit(_, _) => Work(2),
+            // One unit of each operand and at most one index node.
+            Phase::Walk { .. } => Work(3),
             Phase::Reserve => Reserve,
             _ => Work(1),
         }
@@ -587,9 +802,10 @@ impl HtmlMicrodataTokenAction<'_, '_> {
     ) -> Result<HtmlMicrodataTokenStep, HtmlMicrodataTokenActionError<M::Error>> {
         let kind = self.kind();
         let o = self.owner;
-        if kind == HtmlMicrodataTokenActionKind::Reserve {
+        let HtmlMicrodataTokenActionKind::Work(units) = kind else {
             let mut guard = HtmlMicrodataTokenReservation {
                 values: &mut o.tokens,
+                index: &mut o.index,
                 attempted: false,
                 completed: false,
             };
@@ -607,9 +823,6 @@ impl HtmlMicrodataTokenAction<'_, '_> {
             }
             o.phase = Phase::Commit;
             return Ok(HtmlMicrodataTokenStep::Continue);
-        }
-        let HtmlMicrodataTokenActionKind::Work(units) = kind else {
-            unreachable!()
         };
         if let Err(error) = meter.work(units) {
             o.phase = Phase::Stopped;
@@ -625,31 +838,11 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 SpaceTokenStep::Token { start, end } => {
                     o.start = start;
                     o.end = end;
-                    o.duplicate_of = None;
                     o.dot_or_colon = false;
-                    o.next_prior(0);
+                    o.begin_search();
                 }
             },
-            Phase::PriorVisit(index) => o.phase = Phase::PriorLength(index),
-            Phase::PriorLength(index) => {
-                let prior = &o.tokens[index];
-                if prior.end - prior.start == o.end - o.start {
-                    o.phase = Phase::PriorUnit(index, 0);
-                } else {
-                    o.next_prior(index + 1);
-                }
-            }
-            Phase::PriorUnit(index, offset) => {
-                let raw = o.units;
-                if raw[o.tokens[index].start + offset] != raw[o.start + offset] {
-                    o.next_prior(index + 1);
-                } else if offset + 1 == o.end - o.start {
-                    o.duplicate_of = Some(index);
-                    o.phase = Phase::Punctuation(0);
-                } else {
-                    o.phase = Phase::PriorUnit(index, offset + 1);
-                }
-            }
+            Phase::Walk { link, at, unit } => o.walk(link, at, unit),
             Phase::Punctuation(offset) => {
                 o.dot_or_colon |= matches!(o.units[o.start + offset], 0x2e | 0x3a);
                 o.phase = if o.start + offset + 1 == o.end {
@@ -659,6 +852,9 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 };
             }
             Phase::Commit => {
+                if o.duplicate_of.is_none() {
+                    o.index_token(o.tokens.len());
+                }
                 o.tokens.push(HtmlMicrodataToken {
                     start: o.start,
                     end: o.end,
@@ -669,6 +865,9 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 result = HtmlMicrodataTokenStep::TokenCommitted;
             }
             Phase::Assemble => {
+                // Release the scratch index before publishing.
+                o.index = Vec::new();
+                o.root = None;
                 o.report = Some(HtmlMicrodataTokenReport {
                     kind: o.kind,
                     raw: o.raw.cloned(),
