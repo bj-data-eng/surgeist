@@ -1008,51 +1008,74 @@ mod tests {
     }
 
     #[test]
-    fn fifth_diagnostic_pair_fits_capacity_clipped_for_both_actual_vectors() {
+    fn fifth_diagnostic_pair_admits_the_doubled_capacity_of_both_actual_vectors() {
         let source = HtmlSource::utf8("\0\0\0\0\0");
         let record = mem::size_of::<HtmlParseDiagnostic>() as u64;
         let location = mem::size_of::<HtmlParseDiagnosticLocation>() as u64;
-        // At four pairs, a sixth Record slot fits by itself. It must not
-        // consume the minimum layout still required by the fifth Location.
-        let capacity = 6 * record + 4 * location;
-        let transient = 4 * (record + location) + 6 * record;
+        // At four pairs both vectors are full. Each doubles to eight slots, the records first:
+        // the pair then retains eight of each, and the larger of the two replacements overlaps
+        // the old and the new layout of the vector it replaces.
+        let capacity = 8 * (record + location);
+        let transient =
+            (4 * (record + location) + 8 * record).max(8 * record + 4 * location + 8 * location);
         for physical in [true, false] {
-            let builder = limits(100).into_builder();
-            let selected = if physical {
-                builder.managed_capacity_bytes(capacity)
-            } else {
-                builder.peak_transient_bytes(transient)
+            // At the limit the fifth pair is admitted; one byte below it is refused with all
+            // four earlier pairs retained.
+            for refused in [false, true] {
+                let builder = limits(100).into_builder();
+                let (limit, resource) = if physical {
+                    (capacity, HtmlParseResource::ManagedCapacityBytes)
+                } else {
+                    (transient, HtmlParseResource::PeakTransientBytes)
+                };
+                let limit = limit - u64::from(refused);
+                let selected = if physical {
+                    builder.managed_capacity_bytes(limit)
+                } else {
+                    builder.peak_transient_bytes(limit)
+                }
+                .finish()
+                .unwrap();
+                let (mut c, mut evidence) = owner(&source, selected);
+                for offset in 0..4 {
+                    append(&mut evidence, &mut c, &source, offset).unwrap();
+                }
+                let result = append(&mut evidence, &mut c, &source, 4);
+                if refused {
+                    assert!(matches!(
+                        result,
+                        Err(HtmlParseStop::LimitExceeded { resource: stopped, limit: refusing, .. })
+                            if stopped == resource && refusing == limit
+                    ));
+                    assert_eq!((evidence.len(), evidence.locations.len()), (4, 4));
+                    for offset in 0..4 {
+                        let (record, location) = evidence.retained_record(offset).unwrap();
+                        assert_eq!(record.location, offset);
+                        assert_eq!((location.start(), location.end()), (offset, offset + 1));
+                    }
+                } else {
+                    let id = result.unwrap();
+                    assert_eq!(id.index, 4);
+                    assert_eq!(c.stop(), None);
+                    assert_eq!((evidence.len(), evidence.locations.len()), (5, 5));
+                    assert_eq!(
+                        (evidence.records.capacity(), evidence.locations.capacity()),
+                        (8, 8)
+                    );
+                    if physical {
+                        assert_eq!(c.usage().actual_capacity_bytes, capacity);
+                    } else {
+                        assert_eq!(
+                            c.usage()
+                                .resource(HtmlParseResource::PeakTransientBytes)
+                                .high_water,
+                            transient
+                        );
+                    }
+                }
+                evidence.release(&mut c).unwrap();
+                assert_released(&c);
             }
-            .finish()
-            .unwrap();
-            let (mut c, mut evidence) = owner(&source, selected);
-            for offset in 0..5 {
-                let id = append(&mut evidence, &mut c, &source, offset).unwrap();
-                assert_eq!(id.index, offset);
-                let (actual, source_range) = evidence.get(&mut c, &id).unwrap();
-                assert_eq!(actual.location, offset);
-                assert_eq!(
-                    (source_range.start(), source_range.end()),
-                    (offset, offset + 1)
-                );
-                assert_eq!(
-                    (evidence.len(), evidence.locations.len()),
-                    (offset + 1, offset + 1)
-                );
-            }
-            assert_eq!(c.stop(), None);
-            if physical {
-                assert!(c.usage().actual_capacity_bytes <= capacity);
-            } else {
-                assert!(
-                    c.usage()
-                        .resource(HtmlParseResource::PeakTransientBytes)
-                        .high_water
-                        <= transient
-                );
-            }
-            evidence.release(&mut c).unwrap();
-            assert_released(&c);
         }
     }
 
@@ -1133,7 +1156,10 @@ mod tests {
         let record_bytes = mem::size_of::<HtmlParseDiagnostic>() as u64;
         let location_bytes = mem::size_of::<HtmlParseDiagnosticLocation>() as u64;
         for prefix in [0_usize, 4] {
-            let required = (prefix as u64 + 1) * (record_bytes + location_bytes);
+            // Both vectors reach the greater of one more slot and double their capacity: one
+            // slot when empty, eight when four are full.
+            let slots = (prefix as u64 + 1).max(2 * prefix as u64);
+            let required = slots * (record_bytes + location_bytes);
             let selected = limits(100)
                 .into_builder()
                 .managed_capacity_bytes(required - 1)
@@ -1144,19 +1170,18 @@ mod tests {
                 append(&mut evidence, &mut c, &source, offset).unwrap();
             }
             let result = append(&mut evidence, &mut c, &source, prefix);
-            let first_capacity =
-                (prefix as u64 + 1) * record_bytes + prefix as u64 * location_bytes;
+            let first_capacity = slots * record_bytes + prefix as u64 * location_bytes;
             assert_eq!(
                 result.err(),
                 Some(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
                     current: first_capacity,
-                    requested_delta: location_bytes,
+                    requested_delta: (slots - prefix as u64) * location_bytes,
                     limit: required - 1,
                 })
             );
             assert_eq!((evidence.len(), evidence.locations.len()), (prefix, prefix));
-            assert_eq!(evidence.records.capacity(), prefix + 1);
+            assert_eq!(evidence.records.capacity() as u64, slots);
             assert_eq!(evidence.locations.capacity(), prefix);
             assert_eq!(c.usage().actual_capacity_bytes, first_capacity);
             assert_eq!(

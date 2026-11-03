@@ -204,7 +204,7 @@ impl HeadState<'_> {
             .formatting_pending
             .take()
             .ok_or(HeadError::InvalidFormattingState)?;
-        if let Err((stop, entry)) = self.formatting.try_push_recover(c, entry) {
+        if let Err((stop, entry)) = self.formatting.try_push_recover_geometric(c, entry) {
             self.formatting_pending = Some(entry);
             return Err(stop.into());
         }
@@ -718,7 +718,7 @@ impl HeadState<'_> {
                 .formatting_removed
                 .take()
                 .ok_or(HeadError::InvalidFormattingState)?;
-            if let Err((stop, entry)) = self.formatting.try_push_recover(c, entry) {
+            if let Err((stop, entry)) = self.formatting.try_push_recover_geometric(c, entry) {
                 self.formatting_removed = Some(entry);
                 return Err(stop.into());
             }
