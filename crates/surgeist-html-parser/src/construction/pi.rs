@@ -1,6 +1,9 @@
 //! DOM PI pseudo-attributes. XML-stylesheet 20101028 §3, XML 1.0 Fifth Edition
 //! productions 2–5 and 66 define this whole-string operation, not HTML recovery.
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 pub(super) struct PseudoAttribute {
     pub(super) name: DocumentString,
@@ -81,7 +84,7 @@ impl SessionStorage {
         node: usize,
         map: usize,
     ) -> Result<(), SessionError> {
-        use surgeist_html::bounded::{
+        use surgeist_html::bounded::lexical::{
             HtmlPiPseudoAttributeAction as Action,
             HtmlPiPseudoAttributeCursor as HtmlParsePendingAssociationCursor,
             HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
@@ -239,10 +242,10 @@ impl SessionStorage {
                     }
                 };
                 cursor.reply(reply).map_err(|e| match e {
-                    surgeist_html::bounded::HtmlPiPseudoAttributeError::Integrity => {
+                    surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError::Integrity => {
                         SessionError::WrongToken
                     }
-                    surgeist_html::bounded::HtmlPiPseudoAttributeError::Representation => {
+                    surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError::Representation => {
                         SessionError::Stop(
                             c.stop_representation(HtmlParseResource::AuxiliaryEntries),
                         )

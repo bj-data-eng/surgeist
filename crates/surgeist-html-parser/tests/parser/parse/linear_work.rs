@@ -6,7 +6,9 @@
 //! on every element violates it.
 
 use surgeist_html::{
-    HtmlDocumentMode, HtmlParserScriptingMode, Namespace, OrderedAttributes, QualifiedName,
+    construction::HtmlDocumentMode,
+    parsing::HtmlParserScriptingMode,
+    values::{Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseResource,

@@ -1,10 +1,11 @@
 //! Real append ownership: one native backing, original registry and controller.
 use super::*;
-use crate::bounded::{
+use construction_owner::construction_error;
+use surgeist_html::bounded::construction::{
     HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
     HtmlConstructionTextAppendWork as Work,
 };
-use construction_owner::construction_error;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 fn admit_work(
     control: &mut ParseControl,

@@ -1,6 +1,11 @@
 //! Attribute merging, transfer and editing of installed element attributes.
 
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode,
+    construction::HtmlNodeKind,
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum AttributeMergeName {

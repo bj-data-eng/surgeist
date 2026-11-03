@@ -1,6 +1,11 @@
 //! The parser session facade: one arena at a time, its tree operations, freezing and release.
 
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlFragmentOwner, HtmlNodeKind, HtmlTemplateContentsKind},
+    values::QualifiedName,
+};
 
 pub(crate) struct ParserArenaSession {
     pub(super) storage: Option<SessionStorage>,
@@ -457,10 +462,10 @@ impl ParserArenaSession {
                 cancel_after_text_append_chunk: _,
         } = self.storage.take().ok_or(SessionError::Consumed)?;
         let view = match result {
-            bounded::HtmlConstructionResult::Document(value) => {
+            surgeist_html::bounded::construction::HtmlConstructionResult::Document(value) => {
                 HtmlConstructionResult::Document(value)
             }
-            bounded::HtmlConstructionResult::Fragment(value) => {
+            surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(value) => {
                 HtmlConstructionResult::Fragment(value)
             }
         };

@@ -306,17 +306,19 @@ impl ParseControl {
     pub(crate) fn parse_meta_color_scheme(
         &mut self,
         raw: &[u16],
-        mode: crate::HtmlDocumentMode,
+        mode: surgeist_html::construction::HtmlDocumentMode,
     ) -> Result<CssSchemeValue, HtmlParseStop> {
         let (input, input_receipt) = self.css_scheme_input(raw)?;
         let result = (|| {
             let (limits, syntax) = self.css_scheme_limits()?;
             let callbacks = SchemeCallbacks::new(&mut *self);
-            let context = CssParserContext::new(if mode == crate::HtmlDocumentMode::Quirks {
-                CssParserMode::Quirks
-            } else {
-                CssParserMode::Standards
-            });
+            let context = CssParserContext::new(
+                if mode == surgeist_html::construction::HtmlDocumentMode::Quirks {
+                    CssParserMode::Quirks
+                } else {
+                    CssParserMode::Standards
+                },
+            );
             let result = CssColorScheme::parse_utf16(
                 &CssParser::new(context, syntax),
                 input.clone(),
@@ -435,7 +437,7 @@ mod tests {
         let value = c
             .parse_meta_color_scheme(
                 &"only dark".encode_utf16().collect::<Vec<_>>(),
-                crate::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
             )
             .unwrap();
         value.require(&mut c).unwrap();
@@ -467,7 +469,10 @@ mod tests {
         let raw: Vec<_> = "only dark".encode_utf16().collect();
         let mut baseline = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
         let value = baseline
-            .parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks)
+            .parse_meta_color_scheme(
+                &raw,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+            )
             .unwrap();
         let peak = baseline.usage().actual_capacity_high_water();
         value.release(&mut baseline).unwrap();
@@ -479,7 +484,10 @@ mod tests {
             .finish()
             .unwrap();
         let mut c = ParseControl::new(bounded, crate::HtmlParseCancellation::new());
-        let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
+        let error = match c.parse_meta_color_scheme(
+            &raw,
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+        ) {
             Err(error) => error,
             Ok(value) => {
                 value.release(&mut c).unwrap();
@@ -500,7 +508,7 @@ mod tests {
         let value = c
             .parse_meta_color_scheme(
                 &"dark".encode_utf16().collect::<Vec<_>>(),
-                crate::HtmlDocumentMode::Quirks,
+                surgeist_html::construction::HtmlDocumentMode::Quirks,
             )
             .unwrap();
         c.cancellation.cancel();
@@ -572,7 +580,10 @@ mod tests {
         let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
         c.css_scheme_fault = Some(SchemeFault::ReentrantRelease);
         let raw: Vec<_> = "only dark".encode_utf16().collect();
-        let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
+        let error = match c.parse_meta_color_scheme(
+            &raw,
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+        ) {
             Err(error) => error,
             Ok(value) => {
                 value.release(&mut c).unwrap();
@@ -589,7 +600,10 @@ mod tests {
         let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
         c.css_scheme_fault = Some(SchemeFault::LiveDrift);
         let raw: Vec<_> = "only dark".encode_utf16().collect();
-        let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
+        let error = match c.parse_meta_color_scheme(
+            &raw,
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+        ) {
             Err(error) => error,
             Ok(value) => {
                 value.release(&mut c).unwrap();

@@ -1,5 +1,13 @@
 use super::*;
 use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
+use surgeist_html::{
+    bounded::construction::{
+        HtmlConstructionActionDescription, HtmlConstructionAttributeEditMode,
+        HtmlConstructionCommand,
+    },
+    construction::{HtmlBuilderNode, HtmlElement, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 #[test]
 fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
     let mut control = ParseControl::new(
@@ -769,9 +777,11 @@ fn owner_cause_table_names_each_fault_once() {
 #[test]
 fn provoked_owner_errors_classify_as_exactly_one_fault() {
     use surgeist_html::{
-        DocumentString, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace,
-        OrderedAttributes, QualifiedName,
+        construction::{
+            HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+            HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+        },
+        values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
     };
     let name = |local: &str| QualifiedName::new(Namespace::html(), None, local);
     let limits = HtmlConstructionLimits::new(100, 100, 100, 100_000, 100);

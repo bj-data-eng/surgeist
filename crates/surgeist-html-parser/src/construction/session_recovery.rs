@@ -1,6 +1,10 @@
 //! Recovered tags, prologue nodes and document mode in the parser session.
 
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDoctype, HtmlDocumentMode, HtmlNodeKind, HtmlProcessingInstruction},
+    values::DocumentString,
+};
 
 impl ParserArenaSession {
     /// Pinned InBody `image` recovery rewrites the actual token name only.
@@ -421,7 +425,10 @@ impl ParserArenaSession {
         };
         storage.construction.apply(
             control,
-            bounded::HtmlConstructionCommand::SetDocumentMode { document, mode },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::SetDocumentMode {
+                document,
+                mode,
+            },
             &[],
         )?;
         Ok(())

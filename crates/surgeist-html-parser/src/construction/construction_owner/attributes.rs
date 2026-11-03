@@ -1,5 +1,14 @@
 //! Session composition of the exclusive HTML attribute owner and original tickets.
 use super::*;
+use surgeist_html::{
+    bounded::construction::{
+        HtmlConstructionAttributeCompletion, HtmlConstructionAttributeDescription,
+        HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode,
+        HtmlConstructionAttributeRetirementDescription, HtmlConstructionAttributeSlot,
+        HtmlConstructionReadyAttributeSlot,
+    },
+    values::Attribute,
+};
 #[cfg(test)]
 mod tests;
 use crate::parser::control::{SharedAllocation, VectorCapacity};

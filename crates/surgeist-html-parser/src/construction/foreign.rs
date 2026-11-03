@@ -12,6 +12,10 @@
 // Owned construction transfer uses Surgeist's existing arena and registry.
 
 use super::*;
+use surgeist_html::{
+    construction::{HtmlElement, HtmlNodeKind},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 const XLINK: &str = "http://www.w3.org/1999/xlink";
 const XML: &str = "http://www.w3.org/XML/1998/namespace";
@@ -372,6 +376,10 @@ impl SessionStorage {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlNodeKind},
+        values::{DocumentString, Namespace},
+    };
 
     fn lexical<'a>(
         source: &'a crate::HtmlSource,

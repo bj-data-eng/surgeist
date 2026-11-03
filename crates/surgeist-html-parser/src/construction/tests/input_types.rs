@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[test]
 fn email_multiple_current_origins_and_clone_keep_actual_count_and_source() {
@@ -636,7 +637,7 @@ fn temporal_input_ordered_type_reset_and_clone_keep_normalization_cause_and_exac
         assert_eq!(before, clone_state);
         assert_eq!(
             reset.flags.input_type(),
-            crate::HtmlInputType::LocalDateTime
+            surgeist_html::attributes::HtmlInputType::LocalDateTime
         );
         assert!(
             !reset.flags.dirty_value()
@@ -762,7 +763,10 @@ fn number_input_exact_work_partial_grammar_and_copy_stops_keep_all_owners() {
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(actual, expected.encode_utf16().collect::<Vec<_>>());
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Number);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Number
+        );
         assert_eq!(state.email_value_count, None);
         for tail in [0, 1, 32, 128, 512, 1024, 2048] {
             let request = crate::HtmlDocumentParseRequest::offline(
@@ -912,7 +916,10 @@ fn number_input_clone_reset_and_original_source_keep_exact_independent_strings()
         assert_eq!(before, clone_state);
         assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
         assert_eq!(default, value.encode_utf16().collect::<Vec<_>>());
-        assert_eq!(reset.flags.input_type(), crate::HtmlInputType::Number);
+        assert_eq!(
+            reset.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Number
+        );
         assert!(reset.flags.checkedness());
         assert!(!reset.flags.dirty_value() && !reset.flags.dirty_checkedness());
         assert!(!reset.flags.input_type().is_selectable());
@@ -958,7 +965,9 @@ fn number_input_real_reset_cancellation_retains_prefix_before_association() {
                     complete: true,
                     state,
                     ..
-                } if state.flags.input_type() == crate::HtmlInputType::Number => {
+                } if state.flags.input_type()
+                    == surgeist_html::attributes::HtmlInputType::Number =>
+                {
                     Some((*node, *raw))
                 }
                 _ => None,
@@ -1133,7 +1142,10 @@ fn range_input_exact_work_cuts_keep_real_scratch_and_first_stop_cleanup_owned() 
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(actual, expected);
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Range);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Range
+        );
         assert!(!state.flags.input_type().is_selectable());
         assert!(!state.flags.dirty_value() && !state.flags.dirty_checkedness());
         for tail in [0, 1, 1024, 65536, total / 2] {
@@ -1520,7 +1532,7 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
     // request handle after the real first admitted decimal cell append.
     payload_write::<
         Option<(
-            Option<surgeist_html::bounded::RangeScratchRole>,
+            Option<surgeist_html::bounded::numeric::HtmlRangeScratchRole>,
             crate::HtmlParseCancellation,
         )>,
     >(&mut c, 1)
@@ -1576,7 +1588,7 @@ fn range_actual_first_scratch_append_cancellation_retains_prefix_and_all_tickets
 #[test]
 fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() {
     use range::{RangeIngressCancellation, RangeIngressCancellationPoint};
-    use surgeist_html::bounded::RangeScratchRole;
+    use surgeist_html::bounded::numeric::HtmlRangeScratchRole;
     for (point, label, remaining_replies) in [
         (
             RangeIngressCancellationPoint::CoefficientFold,
@@ -1642,7 +1654,7 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
         assert!(cursor.result().is_none());
         let headers = cursor.headers();
         assert_eq!(
-            headers.buffer(RangeScratchRole::Coefficient).len(),
+            headers.buffer(HtmlRangeScratchRole::Coefficient).len(),
             coefficient.len()
         );
         // The cancellation hook runs after the cursor committed the reply it
@@ -1651,7 +1663,7 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
         // reply except the coefficient read (Read -> Next -> Power ...).
         assert_eq!(
             cursor.request(),
-            Some(surgeist_html::bounded::RangeNumericRequest::ScalarStep),
+            Some(surgeist_html::bounded::numeric::HtmlRangeNumericRequest::ScalarStep),
             "{label}: the next pending request"
         );
         // The committed numeric state is observed through the cursor's own
@@ -1707,7 +1719,7 @@ fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() 
 
 #[test]
 fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
-    use surgeist_html::bounded::RangeScratchRole;
+    use surgeist_html::bounded::numeric::HtmlRangeScratchRole;
     let request = crate::HtmlDocumentParseRequest::offline(
         crate::HtmlSource::utf8(
             "<html><head></head><input type=range step=any value=0.10000000000000000000>",
@@ -1724,11 +1736,13 @@ fn range_right_cache_append_cancellation_keeps_actual_partial_lease_owned() {
     let (mut c, mut session, capability, lexer, parent, mut input, range) = input_owner(&request);
     // Scheduling only: the original supplied token is cancelled after the
     // actual Right append has committed. Earlier roles use the normal path.
-    payload_write::<Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>>(&mut c, 1)
-        .unwrap();
+    payload_write::<Option<(Option<HtmlRangeScratchRole>, crate::HtmlParseCancellation)>>(
+        &mut c, 1,
+    )
+    .unwrap();
     c.charge(HtmlParseWorkCategory::ProviderCall, 1).unwrap();
     session.active_mut().unwrap().cancel_after_range_append = Some((
-        Some(RangeScratchRole::Right),
+        Some(HtmlRangeScratchRole::Right),
         request.cancellation().clone(),
     ));
     let result = session.allocate_input_for_creation(
@@ -1860,7 +1874,10 @@ fn range_input_clone_and_reset_preserve_generated_value_original_default_and_dis
     assert_eq!(before, copied);
     assert_eq!(current, [53, 48]);
     assert_eq!(default, [98, 97, 100]);
-    assert_eq!(reset.flags.input_type(), crate::HtmlInputType::Range);
+    assert_eq!(
+        reset.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Range
+    );
     assert!(reset.flags.checkedness());
     assert!(!reset.flags.dirty_value() && !reset.flags.dirty_checkedness());
 }
@@ -2043,7 +2060,7 @@ fn range_absent_default_to_image_creates_actual_value_attribute_before_default_m
     assert_eq!(
         observed,
         Some((
-            crate::HtmlInputType::Image,
+            surgeist_html::attributes::HtmlInputType::Image,
             vec![53, 48],
             vec![53, 48],
             vec![53, 48]

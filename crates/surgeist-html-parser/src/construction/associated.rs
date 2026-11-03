@@ -1,10 +1,19 @@
 //! Reached A/Area URL and wholly inactive Img updates in the original owner.
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 use surgeist_html::{
-    HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
-    HtmlHyperlinkSetUrlReply as Reply, HtmlImageAttributeChange, HtmlImageAttributeEffect,
-    HtmlImageDocumentActivity, HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
-    HtmlImageUpdateStartDecision, HtmlImgFreshState, KnownHtmlAttribute, KnownHtmlElement,
+    elements::{
+        image::{
+            HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
+            HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
+            HtmlImageUpdateStartDecision, HtmlImgFreshState,
+        },
+        link::{
+            HtmlHyperlinkSetUrlAction as Action, HtmlHyperlinkSetUrlCursor,
+            HtmlHyperlinkSetUrlReply as Reply,
+        },
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 use surgeist_html_semantics::{
     HtmlBaseMissing, HtmlDocumentFirstBase, HtmlEncodingUrlFactsError, HtmlEncodingUrlLookupError,
@@ -441,14 +450,14 @@ impl SessionStorage {
         };
         let tag = self.associated_tag(c, node)?;
         if matches!(tag, Some(KnownHtmlElement::A | KnownHtmlElement::Area)) {
-            if surgeist_html::hyperlink_attribute_effect(attr.name().namespace(), name, false)
-                == surgeist_html::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
+            if surgeist_html::elements::link::hyperlink_attribute_effect(attr.name().namespace(), name, false)
+                == surgeist_html::elements::link::HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads
             {
                 let raw = self.attribute_value_slot(c, node, position)?;
                 self.set_hyperlink(c, node, Some(raw))?;
             }
         } else if tag == Some(KnownHtmlElement::Img) {
-            let effect = surgeist_html::image_attribute_effect(
+            let effect = surgeist_html::elements::image::image_attribute_effect(
                 attr.name().namespace(),
                 name,
                 HtmlImageAttributeChange::Set { same_value: false },
@@ -457,32 +466,37 @@ impl SessionStorage {
                 HtmlImageAttributeEffect::Update(flags) => Some(flags),
                 HtmlImageAttributeEffect::CompareCrossOrigin
                 | HtmlImageAttributeEffect::CompareReferrerPolicy => {
-                    let mut admit = |step| match step {
-                        surgeist_html::bounded::HtmlAttributeKeywordRead::ValueHeader
-                        | surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordHeader => {
+                    let mut admit = |step| {
+                        match step {
+                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::ValueHeader
+                        | surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordHeader => {
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                         }
-                        surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordPair => {
+                        surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordPair => {
                             c.charge_unit_literal_comparison()
                         }
+                    }
                     };
                     let changed = if effect == HtmlImageAttributeEffect::CompareCrossOrigin {
-                        let old =
-                            surgeist_html::bounded::crossorigin_processing_with(None, &mut admit)?;
-                        let new = surgeist_html::bounded::crossorigin_processing_with(
-                            Some(attr.value()),
-                            &mut admit,
-                        )?;
-                        surgeist_html::image_crossorigin_changed(old, new)
-                    } else {
-                        let old = surgeist_html::bounded::referrerpolicy_processing_with(
+                        let old = surgeist_html::bounded::attributes::crossorigin_processing_with(
                             None, &mut admit,
                         )?;
-                        let new = surgeist_html::bounded::referrerpolicy_processing_with(
+                        let new = surgeist_html::bounded::attributes::crossorigin_processing_with(
                             Some(attr.value()),
                             &mut admit,
                         )?;
-                        surgeist_html::image_referrerpolicy_changed(old, new)
+                        surgeist_html::elements::image::image_crossorigin_changed(old, new)
+                    } else {
+                        let old =
+                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                None, &mut admit,
+                            )?;
+                        let new =
+                            surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                                Some(attr.value()),
+                                &mut admit,
+                            )?;
+                        surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
                     };
                     changed.then_some(HtmlImageUpdateFlags::new(false, false))
                 }
@@ -771,7 +785,7 @@ impl SessionStorage {
             return Ok(());
         };
         let activity = self.image_document_activity(c, node)?;
-        let decision = surgeist_html::image_update_start(activity);
+        let decision = surgeist_html::elements::image::image_update_start(activity);
         let cause = self.associated_cause(c)?;
         let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get(slot) else {
             return Err(latch_registry_row(c));
@@ -781,7 +795,7 @@ impl SessionStorage {
             .checked_add(1)
             .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         if state.waiting.is_some()
-            && !surgeist_html::image_update_is_superseded(state.latest.cmp(&next))
+            && !surgeist_html::elements::image::image_update_is_superseded(state.latest.cmp(&next))
                 .map_err(|_| SessionError::AssociatedFacts)?
         {
             return Err(SessionError::AssociatedFacts);
@@ -822,9 +836,14 @@ impl SessionStorage {
             .map(|p| self.associated_tag(c, p))
             .transpose()?
             .flatten();
-        let effect =
-            surgeist_html::image_tree_effect(tag, change, parent_tag, old_tag, root == node)
-                .map_err(|_| SessionError::WrongToken)?;
+        let effect = surgeist_html::elements::image::image_tree_effect(
+            tag,
+            change,
+            parent_tag,
+            old_tag,
+            root == node,
+        )
+        .map_err(|_| SessionError::WrongToken)?;
         // Media resource selection has no Img recipient and is outside this
         // retained standalone-Img prefix. No Audio/Video capability is issued.
         if effect.check_media_parent_selection() {
@@ -983,7 +1002,7 @@ mod tests {
         );
         let document = builder
             .add_document(
-                surgeist_html::HtmlDocumentMode::NoQuirks,
+                surgeist_html::construction::HtmlDocumentMode::NoQuirks,
                 HtmlScriptingStatus::Disabled,
                 HtmlCaptureRegistryInput::Null,
             )
@@ -991,8 +1010,12 @@ mod tests {
         let div = builder
             .add_element(
                 &document,
-                surgeist_html::QualifiedName::new(surgeist_html::Namespace::html(), None, "div"),
-                surgeist_html::OrderedAttributes::default(),
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "div",
+                ),
+                surgeist_html::values::OrderedAttributes::default(),
                 HtmlCapturedIsValue::Absent,
                 HtmlCaptureRegistryInput::Null,
             )

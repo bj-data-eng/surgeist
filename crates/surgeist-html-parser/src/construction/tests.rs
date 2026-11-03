@@ -1,6 +1,10 @@
 //! Fixtures shared by the construction tests, and the topic modules that use them.
 
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlElement, HtmlFragment, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 mod attribute_validation;
 mod body_recovery;
 mod child_order;
@@ -82,7 +86,7 @@ fn next_text(
     };
     Some(text)
 }
-use crate::{Attribute, HtmlParseResource};
+use crate::HtmlParseResource;
 use crate::{HtmlParseCancellation, HtmlParseLimits};
 
 pub(super) fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
@@ -534,50 +538,55 @@ pub(super) fn assert_freeze_reports_first_stop(
 /// request as the cursor's public protocol defines it. Returns the final
 /// result and the number of replies the cursor needed.
 pub(super) fn resume_range_ingress(
-    mut cursor: surgeist_html::bounded::FiniteDecimalIngressCursor,
+    mut cursor: surgeist_html::bounded::numeric::HtmlFiniteDecimalIngressCursor,
     source: &[u16],
     coefficient: &[u8],
 ) -> (
-    Option<Result<u64, surgeist_html::bounded::RangeNumericError>>,
+    Option<Result<u64, surgeist_html::bounded::numeric::HtmlRangeNumericError>>,
     usize,
 ) {
-    use surgeist_html::bounded::{RangeNumericReply, RangeNumericRequest, RangeScratchRole};
+    use surgeist_html::bounded::numeric::{
+        HtmlRangeNumericReply, HtmlRangeNumericRequest, HtmlRangeScratchRole,
+    };
     let headers = cursor.headers();
     let mut buffers: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
-    let coefficient_buffer = &mut buffers[RangeScratchRole::Coefficient.index()];
-    coefficient_buffer.reserve_exact(headers.buffer(RangeScratchRole::Coefficient).capacity());
+    let coefficient_buffer = &mut buffers[HtmlRangeScratchRole::Coefficient.index()];
+    coefficient_buffer.reserve_exact(headers.buffer(HtmlRangeScratchRole::Coefficient).capacity());
     coefficient_buffer.extend_from_slice(coefficient);
     for step in 0..1_000_000 {
         let Some(request) = cursor.request() else {
             return (cursor.result(), step);
         };
         let reply = match request {
-            RangeNumericRequest::SourceUnit { index } => RangeNumericReply::Unit(source[index]),
-            RangeNumericRequest::ReadCells { cells } => RangeNumericReply::Cells(
+            HtmlRangeNumericRequest::SourceUnit { index } => {
+                HtmlRangeNumericReply::Unit(source[index])
+            }
+            HtmlRangeNumericRequest::ReadCells { cells } => HtmlRangeNumericReply::Cells(
                 cells.map(|cell| cell.map(|c| buffers[c.role().index()][c.index()])),
             ),
-            RangeNumericRequest::Reserve { role, required_len } => {
+            HtmlRangeNumericRequest::Reserve { role, required_len } => {
                 let buffer = &mut buffers[role.index()];
                 buffer.reserve_exact(required_len - buffer.len());
-                RangeNumericReply::Reserved {
+                HtmlRangeNumericReply::Reserved {
                     actual_capacity: buffer.capacity(),
                     actual_len: buffer.len(),
                 }
             }
-            RangeNumericRequest::AppendCell { role, value } => {
+            HtmlRangeNumericRequest::AppendCell { role, value } => {
                 buffers[role.index()].push(value);
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::WriteCell { cell, value } => {
+            HtmlRangeNumericRequest::WriteCell { cell, value } => {
                 buffers[cell.role().index()][cell.index()] = value;
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::PopCell { role } => {
+            HtmlRangeNumericRequest::PopCell { role } => {
                 buffers[role.index()].pop().expect("a cell to pop");
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::ScalarStep => RangeNumericReply::Ack,
-            RangeNumericRequest::ReserveOutput { .. } | RangeNumericRequest::EmitUnit { .. } => {
+            HtmlRangeNumericRequest::ScalarStep => HtmlRangeNumericReply::Ack,
+            HtmlRangeNumericRequest::ReserveOutput { .. }
+            | HtmlRangeNumericRequest::EmitUnit { .. } => {
                 panic!("ingress never writes output: {request:?} at step {step}")
             }
         };

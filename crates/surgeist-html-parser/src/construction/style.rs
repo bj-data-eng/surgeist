@@ -8,7 +8,7 @@ pub enum HtmlParseStyleAssociation {
     Pending,
 }
 pub(super) struct StyleMetadata {
-    pub(super) state: surgeist_html::HtmlStyleState,
+    pub(super) state: surgeist_html::elements::style::HtmlStyleState,
     pub(super) parser_document: Option<DocumentRef>,
     pub(super) cause: Option<provenance::ConstructionCauseRef>,
 }
@@ -30,7 +30,7 @@ impl SessionStorage {
                 RetainedPayload::Style {
                     node,
                     state: StyleMetadata {
-                        state: surgeist_html::HtmlStyleState::fresh(),
+                        state: surgeist_html::elements::style::HtmlStyleState::fresh(),
                         parser_document: None,
                         cause,
                     },
@@ -77,7 +77,7 @@ impl SessionStorage {
         let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get_mut(slot) else {
             return Err(latch_registry_row(c));
         };
-        state.state = surgeist_html::HtmlStyleState::document_parser_created();
+        state.state = surgeist_html::elements::style::HtmlStyleState::document_parser_created();
         state.parser_document = Some(DocumentRef::Owned(0));
         state.cause = cause;
         self.record_association(
@@ -115,7 +115,7 @@ impl SessionStorage {
             self.association_style_trigger(
                 c,
                 node,
-                surgeist_html::HtmlStyleTrigger::ParserPopped,
+                surgeist_html::elements::style::HtmlStyleTrigger::ParserPopped,
                 None,
             )?;
         }

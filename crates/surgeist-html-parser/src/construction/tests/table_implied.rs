@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
 
 #[test]
 fn table_implied_names_are_real_managed_native_elements_without_lexical_origins() {

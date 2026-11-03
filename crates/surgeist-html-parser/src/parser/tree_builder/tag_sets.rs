@@ -12,7 +12,7 @@
 // governed by HTML 877d6146487f15b15bc8dd0e3c625063a37b456a §13.2.4.2.
 
 use super::super::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
-use crate::{DocumentString, QualifiedName};
+use surgeist_html::values::{DocumentString, QualifiedName};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Scope {

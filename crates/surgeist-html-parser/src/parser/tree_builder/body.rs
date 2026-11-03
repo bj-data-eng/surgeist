@@ -108,7 +108,7 @@ impl HeadState<'_> {
     pub(super) fn input_type(
         &self,
         c: &mut ParseControl,
-    ) -> Result<surgeist_html::HtmlInputType, HeadError> {
+    ) -> Result<surgeist_html::attributes::HtmlInputType, HeadError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let Payload::Tag(input) = &self
             .pending
@@ -124,7 +124,7 @@ impl HeadState<'_> {
         )?)
     }
     pub(super) fn hidden_input(&self, c: &mut ParseControl) -> Result<bool, HeadError> {
-        Ok(self.input_type(c)? == surgeist_html::HtmlInputType::Hidden)
+        Ok(self.input_type(c)? == surgeist_html::attributes::HtmlInputType::Hidden)
     }
     pub(super) fn admit_hidden_capability(&self, c: &mut ParseControl) -> Result<(), HeadError> {
         match self.validate_standalone_capability(c) {
@@ -1245,7 +1245,9 @@ impl HeadState<'_> {
             return Ok(Some(self.finish(c)?));
         }
         if self.token_in(&["table"], c)?.is_some() {
-            if self.before.kernel.session.document_mode(c)? != crate::HtmlDocumentMode::Quirks {
+            if self.before.kernel.session.document_mode(c)?
+                != surgeist_html::construction::HtmlDocumentMode::Quirks
+            {
                 self.close_p_in_scope(c)?;
             }
             self.insert_tag(c)?;

@@ -16,12 +16,17 @@ use crate::parser::control::{
     PreparedSlotStopScope, prepared_slot_sites, prepared_slots, stop_after_prepared_slot,
 };
 use crate::parser::tree_builder::tests::limits;
-use crate::{
-    HtmlParseBaseFacts, HtmlParseFailure, HtmlParseLimits, HtmlParseResource,
-    HtmlParserScriptingMode, HtmlSource,
-};
+use crate::{HtmlParseBaseFacts, HtmlParseFailure, HtmlParseLimits, HtmlParseResource, HtmlSource};
 use std::convert::Infallible;
-use surgeist_html::*;
+use surgeist_html::parsing::HtmlParserScriptingMode;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    security::csp::{
+        HtmlCspError, HtmlCspLayout, HtmlCspProcessorAuthority, HtmlCspProcessorProfile,
+        HtmlCspStorage, HtmlMetaCspOutcome, HtmlMetaCspProcessor, HtmlMetaCspRequest,
+    },
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::*;
 
 /// Resources a stopped parse returns whatever it was doing and that no kept

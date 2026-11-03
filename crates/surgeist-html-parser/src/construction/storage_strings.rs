@@ -1,6 +1,7 @@
 //! Managed string registration, text insertion and merging, and string disposal.
 
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
 impl SessionStorage {
     pub(super) fn check_text(

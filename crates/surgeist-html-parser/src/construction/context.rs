@@ -2,6 +2,19 @@
 //! HTML 877d §13.4; document/cache identity is not inferred from native roots.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{
+        HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind, HtmlShadowRootProperties,
+    },
+    elements::{
+        native::custom_element_state_without_definition,
+        template::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document},
+    },
+    values::{DocumentString, Namespace, QualifiedName},
+};
 
 /// Owned positions join parser metadata; captured identities retain their owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,8 +73,8 @@ impl RegistryRef {
 /// current attributes and registry reassignment cannot rewrite it.
 #[derive(Clone, Copy)]
 pub(super) struct ElementCreationState {
-    pub(super) common_scope: surgeist_html::HtmlCommonScope,
-    pub(super) state: crate::HtmlCustomElementState,
+    pub(super) common_scope: surgeist_html::elements::native::HtmlCommonScope,
+    pub(super) state: surgeist_html::elements::native::HtmlCustomElementState,
     pub(super) saved_is: Option<usize>,
 }
 
@@ -92,7 +105,7 @@ pub(super) struct FragmentContextStorage {
     origin_allocation: SharedAllocation<()>,
     pub(super) completion: usize,
     pub(super) context: crate::HtmlFragmentContext,
-    pub(super) mode: crate::HtmlParserScriptingMode,
+    pub(super) mode: surgeist_html::parsing::HtmlParserScriptingMode,
     pub(super) allow_shadow: bool,
     pub(super) output: Option<usize>,
     pub(super) effects: OwnedVec<ContextEffect>,
@@ -413,7 +426,8 @@ impl ParserArenaSession {
         let mode = request.effective_scripting_mode();
         if !matches!(
             mode,
-            crate::HtmlParserScriptingMode::Inert | crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
+                | surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         ) {
             return Err(SessionError::ContextUnavailable);
         }
@@ -461,8 +475,9 @@ impl ParserArenaSession {
                     node: Some(root.index),
                     registry,
                     creation: Some(ElementCreationState {
-                        common_scope: surgeist_html::HtmlCommonScope::Html,
-                        state: crate::HtmlCustomElementState::Uncustomized,
+                        common_scope: surgeist_html::elements::native::HtmlCommonScope::Html,
+                        state:
+                            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized,
                         saved_is: None,
                     }),
                 },
@@ -504,7 +519,8 @@ impl ParserArenaSession {
             .ok_or(SessionError::ContextUnavailable)?;
         if !matches!(
             fragment.mode,
-            crate::HtmlParserScriptingMode::Inert | crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
+                | surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         ) || fragment.output.is_none()
         {
             return Err(c
@@ -911,9 +927,9 @@ impl SessionStorage {
                     registry,
                     creation: Some(ElementCreationState {
                         common_scope: if html {
-                            surgeist_html::HtmlCommonScope::Html
+                            surgeist_html::elements::native::HtmlCommonScope::Html
                         } else {
-                            surgeist_html::HtmlCommonScope::Element
+                            surgeist_html::elements::native::HtmlCommonScope::Element
                         },
                         state,
                         saved_is,
@@ -1073,7 +1089,7 @@ impl ParserArenaSession {
 }
 
 fn charged_custom_name(name: &DocumentString, c: &mut ParseControl) -> Result<bool, SessionError> {
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::lexical::{
         HtmlCustomNameScanAction as A, validate_custom_element_name_with,
     };
     Ok(validate_custom_element_name_with(name, |action| {
@@ -1199,9 +1215,9 @@ impl ParserArenaSession {
             let name = attr.name().local_name();
             if exact_ascii(c, Some(name), "shadowrootmode")? {
                 if c.ascii_case_insensitive_literal_matches(attr.value(), "open")? {
-                    mode = Some(crate::HtmlShadowRootMode::Open);
+                    mode = Some(surgeist_html::construction::HtmlShadowRootMode::Open);
                 } else if c.ascii_case_insensitive_literal_matches(attr.value(), "closed")? {
-                    mode = Some(crate::HtmlShadowRootMode::Closed);
+                    mode = Some(surgeist_html::construction::HtmlShadowRootMode::Closed);
                 }
             } else if exact_ascii(c, Some(name), "shadowrootdelegatesfocus")? {
                 delegates = true;
@@ -1221,9 +1237,9 @@ impl ParserArenaSession {
         let properties = HtmlShadowRootProperties::new(
             mode,
             if manual {
-                crate::HtmlSlotAssignment::Manual
+                surgeist_html::construction::HtmlSlotAssignment::Manual
             } else {
-                crate::HtmlSlotAssignment::Named
+                surgeist_html::construction::HtmlSlotAssignment::Named
             },
             delegates,
             clonable,
@@ -1458,7 +1474,7 @@ impl ParserArenaSession {
                 .ok_or(SessionError::ForeignNode)?
                 .handle();
             let command = if let Some(host) = local_host {
-                bounded::HtmlConstructionCommand::AttachTemplateShadow {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::AttachTemplateShadow {
                     template: template_handle,
                     host: storage
                         .construction
@@ -1468,7 +1484,7 @@ impl ParserArenaSession {
                     contents: contents_handle,
                 }
             } else {
-                bounded::HtmlConstructionCommand::SetTemplateShadowContents {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::SetTemplateShadowContents {
                     template: template_handle,
                     contents: contents_handle,
                 }
@@ -1964,7 +1980,10 @@ impl SessionStorage {
             .handle();
         self.construction.apply(
             c,
-            bounded::HtmlConstructionCommand::AttachShadow { host, contents },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::AttachShadow {
+                host,
+                contents,
+            },
             &[(HtmlParseResource::ManagedEdges, 1)],
         )?;
         Ok(Some((original, root.index)))
@@ -2060,7 +2079,13 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<(crate::HtmlCustomElementState, Option<&DocumentString>), SessionError> {
+    ) -> Result<
+        (
+            surgeist_html::elements::native::HtmlCustomElementState,
+            Option<&DocumentString>,
+        ),
+        SessionError,
+    > {
         let storage = self.active()?;
         storage.require(c)?;
         let index = storage.index(c, node)?;
@@ -2098,7 +2123,13 @@ impl FrozenArena {
         &self,
         c: &mut ParseControl,
         node: &HtmlNodeId,
-    ) -> Result<(crate::HtmlCustomElementState, Option<&DocumentString>), SessionError> {
+    ) -> Result<
+        (
+            surgeist_html::elements::native::HtmlCustomElementState,
+            Option<&DocumentString>,
+        ),
+        SessionError,
+    > {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         let index = storage.context_index(c, node)?;
         for payload in &storage.payloads.values {
@@ -2615,6 +2646,10 @@ mod tests {
         token::{Event, TokenKind},
     };
     use crate::*;
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlNodeKind},
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
 
     fn lexical_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Option<Tag> {
         loop {
@@ -3328,7 +3363,10 @@ mod tests {
         let mut frozen = session.freeze(&mut c).unwrap();
         let id = frozen.fragment().unwrap().root().children().next().unwrap();
         let (state, saved) = frozen.element_creation(&mut c, &id).unwrap();
-        assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+        assert_eq!(
+            state,
+            surgeist_html::elements::native::HtmlCustomElementState::Undefined
+        );
         assert_eq!(saved.unwrap().code_units(), &[65, 38, 66]);
         drop(id);
         frozen.release(&mut c).unwrap();
@@ -3440,7 +3478,10 @@ mod tests {
                     71
                 );
                 let (state, value) = session.element_creation(&mut c, &node).unwrap();
-                assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                assert_eq!(
+                    state,
+                    surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                );
                 assert_eq!(value.unwrap().code_units(), &[65, 38, 66]);
             } else {
                 let first = c.stop().unwrap();
@@ -3699,6 +3740,8 @@ mod tests {
 mod fragment_origin_tests {
     use super::*;
     use crate::*;
+    use surgeist_html::construction::HtmlDocumentMode;
+    use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
     #[test]
     fn source_created_fragment_origin_retires_with_original_owner_after_cancellation() {

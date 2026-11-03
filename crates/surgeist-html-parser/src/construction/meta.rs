@@ -3,7 +3,12 @@
 use super::*;
 use crate::keyed::{Table, slots};
 use associated::HtmlParseHyperlinkUnavailable;
-use surgeist_html::HtmlMetaPragmaState as Pragma;
+use surgeist_html::attributes::meta_pragma::HtmlMetaPragmaState as Pragma;
+use surgeist_html::{
+    attributes::{HtmlReferrerPolicy, meta_processing::default_document_referrer_policy},
+    construction::HtmlNodeKind,
+    values::DocumentString,
+};
 
 /// Independent domains in the finite current Document history.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -294,7 +299,7 @@ enum Step {
 pub enum HtmlParseMetaMissingKind {
     RefreshUrl(HtmlParseHyperlinkUnavailable),
     Csp,
-    CspProcessing(surgeist_html::HtmlCspUnavailable),
+    CspProcessing(surgeist_html::security::csp::HtmlCspUnavailable),
     ThemeColor,
     ThemeColorProcessing(crate::parser::control::HtmlColorProcessingError),
 }
@@ -546,9 +551,10 @@ impl SessionStorage {
         let Some(raw) = self.meta_attribute(c, node, "http-equiv")? else {
             return Ok(());
         };
-        let Some(pragma) = bounded::meta_pragma_state_with(&raw, || {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-        })?
+        let Some(pragma) =
+            surgeist_html::bounded::attributes::meta_pragma_state_with(&raw, || {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+            })?
         else {
             return Ok(());
         };
@@ -573,9 +579,10 @@ impl SessionStorage {
         };
         match pragma {
             Pragma::ContentLanguage => {
-                let Some(range) = bounded::meta_language_token_with(&content, || {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-                })?
+                let Some(range) =
+                    surgeist_html::bounded::attributes::meta_language_token_with(&content, || {
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+                    })?
                 else {
                     return Ok(());
                 };
@@ -610,17 +617,18 @@ impl SessionStorage {
                 {
                     return Ok(());
                 }
-                let target = bounded::meta_refresh_syntax_with(&content, |_| {
-                    // DelayDigits retains the exact mathematical digit sequence;
-                    // the selected Do-nothing branch never consumes a timer.
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-                })?;
+                let target =
+                    surgeist_html::bounded::attributes::meta_refresh_syntax_with(&content, |_| {
+                        // DelayDigits retains the exact mathematical digit sequence;
+                        // the selected Do-nothing branch never consumes a timer.
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+                    })?;
                 let outcome = match target {
                     None => return Ok(()),
-                    Some(bounded::HtmlMetaRefreshSyntaxTarget::DocumentUrl) => {
+                    Some(surgeist_html::bounded::attributes::HtmlMetaRefreshSyntaxTarget::DocumentUrl) => {
                         self.meta_document_url(c, document)?
                     }
-                    Some(bounded::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
+                    Some(surgeist_html::bounded::attributes::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
                         let units = content
                             .code_units()
                             .get(range)
@@ -732,9 +740,11 @@ impl SessionStorage {
         let Some(content) = self.meta_attribute(c, node, "content")? else {
             return Ok(());
         };
-        if let Some(policy) = bounded::meta_referrer_policy_with(&content, || {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-        })? {
+        if let Some(policy) =
+            surgeist_html::bounded::attributes::meta_referrer_policy_with(&content, || {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)
+            })?
+        {
             let slot = self.document_slot(c, document)?;
             payload_write::<HtmlReferrerPolicy>(c, 1)?;
             self.meta_history_mut(slot)
@@ -816,7 +826,7 @@ impl SessionStorage {
                 let mut known_match = true;
                 for unit in media.code_units() {
                     c.charge_unit_inspection()?;
-                    if !bounded::is_ascii_whitespace(*unit) {
+                    if !surgeist_html::bounded::lexical::is_ascii_whitespace(*unit) {
                         known_match = false;
                         break;
                     }
@@ -1361,14 +1371,14 @@ fn theme_color(
 > {
     while let Some((unit, rest)) = input.split_first() {
         c.charge_unit_inspection()?;
-        if !bounded::is_ascii_whitespace(*unit) {
+        if !surgeist_html::bounded::lexical::is_ascii_whitespace(*unit) {
             break;
         }
         input = rest;
     }
     while let Some((unit, rest)) = input.split_last() {
         c.charge_unit_inspection()?;
-        if !bounded::is_ascii_whitespace(*unit) {
+        if !surgeist_html::bounded::lexical::is_ascii_whitespace(*unit) {
             break;
         }
         input = rest;
@@ -1414,7 +1424,7 @@ fn meta_ascii(
     }
     for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         c.charge_unit_inspection()?;
-        if !bounded::ascii_case_insensitive_unit(*unit, byte) {
+        if !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(*unit, byte) {
             return Ok(false);
         }
     }
@@ -1424,32 +1434,36 @@ fn meta_ascii(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
     #[derive(Debug)]
     struct RedPolicy;
-    impl surgeist_html::HtmlCspPolicyArtifact for RedPolicy {
-        fn retained_layout(&self) -> surgeist_html::HtmlCspArtifactLayout {
-            surgeist_html::HtmlCspArtifactLayout::default()
+    impl surgeist_html::security::csp::HtmlCspPolicyArtifact for RedPolicy {
+        fn retained_layout(&self) -> surgeist_html::security::csp::HtmlCspArtifactLayout {
+            surgeist_html::security::csp::HtmlCspArtifactLayout::default()
         }
     }
     struct RedProcessor {
-        authority: surgeist_html::HtmlCspProcessorAuthority,
-        profile: surgeist_html::HtmlCspProcessorProfile,
+        authority: surgeist_html::security::csp::HtmlCspProcessorAuthority,
+        profile: surgeist_html::security::csp::HtmlCspProcessorProfile,
         refuse: bool,
         calls: usize,
         completed: usize,
     }
-    impl surgeist_html::HtmlMetaCspProcessor for RedProcessor {
+    impl surgeist_html::security::csp::HtmlMetaCspProcessor for RedProcessor {
         type Error = ();
-        fn profile(&self) -> &surgeist_html::HtmlCspProcessorProfile {
+        fn profile(&self) -> &surgeist_html::security::csp::HtmlCspProcessorProfile {
             &self.profile
         }
         fn prepare<E>(
             &mut self,
-            request: &surgeist_html::HtmlMetaCspRequest,
-            admit: &mut impl FnMut(surgeist_html::HtmlCspLayout) -> Result<(), E>,
-            release: &mut impl FnMut(surgeist_html::HtmlCspStorage),
-        ) -> Result<surgeist_html::HtmlMetaCspOutcome<()>, surgeist_html::HtmlCspError<E>> {
-            use surgeist_html::*;
+            request: &surgeist_html::security::csp::HtmlMetaCspRequest,
+            admit: &mut impl FnMut(surgeist_html::security::csp::HtmlCspLayout) -> Result<(), E>,
+            release: &mut impl FnMut(surgeist_html::security::csp::HtmlCspStorage),
+        ) -> Result<
+            surgeist_html::security::csp::HtmlMetaCspOutcome<()>,
+            surgeist_html::security::csp::HtmlCspError<E>,
+        > {
+            use surgeist_html::security::csp::{HtmlCspError, HtmlCspLayout, HtmlMetaCspOutcome};
             self.profile
                 .validate_selected_with(request.qualification().processor(), admit)?;
             admit(HtmlCspLayout::processing(
@@ -1469,7 +1483,7 @@ mod tests {
             }
             // This closed adapter recognizes exactly the request-derived red
             // fixture policy, independently of the later CSS color parser.
-            let layout = surgeist_html::HtmlCspArtifactLayout::default();
+            let layout = surgeist_html::security::csp::HtmlCspArtifactLayout::default();
             admit(HtmlCspLayout::processing(
                 1,
                 layout.storage(),
@@ -1493,7 +1507,7 @@ mod tests {
     }
     #[test]
     fn csp_result_precedes_dual_meta_theme_cancellation_and_later_tail_stop() {
-        use surgeist_html::*;
+        use surgeist_html::security::csp::{HtmlCspLayout, HtmlCspProcessorAuthority};
         for refuse in [true, false] {
             let mut allow = |_: HtmlCspLayout| Ok::<_, std::convert::Infallible>(());
             let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();

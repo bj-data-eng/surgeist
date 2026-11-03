@@ -130,7 +130,7 @@ impl SessionStorage {
         )];
         let mut pending = self.construction.start(
             control,
-            bounded::HtmlConstructionCommand::Insert {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::Insert {
                 node: node_handle,
                 parent: parent_handle,
                 before: before_handle,
@@ -144,7 +144,7 @@ impl SessionStorage {
                     break;
                 };
                 match action.description() {
-                    bounded::HtmlConstructionActionDescription::Preflight { usage } => {
+                    surgeist_html::bounded::construction::HtmlConstructionActionDescription::Preflight { usage } => {
                         // Source semantics stay between the original depth and
                         // edge checks, before any actual scratch-bank provider.
                         control.observe_tree_depth(usage.depth() as u64)?;
@@ -165,7 +165,7 @@ impl SessionStorage {
                             })?
                             .accept();
                     }
-                    bounded::HtmlConstructionActionDescription::Commit { .. } => {
+                    surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit { .. } => {
                         // These fixed source payloads precede the atomic commit,
                         // after the original actual child-order preparation.
                         self.construction.perform_action_with_commit(
@@ -260,7 +260,7 @@ impl SessionStorage {
         let reroot = self.begin_reroot(control, node, None)?;
         let detached = self.construction.apply(
             control,
-            bounded::HtmlConstructionCommand::Detach { node: handle },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::Detach { node: handle },
             &[],
         );
         self.end_reroot(reroot);

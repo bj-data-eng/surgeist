@@ -1,9 +1,7 @@
 use super::prologue::Payload;
 use super::*;
 use crate::{
-    DocumentString, HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlNodeKind,
-    HtmlParseCancellation, HtmlParseLimits, HtmlScriptKind, HtmlSource, Namespace,
-    OrderedAttributes, QualifiedName,
+    HtmlParseCancellation, HtmlParseLimits, HtmlSource,
     construction::{FrozenArena, RootKind},
     parser::{
         control::HtmlParseInvariant,
@@ -13,6 +11,11 @@ use crate::{
             token::{Event, TagKind, TokenKind},
         },
     },
+};
+use surgeist_html::elements::script::HtmlScriptKind;
+use surgeist_html::{
+    construction::{HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 pub(crate) fn limits(open: u64) -> HtmlParseLimits {
@@ -2731,7 +2734,7 @@ fn observe_head(
     state.lexical.release(c).unwrap();
     freeze(state.before.kernel, c)
 }
-fn head_names(document: &crate::HtmlDocument) -> Vec<DocumentString> {
+fn head_names(document: &surgeist_html::construction::HtmlDocument) -> Vec<DocumentString> {
     let html = document
         .node(&document.root().children().last().unwrap())
         .unwrap();
@@ -2743,7 +2746,7 @@ fn head_names(document: &crate::HtmlDocument) -> Vec<DocumentString> {
         })
         .collect()
 }
-fn first_head_child_text(document: &crate::HtmlDocument) -> Vec<u16> {
+fn first_head_child_text(document: &surgeist_html::construction::HtmlDocument) -> Vec<u16> {
     let html = document
         .node(&document.root().children().last().unwrap())
         .unwrap();
@@ -3434,7 +3437,7 @@ fn before_ordinary_end(driver: &mut StandaloneDocumentDriver<'_>) {
 
 #[test]
 fn standalone_script_start_retains_actual_document_and_initial_metadata_before_preparation() {
-    use surgeist_html::HtmlScriptResult;
+    use surgeist_html::elements::script::HtmlScriptResult;
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<script src='x'>body</script>"),
         limits(100),
@@ -4578,7 +4581,9 @@ pub(super) fn body_document(driver: StandaloneDocumentDriver<'_>) -> (ParseContr
     let frozen = session.freeze(&mut c).unwrap();
     (c, frozen)
 }
-pub(super) fn outline(document: &crate::HtmlDocument) -> Vec<(usize, Vec<u16>)> {
+pub(super) fn outline(
+    document: &surgeist_html::construction::HtmlDocument,
+) -> Vec<(usize, Vec<u16>)> {
     // A test observer only: expected outlines below are literal source outcomes.
     // No serialization/reparse or synthetic producer drives construction.
     let mut output = Vec::new();
@@ -8719,7 +8724,7 @@ fn listed_control_owner_observations(source: &str) -> Vec<(Vec<u16>, Option<Vec<
                     .any(|candidate| name.iter().copied().eq(candidate.encode_utf16()))
                 {
                     let state = frozen.form_association_state(&mut c, &id).unwrap();
-                    use crate::HtmlNativeFormAssociationKind;
+                    use surgeist_html::elements::form::HtmlNativeFormAssociationKind;
                     let expected = match name {
                         [98, 117, 116, 116, 111, 110] => HtmlNativeFormAssociationKind::Button,
                         [102, 105, 101, 108, 100, 115, 101, 116] => {
@@ -10051,7 +10056,10 @@ fn textarea_form_association_is_actual_known_state_with_or_without_explicit_form
         let form = doc.node(&body).unwrap().children().next().unwrap();
         let textarea = doc.node(&form).unwrap().children().next().unwrap();
         let state = frozen.form_association_state(&mut c, &textarea).unwrap();
-        assert_eq!(state.kind, crate::HtmlNativeFormAssociationKind::Textarea);
+        assert_eq!(
+            state.kind,
+            surgeist_html::elements::form::HtmlNativeFormAssociationKind::Textarea
+        );
         let owner = frozen.form_association_owner(&mut c, &textarea).unwrap();
         assert_eq!(owner.as_ref(), associated.then_some(&form));
         assert_eq!(
@@ -10545,8 +10553,8 @@ struct OutputNativeObservation {
     owners: Vec<bool>,
 }
 fn output_native_observation(source: HtmlSource) -> OutputNativeObservation {
-    use crate::HtmlNativeFormAssociationKind;
     use crate::construction::HtmlParseOutputOverride;
+    use surgeist_html::elements::form::HtmlNativeFormAssociationKind;
     let request = crate::HtmlDocumentParseRequest::offline(source, limits(100));
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
     assert_eq!(
@@ -10609,8 +10617,9 @@ fn ordinary_output_values_retain_utf16_and_entity_cr_in_nested_text_but_omit_dat
         .collect();
     units.extend_from_slice(&[0xD800, 0x20, 0xD83D, 0xDE42, 0xDC00, 0]);
     units.extend("</span><!--ignored--><?ok ignored?></output>Z</form>".encode_utf16());
-    let observed =
-        output_native_observation(HtmlSource::utf16(crate::DocumentString::from_utf16(units)));
+    let observed = output_native_observation(HtmlSource::utf16(
+        surgeist_html::values::DocumentString::from_utf16(units),
+    ));
     assert_eq!(
         observed.values,
         vec![vec![
@@ -10923,7 +10932,7 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
         assert_eq!(owner, associated.then(|| form.clone()));
         assert_eq!(
             frozen.form_association_state(&mut c, &input).unwrap().kind,
-            crate::HtmlNativeFormAssociationKind::Input
+            surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input
         );
         let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
         frozen
@@ -12531,7 +12540,7 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
     if let Some((_, Some(fragment_id))) = &template {
         let fragment = document.node(fragment_id).unwrap();
         let host = match fragment.fragment_owner() {
-            Some(crate::HtmlFragmentOwner::Template(id)) => Some(id.clone()),
+            Some(surgeist_html::construction::HtmlFragmentOwner::Template(id)) => Some(id.clone()),
             _ => None,
         };
         let children: Vec<_> = fragment.children().collect();
@@ -12760,7 +12769,7 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
             ));
             pending.extend(document.node(&contents).unwrap().children());
         }
-        if let crate::HtmlNodeKind::Text(text) = node.kind() {
+        if let surgeist_html::construction::HtmlNodeKind::Text(text) = node.kind() {
             texts.push(text.code_units().to_vec());
         }
     }
@@ -12772,7 +12781,9 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
     assert_ne!(templates[0].1, templates[1].1);
     assert_eq!(
         document.node(&templates[0].3).unwrap().kind(),
-        &crate::HtmlNodeKind::Document(crate::HtmlDocumentMode::NoQuirks)
+        &surgeist_html::construction::HtmlNodeKind::Document(
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks
+        )
     );
     texts.sort();
     assert_eq!(texts, vec![vec![65], vec![66], vec![67], vec![90]]);
@@ -14249,11 +14260,14 @@ fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof()
 #[test]
 fn ordinary_text_input_selected_types_foster_in_table_keep_form_and_exact_values() {
     for (kind, expected_type) in [
-        ("text", surgeist_html::HtmlInputType::Text),
-        ("SEARCH", surgeist_html::HtmlInputType::Search),
-        ("tel", surgeist_html::HtmlInputType::Telephone),
-        ("password", surgeist_html::HtmlInputType::Password),
-        ("not-a-type", surgeist_html::HtmlInputType::Text),
+        ("text", surgeist_html::attributes::HtmlInputType::Text),
+        ("SEARCH", surgeist_html::attributes::HtmlInputType::Search),
+        ("tel", surgeist_html::attributes::HtmlInputType::Telephone),
+        (
+            "password",
+            surgeist_html::attributes::HtmlInputType::Password,
+        ),
+        ("not-a-type", surgeist_html::attributes::HtmlInputType::Text),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
@@ -14516,7 +14530,10 @@ fn ordinary_checkbox_same_name_preserves_both_checked_and_external_explicit_form
             Some(form.clone())
         );
         let state = frozen.input_state(&mut c, input).unwrap();
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Checkbox);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Checkbox
+        );
         assert_eq!(state.flags.checkedness(), input != &outside);
         assert!(
             !state.flags.dirty_checkedness()
@@ -14572,8 +14589,8 @@ fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_ev
         usage.resource(R::ManagedCapacityBytes).high_water,
         usage.resource(R::AuxiliaryEntries).high_water,
         usage.resource(R::SourceMapEntries).high_water,
-        std::mem::size_of::<crate::HtmlInputType>(),
-        std::mem::size_of::<crate::HtmlInputFlags>()
+        std::mem::size_of::<surgeist_html::attributes::HtmlInputType>(),
+        std::mem::size_of::<surgeist_html::elements::input::HtmlInputFlags>()
     );
     for resource in [
         R::WorkCredits,
@@ -14686,7 +14703,10 @@ fn ordinary_checkbox_fostered_void_node_retains_current_form_and_unsanitized_val
         Some(form)
     );
     let state = frozen.input_state(&mut c, &input).unwrap();
-    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Checkbox);
+    assert_eq!(
+        state.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Checkbox
+    );
     assert!(state.flags.checkedness());
     assert!(!state.flags.dirty_checkedness() && !state.value_rewritten_during_creation);
     let mut value = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
@@ -15354,7 +15374,7 @@ fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
 
 fn ordinary_input_sanitizer_observes_completed_value(
     raw: &'static str,
-    expected_type: crate::HtmlInputType,
+    expected_type: surgeist_html::attributes::HtmlInputType,
     expected_default: &[u16],
     expected_current: &[u16],
     expected_multiple: bool,
@@ -15512,8 +15532,8 @@ fn ordinary_input_sanitizer_observes_completed_value(
     );
     assert_eq!(local_name, vec![105, 110, 112, 117, 116]);
     let type_units = match expected_type {
-        crate::HtmlInputType::Url => vec![117, 114, 108],
-        crate::HtmlInputType::Email => vec![101, 109, 97, 105, 108],
+        surgeist_html::attributes::HtmlInputType::Url => vec![117, 114, 108],
+        surgeist_html::attributes::HtmlInputType::Email => vec![101, 109, 97, 105, 108],
         _ => panic!("the literal sanitizer fixtures use only URL or Email"),
     };
     let mut expected_attributes = vec![(None, vec![116, 121, 112, 101], type_units)];
@@ -15534,7 +15554,10 @@ fn ordinary_input_sanitizer_observes_completed_value(
     assert_eq!(following_text, vec![90]);
     assert!(owner_is_form && writeback_absent && original_source);
     assert_eq!(actual_type, expected_type);
-    assert_eq!(mode_of_value, crate::HtmlInputValueMode::Value);
+    assert_eq!(
+        mode_of_value,
+        surgeist_html::elements::input::HtmlInputValueMode::Value
+    );
     assert_eq!(flags, (false, false, false, false, false));
     assert_eq!(default_value, expected_default);
     assert_eq!(reference_origins, expected_reference_origins);
@@ -15547,7 +15570,7 @@ fn ordinary_url_strips_newlines_then_boundary_ascii_whitespace_through_eof() {
     // HTML877d #url-state-(type=url): newline removal precedes ASCII trim.
     ordinary_input_sanitizer_observes_completed_value(
         "<!doctype html><form id=f><input type=url value=' &#9;https://e.test/a&#13;b&#10;c&#12; '>Z</form>",
-        crate::HtmlInputType::Url,
+        surgeist_html::attributes::HtmlInputType::Url,
         &[
             32, 9, 104, 116, 116, 112, 115, 58, 47, 47, 101, 46, 116, 101, 115, 116, 47, 97, 13,
             98, 10, 99, 12, 32,
@@ -15570,7 +15593,7 @@ fn ordinary_email_single_strips_newlines_then_boundary_ascii_whitespace_through_
     // HTML877d #email-state-(type=email), when multiple is absent.
     ordinary_input_sanitizer_observes_completed_value(
         "<!doctype html><form id=f><input type=email value=' &#9;a&#13;@b.test&#10;&#12; '>Z</form>",
-        crate::HtmlInputType::Email,
+        surgeist_html::attributes::HtmlInputType::Email,
         &[32, 9, 97, 13, 64, 98, 46, 116, 101, 115, 116, 10, 12, 32],
         &[97, 64, 98, 46, 116, 101, 115, 116],
         false,
@@ -15590,7 +15613,7 @@ fn ordinary_email_multiple_trims_tokens_but_preserves_internal_newline_through_e
     // and c@d.test; the invalid address's internal LF is still retained.
     ordinary_input_sanitizer_observes_completed_value(
         "<!doctype html><form id=f><input type=email multiple=false value=' a&#10;@b.test , &#9;c@d.test '>Z</form>",
-        crate::HtmlInputType::Email,
+        surgeist_html::attributes::HtmlInputType::Email,
         &[
             32, 97, 10, 64, 98, 46, 116, 101, 115, 116, 32, 44, 32, 9, 99, 64, 100, 46, 116, 101,
             115, 116, 32,
@@ -16965,7 +16988,10 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
         assert_eq!(control.stop(), None);
         assert!(owned);
         assert_eq!(state.email_value_count, Some(count), "{value:?}");
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Email);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Email
+        );
         assert!(!state.flags.input_type().is_selectable());
         assert!(!state.flags.dirty_value());
         assert_eq!(current, expected.encode_utf16().collect::<Vec<_>>());
@@ -16974,7 +17000,7 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
 }
 fn ordinary_default_button_input_observes_ordered_values(
     raw: &'static str,
-    expected_type: crate::HtmlInputType,
+    expected_type: surgeist_html::attributes::HtmlInputType,
     type_units: &[u16],
 ) {
     // HTML877d Default mode returns the actual value attribute or empty.
@@ -17145,11 +17171,13 @@ fn ordinary_default_button_input_observes_ordered_values(
         assert_eq!(state.flags.input_type(), expected_type);
         assert_eq!(
             state.flags.input_type().value_mode(),
-            crate::HtmlInputValueMode::Default
+            surgeist_html::elements::input::HtmlInputValueMode::Default
         );
         assert_eq!(
             state.flags.input_type().sanitization(),
-            crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::Preserve)
+            surgeist_html::elements::input::HtmlInputValueSanitization::String(
+                surgeist_html::elements::input::HtmlInputSanitization::Preserve
+            )
         );
         assert!(!state.flags.dirty_value());
         assert!(!state.flags.dirty_checkedness());
@@ -17165,7 +17193,7 @@ fn ordinary_default_button_input_observes_ordered_values(
 fn ordinary_default_button_input_button_preserves_order_and_empty_default_through_eof() {
     ordinary_default_button_input_observes_ordered_values(
         "<!doctype html><form id=f><input type=button value='&#13;&#10;X'><input value='&#13;&#10;X' type=button><input type=button><input type=button value=''>Z</form>",
-        crate::HtmlInputType::Button,
+        surgeist_html::attributes::HtmlInputType::Button,
         &[98, 117, 116, 116, 111, 110],
     );
 }
@@ -17174,7 +17202,7 @@ fn ordinary_default_button_input_button_preserves_order_and_empty_default_throug
 fn ordinary_default_button_input_reset_preserves_order_and_empty_default_through_eof() {
     ordinary_default_button_input_observes_ordered_values(
         "<!doctype html><form id=f><input type=reset value='&#13;&#10;X'><input value='&#13;&#10;X' type=reset><input type=reset><input type=reset value=''>Z</form>",
-        crate::HtmlInputType::Reset,
+        surgeist_html::attributes::HtmlInputType::Reset,
         &[114, 101, 115, 101, 116],
     );
 }
@@ -17183,14 +17211,14 @@ fn ordinary_default_button_input_reset_preserves_order_and_empty_default_through
 fn ordinary_default_button_input_submit_preserves_order_and_empty_default_through_eof() {
     ordinary_default_button_input_observes_ordered_values(
         "<!doctype html><form id=f><input type=submit value='&#13;&#10;X'><input value='&#13;&#10;X' type=submit><input type=submit><input type=submit value=''>Z</form>",
-        crate::HtmlInputType::Submit,
+        surgeist_html::attributes::HtmlInputType::Submit,
         &[115, 117, 98, 109, 105, 116],
     );
 }
 
 fn ordinary_temporal_input_observes_completed_value(
     raw: &str,
-    expected_type: crate::HtmlInputType,
+    expected_type: surgeist_html::attributes::HtmlInputType,
     expected_default: &[u16],
     expected_current: &[u16],
     expected_keyword: &str,
@@ -17359,7 +17387,10 @@ fn ordinary_temporal_input_observes_completed_value(
     assert_eq!(following_text, vec![90]);
     assert!(owner_is_form && writeback_absent && original_source);
     assert_eq!(actual_type, expected_type);
-    assert_eq!(mode_of_value, crate::HtmlInputValueMode::Value);
+    assert_eq!(
+        mode_of_value,
+        surgeist_html::elements::input::HtmlInputValueMode::Value
+    );
     assert_eq!(flags, (false, false, false, false, false));
     assert!(!selectable);
     assert_eq!(default_value, expected_default);
@@ -17383,7 +17414,7 @@ type TemporalInputLiteral<'a> = (
 
 fn ordinary_temporal_input_literal_matrix(
     keyword: &str,
-    input_type: crate::HtmlInputType,
+    input_type: surgeist_html::attributes::HtmlInputType,
     cases: &[TemporalInputLiteral<'_>],
 ) {
     let mut boundaries = Vec::new();
@@ -17413,7 +17444,7 @@ fn ordinary_temporal_input_literal_matrix(
 fn ordinary_temporal_input_date_uses_strict_gregorian_validity_and_keeps_year_spelling() {
     ordinary_temporal_input_literal_matrix(
         "date",
-        crate::HtmlInputType::Date,
+        surgeist_html::attributes::HtmlInputType::Date,
         &[
             ("2024-02-29", "2024-02-29", "2024-02-29", &[]),
             ("2023-02-29", "2023-02-29", "", &[]),
@@ -17433,7 +17464,7 @@ fn ordinary_temporal_input_date_uses_strict_gregorian_validity_and_keeps_year_sp
 fn ordinary_temporal_input_month_preserves_valid_values_and_empties_invalid_months() {
     ordinary_temporal_input_literal_matrix(
         "month",
-        crate::HtmlInputType::Month,
+        surgeist_html::attributes::HtmlInputType::Month,
         &[
             ("2024-12", "2024-12", "2024-12", &[]),
             ("2024-13", "2024-13", "", &[]),
@@ -17446,7 +17477,7 @@ fn ordinary_temporal_input_month_preserves_valid_values_and_empties_invalid_mont
 fn ordinary_temporal_input_week_checks_year_specific_week53_and_uppercase_w() {
     ordinary_temporal_input_literal_matrix(
         "week",
-        crate::HtmlInputType::Week,
+        surgeist_html::attributes::HtmlInputType::Week,
         &[
             ("2020-W53", "2020-W53", "2020-W53", &[]),
             ("2021-W53", "2021-W53", "", &[]),
@@ -17460,7 +17491,7 @@ fn ordinary_temporal_input_week_checks_year_specific_week53_and_uppercase_w() {
 fn ordinary_temporal_input_time_requires_strict_fraction_precision_without_normalizing() {
     ordinary_temporal_input_literal_matrix(
         "time",
-        crate::HtmlInputType::Time,
+        surgeist_html::attributes::HtmlInputType::Time,
         &[
             ("12:34:00.000", "12:34:00.000", "12:34:00.000", &[]),
             ("12:34:56.123", "12:34:56.123", "12:34:56.123", &[]),
@@ -17475,7 +17506,7 @@ fn ordinary_temporal_input_time_requires_strict_fraction_precision_without_norma
 fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time_only() {
     ordinary_temporal_input_literal_matrix(
         "datetime-local",
-        crate::HtmlInputType::LocalDateTime,
+        surgeist_html::attributes::HtmlInputType::LocalDateTime,
         &[
             (
                 "2024-02-29 12:34:00.000",
@@ -17510,9 +17541,9 @@ fn ordinary_temporal_input_local_datetime_normalizes_separator_and_shortest_time
 #[test]
 fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_values_and_owner() {
     for (keyword, kind) in [
-        ("button", crate::HtmlInputType::Button),
-        ("reset", crate::HtmlInputType::Reset),
-        ("submit", crate::HtmlInputType::Submit),
+        ("button", surgeist_html::attributes::HtmlInputType::Button),
+        ("reset", surgeist_html::attributes::HtmlInputType::Reset),
+        ("submit", surgeist_html::attributes::HtmlInputType::Submit),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!(
@@ -17748,8 +17779,14 @@ fn ordinary_number_input_observes_complete(
     );
     assert_eq!(following_text, [90]);
     assert!(owner_is_form && files_empty && writeback_absent && source_qualified);
-    assert_eq!(actual_type, crate::HtmlInputType::Number);
-    assert_eq!(value_mode, crate::HtmlInputValueMode::Value);
+    assert_eq!(
+        actual_type,
+        surgeist_html::attributes::HtmlInputType::Number
+    );
+    assert_eq!(
+        value_mode,
+        surgeist_html::elements::input::HtmlInputValueMode::Value
+    );
     assert!(!selectable);
     assert_eq!(flags, (false, false, false, false, false));
     assert_eq!(default, expected_default);
@@ -17887,7 +17924,7 @@ fn ordinary_number_input_isolated_utf16_surrogate_stays_native_default_and_empti
     raw.extend("'>Z</form>".encode_utf16());
     let keyword: Vec<_> = "number".encode_utf16().collect();
     let boundary = ordinary_number_input_observes_complete(
-        HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+        HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(raw)),
         &[("type", &keyword), ("value", &[49, 0xd800, 50])],
         &[49, 0xd800, 50],
         &[],
@@ -17923,7 +17960,7 @@ fn ordinary_number_input_initial_value_is_not_mandatorily_clamped_or_step_rounde
 // these cases do not infer that premise from scripting or a missing loader.
 fn ordinary_file_image_input_observes_completed_state(
     raw: &str,
-    expected_type: crate::HtmlInputType,
+    expected_type: surgeist_html::attributes::HtmlInputType,
     expected_attributes: &[(&str, &str)],
     expected_default: &str,
     expected_internal: &str,
@@ -18074,7 +18111,7 @@ fn ordinary_file_image_input_observes_completed_state(
     assert!(owner_is_form && original_source);
     assert_eq!(
         association_kind,
-        crate::HtmlNativeFormAssociationKind::Input
+        surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input
     );
     assert_eq!(actual_type, expected_type);
     assert_eq!(flags, (false, false, expected_checked, false, false));
@@ -18139,7 +18176,7 @@ fn ordinary_file_input_empty_selection_keeps_raw_default_and_ordered_internal_va
             attributes,
             ordinary_file_image_input_observes_completed_state(
                 &raw,
-                crate::HtmlInputType::File,
+                surgeist_html::attributes::HtmlInputType::File,
                 native_attributes,
                 default,
                 default,
@@ -18220,7 +18257,7 @@ fn ordinary_offline_image_input_disabled_policy_keeps_default_and_all_src_spelli
             attributes,
             ordinary_file_image_input_observes_completed_state(
                 &raw,
-                crate::HtmlInputType::Image,
+                surgeist_html::attributes::HtmlInputType::Image,
                 native_attributes,
                 value,
                 value,
@@ -18293,7 +18330,10 @@ fn number_input_table_fostering_uses_value_state_and_preserves_form_and_native_d
         ])
     );
     assert_eq!(owner, Some(form));
-    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Number);
+    assert_eq!(
+        state.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Number
+    );
     assert!(!state.flags.input_type().is_selectable());
     assert!(!state.flags.dirty_value() && !state.flags.dirty_checkedness());
     assert!(state.flags.checkedness() && state.selected_files_empty);
@@ -18471,8 +18511,11 @@ fn ordinary_range_input_observes_complete(
     );
     assert_eq!(following_text, [90]);
     assert!(owner_is_form && files_empty && writeback_absent && source_qualified);
-    assert_eq!(actual_type, crate::HtmlInputType::Range);
-    assert_eq!(value_mode, crate::HtmlInputValueMode::Value);
+    assert_eq!(actual_type, surgeist_html::attributes::HtmlInputType::Range);
+    assert_eq!(
+        value_mode,
+        surgeist_html::elements::input::HtmlInputValueMode::Value
+    );
     assert!(!selectable);
     assert_eq!(cursor, 0);
     assert_eq!(flags, (false, false, false, false, false));
@@ -18976,7 +19019,7 @@ fn ordinary_range_input_isolated_utf16_surrogate_stays_native_default_and_genera
     raw.extend("'>Z</form>".encode_utf16());
     let keyword: Vec<_> = "range".encode_utf16().collect();
     let boundary = ordinary_range_input_observes_complete(
-        HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+        HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(raw)),
         &[("type", &keyword), ("value", &[49, 0xd800, 50])],
         &[49, 0xd800, 50],
         &[53, 48],
@@ -19363,6 +19406,7 @@ mod complete_hostile_scan {
         states::HtmlTokenizerQuote,
         token::{HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase},
     };
+    use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
     #[derive(Clone, Copy)]
     enum Scan {
@@ -19826,6 +19870,7 @@ mod complete_hostile_scan {
 
     mod long_numeric_reference {
         use super::*;
+        use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
         const PREFIX: &str = "<!doctype html><p>é&#0;P</p><p>";
 

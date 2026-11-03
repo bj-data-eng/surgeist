@@ -1,6 +1,6 @@
 //! Explicit terminal shared-output tickets. Mutable allocation checks stay exact.
 use super::*;
-use crate::{Attribute, DocumentString, OrderedAttributes};
+use surgeist_html::values::{Attribute, DocumentString, OrderedAttributes};
 
 #[cfg(test)]
 #[derive(Clone, Copy)]
@@ -154,7 +154,7 @@ impl ParseControl {
     }
     pub(crate) fn admit_pool_work(
         &mut self,
-        work: surgeist_html::bounded::HtmlValuePoolWork,
+        work: surgeist_html::bounded::values::HtmlValuePoolWork,
     ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
             (
@@ -417,6 +417,7 @@ impl<T> FinalReleaseError<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::{Attribute, DocumentString, OrderedAttributes};
 
     fn control() -> ParseControl {
         ParseControl::new(
@@ -474,7 +475,11 @@ mod tests {
     #[test]
     fn selected_attribute_ticket_keeps_capacity_and_cannot_reenter_mutable_editing() {
         let values = OrderedAttributes::new([Attribute::new(
-            crate::QualifiedName::new(crate::Namespace::none(), None, "class"),
+            surgeist_html::values::QualifiedName::new(
+                surgeist_html::values::Namespace::none(),
+                None,
+                "class",
+            ),
             "k",
         )])
         .unwrap();

@@ -1,6 +1,7 @@
 //! Freezing and releasing the active session storage.
 
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 impl SessionStorage {
     pub(super) fn prepare_freeze(

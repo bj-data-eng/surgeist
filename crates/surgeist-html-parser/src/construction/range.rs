@@ -1,22 +1,23 @@
 //! Controlled Range arithmetic and generated replacement in the existing owner.
 use super::*;
-use crate::bounded::{
-    BestFiniteNumberCursor, FiniteDecimalIngressCursor, FloatingPointGrammarCursor,
-    FloatingPointParseMode, RangeBufferHeader, RangeLatticeCursor, RangeMidpointCursor,
-    RangeNumericError, RangeNumericHeaders, RangeNumericReply, RangeNumericRequest,
-    RangeScratchRole,
-};
 use crate::keyed::{Table, slots};
-use crate::{HtmlInputNumericContent, HtmlInputNumericStep};
 use provenance::{
     HtmlParseRangeBranch, HtmlParseRangeOperandRole, RangeComputation, RangeOperand,
     RangeOperandTable, RangeOriginal,
 };
+use surgeist_html::attributes::input_bounds::{HtmlInputNumericContent, HtmlInputNumericStep};
+use surgeist_html::bounded::numeric::{
+    HtmlBestFiniteNumberCursor, HtmlFiniteDecimalIngressCursor, HtmlFloatingPointGrammarCursor,
+    HtmlFloatingPointParseMode, HtmlRangeBufferHeader, HtmlRangeLatticeCursor,
+    HtmlRangeMidpointCursor, HtmlRangeNumericError, HtmlRangeNumericHeaders, HtmlRangeNumericReply,
+    HtmlRangeNumericRequest, HtmlRangeScratchRole,
+};
+use surgeist_html::construction::HtmlNodeKind;
 
 const SCRATCH_COUNT: usize = 8;
-/// One scratch value per [`RangeScratchRole`]; a lookup cannot be out of range.
-type ScratchTable<T> = Table<RangeScratchRole, T, SCRATCH_COUNT>;
-slots!(RangeScratchRole, SCRATCH_COUNT, {
+/// One scratch value per [`HtmlRangeScratchRole`]; a lookup cannot be out of range.
+type ScratchTable<T> = Table<HtmlRangeScratchRole, T, SCRATCH_COUNT>;
+slots!(HtmlRangeScratchRole, SCRATCH_COUNT, {
     Coefficient => 0,
     Lower => 1,
     Upper => 2,
@@ -34,8 +35,8 @@ slots!(RangeScratchRole, SCRATCH_COUNT, {
 const _: () = {
     let mut i = 0;
     while i < SCRATCH_COUNT {
-        assert!(RangeScratchRole::ALL[i].index() == i);
-        assert!(RangeScratchRole::ALL[i] as usize == i);
+        assert!(HtmlRangeScratchRole::ALL[i].index() == i);
+        assert!(HtmlRangeScratchRole::ALL[i] as usize == i);
         i += 1;
     }
 };
@@ -64,13 +65,13 @@ enum MachineKind {
 #[derive(Clone, Copy, Debug)]
 struct Machine {
     kind: MachineKind,
-    ingress: Option<FiniteDecimalIngressCursor>,
-    best: Option<BestFiniteNumberCursor>,
-    lattice: Option<RangeLatticeCursor>,
-    midpoint: Option<RangeMidpointCursor>,
+    ingress: Option<HtmlFiniteDecimalIngressCursor>,
+    best: Option<HtmlBestFiniteNumberCursor>,
+    lattice: Option<HtmlRangeLatticeCursor>,
+    midpoint: Option<HtmlRangeMidpointCursor>,
 }
 impl Machine {
-    fn ingress(cursor: FiniteDecimalIngressCursor) -> Self {
+    fn ingress(cursor: HtmlFiniteDecimalIngressCursor) -> Self {
         Self {
             kind: MachineKind::Ingress,
             ingress: Some(cursor),
@@ -79,7 +80,7 @@ impl Machine {
             midpoint: None,
         }
     }
-    fn best(cursor: BestFiniteNumberCursor) -> Self {
+    fn best(cursor: HtmlBestFiniteNumberCursor) -> Self {
         Self {
             kind: MachineKind::Best,
             ingress: None,
@@ -88,7 +89,7 @@ impl Machine {
             midpoint: None,
         }
     }
-    fn lattice(cursor: RangeLatticeCursor) -> Self {
+    fn lattice(cursor: HtmlRangeLatticeCursor) -> Self {
         Self {
             kind: MachineKind::Lattice,
             ingress: None,
@@ -97,7 +98,7 @@ impl Machine {
             midpoint: None,
         }
     }
-    fn midpoint(cursor: RangeMidpointCursor) -> Self {
+    fn midpoint(cursor: HtmlRangeMidpointCursor) -> Self {
         Self {
             kind: MachineKind::Midpoint,
             ingress: None,
@@ -106,7 +107,7 @@ impl Machine {
             midpoint: Some(cursor),
         }
     }
-    fn request(&self) -> Option<RangeNumericRequest> {
+    fn request(&self) -> Option<HtmlRangeNumericRequest> {
         match self.kind {
             MachineKind::Ingress => self.ingress.as_ref()?.request(),
             MachineKind::Best => self.best.as_ref()?.request(),
@@ -114,45 +115,45 @@ impl Machine {
             MachineKind::Midpoint => self.midpoint.as_ref()?.request(),
         }
     }
-    fn headers(&self) -> Option<RangeNumericHeaders> {
+    fn headers(&self) -> Option<HtmlRangeNumericHeaders> {
         match self.kind {
             MachineKind::Ingress => self
                 .ingress
                 .as_ref()
-                .map(FiniteDecimalIngressCursor::headers),
-            MachineKind::Best => self.best.as_ref().map(BestFiniteNumberCursor::headers),
+                .map(HtmlFiniteDecimalIngressCursor::headers),
+            MachineKind::Best => self.best.as_ref().map(HtmlBestFiniteNumberCursor::headers),
             _ => None,
         }
     }
     fn receiver_bytes(&self) -> usize {
         match self.kind {
-            MachineKind::Ingress => mem::size_of::<FiniteDecimalIngressCursor>(),
-            MachineKind::Best => mem::size_of::<BestFiniteNumberCursor>(),
-            MachineKind::Lattice => mem::size_of::<RangeLatticeCursor>(),
-            MachineKind::Midpoint => mem::size_of::<RangeMidpointCursor>(),
+            MachineKind::Ingress => mem::size_of::<HtmlFiniteDecimalIngressCursor>(),
+            MachineKind::Best => mem::size_of::<HtmlBestFiniteNumberCursor>(),
+            MachineKind::Lattice => mem::size_of::<HtmlRangeLatticeCursor>(),
+            MachineKind::Midpoint => mem::size_of::<HtmlRangeMidpointCursor>(),
         }
     }
-    fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         match self.kind {
             MachineKind::Ingress => self
                 .ingress
                 .as_mut()
-                .ok_or(RangeNumericError::Integrity)?
+                .ok_or(HtmlRangeNumericError::Integrity)?
                 .reply(reply),
             MachineKind::Best => self
                 .best
                 .as_mut()
-                .ok_or(RangeNumericError::Integrity)?
+                .ok_or(HtmlRangeNumericError::Integrity)?
                 .reply(reply),
             MachineKind::Lattice => self
                 .lattice
                 .as_mut()
-                .ok_or(RangeNumericError::Integrity)?
+                .ok_or(HtmlRangeNumericError::Integrity)?
                 .reply(reply),
             MachineKind::Midpoint => self
                 .midpoint
                 .as_mut()
-                .ok_or(RangeNumericError::Integrity)?
+                .ok_or(HtmlRangeNumericError::Integrity)?
                 .reply(reply),
         }
     }
@@ -171,7 +172,7 @@ impl RangeStaging {
     }
     #[cfg(test)]
     pub(super) fn right_cache_extent(&self) -> (usize, usize) {
-        let buffer = self.buffers.get(RangeScratchRole::Right);
+        let buffer = self.buffers.get(HtmlRangeScratchRole::Right);
         (buffer.len(), buffer.capacity())
     }
     #[cfg(test)]
@@ -182,13 +183,15 @@ impl RangeStaging {
         &[u8],
         usize,
         usize,
-        Option<&FiniteDecimalIngressCursor>,
+        Option<&HtmlFiniteDecimalIngressCursor>,
     ) {
         (
             self.source,
-            self.buffers.get(RangeScratchRole::Coefficient).as_slice(),
-            self.buffers.get(RangeScratchRole::Right).len(),
-            self.buffers.get(RangeScratchRole::Trial).len(),
+            self.buffers
+                .get(HtmlRangeScratchRole::Coefficient)
+                .as_slice(),
+            self.buffers.get(HtmlRangeScratchRole::Right).len(),
+            self.buffers.get(HtmlRangeScratchRole::Trial).len(),
             self.machine
                 .as_ref()
                 .and_then(|machine| machine.ingress.as_ref()),
@@ -221,11 +224,11 @@ impl RangeStaging {
         }
         Ok(())
     }
-    fn headers(&self, c: &mut ParseControl) -> Result<RangeNumericHeaders, SessionError> {
+    fn headers(&self, c: &mut ParseControl) -> Result<HtmlRangeNumericHeaders, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 9)?;
         c.charge(
             HtmlParseWorkCategory::CopyByte,
-            mem::size_of::<RangeNumericHeaders>() as u64,
+            mem::size_of::<HtmlRangeNumericHeaders>() as u64,
         )?;
         // An actual non-ZST Vec obeys the header's allocation invariants; a
         // violation is reported as the capacity-mismatch stop.
@@ -233,10 +236,10 @@ impl RangeStaging {
             c: &mut ParseControl,
             len: usize,
             capacity: usize,
-        ) -> Result<RangeBufferHeader, SessionError> {
-            RangeBufferHeader::new(len, capacity).map_err(|error| numeric_failure(c, error))
+        ) -> Result<HtmlRangeBufferHeader, SessionError> {
+            HtmlRangeBufferHeader::new(len, capacity).map_err(|error| numeric_failure(c, error))
         }
-        let mut buffers = [RangeBufferHeader::default(); SCRATCH_COUNT];
+        let mut buffers = [HtmlRangeBufferHeader::default(); SCRATCH_COUNT];
         for (header, buffer) in buffers.iter_mut().zip(self.buffers.as_array()) {
             *header = actual_header(c, buffer.len(), buffer.capacity())?;
         }
@@ -244,18 +247,18 @@ impl RangeStaging {
             Some(output) => actual_header(c, output.len(), output.capacity())?,
             None => actual_header(c, 0, 0)?,
         };
-        Ok(RangeNumericHeaders::new(buffers, output))
+        Ok(HtmlRangeNumericHeaders::new(buffers, output))
     }
     fn scratch_empty(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        for role in RangeScratchRole::ALL {
+        for role in HtmlRangeScratchRole::ALL {
             while self.buffers.get_mut(role).try_pop(c)?.is_some() {}
         }
         Ok(())
     }
 }
-fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionError {
+fn numeric_failure(c: &mut ParseControl, error: HtmlRangeNumericError) -> SessionError {
     match error {
-        RangeNumericError::Representation => c
+        HtmlRangeNumericError::Representation => c
             .stop_representation(HtmlParseResource::AuxiliaryEntries)
             .into(),
         _ => integrity(c),
@@ -285,7 +288,7 @@ impl SessionStorage {
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
                 const {
-                    (mem::size_of::<Option<RangeNumericRequest>>()
+                    (mem::size_of::<Option<HtmlRangeNumericRequest>>()
                         + mem::size_of::<MachineKind>()
                         + mem::size_of::<usize>()) as u64
                 },
@@ -310,145 +313,148 @@ impl SessionStorage {
                 }
                 return Ok(());
             };
-            payload_write::<RangeNumericRequest>(c, 1)?;
-            let reply = match request {
-                RangeNumericRequest::SourceUnit { index } => {
-                    let source = stage.source;
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    c.charge_unit_inspection()?;
-                    let unit = admitted_input_string(&self.payloads, c, source)?
-                        .code_units()
-                        .get(index)
-                        .copied()
-                        .ok_or_else(|| integrity(c))?;
-                    RangeNumericReply::Unit(unit)
-                }
-                RangeNumericRequest::ReadCells { cells } => {
-                    let mut read = [None; 3];
-                    for (out, cell) in read.iter_mut().zip(cells) {
-                        if let Some(cell) = cell {
-                            let buffer = stage.buffers.get(cell.role());
-                            buffer.require_disposal_owner(c)?;
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                            c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
-                            *out = Some(
-                                *buffer
-                                    .as_slice()
-                                    .get(cell.index())
-                                    .ok_or_else(|| integrity(c))?,
-                            );
-                        }
-                    }
-                    RangeNumericReply::Cells(read)
-                }
-                RangeNumericRequest::Reserve { role, required_len } => {
-                    let stage = self.range_stage(c)?;
-                    let buffer = stage.buffers.get_mut(role);
-                    let additional = required_len
-                        .checked_sub(buffer.len())
-                        .ok_or_else(|| integrity(c))?;
-                    buffer.reserve_geometric(c, additional)?;
-                    RangeNumericReply::Reserved {
-                        actual_capacity: buffer.capacity(),
-                        actual_len: buffer.len(),
-                    }
-                }
-                RangeNumericRequest::AppendCell { role, value } => {
-                    let stage = self.range_stage(c)?;
-                    let buffer = stage.buffers.get_mut(role);
-                    if value > 9 || buffer.len() == buffer.capacity() {
-                        return Err(integrity(c));
-                    }
-                    buffer.try_push(c, value)?;
-                    // Test scheduling only: the original token is cancelled after
-                    // this actual admitted cell commit; normal reply admission polls.
-                    #[cfg(test)]
-                    {
+            payload_write::<HtmlRangeNumericRequest>(c, 1)?;
+            let reply =
+                match request {
+                    HtmlRangeNumericRequest::SourceUnit { index } => {
+                        let source = stage.source;
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        c.charge(
-                            HtmlParseWorkCategory::InspectByte,
-                            mem::size_of::<
-                                Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>,
-                            >() as u64,
-                        )?;
-                        if self
-                            .cancel_after_range_append
-                            .as_ref()
-                            .is_some_and(|(selected, _)| {
-                                selected.is_none_or(|target| target == role)
-                            })
-                        {
-                            payload_write::<
-                                Option<(Option<RangeScratchRole>, crate::HtmlParseCancellation)>,
-                            >(c, 1)?;
-                            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                            if let Some((_, token)) = self.cancel_after_range_append.take() {
-                                token.cancel();
+                        c.charge_unit_inspection()?;
+                        let unit = admitted_input_string(&self.payloads, c, source)?
+                            .code_units()
+                            .get(index)
+                            .copied()
+                            .ok_or_else(|| integrity(c))?;
+                        HtmlRangeNumericReply::Unit(unit)
+                    }
+                    HtmlRangeNumericRequest::ReadCells { cells } => {
+                        let mut read = [None; 3];
+                        for (out, cell) in read.iter_mut().zip(cells) {
+                            if let Some(cell) = cell {
+                                let buffer = stage.buffers.get(cell.role());
+                                buffer.require_disposal_owner(c)?;
+                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                                c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
+                                *out = Some(
+                                    *buffer
+                                        .as_slice()
+                                        .get(cell.index())
+                                        .ok_or_else(|| integrity(c))?,
+                                );
                             }
                         }
+                        HtmlRangeNumericReply::Cells(read)
                     }
-                    RangeNumericReply::Ack
-                }
-                RangeNumericRequest::WriteCell { cell, value } => {
-                    let stage = self.range_stage(c)?;
-                    if value > 9 {
-                        return Err(integrity(c));
+                    HtmlRangeNumericRequest::Reserve { role, required_len } => {
+                        let stage = self.range_stage(c)?;
+                        let buffer = stage.buffers.get_mut(role);
+                        let additional = required_len
+                            .checked_sub(buffer.len())
+                            .ok_or_else(|| integrity(c))?;
+                        buffer.reserve_geometric(c, additional)?;
+                        HtmlRangeNumericReply::Reserved {
+                            actual_capacity: buffer.capacity(),
+                            actual_len: buffer.len(),
+                        }
                     }
-                    payload_write::<u8>(c, 1)?;
-                    *stage
-                        .buffers
-                        .get_mut(cell.role())
-                        .get_mut(cell.index(), c)?
-                        .ok_or_else(|| integrity(c))? = value;
-                    RangeNumericReply::Ack
-                }
-                RangeNumericRequest::PopCell { role } => {
-                    if self
-                        .range_stage(c)?
-                        .buffers
-                        .get_mut(role)
-                        .try_pop(c)?
-                        .is_none()
-                    {
-                        return Err(integrity(c));
+                    HtmlRangeNumericRequest::AppendCell { role, value } => {
+                        let stage = self.range_stage(c)?;
+                        let buffer = stage.buffers.get_mut(role);
+                        if value > 9 || buffer.len() == buffer.capacity() {
+                            return Err(integrity(c));
+                        }
+                        buffer.try_push(c, value)?;
+                        // Test scheduling only: the original token is cancelled after
+                        // this actual admitted cell commit; normal reply admission polls.
+                        #[cfg(test)]
+                        {
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                            c.charge(
+                                HtmlParseWorkCategory::InspectByte,
+                                mem::size_of::<
+                                    Option<(
+                                        Option<HtmlRangeScratchRole>,
+                                        crate::HtmlParseCancellation,
+                                    )>,
+                                >() as u64,
+                            )?;
+                            if self.cancel_after_range_append.as_ref().is_some_and(
+                                |(selected, _)| selected.is_none_or(|target| target == role),
+                            ) {
+                                payload_write::<
+                                    Option<(
+                                        Option<HtmlRangeScratchRole>,
+                                        crate::HtmlParseCancellation,
+                                    )>,
+                                >(c, 1)?;
+                                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                                if let Some((_, token)) = self.cancel_after_range_append.take() {
+                                    token.cancel();
+                                }
+                            }
+                        }
+                        HtmlRangeNumericReply::Ack
                     }
-                    RangeNumericReply::Ack
-                }
-                RangeNumericRequest::ScalarStep => {
-                    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
-                    RangeNumericReply::Ack
-                }
-                RangeNumericRequest::ReserveOutput { required_len } => {
-                    let output = self
-                        .range_stage(c)?
-                        .output
-                        .as_mut()
-                        .ok_or_else(|| integrity(c))?;
-                    let additional = required_len
-                        .checked_sub(output.len())
-                        .ok_or_else(|| integrity(c))?;
-                    output.reserve_units(c, additional)?;
-                    RangeNumericReply::OutputReserved {
-                        actual_capacity: output.capacity(),
-                        actual_len: output.len(),
+                    HtmlRangeNumericRequest::WriteCell { cell, value } => {
+                        let stage = self.range_stage(c)?;
+                        if value > 9 {
+                            return Err(integrity(c));
+                        }
+                        payload_write::<u8>(c, 1)?;
+                        *stage
+                            .buffers
+                            .get_mut(cell.role())
+                            .get_mut(cell.index(), c)?
+                            .ok_or_else(|| integrity(c))? = value;
+                        HtmlRangeNumericReply::Ack
                     }
-                }
-                RangeNumericRequest::EmitUnit { unit } => {
-                    let output = self
-                        .range_stage(c)?
-                        .output
-                        .as_mut()
-                        .ok_or_else(|| integrity(c))?;
-                    if output.len() == output.capacity() {
-                        return Err(integrity(c));
+                    HtmlRangeNumericRequest::PopCell { role } => {
+                        if self
+                            .range_stage(c)?
+                            .buffers
+                            .get_mut(role)
+                            .try_pop(c)?
+                            .is_none()
+                        {
+                            return Err(integrity(c));
+                        }
+                        HtmlRangeNumericReply::Ack
                     }
-                    output.push_unit(unit, c)?;
-                    RangeNumericReply::Ack
-                }
-            };
+                    HtmlRangeNumericRequest::ScalarStep => {
+                        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+                        HtmlRangeNumericReply::Ack
+                    }
+                    HtmlRangeNumericRequest::ReserveOutput { required_len } => {
+                        let output = self
+                            .range_stage(c)?
+                            .output
+                            .as_mut()
+                            .ok_or_else(|| integrity(c))?;
+                        let additional = required_len
+                            .checked_sub(output.len())
+                            .ok_or_else(|| integrity(c))?;
+                        output.reserve_units(c, additional)?;
+                        HtmlRangeNumericReply::OutputReserved {
+                            actual_capacity: output.capacity(),
+                            actual_len: output.len(),
+                        }
+                    }
+                    HtmlRangeNumericRequest::EmitUnit { unit } => {
+                        let output = self
+                            .range_stage(c)?
+                            .output
+                            .as_mut()
+                            .ok_or_else(|| integrity(c))?;
+                        if output.len() == output.capacity() {
+                            return Err(integrity(c));
+                        }
+                        output.push_unit(unit, c)?;
+                        HtmlRangeNumericReply::Ack
+                    }
+                };
             // The actual fixed receiver is copied transactionally by reply.
             // No primitive receiver makes a second nested transaction copy.
-            payload_write::<RangeNumericReply>(c, 1)?;
+            payload_write::<HtmlRangeNumericReply>(c, 1)?;
             let receiver = self
                 .range_stage(c)?
                 .machine
@@ -478,7 +484,7 @@ impl SessionStorage {
                     c.charge(
                         HtmlParseWorkCategory::InspectByte,
                         (mem::size_of::<MachineKind>()
-                            + mem::size_of::<RangeNumericRequest>()
+                            + mem::size_of::<HtmlRangeNumericRequest>()
                             + 2 * mem::size_of::<usize>()) as u64,
                     )?;
                     let ingress = matches!(
@@ -495,7 +501,7 @@ impl SessionStorage {
                     if ingress {
                         let stage = self.effects.range.as_ref().unwrap();
                         let source = stage.source;
-                        let coefficient = stage.buffers.get(RangeScratchRole::Coefficient);
+                        let coefficient = stage.buffers.get(HtmlRangeScratchRole::Coefficient);
                         coefficient.require_disposal_owner(c)?;
                         let one_cell = coefficient.len() == 1;
                         let raw = admitted_input_string(&self.payloads, c, source)?;
@@ -512,13 +518,13 @@ impl SessionStorage {
                             let observer = self.cancel_after_range_ingress.as_mut().unwrap();
                             let folded_one_cell = matches!(
                                 request,
-                                RangeNumericRequest::ReadCells {
+                                HtmlRangeNumericRequest::ReadCells {
                                     cells: [
                                         Some(cell),
                                         None,
                                         None
                                     ]
-                                } if cell.role() == RangeScratchRole::Coefficient && cell.index() == 0
+                                } if cell.role() == HtmlRangeScratchRole::Coefficient && cell.index() == 0
                             );
                             let cancel = if folded_one_cell {
                                 match observer.point {
@@ -530,7 +536,7 @@ impl SessionStorage {
                                         false
                                     }
                                 }
-                            } else if matches!(request, RangeNumericRequest::ScalarStep)
+                            } else if matches!(request, HtmlRangeNumericRequest::ScalarStep)
                                 && observer.scalars_after_fold > 0
                             {
                                 observer.scalars_after_fold -= 1;
@@ -556,13 +562,13 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         source: usize,
-        mode: FloatingPointParseMode,
+        mode: HtmlFloatingPointParseMode,
     ) -> Result<(bool, Option<u64>), SessionError> {
         let parts = {
             let raw = admitted_input_string(&self.payloads, c, source)?;
-            c.admit_atomic_layout(mem::size_of::<FloatingPointGrammarCursor<'_>>())?;
-            payload_write::<FloatingPointGrammarCursor<'_>>(c, 1)?;
-            let mut grammar = FloatingPointGrammarCursor::new(raw.code_units(), mode);
+            c.admit_atomic_layout(mem::size_of::<HtmlFloatingPointGrammarCursor<'_>>())?;
+            payload_write::<HtmlFloatingPointGrammarCursor<'_>>(c, 1)?;
+            let mut grammar = HtmlFloatingPointGrammarCursor::new(raw.code_units(), mode);
             while !grammar.is_finished() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 if grammar.inspects_unit() {
@@ -570,22 +576,22 @@ impl SessionStorage {
                 }
                 c.charge(
                     HtmlParseWorkCategory::CopyByte,
-                    mem::size_of::<FloatingPointGrammarCursor<'_>>() as u64,
+                    mem::size_of::<HtmlFloatingPointGrammarCursor<'_>>() as u64,
                 )?;
                 grammar.advance();
             }
             if !grammar.is_valid() {
                 return Ok((false, None));
             }
-            payload_write::<surgeist_html::bounded::RangeDecimalParts>(c, 1)?;
+            payload_write::<surgeist_html::bounded::numeric::HtmlRangeDecimalParts>(c, 1)?;
             grammar.range_decimal_parts().map_err(|_| integrity(c))?
         };
         let source_len = admitted_input_string(&self.payloads, c, source)?.len();
         let stage = self.range_stage(c)?;
         stage.scratch_empty(c)?;
         let headers = stage.headers(c)?;
-        payload_write::<FiniteDecimalIngressCursor>(c, 1)?;
-        let cursor = FiniteDecimalIngressCursor::new(parts, source_len, headers)
+        payload_write::<HtmlFiniteDecimalIngressCursor>(c, 1)?;
+        let cursor = HtmlFiniteDecimalIngressCursor::new(parts, source_len, headers)
             .map_err(|error| numeric_failure(c, error))?;
         payload_write::<Option<Machine>>(c, 1)?;
         stage.source = source;
@@ -601,7 +607,7 @@ impl SessionStorage {
         };
         match cursor.result().ok_or_else(|| integrity(c))? {
             Ok(bits) => Ok((true, Some(bits))),
-            Err(RangeNumericError::Overflow) => Ok((true, None)),
+            Err(HtmlRangeNumericError::Overflow) => Ok((true, None)),
             Err(_) => Err(integrity(c)),
         }
     }
@@ -640,12 +646,14 @@ impl SessionStorage {
             return Ok((HtmlInputNumericContent::Absent, RangeOperand::Absent));
         };
         let edge = self.range_payload_edge(c, slot)?;
-        let (_, value) = self.range_parse(c, slot, FloatingPointParseMode::Recovery)?;
+        let (_, value) = self.range_parse(c, slot, HtmlFloatingPointParseMode::Recovery)?;
         match value {
             Some(bits) => Ok((
                 HtmlInputNumericContent::Value(
-                    crate::HtmlFloatingPointNumber::try_from(f64::from_bits(bits))
-                        .map_err(|_| integrity(c))?,
+                    surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber::try_from(
+                        f64::from_bits(bits),
+                    )
+                    .map_err(|_| integrity(c))?,
                 ),
                 RangeOperand::Finite(edge),
             )),
@@ -665,7 +673,7 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         let previous = self.input_raw_slot(c, slot)?;
         let state = self.read_input_state(c, slot)?;
-        if state.flags.input_type() != crate::HtmlInputType::Range {
+        if state.flags.input_type() != surgeist_html::attributes::HtmlInputType::Range {
             return Err(SessionError::InputMetadataUnavailable);
         }
         self.range_payload_edge(c, source)?;
@@ -709,7 +717,7 @@ impl SessionStorage {
         slot: usize,
         source: usize,
     ) -> Result<(), SessionError> {
-        use crate::bounded::{
+        use surgeist_html::bounded::input::{
             HtmlInputRangeNumber, HtmlInputRangeReplacement as B,
             HtmlInputRangeSanitizationAction as A, HtmlInputRangeSanitizationCursor,
             HtmlInputRangeSanitizationReply as R, HtmlInputRangeValue,
@@ -730,7 +738,7 @@ impl SessionStorage {
         } else {
             RangeOriginal::Group(source_edge)
         };
-        let (valid, value) = self.range_parse(c, source, FloatingPointParseMode::Author)?;
+        let (valid, value) = self.range_parse(c, source, HtmlFloatingPointParseMode::Author)?;
         let (min, min_operand) = self.range_content(c, node, "min")?;
         let (max, max_operand) = self.range_content(c, node, "max")?;
         let mut operands = RangeOperandTable::new([
@@ -761,8 +769,8 @@ impl SessionStorage {
             payload_write::<A>(c, 1)?;
             let reply = match policy.action() {
                 A::Midpoint { minimum, maximum } => {
-                    payload_write::<RangeMidpointCursor>(c, 1)?;
-                    let cursor = RangeMidpointCursor::new(
+                    payload_write::<HtmlRangeMidpointCursor>(c, 1)?;
+                    let cursor = HtmlRangeMidpointCursor::new(
                         minimum.value().to_bits(),
                         maximum.value().to_bits(),
                     )
@@ -788,12 +796,12 @@ impl SessionStorage {
                 A::Replace { value, branch } => {
                     let step = branch == B::StepCorrection;
                     payload_write::<(
-                        crate::HtmlInputNumericBoundOrigin,
-                        crate::HtmlInputNumericBoundOrigin,
+                        surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin,
+                        surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin,
                     )>(c, 1)?;
                     let (minimum, maximum) = policy.bound_origins();
                     let (step_origin, base_origin) = if step {
-                        payload_write::<Option<crate::HtmlInputNumericConstraints>>(c, 1)?;
+                        payload_write::<Option<surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints>>(c, 1)?;
                         let constraints = policy.constraints().ok_or_else(|| integrity(c))?;
                         (
                             Some(constraints.step_origin()),
@@ -858,14 +866,17 @@ impl SessionStorage {
                                 RangeOperand::Any(edge);
                             HtmlInputNumericStep::Any
                         } else {
-                            let (_, result) =
-                                self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
+                            let (_, result) = self.range_parse(
+                                c,
+                                step_slot,
+                                HtmlFloatingPointParseMode::Recovery,
+                            )?;
                             match result {
                                 Some(bits) => {
                                     *operands.get_mut(HtmlParseRangeOperandRole::Step) =
                                         RangeOperand::Finite(edge);
                                     HtmlInputNumericStep::Value(
-                                        crate::HtmlFloatingPointNumber::try_from(f64::from_bits(
+                                        surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber::try_from(f64::from_bits(
                                             bits,
                                         ))
                                         .map_err(|_| integrity(c))?,
@@ -896,8 +907,8 @@ impl SessionStorage {
                     base,
                     step,
                 } => {
-                    payload_write::<RangeLatticeCursor>(c, 1)?;
-                    let cursor = RangeLatticeCursor::new(
+                    payload_write::<HtmlRangeLatticeCursor>(c, 1)?;
+                    let cursor = HtmlRangeLatticeCursor::new(
                         current.value().to_bits(),
                         minimum.value().to_bits(),
                         maximum.map(|value| value.value().to_bits()),
@@ -963,8 +974,8 @@ impl SessionStorage {
         let stage = self.range_stage(c)?;
         stage.scratch_empty(c)?;
         let headers = stage.headers(c)?;
-        payload_write::<BestFiniteNumberCursor>(c, 1)?;
-        let cursor = BestFiniteNumberCursor::new(f64::from_bits(bits), headers)
+        payload_write::<HtmlBestFiniteNumberCursor>(c, 1)?;
+        let cursor = HtmlBestFiniteNumberCursor::new(f64::from_bits(bits), headers)
             .map_err(|error| numeric_failure(c, error))?;
         payload_write::<Option<Machine>>(c, 1)?;
         stage.machine = Some(Machine::best(cursor));

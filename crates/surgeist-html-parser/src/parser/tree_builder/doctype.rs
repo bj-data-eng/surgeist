@@ -11,12 +11,12 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf. The governing HTML
 // 877d6146487f15b15bc8dd0e3c625063a37b456a supplies the prologue conditions.
 
-use crate::HtmlDocumentMode;
 use crate::parser::{
     control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl},
     tokenizer::token::{Doctype, Text},
 };
-use surgeist_html::bounded::ascii_case_insensitive_unit;
+use surgeist_html::bounded::lexical::ascii_case_insensitive_unit;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DoctypeDecision {

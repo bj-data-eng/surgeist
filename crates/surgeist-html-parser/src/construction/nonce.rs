@@ -1,5 +1,11 @@
 //! Independent owned nonce slot, with the original parser control and registry.
 use super::*;
+#[cfg(test)]
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    construction::{HtmlFragmentOwner, HtmlNodeKind},
+    values::{Attribute, Namespace, QualifiedName},
+};
 
 impl SessionStorage {
     pub(super) fn prepare_nonce(
@@ -12,9 +18,9 @@ impl SessionStorage {
         };
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        if !surgeist_html::bounded::is_nonce_element(name) {
+        if !surgeist_html::bounded::security::is_nonce_element(name) {
             return Ok(None);
         }
         let empty = literal_string(c, b"")?;
@@ -97,7 +103,7 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
         let HtmlNodeKind::Element(element) = &self
             .construction
@@ -113,12 +119,12 @@ impl SessionStorage {
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         if matches!(
-            crate::nonce_attribute_change(
+            surgeist_html::security::nonce::nonce_attribute_change(
                 element.name(),
                 attribute.name(),
                 Some(attribute.value())
             ),
-            crate::HtmlNonceAttributeEffect::Ignore
+            surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
         ) {
             return Ok(());
         }
@@ -150,8 +156,16 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
-        use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
+    ) -> Result<
+        (
+            surgeist_html::security::nonce::HtmlNonceConnection,
+            surgeist_html::security::nonce::HtmlHeaderDeliveredCsp,
+        ),
+        SessionError,
+    > {
+        use surgeist_html::security::nonce::{
+            HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C,
+        };
         let mut root = self.ordinary_root(c, node, None)?;
         for _ in 0..self.construction.storage(c)?.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -217,8 +231,16 @@ impl SessionStorage {
         &self,
         c: &mut ParseControl,
         host: &crate::HtmlCaptureElementId,
-    ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
-        use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
+    ) -> Result<
+        (
+            surgeist_html::security::nonce::HtmlNonceConnection,
+            surgeist_html::security::nonce::HtmlHeaderDeliveredCsp,
+        ),
+        SessionError,
+    > {
+        use surgeist_html::security::nonce::{
+            HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C,
+        };
         let document = match self.captured_shadow_including_document(c, host) {
             Ok(Some(document)) => document,
             Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
@@ -230,9 +252,15 @@ impl SessionStorage {
         let environment = document.nonce_environment();
         Ok((
             match environment.browsing_context() {
-                crate::HtmlBrowsingContextPresence::Absent => C::NotBrowsingContextConnected,
-                crate::HtmlBrowsingContextPresence::Present => C::BrowsingContextConnected,
-                crate::HtmlBrowsingContextPresence::Unavailable => C::Unavailable,
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent => {
+                    C::NotBrowsingContextConnected
+                }
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present => {
+                    C::BrowsingContextConnected
+                }
+                surgeist_html::security::nonce::HtmlBrowsingContextPresence::Unavailable => {
+                    C::Unavailable
+                }
             },
             environment.header_delivered_csp(),
         ))
@@ -319,15 +347,15 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
-                surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+                surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
             if !matches!(
-                crate::nonce_attribute_change(
+                surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
                     Some(attribute.value())
                 ),
-                crate::HtmlNonceAttributeEffect::Ignore
+                surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
             ) {
                 if attribute.value().is_empty() {
                     return Ok(());
@@ -342,28 +370,28 @@ impl SessionStorage {
         let (connection, policy) = self.nonce_environment(c, node)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
         let element = element_record(&self.construction, c, node)?;
         let attribute = element_attribute(&self.construction, c, node, position)?;
-        match crate::nonce_insertion_effect(
+        match surgeist_html::security::nonce::nonce_insertion_effect(
             element.name(),
             Some(attribute.value()),
             connection,
             policy,
         ) {
-            crate::HtmlNonceInsertionEffect::KeepContent => Ok(()),
-            crate::HtmlNonceInsertionEffect::Unavailable(fact) => {
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::KeepContent => Ok(()),
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::Unavailable(fact) => {
                 Err(SessionError::ContextFactUnavailable(match fact {
-                    crate::HtmlNonceMissing::Connection => {
+                    surgeist_html::security::nonce::HtmlNonceMissing::Connection => {
                         crate::HtmlCaptureFact::BrowsingContextConnection
                     }
-                    crate::HtmlNonceMissing::HeaderDeliveredCsp => {
+                    surgeist_html::security::nonce::HtmlNonceMissing::HeaderDeliveredCsp => {
                         crate::HtmlCaptureFact::HeaderDeliveredCsp
                     }
                 }))
             }
-            crate::HtmlNonceInsertionEffect::HideContentPreservingSlot => {
+            surgeist_html::security::nonce::HtmlNonceInsertionEffect::HideContentPreservingSlot => {
                 let (slot, prior) = self
                     .nonce_slot(c, node)?
                     .ok_or(SessionError::NonceMetadataUnavailable)?;
@@ -581,9 +609,9 @@ impl SessionStorage {
         };
         c.charge(
             HtmlParseWorkCategory::InspectByte,
-            surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+            surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        if !surgeist_html::bounded::is_nonce_element(element.name()) {
+        if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
@@ -591,15 +619,15 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
-                surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+                surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
             if !matches!(
-                crate::nonce_attribute_change(
+                surgeist_html::security::nonce::nonce_attribute_change(
                     element.name(),
                     attribute.name(),
                     Some(attribute.value())
                 ),
-                crate::HtmlNonceAttributeEffect::Ignore
+                surgeist_html::security::nonce::HtmlNonceAttributeEffect::Ignore
             ) {
                 position = Some(index);
                 break;
@@ -710,6 +738,10 @@ impl ParserArenaSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{
+        construction::HtmlNodeKind,
+        values::{DocumentString, Namespace, QualifiedName},
+    };
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(super) enum NonceCancelPoint {
         Saved,
@@ -1102,6 +1134,14 @@ mod tests {
     }
     fn connected_request() -> crate::HtmlFragmentParseRequest {
         use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            parsing::HtmlParserScriptingMode,
+            security::nonce::{
+                HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+            },
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
         let mut b = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),

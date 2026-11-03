@@ -1,9 +1,12 @@
 //! Current Dialog values and compact interaction history in the original owner.
 //! The HTML cursor owns ordering; this adapter fulfills only actual closed facts.
 use super::*;
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction as Action, HtmlDialogCursor, HtmlDialogOperation as Operation,
     HtmlDialogOutcome, HtmlDialogReply as Reply,
+};
+use surgeist_html::{
+    construction::HtmlNodeKind, values::Namespace, vocabulary::KnownHtmlAttribute,
 };
 
 pub(super) struct DialogMetadata {
@@ -58,7 +61,7 @@ impl SessionStorage {
         }
         // Real creation (also reached by the original clone owner), before any
         // ordinary source effects. The current value is independent of attrs.
-        let fresh = surgeist_html::HtmlDialogFreshState::fresh();
+        let fresh = surgeist_html::elements::dialog::HtmlDialogFreshState::fresh();
         let raw = literal_string(c, fresh.return_value().as_bytes())?;
         let (value, raw) = self.register_string_owned(c, raw, None)?;
         drop(value);
@@ -262,7 +265,7 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         // The owner answers an operation for exactly this null-namespace open
         // attribute; anything else is an impossible registry state.
-        let Some(operation) = surgeist_html::dialog_attribute_operation(
+        let Some(operation) = surgeist_html::elements::dialog::dialog_attribute_operation(
             &Namespace::none(),
             KnownHtmlAttribute::Open,
             old,
@@ -296,6 +299,10 @@ impl SessionStorage {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{
+        elements::dialog::HtmlDialogOutcome,
+        values::{Attribute, Namespace, QualifiedName},
+    };
 
     fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
         loop {

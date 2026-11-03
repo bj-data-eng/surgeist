@@ -1,5 +1,10 @@
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::input::{HtmlInputFileSelection, HtmlInputValueMode},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlInputImageSource,
     HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource,

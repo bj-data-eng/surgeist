@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    values::DocumentString,
+};
 
 #[test]
 fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origins() {

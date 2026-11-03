@@ -1,6 +1,14 @@
 //! Form association effects of tree and attribute changes.
 
 use super::*;
+use surgeist_html::{
+    bounded::form::{
+        HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
+    },
+    construction::HtmlNodeKind,
+    elements::form::HtmlNativeFormAssociationKind,
+    values::DocumentString,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FormEffectStage {
@@ -250,7 +258,7 @@ impl SessionStorage {
         mut state: FormAssociationState,
         detached: Option<usize>,
     ) -> Result<(), SessionError> {
-        use bounded::{
+        use surgeist_html::bounded::form::{
             HtmlFormOwnerResetAction as Action, HtmlFormOwnerResetCursor,
             HtmlFormOwnerResetReply as Reply,
         };
@@ -557,9 +565,9 @@ impl SessionStorage {
                             control,
                             node,
                             if effects.stage == FormEffectStage::Removal {
-                                surgeist_html::HtmlImageTreeChange::Removed
+                                surgeist_html::elements::image::HtmlImageTreeChange::Removed
                             } else {
-                                surgeist_html::HtmlImageTreeChange::Inserted
+                                surgeist_html::elements::image::HtmlImageTreeChange::Inserted
                             },
                             effects.root,
                             effects.old_parent,

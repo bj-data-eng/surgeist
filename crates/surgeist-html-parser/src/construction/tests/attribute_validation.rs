@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::values::{Attribute, Namespace, QualifiedName};
 
 #[test]
 fn controlled_attribute_validation_preserves_parser_admission_and_refused_backing() {

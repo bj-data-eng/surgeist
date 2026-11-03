@@ -9,6 +9,14 @@ use crate::parser::tokenizer::{
     token::{Event, Token},
 };
 use crate::parser::tree_builder::ConstructionCapability;
+use surgeist_html::{
+    construction::{HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlNodeKind},
+    elements::{
+        form::HtmlOptionFlags,
+        script::{HtmlScriptKind, HtmlScriptResult},
+    },
+    values::DocumentString,
+};
 
 // Literal HTML #selectedness-setting-algorithm oracles exercise the existing
 // callable parser boundary before its language decisions are shared with DOM.
@@ -1142,7 +1150,9 @@ fn non_element_clone_fixture(
         .construction
         .apply(
             &mut c,
-            bounded::HtmlConstructionCommand::ReserveRecords { additional: 1 },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::ReserveRecords {
+                additional: 1,
+            },
             &[],
         )
         .unwrap();
@@ -1632,7 +1642,7 @@ fn captured_effect_owner() -> (
     );
     let document = builder
         .add_document(
-            crate::HtmlDocumentMode::NoQuirks,
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks,
             crate::HtmlScriptingStatus::Disabled,
             crate::HtmlCaptureRegistryInput::Null,
         )
@@ -1640,8 +1650,12 @@ fn captured_effect_owner() -> (
     let element = builder
         .add_element(
             &document,
-            crate::QualifiedName::new(crate::Namespace::html(), None, "div"),
-            crate::OrderedAttributes::default(),
+            surgeist_html::values::QualifiedName::new(
+                surgeist_html::values::Namespace::html(),
+                None,
+                "div",
+            ),
+            surgeist_html::values::OrderedAttributes::default(),
             crate::HtmlCapturedIsValue::Absent,
             crate::HtmlCaptureRegistryInput::Null,
         )
@@ -1659,7 +1673,7 @@ fn captured_effect_owner() -> (
     c.admit_source(request.source()).unwrap();
     let mut session = ParserArenaSession::new(
         &mut c,
-        RootKind::Document(crate::HtmlDocumentMode::NoQuirks),
+        RootKind::Document(surgeist_html::construction::HtmlDocumentMode::NoQuirks),
     )
     .unwrap();
     session.initialize_standalone_document(&mut c).unwrap();
@@ -1995,7 +2009,7 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
             storage.start_img_update(
                 &mut c,
                 img,
-                surgeist_html::HtmlImageUpdateFlags::new(false, false)
+                surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false)
             )
         );
         measured!(
@@ -2210,7 +2224,7 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
         storage.start_img_update(
             &mut c,
             img,
-            surgeist_html::HtmlImageUpdateFlags::new(false, false)
+            surgeist_html::elements::image::HtmlImageUpdateFlags::new(false, false)
         ),
         Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
             crate::parser::control::HtmlParseInvariant::RegistryRow

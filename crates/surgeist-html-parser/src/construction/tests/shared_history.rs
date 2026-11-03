@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    values::DocumentString,
+};
 
 #[test]
 fn shared_history_reconstructs_every_literal_prefix_without_retired_prefix_backings() {

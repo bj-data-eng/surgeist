@@ -1,6 +1,9 @@
 //! The parser's original ledger applied to actual HTML-owned allocation reports.
 use super::*;
-use crate::bounded::{HtmlConstructionAllocationSnapshot as Snapshot, HtmlConstructionRetired};
+
+use surgeist_html::bounded::construction::{
+    HtmlConstructionAllocationSnapshot as Snapshot, HtmlConstructionRetired,
+};
 
 /// One actual shared owner's bank, never a caller-supplied capacity or refund.
 #[derive(Debug)]

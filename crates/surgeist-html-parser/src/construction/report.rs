@@ -3,6 +3,12 @@
 
 use super::*;
 use history::{FrozenHistory, PreparedHistory, Unpublishable};
+use surgeist_html::{
+    attributes::HtmlReferrerPolicy,
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind},
+    values::DocumentString,
+};
 
 #[cfg(test)]
 impl FrozenArena {
@@ -454,7 +460,7 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                     checked_raw(storage, *raw, c)?;
                     c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                    if state.flags.input_type() == crate::HtmlInputType::File
+                    if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::File
                         && !state.selected_files_empty
                     {
                         return Err(SessionError::InputMetadataUnavailable);
@@ -466,7 +472,7 @@ impl<'a> PreparedReportStorage<'a> {
                     {
                         checked_raw(storage, source, c)?;
                     }
-                    if state.flags.input_type() == crate::HtmlInputType::Image
+                    if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Image
                         && matches!(state.image, input_image::ImageState::NeverEntered)
                     {
                         return Err(SessionError::InputMetadataUnavailable);
@@ -490,12 +496,12 @@ impl<'a> PreparedReportStorage<'a> {
                     let record = checked_node(arena, node, c)?;
                     c.charge(
                         HtmlParseWorkCategory::InspectByte,
-                        surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
+                        surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
                     )?;
                     let HtmlNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::NonceMetadataUnavailable);
                     };
-                    if !surgeist_html::bounded::is_nonce_element(element.name()) {
+                    if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
                         return Err(SessionError::NonceMetadataUnavailable);
                     }
                     checked_raw(storage, *raw, c)?;
@@ -527,17 +533,19 @@ impl<'a> PreparedReportStorage<'a> {
                         else {
                             return Err(SessionError::WrongToken);
                         };
-                        let class = surgeist_html::bounded::element_classification_with(
+                        let class = surgeist_html::bounded::native::element_classification_with(
                             element.name(),
-                            |step| match step {
-                                surgeist_html::bounded::HtmlElementNameRead::NamespaceHeader
-                                | surgeist_html::bounded::HtmlElementNameRead::LocalNameHeader => {
+                            |step| {
+                                match step {
+                                surgeist_html::bounded::native::HtmlElementNameRead::NamespaceHeader
+                                | surgeist_html::bounded::native::HtmlElementNameRead::LocalNameHeader => {
                                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                                 }
-                                surgeist_html::bounded::HtmlElementNameRead::NamespacePair
-                                | surgeist_html::bounded::HtmlElementNameRead::LocalNamePair => {
+                                surgeist_html::bounded::native::HtmlElementNameRead::NamespacePair
+                                | surgeist_html::bounded::native::HtmlElementNameRead::LocalNamePair => {
                                     c.charge_unit_literal_comparison()
                                 }
+                            }
                             },
                         )?;
                         if class.common_scope() != state.common_scope {
@@ -545,18 +553,18 @@ impl<'a> PreparedReportStorage<'a> {
                         }
                         let subject = node.ok_or(SessionError::WrongToken)?;
                         let family = match class {
-                            surgeist_html::HtmlElementClass::KnownHtml(
-                                surgeist_html::KnownHtmlElement::A
-                                | surgeist_html::KnownHtmlElement::Area,
+                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                                surgeist_html::vocabulary::KnownHtmlElement::A
+                                | surgeist_html::vocabulary::KnownHtmlElement::Area,
                             ) => 1,
-                            surgeist_html::HtmlElementClass::FormAssociated(
-                                surgeist_html::HtmlNativeFormAssociationKind::Image,
+                            surgeist_html::elements::native::HtmlElementClass::FormAssociated(
+                                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
                             ) => 2,
-                            surgeist_html::HtmlElementClass::KnownHtml(
-                                surgeist_html::KnownHtmlElement::Style,
+                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                                surgeist_html::vocabulary::KnownHtmlElement::Style,
                             ) => 3,
-                            surgeist_html::HtmlElementClass::KnownHtml(
-                                surgeist_html::KnownHtmlElement::Dialog,
+                            surgeist_html::elements::native::HtmlElementClass::KnownHtml(
+                                surgeist_html::vocabulary::KnownHtmlElement::Dialog,
                             ) => 4,
                             _ => 0,
                         };
@@ -805,7 +813,7 @@ fn checked_node<'a>(
     arena: &'a HtmlConstructionResult,
     node: usize,
     c: &mut ParseControl,
-) -> Result<crate::bounded::HtmlConstructionNode<'a>, SessionError> {
+) -> Result<surgeist_html::bounded::construction::HtmlConstructionNode<'a>, SessionError> {
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     arena.node_at(node).ok_or(SessionError::ForeignNode)
 }
@@ -1062,7 +1070,10 @@ impl<'a> Resolver<'a> {
             _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
         }
     }
-    fn policy(&self, slot: usize) -> Result<Option<&'a surgeist_html::HtmlCspAssociation>, Fault> {
+    fn policy(
+        &self,
+        slot: usize,
+    ) -> Result<Option<&'a surgeist_html::security::csp::HtmlCspAssociation>, Fault> {
         match self.storage.payloads.values.get(slot) {
             Some(RetainedPayload::CspPolicy(value)) => Ok(value.value.as_ref()),
             _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
@@ -1223,8 +1234,8 @@ enum Refs<'a> {
     FirstBase(Option<HtmlNode<'a>>),
     Link {
         parser_document: Option<HtmlParseMetadataDocument<'a>>,
-        flags: crate::HtmlLinkFlags,
-        history: crate::HtmlLinkHistory,
+        flags: surgeist_html::elements::link::HtmlLinkFlags,
+        history: surgeist_html::elements::link::HtmlLinkHistory,
     },
     NodeDocument(HtmlParseMetadataDocument<'a>),
     Script(
@@ -1349,7 +1360,7 @@ impl<'a> Refs<'a> {
                 Self::Link {
                     parser_document: r.optional_document(parser_document.as_ref())?,
                     flags,
-                    history: crate::HtmlLinkHistory::new(
+                    history: surgeist_html::elements::link::HtmlLinkHistory::new(
                         flags,
                         parser_document.as_ref() == Some(current),
                     ),
@@ -1397,7 +1408,7 @@ pub enum HtmlParseDialogDisposition<'a> {
 pub struct HtmlParseDialogMissing<'a> {
     subject: HtmlNode<'a>,
     document: HtmlParseMetadataDocument<'a>,
-    action: surgeist_html::HtmlDialogAction,
+    action: surgeist_html::elements::dialog::HtmlDialogAction,
     cause: Option<read::HtmlParseCause<'a>>,
 }
 impl<'a> HtmlParseDialogMissing<'a> {
@@ -1407,7 +1418,7 @@ impl<'a> HtmlParseDialogMissing<'a> {
     pub fn document(&self) -> HtmlParseMetadataDocument<'a> {
         self.document
     }
-    pub fn action(&self) -> surgeist_html::HtmlDialogAction {
+    pub fn action(&self) -> surgeist_html::elements::dialog::HtmlDialogAction {
         self.action
     }
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
@@ -1499,21 +1510,23 @@ impl<'a> HtmlParseMetaMissing<'a> {
 pub struct HtmlParseDocumentMeta<'a> {
     document: HtmlNode<'a>,
     meta: &'a meta::MetaHistory,
-    csp: Option<&'a surgeist_html::HtmlCspAssociation>,
-    base_policy: Option<&'a surgeist_html::HtmlCspAssociation>,
+    csp: Option<&'a surgeist_html::security::csp::HtmlCspAssociation>,
+    base_policy: Option<&'a surgeist_html::security::csp::HtmlCspAssociation>,
     language: Option<&'a DocumentString>,
     gaps: meta::MetaDomainTable<Option<HtmlParseMetaMissing<'a>>>,
     first: Option<HtmlParseMetaMissing<'a>>,
 }
 impl<'a> HtmlParseDocumentMeta<'a> {
     /// Exact original construction policy; absent means no protocol qualification.
-    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::security::csp::HtmlCspAssociation> {
         self.csp
     }
 
     /// Original policy explicitly paired with the supplied initial Base facts.
     /// A later policy never substitutes for this historical qualification.
-    pub fn base_policy_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+    pub fn base_policy_association(
+        &self,
+    ) -> Option<&'a surgeist_html::security::csp::HtmlCspAssociation> {
         self.base_policy
     }
 
@@ -1614,7 +1627,7 @@ impl<'a> HtmlParseHyperlink<'a> {
 pub enum HtmlParseImageUpdate {
     Waiting {
         generation: u64,
-        flags: surgeist_html::HtmlImageUpdateFlags,
+        flags: surgeist_html::elements::image::HtmlImageUpdateFlags,
     },
     UnavailableActivity {
         latest_started: u64,
@@ -1628,7 +1641,7 @@ pub struct HtmlParseImage<'a> {
     subject: HtmlNode<'a>,
 }
 impl<'a> HtmlParseImage<'a> {
-    pub fn state(&self) -> &'a surgeist_html::HtmlImgFreshState {
+    pub fn state(&self) -> &'a surgeist_html::elements::image::HtmlImgFreshState {
         &self.state.fresh
     }
     pub fn dimension_attribute_source(&self) -> HtmlNode<'a> {
@@ -1658,12 +1671,12 @@ impl<'a> HtmlParseImage<'a> {
 }
 #[derive(Clone, Copy)]
 pub struct HtmlParseStyle<'a> {
-    state: surgeist_html::HtmlStyleState,
+    state: surgeist_html::elements::style::HtmlStyleState,
     parser_document: Option<HtmlParseMetadataDocument<'a>>,
     cause: Option<read::HtmlParseCause<'a>>,
 }
 impl<'a> HtmlParseStyle<'a> {
-    pub fn state(&self) -> surgeist_html::HtmlStyleState {
+    pub fn state(&self) -> surgeist_html::elements::style::HtmlStyleState {
         self.state
     }
     pub fn creating_parser_document(&self) -> Option<&HtmlParseMetadataDocument<'a>> {
@@ -1701,7 +1714,7 @@ impl<'a> HtmlParseMetadata<'a> {
     /// This qualifies the profile's current null-only references, not native freshness.
     pub fn common_state(
         &self,
-    ) -> Option<surgeist_html::HtmlCommonState<core::convert::Infallible>> {
+    ) -> Option<surgeist_html::elements::native::HtmlCommonState<core::convert::Infallible>> {
         if !self.closed_common {
             return None;
         }
@@ -1713,7 +1726,9 @@ impl<'a> HtmlParseMetadata<'a> {
         else {
             return None;
         };
-        Some(surgeist_html::HtmlCommonState::new(state.common_scope))
+        Some(surgeist_html::elements::native::HtmlCommonState::new(
+            state.common_scope,
+        ))
     }
 
     /// Fixed current Dialog state issued by the actual original controller.
@@ -1788,7 +1803,7 @@ impl<'a> HtmlParseMetadata<'a> {
         }
     }
     /// The actual flags of a link record; `None` for any other record.
-    pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
+    pub fn link_flags(&self) -> Option<surgeist_html::elements::link::HtmlLinkFlags> {
         match self.refs {
             Refs::Link { flags, .. } => Some(flags),
             _ => None,
@@ -1796,7 +1811,7 @@ impl<'a> HtmlParseMetadata<'a> {
     }
     /// Ordinary borrowed readback of actual flags and the current node-document
     /// join, resolved when the record was issued; `None` for any other record.
-    pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
+    pub fn link_history(&self) -> Option<surgeist_html::elements::link::HtmlLinkHistory> {
         match self.refs {
             Refs::Link { history, .. } => Some(history),
             _ => None,
@@ -1834,7 +1849,12 @@ impl<'a> HtmlParseMetadata<'a> {
             _ => None,
         }
     }
-    pub fn creation(&self) -> Option<(crate::HtmlCustomElementState, Option<&'a DocumentString>)> {
+    pub fn creation(
+        &self,
+    ) -> Option<(
+        surgeist_html::elements::native::HtmlCustomElementState,
+        Option<&'a DocumentString>,
+    )> {
         match (self.payload, self.refs) {
             (
                 RetainedPayload::LookupRegistry {
@@ -2009,10 +2029,9 @@ impl HtmlParseTemplate<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        HtmlElement, HtmlParseCancellation, HtmlParseLimits, HtmlParseResource, Namespace,
-        OrderedAttributes, QualifiedName,
-    };
+    use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
+    use surgeist_html::construction::HtmlElement;
+    use surgeist_html::values::{Namespace, OrderedAttributes, QualifiedName};
 
     fn native_select(limits: HtmlParseLimits, local: &str) -> (ParseControl, FrozenArena, usize) {
         let mut c = ParseControl::new(limits, HtmlParseCancellation::new());

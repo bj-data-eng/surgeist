@@ -446,7 +446,7 @@ impl SealedOrdinaryConstruction {
         self.request.is_offline()
     }
     #[cfg(test)]
-    pub(crate) fn document(&self) -> Option<&crate::HtmlDocument> {
+    pub(crate) fn document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.parts.immutable_document()
     }
     /// Same fixed committed store, with no controller borrow or new admission.
@@ -692,7 +692,7 @@ mod tests {
     #[test]
     fn owned_cancelled_initialization_retains_exact_source_without_admitted_binding() {
         let request = HtmlDocumentParseRequest::offline(
-            HtmlSource::utf16(crate::DocumentString::from_utf16(vec![
+            HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(vec![
                 0xfeff, 0xd800, 0x41, 0xdc00,
             ])),
             work_limits(0),
@@ -968,7 +968,7 @@ mod tests {
         );
         let document = builder
             .add_document(
-                crate::HtmlDocumentMode::Quirks,
+                surgeist_html::construction::HtmlDocumentMode::Quirks,
                 crate::HtmlScriptingStatus::Disabled,
                 crate::HtmlCaptureRegistryInput::Null,
             )
@@ -1187,10 +1187,10 @@ mod tests {
         assert!(sealed.is_offline());
         assert_eq!(sealed.limits(), &super::super::tests::limits(100));
         let tree = sealed.document().unwrap();
-        let element = |parent: crate::HtmlNode<'_>, name: &str| {
+        let element = |parent: surgeist_html::construction::HtmlNode<'_>, name: &str| {
             parent.children().find_map(|id| {
                 let node = tree.node(&id).unwrap();
-                matches!(node.kind(), crate::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == name.encode_utf16().collect::<Vec<_>>()).then_some(node)
+                matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == name.encode_utf16().collect::<Vec<_>>()).then_some(node)
             }).expect("literal native element")
         };
         let html = element(tree.root(), "html");
@@ -1198,7 +1198,7 @@ mod tests {
         let p = element(body, "p");
         let text = tree.node(&p.children().next().unwrap()).unwrap();
         assert!(
-            matches!(text.kind(), crate::HtmlNodeKind::Text(value) if value.code_units() == [65, 38, 66])
+            matches!(text.kind(), surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units() == [65, 38, 66])
         );
         let before = sealed.retained_usage().clone();
         let evidence = sealed.evidence().unwrap() as *const _;

@@ -1156,6 +1156,7 @@ impl ParseEvidence {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
     fn make_rows(source: &crate::HtmlSource) -> [NativeAssociation; 5] {
         std::array::from_fn(|index| NativeAssociation {
             group: None,

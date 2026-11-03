@@ -8,7 +8,7 @@
 //! the select, connecting its options in one insertion.
 
 use crate::parser::support::limits;
-use surgeist_html::*;
+use surgeist_html::construction::HtmlNodeKind;
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseMetadataStep, HtmlSource};
 
 /// The selectedness of each option, in tree order, keyed by its text.

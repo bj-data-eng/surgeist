@@ -1,4 +1,9 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlElement, HtmlNodeKind},
+    elements::script::{HtmlScriptKind, HtmlScriptResult},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 #[test]
 fn disabled_preparation_retains_actual_documents_and_uninitialized_result_through_freeze() {
@@ -253,8 +258,9 @@ fn preparation_clears_parser_document_before_ordinary_connectivity_work_can_stop
     // Each copies the actual cursor and writes one state record. Then one
     // metadata-slot visit, fixed payload copy and write retain the clear.
     // Connectivity is step 7, after this required parser-document clear.
-    let cursor_prefix_work =
-        2 * (mem::size_of::<bounded::HtmlScriptPreparationCursor>() as u64 + 1);
+    let cursor_prefix_work = 2
+        * (mem::size_of::<surgeist_html::bounded::script::HtmlScriptPreparationCursor>() as u64
+            + 1);
     let first_write_work = 1 + mem::size_of::<ScriptMetadata>() as u64 + 1;
     let cap = setup_work + qualification_work + cursor_prefix_work + first_write_work;
     session.release(&mut baseline).unwrap();
@@ -830,8 +836,9 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
     // the next adapter operation is the independently measured document
     // lookup and step-16 metadata write. Deny its last RecordWrite credit.
     let metadata_write_work = 1 + mem::size_of::<ScriptMetadata>() as u64 + 1;
-    let cursor_prefix_work =
-        12 * (mem::size_of::<bounded::HtmlScriptPreparationCursor>() as u64 + 1);
+    let cursor_prefix_work = 12
+        * (mem::size_of::<surgeist_html::bounded::script::HtmlScriptPreparationCursor>() as u64
+            + 1);
     let before_preparation_document = setup_work
         + qualification_work
         + source_read_work
@@ -1087,8 +1094,9 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
     fn classify(
         c: &mut ParseControl,
         value: &DocumentString,
-    ) -> Result<Option<crate::HtmlScriptKind>, SessionError> {
-        let mut cursor = crate::bounded::HtmlScriptTypeCursor::preparation(Some(value), None);
+    ) -> Result<Option<surgeist_html::elements::script::HtmlScriptKind>, SessionError> {
+        let mut cursor =
+            surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(Some(value), None);
         while let Some(work) = cursor.required_work() {
             script_type_charge(c, work)?;
             cursor.advance();
@@ -1099,7 +1107,7 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
     let mut c = control();
     assert_eq!(
         classify(&mut c, &value).unwrap(),
-        Some(crate::HtmlScriptKind::Classic)
+        Some(surgeist_html::elements::script::HtmlScriptKind::Classic)
     );
     assert!(c.stop().is_none());
     for available in [0, 18] {
@@ -1165,7 +1173,12 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
             QualifiedName::new(Namespace::html(), None, "script"),
             OrderedAttributes::new(
                 explicit
-                    .map(|v| Attribute::new(crate::KnownHtmlAttribute::Type.qualified_name(), v))
+                    .map(|v| {
+                        Attribute::new(
+                            surgeist_html::vocabulary::KnownHtmlAttribute::Type.qualified_name(),
+                            v,
+                        )
+                    })
                     .into_iter()
                     .chain(language.map(|v| {
                         Attribute::new(QualifiedName::new(Namespace::none(), None, "language"), v)

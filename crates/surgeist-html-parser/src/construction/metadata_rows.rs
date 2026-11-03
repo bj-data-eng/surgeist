@@ -1,6 +1,7 @@
 //! Reads and writes of the per-node metadata rows in the payload registry.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
 pub(super) fn find_textarea_state(
     payloads: &PayloadStorage,

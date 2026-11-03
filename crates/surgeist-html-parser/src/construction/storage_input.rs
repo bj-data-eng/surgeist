@@ -1,6 +1,13 @@
 //! Input element value state: initialization, type changes, sanitization and reset.
 
 use super::*;
+use surgeist_html::{
+    bounded::form::{
+        HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
+    },
+    construction::HtmlNodeKind,
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+};
 
 /// Creation/mutation initializes from installed attributes. A Color clone
 /// instead preserves its qualified original current value at clone completion.
@@ -156,30 +163,30 @@ impl SessionStorage {
         node: usize,
         slot: usize,
         source: usize,
-        policy: crate::HtmlInputValueSanitization,
+        policy: surgeist_html::elements::input::HtmlInputValueSanitization,
     ) -> Result<(), SessionError> {
         let policy = match policy {
-            crate::HtmlInputValueSanitization::String(policy) => policy,
-            crate::HtmlInputValueSanitization::Range => {
+            surgeist_html::elements::input::HtmlInputValueSanitization::String(policy) => policy,
+            surgeist_html::elements::input::HtmlInputValueSanitization::Range => {
                 return self.install_range_input_value(control, node, slot, source);
             }
-            crate::HtmlInputValueSanitization::Color => {
+            surgeist_html::elements::input::HtmlInputValueSanitization::Color => {
                 return self.update_input_color(control, node, slot);
             }
         };
         if matches!(
             policy,
-            crate::HtmlInputSanitization::Email
-                | crate::HtmlInputSanitization::StripCrLfAndTrim
-                | crate::HtmlInputSanitization::Temporal(_)
-                | crate::HtmlInputSanitization::Number
+            surgeist_html::elements::input::HtmlInputSanitization::Email
+                | surgeist_html::elements::input::HtmlInputSanitization::StripCrLfAndTrim
+                | surgeist_html::elements::input::HtmlInputSanitization::Temporal(_)
+                | surgeist_html::elements::input::HtmlInputSanitization::Number
         ) {
-            let mode = if policy == crate::HtmlInputSanitization::Email
+            let mode = if policy == surgeist_html::elements::input::HtmlInputSanitization::Email
                 && self.form_attribute(control, node, "multiple")?.is_some()
             {
-                crate::HtmlInputEmailMode::Multiple
+                surgeist_html::elements::input::HtmlInputEmailMode::Multiple
             } else {
-                crate::HtmlInputEmailMode::Single
+                surgeist_html::elements::input::HtmlInputEmailMode::Single
             };
             let (field, count) = copy_selected_input_value(
                 &self.payloads,
@@ -194,7 +201,8 @@ impl SessionStorage {
             state.email_value_count = count;
             self.write_input_state(control, slot, state)?;
         } else {
-            let field = if policy == crate::HtmlInputSanitization::Preserve {
+            let field = if policy == surgeist_html::elements::input::HtmlInputSanitization::Preserve
+            {
                 copy_preserved_input_value(&self.payloads, self.evidence.as_ref(), control, source)?
             } else {
                 copy_input_value(
@@ -229,28 +237,31 @@ impl SessionStorage {
         let name_attr =
             named.name().namespace().uri().is_none() && exact_ascii(control, Some(name), "name")?;
         let state = self.read_input_state(control, slot)?;
-        let src_attr = state.flags.input_type() == crate::HtmlInputType::Image
+        let src_attr = state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Image
             && named.name().namespace().uri().is_none()
             && exact_ascii(control, Some(name), "src")?;
-        let multiple_attr = state.flags.input_type() == crate::HtmlInputType::Email
+        let multiple_attr = state.flags.input_type()
+            == surgeist_html::attributes::HtmlInputType::Email
             && exact_ascii(control, Some(name), "multiple")?;
         if value_attr
             && initialization != InputAttributeInitialization::ClonedColor
-            && let crate::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(policy) =
+            && let surgeist_html::elements::input::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(policy) =
                 state.flags.value_attribute_changed()
         {
             let source = self.attribute_value_slot(control, node, position)?;
             self.install_sanitized_input_value(control, node, slot, source, policy)?;
         }
         if checked_attr
-            && let Some(flags) = state
-                .flags
-                .checked_attribute_changed(crate::HtmlInputCheckedAttributeChange::Added)
+            && let Some(flags) = state.flags.checked_attribute_changed(
+                surgeist_html::elements::input::HtmlInputCheckedAttributeChange::Added,
+            )
         {
             let mut next = state;
             next.flags = flags;
             self.write_input_state(control, slot, next)?;
-            if flags.radio_normalization_required(crate::HtmlRadioTrigger::Checkedness) {
+            if flags.radio_normalization_required(
+                surgeist_html::elements::input::HtmlRadioTrigger::Checkedness,
+            ) {
                 self.normalize_radio(control, node, None)?;
             }
         }
@@ -263,23 +274,27 @@ impl SessionStorage {
             self.image_source_changed(control, node, slot)?;
         }
         if name_attr
-            && state
-                .flags
-                .radio_normalization_required(crate::HtmlRadioTrigger::Name)
+            && state.flags.radio_normalization_required(
+                surgeist_html::elements::input::HtmlRadioTrigger::Name,
+            )
         {
             self.normalize_radio(control, node, None)?;
         }
-        if state.flags.input_type() == crate::HtmlInputType::Email && multiple_attr {
+        if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Email
+            && multiple_attr
+        {
             let raw = self.input_raw_slot(control, slot)?;
             self.install_sanitized_input_value(
                 control,
                 node,
                 slot,
                 raw,
-                crate::HtmlInputValueSanitization::String(crate::HtmlInputSanitization::Email),
+                surgeist_html::elements::input::HtmlInputValueSanitization::String(
+                    surgeist_html::elements::input::HtmlInputSanitization::Email,
+                ),
             )?;
         }
-        if state.flags.input_type() == crate::HtmlInputType::Range {
+        if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Range {
             let attribute = element_attribute(&self.construction, control, node, position)?;
             let relevant = attribute.name().namespace().uri().is_none()
                 && (exact_ascii(control, Some(attribute.name().local_name()), "min")?
@@ -290,7 +305,7 @@ impl SessionStorage {
                 self.install_range_input_value(control, node, slot, raw)?;
             }
         }
-        if state.flags.input_type() == crate::HtmlInputType::Color
+        if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color
             && initialization != InputAttributeInitialization::ClonedColor
         {
             let attribute = element_attribute(&self.construction, control, node, position)?;
@@ -323,22 +338,25 @@ impl SessionStorage {
         slot: usize,
         container: usize,
         state: InputState,
-        next_kind: crate::HtmlInputType,
+        next_kind: surgeist_html::attributes::HtmlInputType,
     ) -> Result<(), SessionError> {
         if next_kind != state.flags.input_type() {
             let mut next = state;
             next.flags = state.flags.type_changed(next_kind);
-            if next_kind != crate::HtmlInputType::Email {
+            if next_kind != surgeist_html::attributes::HtmlInputType::Email {
                 next.email_value_count = None;
             }
             self.write_input_state(control, slot, next)?;
             let raw = self.input_raw_slot(control, slot)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let current_len = textarea_raw(&self.payloads, control, raw)?.len();
-            let mut change =
-                crate::HtmlInputTypeChange::new(state.flags.input_type(), next_kind, current_len);
+            let mut change = surgeist_html::elements::input::HtmlInputTypeChange::new(
+                state.flags.input_type(),
+                next_kind,
+                current_len,
+            );
             while let Some(effect) = change.next_effect() {
-                if effect == crate::HtmlInputTypeEffect::SetContentValueFromCurrent {
+                if effect == surgeist_html::elements::input::HtmlInputTypeEffect::SetContentValueFromCurrent {
                     let mut value_position = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
@@ -351,7 +369,7 @@ impl SessionStorage {
                     }
                     let generated = matches!(
                         state.flags.input_type(),
-                        crate::HtmlInputType::Range | crate::HtmlInputType::Color
+                        surgeist_html::attributes::HtmlInputType::Range | surgeist_html::attributes::HtmlInputType::Color
                     );
                     let position = match value_position {
                         Some(position) => {
@@ -380,12 +398,12 @@ impl SessionStorage {
                             self.evidence.as_ref(),
                             control,
                             source,
-                            crate::HtmlInputSanitization::Preserve,
+                            surgeist_html::elements::input::HtmlInputSanitization::Preserve,
                         )?
                     };
                     self.replace_input_raw(control, slot, text)?;
                 }
-                if effect == crate::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty {
+                if effect == surgeist_html::elements::input::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty {
                     let mut source = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
@@ -417,7 +435,7 @@ impl SessionStorage {
                     current.flags = current.flags.type_default_installed();
                     self.write_input_state(control, slot, current)?;
                 }
-                if effect == crate::HtmlInputTypeEffect::SetCurrentEmptyForFilename {
+                if effect == surgeist_html::elements::input::HtmlInputTypeEffect::SetCurrentEmptyForFilename {
                     let field = FieldCopy {
                         value: literal_string(control, b"")?,
                         origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
@@ -425,24 +443,25 @@ impl SessionStorage {
                     };
                     self.replace_input_raw(control, slot, field)?;
                 }
-                if let crate::HtmlInputTypeEffect::Sanitize(policy) = effect
+                if let surgeist_html::elements::input::HtmlInputTypeEffect::Sanitize(policy) =
+                    effect
                     && policy
-                        != crate::HtmlInputValueSanitization::String(
-                            crate::HtmlInputSanitization::Preserve,
+                        != surgeist_html::elements::input::HtmlInputValueSanitization::String(
+                            surgeist_html::elements::input::HtmlInputSanitization::Preserve,
                         )
                 {
                     let raw = self.input_raw_slot(control, slot)?;
                     self.install_sanitized_input_value(control, node, slot, raw, policy)?;
                 }
-                if effect == crate::HtmlInputTypeEffect::SignalTypeChange
-                    && next_kind == crate::HtmlInputType::Radio
+                if effect == surgeist_html::elements::input::HtmlInputTypeEffect::SignalTypeChange
+                    && next_kind == surgeist_html::attributes::HtmlInputType::Radio
                 {
                     self.normalize_radio(control, node, None)?;
                 }
                 // Rendering has no host recipient in
                 // fresh immutable construction. Initial cursor is already0.
             }
-            if next_kind == crate::HtmlInputType::Image {
+            if next_kind == surgeist_html::attributes::HtmlInputType::Image {
                 self.image_type_entered(control, node, slot)?;
             }
         }
@@ -479,7 +498,7 @@ impl SessionStorage {
                 self.evidence.as_ref(),
                 control,
                 raw,
-                crate::HtmlInputSanitization::Preserve,
+                surgeist_html::elements::input::HtmlInputSanitization::Preserve,
             )?
         };
         let (value, value_slot) = self.register_field_copy(control, value)?;
@@ -619,14 +638,14 @@ impl SessionStorage {
                 original: None,
             };
             self.replace_input_raw(control, slot, field)?;
-            if state.flags.input_type() == crate::HtmlInputType::Range {
+            if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Range {
                 let raw = self.input_raw_slot(control, slot)?;
                 self.install_range_input_value(control, node, slot, raw)?;
             }
-            if state.flags.input_type() == crate::HtmlInputType::Color {
+            if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color {
                 self.update_input_color(control, node, slot)?;
             }
-            if state.flags.input_type() == crate::HtmlInputType::Email {
+            if state.flags.input_type() == surgeist_html::attributes::HtmlInputType::Email {
                 state.email_value_count =
                     if self.form_attribute(control, node, "multiple")?.is_some() {
                         Some(0)
@@ -638,16 +657,16 @@ impl SessionStorage {
         }
         if matches!(
             state.flags.input_type(),
-            crate::HtmlInputType::Email | crate::HtmlInputType::Url
+            surgeist_html::attributes::HtmlInputType::Email
+                | surgeist_html::attributes::HtmlInputType::Url
         ) {
             state = self.read_input_state(control, slot)?;
         }
         state.flags = state.flags.reset_checkedness(checked);
         self.write_input_state(control, slot, state)?;
-        if state
-            .flags
-            .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
-        {
+        if state.flags.radio_normalization_required(
+            surgeist_html::elements::input::HtmlRadioTrigger::Checkedness,
+        ) {
             self.normalize_radio(control, node, None)?;
         }
         state.selected_files_empty = true;

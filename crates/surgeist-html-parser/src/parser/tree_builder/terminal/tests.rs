@@ -4,7 +4,9 @@ use super::*;
 use crate::construction::HtmlParseCompletion;
 use crate::construction::HtmlParseReadiness;
 use crate::construction::native_view::{NativeFragmentOwner, NativeKind, NativeString, NativeView};
-use crate::{DocumentString, HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
+use surgeist_html::values::DocumentString;
+
+use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
 
 #[test]
 fn completed_lexical_duplicate_quotes_omissions_and_d1_keep_actual_source_fields() {
@@ -270,13 +272,13 @@ fn a_completion_without_a_stop_is_not_taken_as_a_failure_and_keeps_its_driver() 
     assert!(completed.driver.is_none());
 }
 fn native_child<'a>(
-    document: &'a crate::HtmlDocument,
-    parent: crate::HtmlNode<'a>,
+    document: &'a surgeist_html::construction::HtmlDocument,
+    parent: surgeist_html::construction::HtmlNode<'a>,
     local: &str,
-) -> crate::HtmlNode<'a> {
+) -> surgeist_html::construction::HtmlNode<'a> {
     for id in parent.children() {
         let node = document.node(&id).unwrap();
-        if let crate::HtmlNodeKind::Element(element) = node.kind()
+        if let surgeist_html::construction::HtmlNodeKind::Element(element) = node.kind()
             && element.name().local_name().code_units() == local.encode_utf16().collect::<Vec<_>>()
         {
             return node;
@@ -319,7 +321,9 @@ fn frozen_parts_end_borrow_and_retain_same_source_native_identity_and_completion
     let body = native_child(document, html, "body");
     let p = native_child(document, body, "p");
     let text = document.node(&p.children().next().unwrap()).unwrap();
-    assert!(matches!(text.kind(), crate::HtmlNodeKind::Text(value) if value.code_units()==[120]));
+    assert!(
+        matches!(text.kind(), surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units()==[120])
+    );
     parts.release().unwrap();
     assert!(parts.after_cleanup().is_some());
     super::super::tests::assert_released(&parts.control);
@@ -330,7 +334,7 @@ fn frozen_parts_exact_utf16_recovery_and_committed_diagnostic_owner_survive_move
     source.extend([0xd83d, 0xde00, 0xd800, 13, 10, 0, 38, 97, 109, 112, 59]);
     let length = source.len();
     let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf16(crate::DocumentString::from_utf16(source)),
+        HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(source)),
         super::super::tests::limits(100),
     );
     let mut completed = frozen_completed(&request);
@@ -355,7 +359,7 @@ fn frozen_parts_exact_utf16_recovery_and_committed_diagnostic_owner_survive_move
     let text = document.node(&p.children().next().unwrap()).unwrap();
     // InBody ignores NULL; CRLF preprocesses to LF and &amp; contributes &.
     assert!(
-        matches!(text.kind(),crate::HtmlNodeKind::Text(value) if value.code_units()==[0xd83d,0xde00,0xd800,10,38])
+        matches!(text.kind(),surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units()==[0xd83d,0xde00,0xd800,10,38])
     );
     parts.release().unwrap();
     super::super::tests::assert_released(&parts.control);
@@ -459,7 +463,9 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
 #[test]
 fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once() {
     let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf16(crate::DocumentString::from_utf16([60, 112, 62, 65, 0])),
+        HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16([
+            60, 112, 62, 65, 0,
+        ])),
         super::super::tests::limits(100),
     );
     let mut completed = frozen_completed(&request);
@@ -1030,7 +1036,7 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
             ],
         ),
     ] {
-        let source = HtmlSource::utf16(crate::DocumentString::from_utf16(
+        let source = HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(
             input.encode_utf16().collect::<Vec<_>>(),
         ));
         let request =
@@ -1773,7 +1779,7 @@ fn completed_native_view_retains_exact_payloads_and_template_backlinks() {
         let root = view.root().unwrap();
         assert!(matches!(
             view.kind(&root).unwrap(),
-            NativeKind::Document(crate::HtmlDocumentMode::NoQuirks)
+            NativeKind::Document(surgeist_html::construction::HtmlDocumentMode::NoQuirks)
         ));
         assert!(view.parent(&root).unwrap().is_none());
         assert_eq!(view.child_count(&root).unwrap(), 3);
@@ -1904,7 +1910,7 @@ fn completed_text_units_apply_nul_crlf_and_surrogate_rules() {
     let mut input = "<!doctype html><p>".encode_utf16().collect::<Vec<_>>();
     input.extend([0xd800, 0, 0xdc00, 13, 10]);
     let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf16(crate::DocumentString::from_utf16(input)),
+        HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(input)),
         super::super::tests::limits(100),
     );
     let mut owner = completed(&request);

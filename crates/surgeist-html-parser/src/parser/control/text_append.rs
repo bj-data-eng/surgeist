@@ -1,6 +1,6 @@
 //! The original document-string ticket while HTML exclusively appends its backing.
 use super::*;
-use crate::bounded::HtmlConstructionTextAppendCapacity as Capacity;
+use surgeist_html::bounded::construction::HtmlConstructionTextAppendCapacity as Capacity;
 
 impl ParseControl {
     /// Prepaid suspension/restoration of this ticket's Weak. The actual native
@@ -8,7 +8,7 @@ impl ParseControl {
     pub(crate) fn suspend_text_append_ticket(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.require_document_string(allocation, value)?;
         self.prepare_text_append_restore()?;
@@ -75,7 +75,7 @@ impl ParseControl {
     pub(crate) fn bind_text_append_pending(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
             (
@@ -267,7 +267,7 @@ impl ParseControl {
     pub(crate) fn retain_failed_text_append_ticket(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         if allocation.backing.is_none() {
             self.restore_text_append_ticket(allocation, value)
@@ -282,7 +282,7 @@ impl ParseControl {
     pub(crate) fn restore_text_append_ticket(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-        value: &crate::DocumentString,
+        value: &surgeist_html::values::DocumentString,
     ) -> Result<(), HtmlParseStop> {
         #[cfg(test)]
         if self.take_text_append_restore_fault() {

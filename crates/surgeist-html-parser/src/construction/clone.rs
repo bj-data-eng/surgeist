@@ -2,6 +2,14 @@
 //! fabricated for DOM cloning; original source maps remain original evidence.
 
 use super::*;
+use surgeist_html::{
+    construction::{HtmlNodeKind, HtmlProcessingInstruction, HtmlShadowRootProperties},
+    elements::{
+        form::HtmlTextareaFlags,
+        script::{HtmlScriptFlags, HtmlScriptResult},
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 #[derive(Clone, Copy, Default)]
 struct CloneBindings {
@@ -498,10 +506,10 @@ impl SessionStorage {
         payload_write::<Option<usize>>(c, 1)?;
         let link_flags = self
             .html_local(c, source, "link")?
-            .then(crate::HtmlLinkFlags::fresh);
+            .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            bounded::HtmlConstructionCommand::CreateElement {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
                 link_flags,
                 name: QualifiedName::new(namespace, None, name),
                 attributes,
@@ -829,11 +837,13 @@ impl SessionStorage {
             // This incomplete clone is already qualified as the actual Color
             // source. Keep fresh dirty flags; copy current and source flags only
             // at completion, independently of its copied native default.
-            let flags = if original.flags.input_type() == crate::HtmlInputType::Color {
-                crate::HtmlInputFlags::fresh().type_changed(crate::HtmlInputType::Color)
-            } else {
-                crate::HtmlInputFlags::fresh()
-            };
+            let flags =
+                if original.flags.input_type() == surgeist_html::attributes::HtmlInputType::Color {
+                    surgeist_html::elements::input::HtmlInputFlags::fresh()
+                        .type_changed(surgeist_html::attributes::HtmlInputType::Color)
+                } else {
+                    surgeist_html::elements::input::HtmlInputFlags::fresh()
+                };
             let empty = literal_string(c, b"")?;
             let raw = self.register_raw(c, empty)?;
             payload_write::<Option<usize>>(c, 1)?;
@@ -982,7 +992,7 @@ impl SessionStorage {
         }
         if let Some(input) = bindings.input {
             let initialization = if self.read_input_state(c, input)?.flags.input_type()
-                == crate::HtmlInputType::Color
+                == surgeist_html::attributes::HtmlInputType::Color
             {
                 InputAttributeInitialization::ClonedColor
             } else {
@@ -1051,7 +1061,8 @@ impl SessionStorage {
             let (_, original_raw, original) = self.input_clone_slot(c, source)?;
             let text = if matches!(
                 original.flags.input_type(),
-                crate::HtmlInputType::Range | crate::HtmlInputType::Color
+                surgeist_html::attributes::HtmlInputType::Range
+                    | surgeist_html::attributes::HtmlInputType::Color
             ) {
                 provenance::copy_generated_input_value(
                     &self.payloads,
@@ -1067,10 +1078,9 @@ impl SessionStorage {
             state.flags = state.flags.clone_flags_from(original.flags);
             state.email_value_count = original.email_value_count;
             self.write_input_state(c, slot, state)?;
-            if state
-                .flags
-                .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
-            {
+            if state.flags.radio_normalization_required(
+                surgeist_html::elements::input::HtmlRadioTrigger::Checkedness,
+            ) {
                 self.normalize_radio(c, copy, None)?;
             }
             payload_write::<bool>(c, 1)?;
