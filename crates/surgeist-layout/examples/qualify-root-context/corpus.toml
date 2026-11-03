@@ -641,3 +641,41 @@ parent_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "vertical-rl"
 root_position = "relative"
+
+[[records]]
+source = "html/qualification/logical-inline-inset.html"
+source_sha256 = "d4752b760d6929785fad6e98e3166e8f59d43b8c68e539eca7680190a3cd19ca"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 10
+
+[[records]]
+source = "html/qualification/logical-inline-padding.html"
+source_sha256 = "f9536930d9347f55e895101ab47bdf510665b64f9b7b82d2a0772a727e9ebe7a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 10
