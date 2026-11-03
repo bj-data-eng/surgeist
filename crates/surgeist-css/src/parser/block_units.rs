@@ -1,11 +1,11 @@
-//! The units of a block that the parser crate's driver hands to a ported
-//! grammar, and the failures it reports for them, in the terms the recovery
-//! diagnostics of the grammars are written in.
+//! The units of a block that the parser crate's driver hands to a grammar, and
+//! the failures it reports for them, in the terms the recovery diagnostics of
+//! the grammars are written in.
 //!
-//! A ported grammar reports its own errors as the native errors those
+//! A grammar reports its own failures as the `GrammarFailure`s those
 //! diagnostics take. The driver's own failures (a unit that is not a
-//! declaration, a rule the protocol rejects) are converted to the same native
-//! errors here.
+//! declaration, a rule the protocol rejects) are converted to the same
+//! failures here.
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{BlockGrammar, Declaration, Failed, RuleEnd, UnitKind};
 
@@ -18,7 +18,7 @@ use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
 use crate::source::{CssSourcePosition, CssSourceSnapshot, CssSourceSpan};
 
-/// The failure of a ported grammar, as the driver carries it.
+/// The failure of a grammar, as the driver carries it.
 pub(super) type GrammarError<'i> = SyntaxError<'i, GrammarFailure>;
 /// A unit the driver consumed and the grammar did not accept.
 pub(super) type Failure<'i> = Failed<'i, GrammarFailure, Attached<'i>>;
@@ -41,7 +41,7 @@ pub(super) fn grammar_error<'i>(at: Site<'i>, error: GrammarFailure) -> GrammarE
     SyntaxError::custom(at, error)
 }
 
-/// The native error a failure stands for: the grammar's own, or the one the
+/// The grammar failure an error stands for: the grammar's own, or the one the
 /// parser crate's failure names (Syntax 3 sections 5.3 and 5.5.2), read through
 /// its predicates and accessors.
 pub(super) fn grammar_failure<'i>(
@@ -56,8 +56,8 @@ pub(super) fn grammar_failure_located<'i>(
     error: &GrammarError<'i>,
     locate: impl FnOnce(Site<'i>) -> CssSourcePosition,
 ) -> GrammarFailure {
-    if let Some(native) = error.custom_value() {
-        return native.clone();
+    if let Some(failure) = error.custom_value() {
+        return failure.clone();
     }
     let location = locate(error.at());
     if error.is_refused() {

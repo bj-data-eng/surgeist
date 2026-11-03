@@ -197,7 +197,7 @@ pub(super) fn fill<'i, T>(
     }
 }
 
-/// The Values 4 §2.3 `#` multiplier over a native rule-level parser, each
+/// The Values 4 §2.3 `#` multiplier over a stream-level parser, each
 /// item bounded at its comma. An empty item keeps the list's own
 /// post-conditions: at the end of the list it is diagnosed by `trailing`
 /// (given the exhausted input and the empty item's start); elsewhere `item`

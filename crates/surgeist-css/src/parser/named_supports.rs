@@ -296,7 +296,7 @@ fn faults(
                 Fault::BadString => CssComponentValueErrorKind::BadString,
                 Fault::BadUrl => CssComponentValueErrorKind::BadUrl,
                 Fault::UnexpectedCloser => CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-                // A parse error the tree newly preserves is still an invalid token.
+                // A parse error the tree preserves is an invalid token.
                 _ => CssComponentValueErrorKind::InvalidToken,
             };
             issues.push(PartitionIssue::Lexical(

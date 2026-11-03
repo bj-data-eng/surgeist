@@ -547,8 +547,8 @@ impl<'a> Control<'a> {
     }
 }
 /// The charged-work and live-storage contract of the parser crate, backed by this
-/// admission. The parser crate's growth and copy helpers charge it exactly as
-/// `reserve`, `string` and `boxed` charged this control before they moved there.
+/// admission. The parser crate's growth and copy helpers charge it as
+/// `Control::reserve`, `Control::string` and `Control::boxed` do.
 impl Meter for Control<'_> {
     fn step(&self) -> Result<(), Refused> {
         Control::step(self).map_err(|()| Refused)

@@ -232,7 +232,7 @@ pub(crate) fn promote_nodes(
 }
 
 /// The leaf of a token of the parser crate's token tree, as `leaf` makes one
-/// of a token of the native provider.
+/// of a token of the lexer.
 fn syntax_leaf(
     source: &CssSourceSnapshot,
     token: surgeist_css_parser::Token<'_>,

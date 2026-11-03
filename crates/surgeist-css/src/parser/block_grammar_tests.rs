@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 // Install as a cfg(test) child of parser; never a public fallback test hook.
 //! The grammars of a keyframe's declarations and of a margin box, which the
-//! parser crate's block driver runs, entered from the native callbacks that
-//! still hand them a scope and from the fronts that build a token tree
-//! directly. The expected values are read off the literals: Syntax 3 (2026
+//! parser crate's block driver runs, entered from the rule lists that hand them
+//! a block and from the fronts that build a token tree directly. The expected
+//! values are read off the literals: Syntax 3 (2026
 //! CRD) §5.5.5 for the units, Paged Media 3 Appendix A and CSS Animations 1
 //! §4 for what a block admits, and the byte offsets of the sources.
 use super::fragments;
@@ -396,7 +396,7 @@ fn error_locations_count_columns_in_utf16_units_and_offsets_in_bytes() {
 }
 
 /// What a nest of one opener, `depth` deep, in one position of a block makes of
-/// an entry point whose block the native rule driver enters: the entry point,
+/// an entry point whose block the rule driver enters: the entry point,
 /// the position of the nest (`last` after a declaration, `followed` by another
 /// declaration, `beside` a declaration on each side), the opener, the depth,
 /// whether the input has syntax, how many declarations it keeps (the sheet

@@ -1,11 +1,11 @@
 //! What the descriptor grammars share on the parser crate's token streams.
 //!
 //! A descriptor grammar reads the value of a descriptor from a [`Stream`] and
-//! reports its failures as the native errors the recovery diagnostics are
+//! reports its failures as the `GrammarFailure`s the recovery diagnostics are
 //! written in, located by the boundary of the stream the failure is at. The
 //! boundaries of a document of source text are bytes of the source; those of a
 //! document of checked components are the bytes of the serialization of the
-//! components, which is what the component-native constructors report.
+//! components, which is what the constructors of the components report.
 use std::cell::RefCell;
 use std::ops::Range;
 
@@ -39,7 +39,7 @@ pub(super) type ValueError<'i> = SyntaxError<'i, GrammarFailure>;
 /// The result of a value grammar.
 pub(super) type Value<'i, T> = Result<T, ValueError<'i>>;
 
-/// Where the boundary `site` of a document is, as the native diagnostics say
+/// Where the boundary `site` of a document is, as the recovery diagnostics say
 /// it: a bytes position of the source for a document of source text, and one
 /// of the serialization for a document of checked components.
 pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> CssSourcePosition {
@@ -54,7 +54,7 @@ pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> Css
     }
 }
 
-/// Where the byte `offset` of the serialization is, as the native diagnostics
+/// Where the byte `offset` of the serialization is, as the recovery diagnostics
 /// say it.
 pub(super) fn at_serialized_offset(
     serialized: &CssSerializedValue,
@@ -124,7 +124,7 @@ pub(super) fn token_spelling<'i>(site: Site<'i>) -> Option<&'i str> {
     document.spelling(*node)
 }
 
-/// The native error of a failure of a value grammar.
+/// The grammar failure of a failure of a value grammar.
 pub(super) fn value_failure(
     numeric: &NumericInputContext<'_>,
     error: &ValueError<'_>,
@@ -147,7 +147,7 @@ pub(super) fn value_failure(
     }
 }
 
-/// A failure of a value grammar at `at` that `make` builds the native error
+/// A failure of a value grammar at `at` that `make` builds the grammar failure
 /// of, given where `at` is.
 pub(super) fn fail<'i>(
     numeric: &NumericInputContext<'_>,
@@ -366,7 +366,7 @@ pub(super) fn from_here<'i, T, E>(
 }
 
 /// The components of every token of the document `input` reads, which is the
-/// scope of a native callback, or the failure to collect them and where it is
+/// scope of a block, or the failure to collect them and where it is
 /// reported: at the end of the top-level component that holds the failing token.
 pub(super) fn collect_scope(
     input: &Stream<'_>,
@@ -385,8 +385,8 @@ pub(super) fn collect_scope(
     })
 }
 
-/// The components of the scope of the native parser `input`, to its end, which
-/// is where the parser is left; or the fault that kept them from being
+/// The components of the scope of the stream `input`, to its end, which is
+/// where the stream is left; or the fault that kept them from being
 /// collected and where it is reported. `start` is where the scope begins.
 pub(super) struct CollectedScope {
     pub(super) values:
@@ -770,7 +770,7 @@ where
 }
 
 /// Runs a value grammar over the text `range` of the source, read as a
-/// document of its own: the scope a text front hands a ported grammar.
+/// document of its own: the scope a text front hands a grammar.
 pub(super) fn parse_text<T>(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,

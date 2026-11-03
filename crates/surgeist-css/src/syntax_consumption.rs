@@ -1,6 +1,6 @@
 //! Private CSS Syntax 3 input normalization and generic structural consumption.
 //!
-//! Checked feature grammar remains a later admission phase. This module builds
+//! Checked feature grammar is a separate admission phase. This module builds
 //! the token tree (the parser crate's [`Document`], closed over CSS's payload)
 //! of source text or of checked components, and keeps the generic rule-unit
 //! consumers that recovery reads it with.
@@ -298,9 +298,8 @@ pub(crate) fn unicode_range_text_document(
         })
 }
 
-/// The tree of the window `range` of the text `original` holds, for a native
-/// callback that hands a ported grammar its whole scope, whose positions are
-/// those of `original`.
+/// The tree of the window `range` of the text `original` holds, for a grammar
+/// that is handed its whole scope, whose positions are those of `original`.
 ///
 /// The tree has no ceiling on nesting of its own. The scope lies inside blocks
 /// the structural scans of the recovery state have already counted, and they,

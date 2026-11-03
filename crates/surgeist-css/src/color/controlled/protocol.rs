@@ -847,8 +847,8 @@ mod tests {
     // Hosts admit these two amounts before storing a record or starting a parse,
     // so they are part of the protocol's public contract. They depend on the
     // layouts of the stepwise protocol's `RawToken`, `NumberLayout` and `Span`, which
-    // `surgeist-css-parser/tests/layout_pins.rs` pins. The values are the ones
-    // measured before those types moved into that crate.
+    // `surgeist-css-parser/tests/layout_pins.rs` pins. The values are the sizes
+    // of those layouts.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn public_admission_layouts_keep_their_measured_values() {

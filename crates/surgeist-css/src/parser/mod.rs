@@ -1131,8 +1131,8 @@ fn parse_namespace_prelude<'i>(
     })
 }
 
-/// The layer names of an `@layer` prelude that the native parser `input` holds,
-/// to the end of its scope.
+/// The layer names of an `@layer` prelude that the stream `input` holds, to the
+/// end of its scope.
 fn parse_layer_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
@@ -1486,8 +1486,7 @@ pub(crate) fn keyframe_property_admitted(property: CssKnownProperty) -> bool {
 
 /// What the name of a declaration selects: the context its importance
 /// annotation is judged in and the grammar its value is read with. Both the
-/// native declaration callbacks and the ported declaration grammars choose
-/// them here, in this order: custom property, SVG glyph property, known
+/// declaration grammars choose them here, in this order: custom property, SVG glyph property, known
 /// property.
 struct DeclarationPlan {
     context: DeclarationBoundaryContext,

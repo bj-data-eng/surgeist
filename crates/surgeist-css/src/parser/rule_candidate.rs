@@ -95,7 +95,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
                 Fault::UnexpectedCloser => {
                     crate::component::values::CssComponentValueErrorKind::UnmatchedClosingDelimiter
                 }
-                // A parse error the tree newly preserves is still an invalid token.
+                // A parse error the tree preserves is an invalid token.
                 _ => crate::component::values::CssComponentValueErrorKind::InvalidToken,
             };
             let token_origin = document.origin(node);

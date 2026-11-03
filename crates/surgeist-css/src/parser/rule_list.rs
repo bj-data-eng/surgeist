@@ -211,7 +211,7 @@ const PAGE_PLACEMENT: &str =
     "a rule list without a style-rule ancestor that is not itself a @scope body";
 const STYLESHEET_TOP_LEVEL: &str = "the stylesheet top level";
 
-/// Where the stream `input` stands, as the native errors say it.
+/// Where the stream `input` stands, as the grammar failures say it.
 fn here(input: &Stream<'_>, recovery: &RecoveryState) -> CssSourcePosition {
     location_at(recovery.source_snapshot(), offset_of(input.site()))
 }
@@ -802,8 +802,8 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
                 at_block,
             }
         }
-        // A unit that met no block: a declaration, or what a later edition of the
-        // parser crate adds.
+        // A unit that met no block: a declaration, or a unit kind the parser
+        // crate adds.
         _ => {
             let start = failed.start();
             let end = failed.end();

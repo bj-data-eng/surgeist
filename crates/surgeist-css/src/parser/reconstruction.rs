@@ -25,7 +25,7 @@ pub(crate) enum BoundedParseContext {
 }
 
 // The entry preserves the public entry's admission boundary. Fragments retain
-// their native grammar and cannot become recovering lists.
+// their own grammar and cannot become recovering lists.
 pub(crate) enum BoundedParseSyntax {
     Rules(CssSheet),
     OneRule(Option<CssRule>),

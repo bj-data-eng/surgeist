@@ -50,8 +50,8 @@ pub(super) fn bounded_or<T: Send>(
 }
 
 /// Rule-list fragment parsing whose refusal retains no syntax. Rule lists recurse
-/// through their nested rules natively, so they are admitted on the caller's
-/// stack as stylesheets are.
+/// through their nested rules, so they are admitted on the caller's stack as
+/// stylesheets are.
 pub(super) fn bounded_rules<T: Send>(
     source: &str,
     parse: impl FnOnce() -> crate::CssParseReport<Option<T>> + Send,

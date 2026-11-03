@@ -41,8 +41,7 @@ pub(crate) fn parse_with_context(
                 &mut root,
                 &state,
                 |range, location| {
-                    let origin = CssParsedOrigin::from_range(&snapshot, range)
-                        .expect("native member source range");
+                    let origin = CssParsedOrigin::covering(&snapshot, range);
                     origins.try_reserve(1).map_err(|_| {
                         crate::diagnostic::error::invalid_component_value(
                             location,

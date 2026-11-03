@@ -1,5 +1,5 @@
 //! A declaration that the parser crate's driver consumed, admitted by the
-//! shell every declaration of a ported grammar shares.
+//! shell every declaration grammar shares.
 //!
 //! The driver has applied Syntax 3 section 5.5.6 steps 6 to 8 by the time a
 //! grammar sees the declaration: the `!important` that ends it is recognised

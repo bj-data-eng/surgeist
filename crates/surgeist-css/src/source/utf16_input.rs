@@ -488,9 +488,8 @@ fn resource(resource: PreprocessResource) -> CssUtf16Resource {
         PreprocessResource::ScratchBytes => CssUtf16Resource::ScratchBytes,
         PreprocessResource::RetainedBytes => CssUtf16Resource::RetainedBytes,
         PreprocessResource::Work => CssUtf16Resource::Work,
-        // A resource the parser crate names later still refuses the input as a
-        // limit. This crate has no finer name for it, so the aggregate retained
-        // bytes stands in.
+        // A resource this crate has no finer name for refuses the input as a
+        // limit too; the aggregate retained bytes stands in.
         _ => CssUtf16Resource::RetainedBytes,
     }
 }
@@ -498,16 +497,15 @@ fn resource(resource: PreprocessResource) -> CssUtf16Resource {
 /// A [`Preparation`] seen as the parser crate's [`Meter`], for the one call to
 /// `preprocess_utf16`.
 ///
-/// The parser crate charges the preprocessing exactly as this file's loop
-/// charged it. Three things differ and are bridged here, so that the poll, live
-/// and release callbacks of the host see the same extents in the same order as
-/// before:
+/// The host sees the poll, live and release callbacks of a preparation in the
+/// order its contract fixes. The parser crate's accounting differs from that
+/// contract in three things, which the meter reconciles:
 ///
 /// - the first admitted storage also carries the registers only the host holds
 ///   (`registers`, which include the original backing), folded into the first
 ///   [`Meter::add`] so that no callback of its own exists for them;
 /// - the function returns the cursor's bytes when its loop ends, and the host
-///   kept them until the preparation settled; the last release of a successful
+///   keeps them until the preparation settles; the last release of a successful
 ///   call is withheld (every release is held until the next call, so the last
 ///   one never reaches the host); and
 /// - the function returns everything it still holds when it fails, and the host
@@ -961,11 +959,10 @@ mod preparation_tests {
         (events.into_inner(), outcome)
     }
 
-    /// The callbacks of the preparation loop that `preprocess_utf16` replaced, as
-    /// that loop made them (recorded by running it on the repository state before
-    /// the replacement, with the spare capacity of each test). `P` is a poll, `L`
-    /// a live extent and `R` a release, each with its bytes and original units.
-    fn recorded(trace: &str) -> Vec<Callback> {
+    /// The callbacks the host contract fixes for a preparation, spelled as a
+    /// trace, for the spare capacity of each test. `P` is a poll, `L` a live
+    /// extent and `R` a release, each with its bytes and original units.
+    fn expected_callbacks(trace: &str) -> Vec<Callback> {
         let mut callbacks = Vec::new();
         let mut rest = trace;
         while let Some(first) = rest.chars().next() {
@@ -992,21 +989,21 @@ mod preparation_tests {
     const MIXED: [u16; 9] = [13, 10, 12, 0, 0xd83d, 0xde00, 0xd800, 97, 0xdc00];
 
     #[test]
-    fn the_snapshot_payload_header_keeps_the_size_the_recorded_callbacks_assume() {
-        // The recorded callbacks and the characterization golden charge 88 bytes
-        // for a snapshot's fixed fields; the parser crate's source map is no
-        // larger than the vector it replaced, so the layout still has that size.
+    fn the_snapshot_payload_header_keeps_the_size_the_expected_callbacks_assume() {
+        // The expected callbacks and the characterization golden charge 88 bytes
+        // for a snapshot's fixed fields, which the layout of the payload header
+        // fixes.
         assert_eq!(size_of::<crate::source::position::SourceSnapshotData>(), 88);
     }
 
     #[test]
-    fn an_empty_input_makes_the_callbacks_of_the_replaced_preparation_loop() {
+    fn an_empty_input_makes_the_callbacks_the_host_contract_fixes() {
         let limits = CssUtf16InputLimits::default();
         let (events, result) = callbacks(&[], 0, limits, Stop::Never);
         assert_eq!(result, Ok(()));
         assert_eq!(
             events,
-            recorded("P L392,0 P L464,0 R408,0 L496,0 R448,0 R416,0 R256,0 R128,0")
+            expected_callbacks("P L392,0 P L464,0 R408,0 L496,0 R448,0 R416,0 R256,0 R128,0")
         );
         for (stop, trace) in [
             (Stop::Poll(2), "P L392,0 P R0,0"),
@@ -1016,23 +1013,27 @@ mod preparation_tests {
         ] {
             let (events, result) = callbacks(&[], 0, limits, stop);
             assert!(result.is_err());
-            assert_eq!(events, recorded(trace), "{trace}");
+            assert_eq!(events, expected_callbacks(trace), "{trace}");
         }
         let (events, result) = callbacks(&[], 0, limits, Stop::Poll(1));
         assert!(result.is_err());
-        assert_eq!(events, recorded("P"), "nothing charged, nothing released");
+        assert_eq!(
+            events,
+            expected_callbacks("P"),
+            "nothing charged, nothing released"
+        );
     }
 
     #[test]
-    fn a_mixed_input_makes_the_callbacks_of_the_replaced_preparation_loop() {
+    fn a_mixed_input_makes_the_callbacks_the_host_contract_fixes() {
         let limits = CssUtf16InputLimits::default();
         // The first live extent is the original backing, twice its capacity of
-        // 9 units, and the 392 bytes of registers the old loop held.
+        // 9 units, and the 392 bytes of registers the host holds.
         let (events, result) = callbacks(&MIXED, 0, limits, Stop::Never);
         assert_eq!(result, Ok(()));
         assert_eq!(
             events,
-            recorded(
+            expected_callbacks(
                 "P L410,9 PPP L435,9 R411,9 L483,9 R427,9 PP L453,9 P R428,9 L516,9 P R444,9 \
                  PP L473,9 PP R447,9 L567,9 PP R479,9 PPP L513,9 PPP R484,9 PPP L528,9 \
                  PPPP R494,9 L678,9 PPPP R558,9 PPPPP L630,9 R574,9 PPPPPPP L662,9 \
@@ -1048,14 +1049,14 @@ mod preparation_tests {
         ] {
             let (events, result) = callbacks(&MIXED, 0, limits, stop);
             assert!(result.is_err());
-            assert_eq!(events, recorded(trace), "{trace}");
+            assert_eq!(events, expected_callbacks(trace), "{trace}");
         }
         // The refusal of the payload header's live extent, the last before the
         // result exists, returns everything with one release of nothing.
         let (events, result) = callbacks(&MIXED, 0, limits, Stop::Live(12));
         assert_eq!(result.unwrap_err().interruption(), Some(&12));
         assert_eq!(events.last(), Some(&Callback::Release(0, 0)));
-        assert_eq!(events[events.len() - 2], recorded("L662,9")[0]);
+        assert_eq!(events[events.len() - 2], expected_callbacks("L662,9")[0]);
     }
 
     #[test]
@@ -1119,7 +1120,7 @@ mod preparation_tests {
                 Some(resource),
                 "{trace}"
             );
-            assert_eq!(events, recorded(trace), "{resource:?}");
+            assert_eq!(events, expected_callbacks(trace), "{resource:?}");
         }
     }
 

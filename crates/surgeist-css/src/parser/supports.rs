@@ -78,7 +78,7 @@ pub(crate) fn with_supports_prelude_context(error: GrammarFailure) -> GrammarFai
     }
 }
 
-/// The `<supports-condition>` that the native parser `input` holds to its end.
+/// The `<supports-condition>` that the stream `input` holds to its end.
 pub(crate) fn parse_supports_condition<'i>(
     source: &str,
     input: &mut Stream<'i>,

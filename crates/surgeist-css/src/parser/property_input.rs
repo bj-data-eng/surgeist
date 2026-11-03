@@ -1,6 +1,6 @@
 //! CSS's reading of the parser crate's token tree: provenance, metering and
-//! retained text for the grammars, and the adapter by which the grammars the
-//! provider still drives enter them.
+//! retained text for the grammars, and the adapter by which the grammars enter
+//! them.
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValueRef,
