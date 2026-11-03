@@ -157,6 +157,82 @@ mod tests {
             ));
         }
     }
+    /// The work that a `for` lookup is charged when its marker's data holds `pairs` pseudo-attributes
+    /// with distinct names after the matching `name`.
+    fn marker_work(pairs: usize) -> usize {
+        let data: String = std::iter::once("name='X'".to_owned())
+            .chain((0..pairs).map(|n| format!("p{n}=''")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 10000, 100, 10_000_000, 100, 10, 10, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let d = b
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let t = b
+            .add_element(
+                &d,
+                QualifiedName::new(Namespace::html(), None, "template"),
+                OrderedAttributes::new(vec![Attribute::new(
+                    QualifiedName::new(Namespace::none(), None, "for"),
+                    "X",
+                )])
+                .unwrap(),
+                HtmlCapturedIsValue::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let p = b
+            .add_processing_instruction(&d, "marker".into(), data.as_str().into())
+            .unwrap();
+        b.establish_children(&t, &[]).unwrap();
+        b.establish_children(&d, &[p.clone(), t.clone()]).unwrap();
+        let c = b.finish().unwrap();
+        let id = c.subject_id(&t).unwrap();
+        let cx = HtmlSemanticContext::new(
+            &c,
+            c.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]),
+            0,
+        )
+        .unwrap();
+        let mut s = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(10_000_000),
+            HtmlSemanticLimits::new(1_000_000_000, 10, 10_000_000, 0, 1_000_000_000, 100),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let q = [HtmlSemanticRequest::new(
+            id,
+            HtmlSemanticQuery::TemplateForReference,
+        )];
+        s.query(&q).unwrap();
+        assert_eq!(s.usage().scratch_records(), 0);
+        s.usage().work()
+    }
+    /// XML-stylesheet 20101028 section 3 makes two pseudo-attributes with one name an error, so
+    /// every name is compared with the earlier names: the work of a scan of distinct names must
+    /// still grow no faster than its size.
+    #[test]
+    fn marker_pseudo_attribute_work_grows_linearly_with_distinct_names() {
+        let work: Vec<usize> = [150, 300, 600, 1200].map(marker_work).to_vec();
+        for pair in work.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "doubling the pairs grew the work from {} to {}: {work:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
     #[test]
     fn known_start_with_unavailable_siblings_keeps_the_real_dependency() {
         let mut b = HtmlCaptureBuilder::new(
