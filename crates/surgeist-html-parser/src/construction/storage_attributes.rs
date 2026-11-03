@@ -113,6 +113,13 @@ impl SessionStorage {
             check_text_source(control, &a.value)?;
             control.require_source_range(&a.source)?;
         }
+        let entries = element
+            .attributes()
+            .len()
+            .saturating_add(tag.attributes.len());
+        if entries >= construction_owner::NAME_INDEX_MIN_ENTRIES {
+            self.construction.provide_name_index(control, entries)?;
+        }
         self.begin_attribute_edit(
             control,
             target,
@@ -251,6 +258,7 @@ impl SessionStorage {
             }
             if count == 0 {
                 self.construction.finish_attributes(control)?;
+                self.construction.retire_name_index(control)?;
                 return Ok(None);
             }
             // The actual stage remains reversed: last-pop yields source order
@@ -343,6 +351,8 @@ impl SessionStorage {
         if self.construction.has_attribute_edit() {
             self.construction.finish_attributes(control)?;
         }
+        // Planning is over: the table of names, if the merge borrowed one, is no longer needed.
+        self.construction.retire_name_index(control)?;
         let end = start
             .checked_add(count)
             .ok_or_else(|| latch_registry_row(control))?;

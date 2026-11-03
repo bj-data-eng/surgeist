@@ -67,28 +67,23 @@ pub(super) fn check_formatting_tag(
     check_formatting_text(control, &tag.name, source)?;
     lowercase_token_name(control, tag.name.value.text())?;
     tag.attributes.require_disposal_owner(control)?;
-    for (index, attribute) in tag.attributes.as_slice().iter().enumerate() {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        check_formatting_text(control, &attribute.name, source)?;
-        check_formatting_text(control, &attribute.value, source)?;
-        lowercase_token_name(control, attribute.name.value.text())?;
-        control.require_source_range(&attribute.source)?;
-        if attribute.source.start() < source.start() || attribute.source.end() > source.end() {
-            return Err(SessionError::OriginSplitUnavailable);
-        }
-        // Pair matching for Noah relies on actual unique parsed names, not the
-        // token's duplicate-recovery flag or an untrusted counter substitute.
-        for earlier in tag.attributes.as_slice().iter().take(index) {
+    // Pair matching for Noah relies on actual unique parsed names, not the token's
+    // duplicate-recovery flag or an untrusted counter substitute.
+    token_names::require_distinct_names(
+        control,
+        tag.attributes.as_slice(),
+        |control, _, attribute| {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if exact_string_equal(
-                control,
-                earlier.name.value.text(),
-                attribute.name.value.text(),
-            )? {
-                return Err(SessionError::DuplicateAttribute);
+            check_formatting_text(control, &attribute.name, source)?;
+            check_formatting_text(control, &attribute.value, source)?;
+            lowercase_token_name(control, attribute.name.value.text())?;
+            control.require_source_range(&attribute.source)?;
+            if attribute.source.start() < source.start() || attribute.source.end() > source.end() {
+                return Err(SessionError::OriginSplitUnavailable);
             }
-        }
-    }
+            Ok(())
+        },
+    )?;
     Ok(())
 }
 

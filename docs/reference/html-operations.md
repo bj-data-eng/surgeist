@@ -2405,6 +2405,13 @@ allocation policies. Parser limits measure admitted logical storage, known
 layouts, work and retained capacities, not process RSS, elapsed time or allocator
 preemption. Existing scans, copies and topology walks may be quadratic; finite
 input and budgets do not promise successful completion or universal linearity.
+A start tag of `n` attributes with distinct names costs work linear in `n` and the total
+length of the names, whatever the element: ordinary elements, those that install their
+attributes one at a time (`input`, `details`, `select`), the merge of a later `html` start tag
+into the first, and the replay of a formatting element that copies its attributes. A tag of
+fewer than 32 attributes compares names pair by pair, which is cheaper than building a table of
+them. The [work tests](../../crates/surgeist-html-parser/tests/parser/parse/linear_work.rs)
+measure each of these; reservation steps up with capacity doublings and is measured apart.
 [Public entry tests](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) exercise this boundary. Internal-owner
 descriptions below retain their existing link anchors.
 

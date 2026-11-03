@@ -124,6 +124,7 @@ mod script_type;
 #[cfg(test)]
 mod test_support;
 mod text_runs;
+mod token_names;
 mod token_payload;
 use cleanup::{
     cleanup_charge, cleanup_owner, keep_first, payload_write, release_logical, release_parts,

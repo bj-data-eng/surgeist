@@ -12,7 +12,57 @@ use surgeist_html::{
 #[cfg(test)]
 mod tests;
 use crate::parser::control::{SharedAllocation, VectorCapacity};
+/// Attribute lists at least this long are edited through a table of their names, so that the
+/// check for a repeated name costs work in proportion to the list instead of its square. A
+/// shorter list compares every pair, which is cheaper than building the table.
+pub(in crate::construction) const NAME_INDEX_MIN_ENTRIES: usize = 32;
+/// Names that effects of the attribute being installed may add to the list: the table is sized
+/// for them too, so that they are looked up in it like the rest.
+pub(in crate::construction) const NAME_INDEX_SPARE_ENTRIES: usize = 8;
+
 impl ConstructionOwner {
+    /// Makes sure the table of attribute names can hold `entries` names, reserving its slots
+    /// through the original controller. Nothing is built: an edit that borrows the table clears
+    /// and fills it. A count too large to size a table leaves it as it is, and the edit then
+    /// compares every pair.
+    pub(in crate::construction) fn provide_name_index(
+        &mut self,
+        control: &mut ParseControl,
+        entries: usize,
+    ) -> Result<(), SessionError> {
+        let Some(slots) = HtmlAttributeNameIndex::slots_required(entries) else {
+            return Ok(());
+        };
+        if self
+            .name_index
+            .as_ref()
+            .is_some_and(|index| index.capacity() >= slots)
+        {
+            return Ok(());
+        }
+        self.retire_name_index(control)?;
+        let (mut vector, mut ticket) = control.new_vector::<HtmlNameIndexSlot>()?;
+        if let Err(stop) = control.reserve_vector(&mut vector, &mut ticket, slots) {
+            // The reserve may have changed the capacity before it stopped.
+            release_vector(control, vector, ticket)?;
+            return Err(stop.into());
+        }
+        self.name_index = Some(HtmlAttributeNameIndex::new(vector));
+        self.name_index_slots = Some(ticket);
+        Ok(())
+    }
+    /// Releases the table of attribute names, crediting its slots. Nothing happens while an edit
+    /// has borrowed it or when there is none.
+    pub(in crate::construction) fn retire_name_index(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        let (Some(index), Some(ticket)) = (self.name_index.take(), self.name_index_slots.take())
+        else {
+            return Ok(());
+        };
+        release_vector(control, index.into_storage(), ticket)
+    }
     /// Lends the active edit to the caller, who returns it with
     /// [`Self::put_attribute_edit`]. The edit holds the storage meanwhile, so
     /// a second edit cannot begin and nothing else can occupy the slot.
@@ -77,6 +127,9 @@ impl ConstructionOwner {
             return Err(latch_registry_row(control));
         };
         let mut group = HtmlConstructionAttributeEdit::begin(storage, handle, mode);
+        if let Some(index) = self.name_index.take() {
+            group.adopt_index(index);
+        }
         let result = (|| {
             while let Some(action) = group
                 .next_action()
@@ -152,6 +205,11 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         completion: HtmlConstructionAttributeCompletion,
     ) -> Result<(), SessionError> {
+        let mut completion = completion;
+        // The table goes back to where `provide_name_index` and `retire_name_index` find it.
+        if let Some(index) = completion.take_index() {
+            self.name_index = Some(index);
+        }
         let (storage, mut retirement) = completion.into_parts();
         self.owner = Some(storage);
         let mut refused = None;

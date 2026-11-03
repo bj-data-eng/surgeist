@@ -501,6 +501,14 @@ impl SessionStorage {
                 )
                 .map_err(|_| latch_registry_row(control))?;
             }
+            if count >= construction_owner::NAME_INDEX_MIN_ENTRIES {
+                // The attributes are installed one at a time, each in its own edit: they look
+                // up their names in one table, which the effects of an attribute may add to.
+                self.construction.provide_name_index(
+                    control,
+                    count.saturating_add(construction_owner::NAME_INDEX_SPARE_ENTRIES),
+                )?;
+            }
             self.edit_attributes(control, node.index, container, stage, count, false)?;
             self.begin_attribute_transfer(control, stage, container, 0)?;
             for position in 0..count {
@@ -542,6 +550,7 @@ impl SessionStorage {
                 },
             )?;
 
+            self.construction.retire_name_index(control)?;
             match creation {
                 OrderedCreation::Details { .. } => {}
                 OrderedCreation::Input { input, .. } => {
