@@ -153,13 +153,13 @@ fn header_row_and_column_grid_in_a_tbody_grows_about_four_times_per_four_times_t
 #[derive(Clone, Copy)]
 enum Later {
     /// Every later row holds one `td`, which lands right of the tall cells.
-    RightOfTall,
+    Right,
     /// Row 0 starts with one short `td`, every later row holds one `td` that
     /// lands in column 0, left of every tall cell.
-    LeftOfTall,
-    /// As `RightOfTall`, but the tall cells have `rowspan="0"`: they grow
+    Left,
+    /// As `Right`, but the tall cells have `rowspan="0"`: they grow
     /// downward one row at a time to the end of the rows.
-    GrowingRightOfTall,
+    GrowingRight,
 }
 
 fn tall_and_later_rows(
@@ -169,13 +169,13 @@ fn tall_and_later_rows(
 ) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
     let (mut b, d) = wide_builder_without_registries();
     let table = element(&mut b, &d, "table", &[]);
-    let span = if matches!(later, Later::GrowingRightOfTall) {
+    let span = if matches!(later, Later::GrowingRight) {
         "0".to_string()
     } else {
         (rows + 1).to_string()
     };
     let mut first = Vec::new();
-    if matches!(later, Later::LeftOfTall) {
+    if matches!(later, Later::Left) {
         first.push(cell(&mut b, &d, "td", &[]));
     }
     for _ in 0..tall {
@@ -205,8 +205,8 @@ fn tall_work(tall: usize, rows: usize, later: Later) -> usize {
         panic!("expected a complete table model");
     };
     let (width, cells) = match later {
-        Later::RightOfTall | Later::GrowingRightOfTall => (tall + 1, tall + rows),
-        Later::LeftOfTall => (tall + 1, 1 + tall + rows),
+        Later::Right | Later::GrowingRight => (tall + 1, tall + rows),
+        Later::Left => (tall + 1, 1 + tall + rows),
     };
     assert_eq!(
         (model.width(), model.height(), model.cells().len()),
@@ -215,7 +215,7 @@ fn tall_work(tall: usize, rows: usize, later: Later) -> usize {
     assert!(model.errors().is_empty());
     assert!(model.headers().is_empty());
     // The tall cells reach the last row, either by their rowspan or by growing.
-    let tall_cells = if matches!(later, Later::LeftOfTall) {
+    let tall_cells = if matches!(later, Later::Left) {
         &model.cells()[1..=tall]
     } else {
         &model.cells()[..tall]
@@ -243,15 +243,15 @@ fn assert_input_linear_work(later: Later) {
 
 #[test]
 fn tall_cells_beside_rows_placed_to_their_right_cost_the_size_of_the_input() {
-    assert_input_linear_work(Later::RightOfTall);
+    assert_input_linear_work(Later::Right);
 }
 
 #[test]
 fn tall_cells_beside_rows_placed_to_their_left_cost_the_size_of_the_input() {
-    assert_input_linear_work(Later::LeftOfTall);
+    assert_input_linear_work(Later::Left);
 }
 
 #[test]
 fn growing_cells_beside_rows_cost_the_size_of_the_input() {
-    assert_input_linear_work(Later::GrowingRightOfTall);
+    assert_input_linear_work(Later::GrowingRight);
 }
