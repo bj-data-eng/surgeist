@@ -477,6 +477,27 @@ pub enum HtmlCaptureSubjectKind {
     ProcessingInstruction,
     Doctype,
 }
+/// Refusal of an edge operation whose work the caller meters. An interruption
+/// is the caller's own first refusal, returned without translation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum HtmlCaptureEdgeError<E> {
+    Capture(HtmlCaptureError),
+    Interrupted(E),
+}
+impl<E> From<HtmlCaptureError> for HtmlCaptureEdgeError<E> {
+    fn from(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+impl<E: fmt::Display> fmt::Display for HtmlCaptureEdgeError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Capture(error) => error.fmt(f),
+            Self::Interrupted(error) => error.fmt(f),
+        }
+    }
+}
+impl<E: Error + 'static> Error for HtmlCaptureEdgeError<E> {}
 /// Rejected assembly, lookup or source-derived context admission.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureError {
@@ -1931,6 +1952,20 @@ impl HtmlCaptureBuilder {
         self.establish_parent_controlled(child, parent, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)
     }
+    /// As [`Self::establish_parent`], taking one `step` for each unit of work
+    /// the builder performs, including finding the root of `parent`'s
+    /// component. The first refusal of `step` is returned unchanged and
+    /// establishes no edge; it can only have shortened depth links, which
+    /// leave every fact the capture reports as it was.
+    pub fn establish_parent_with<E>(
+        &mut self,
+        child: &HtmlCaptureBuilderSubject,
+        parent: &HtmlCaptureBuilderSubject,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), HtmlCaptureEdgeError<E>> {
+        self.establish_parent_controlled(child, parent, &mut preflight::steps(&mut step))
+            .map_err(preflight::edge_error)
+    }
     fn establish_parent_controlled<E>(
         &mut self,
         child: &HtmlCaptureBuilderSubject,
@@ -1962,6 +1997,18 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         self.establish_children_controlled(parent, children, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)
+    }
+    /// As [`Self::establish_children`], taking one `step` for each unit of work
+    /// the builder performs. The first refusal of `step` is returned
+    /// unchanged and establishes nothing.
+    pub fn establish_children_with<E>(
+        &mut self,
+        parent: &HtmlCaptureBuilderSubject,
+        children: &[HtmlCaptureBuilderSubject],
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), HtmlCaptureEdgeError<E>> {
+        self.establish_children_controlled(parent, children, &mut preflight::steps(&mut step))
+            .map_err(preflight::edge_error)
     }
     pub(crate) fn establish_children_controlled<E>(
         &mut self,
@@ -2140,6 +2187,22 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         self.establish_template_contents_controlled(template, fragment, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)
+    }
+    /// As [`Self::establish_template_contents`], taking one `step` for each
+    /// unit of work the builder performs. The first refusal of `step` is
+    /// returned unchanged and establishes nothing.
+    pub fn establish_template_contents_with<E>(
+        &mut self,
+        template: &HtmlCaptureBuilderSubject,
+        fragment: &HtmlCaptureBuilderSubject,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<(), HtmlCaptureEdgeError<E>> {
+        self.establish_template_contents_controlled(
+            template,
+            fragment,
+            &mut preflight::steps(&mut step),
+        )
+        .map_err(preflight::edge_error)
     }
     fn establish_template_contents_controlled<E>(
         &mut self,
