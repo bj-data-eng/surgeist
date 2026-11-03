@@ -167,6 +167,14 @@ machine-integer magnitude cap. Time and duration author values use millisecond
 precision, matching the strict author grammar. A global date/time retains its
 explicit local value and offset; it does not perform an implicit UTC conversion.
 
+Recovery durations let one unit repeat, so the ordinary operation adds each
+component's digits into per-place column sums (carries resolved once, when the
+value is read) instead of rebuilding the running decimal; its work is linear in
+the input however long the first number or fraction is. The controlled
+interpretation charges each duration recognition step `16 * units consumed + 256`
+(it previously charged the whole unread remainder), which is linear in total;
+its exact staged accumulation still charges each addition by the accumulated size.
+
 Temporal recovery returns separate parsed values where the source accepts a
 wider domain. Exact decimal seconds retain arbitrary admitted fractional
 precision; projection to millisecond author values fails when that value cannot
@@ -2046,7 +2054,9 @@ layout and full table author conformance remain separate.
 retaining its context and target documents, integration facts and nearest form.
 It derives the initial tokenizer/insertion state and checked scripting mode:
 Inert is the fragment default, disabled context forces Disabled, and unavailable
-execution is a typed error. Captured processing-instruction target/data preserve
+execution is a typed error. The effective mode is the one the tree builder
+reads: `noscript` is RAWTEXT under Inert and an ordinary or InHeadNoscript
+element under Disabled. Captured processing-instruction target/data preserve
 producer values independently of strict native author syntax. Capture and context
 selection perform no parsing, live mutation, script execution or effect
 publication. The parser still owns recovered metadata, contextual construction
@@ -2563,10 +2573,11 @@ frozen transfer.
 
 The owning head-stage driver consumes that continuation and the same paused
 tokenizer. It implements BeforeHead, ordinary non-script/non-template InHead,
-Disabled InHeadNoscript and RCDATA/RAWTEXT Text processing. Text restores its
-actual return mode, including delegated noscript processing. It transfers an
-owned AfterHead continuation, or stops with the untouched script/template token
-for further dispatch. These boundaries retain the actual tree, head pointer,
+InHeadNoscript for Disabled scripting and RCDATA/RAWTEXT Text processing; under
+any other scripting mode (Inert) a `noscript` start tag is RAWTEXT. Text
+restores its actual return mode, including delegated noscript processing. It
+transfers an owned AfterHead continuation, or stops with the untouched
+script/template token for further dispatch. These boundaries retain the actual tree, head pointer,
 lexical input and diagnostics; they are unfinished execution states.
 Head-stage `html` delegation adds missing attributes to managed root storage,
 preserving expanded-name matching, order and origins under the shared controller.
@@ -2612,7 +2623,9 @@ and eligible InBody entry lead to InFrameset, AfterFrameset and AfterAfterFrames
 Body removal runs the existing form effects while retaining the current-form
 pointer and formatting list; trailing whitespace can reconstruct formatting.
 Frame insertion returns at the actual node-document's null browsing-context
-guard. Noframes uses RAWTEXT and restores its saved caller mode. Mixed character
+guard. In a fragment the `</frameset>` switch to AfterFrameset needs a null
+context element, so a frameset or html context stays in InFrameset. Noframes
+uses RAWTEXT and restores its saved caller mode. Mixed character
 runs preserve exact origins while diagnosing and omitting nonwhitespace and NULL.
 Generic or imported owners cannot establish the required constructor proof.
 This ordinary specialization adds no hosted navigation. Contextual fragments use
@@ -2978,7 +2991,12 @@ record the consumed boundary.
 `HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
 types for the distinct `link`, `a`, `area` and `form` roles. Its
 [local report](../../crates/surgeist-html/src/internal/elements/rel.rs) retains exact `rel`/`rev` fields, token occurrence
-ranges and duplicate relationships. It separates recognized keywords, role
+ranges and duplicate relationships. A token's `duplicate_of` names the first earlier
+token equal under ASCII case folding. Finding them heap-sorts the token occurrences
+in place by (folded content, position), marks the adjacent equal runs and restores
+the source order by the strictly increasing offsets; nothing is allocated, and each
+comparison is charged before it is made, so the work is O(token units * log tokens)
+instead of one comparison per pair of tokens. It separates recognized keywords, role
 applicability, actual relationship effects and author constraints. Token
 recognition does not establish supported browser capabilities or URL grammar.
 
@@ -3206,6 +3224,23 @@ work, scratch, nested output, cancellation, sticky failure and atomic publicatio
 The [captured tests](../../crates/surgeist-html-semantics/tests/semantics/elements/template_for.rs) cover literal names, first
 selection, partial coverage, sibling ranges and finite refusal boundaries.
 This query reports immutable facts; it does not execute patching or attachment.
+
+When a name is complete the pseudo-attribute cursor asks the consumer (`FindName`) for the
+committed pair with that name and verifies the one candidate unit by unit, so its requests
+grow with the pairs plus the name units, not with their product. Each consumer keeps the
+index in slot storage that it allocates and admits (`HtmlPiPseudoAttributeCursor::name_index_slots`
+sizes it for the data length), and HTML owns its rules in the generic `bounded::values` name
+index, which the types carry: a power-of-two slot count; opaque slots that a consumer cannot
+forge; an index with a unique identity that is not `Clone`, that guards the one empty storage
+it was first lent and that counts its entries against a capacity of at most half the slots;
+and probes and vacancies that only that index produces and accepts. The one way to write is the
+vacancy that a probe yields at the first empty slot of its sequence. The hash key is random for
+each scan, so no input can pick colliding names. The consumer charges the table, the hash of
+the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert` serve
+consumers that admit each probe as an action, and `find_or_insert` serves those that charge
+inside closures. A `None` answer to `FindName` is trusted, and the index is never consulted
+after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge totals vary
+from run to run.
 
 <a id="private-ordinary-templates"></a>
 
@@ -3544,7 +3579,9 @@ at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains all 56 top-level
 tree-construction data files with 1,775 cases and 13 complete tokenizer files,
 every top-level tokenizer file except `xmlViolation.test`, with 6,806 cases.
 Every retained tree-construction case except the eight `#script-on` cases runs
-in both encodings: 1,575 through the completed ordinary
+in both encodings (those eight are ordinary documents whose Normal scripting
+mode needs the unsupported script-processing profile above; the fragment API
+covers the same `noscript` rules under Inert): 1,575 through the completed ordinary
 parser with scripting Disabled, and all 192 `#document-fragment` cases through
 the actual captured-context fragment owner with their corpus HTML, SVG or
 MathML context. Every bundled tokenizer case runs through the private tokenizer in each

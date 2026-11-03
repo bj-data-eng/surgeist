@@ -50,11 +50,25 @@ fn paragraph<S: l::LayoutScalar>(host: &mut Host<S>, parts: &[Part<'_>], height:
 }
 
 fn request<S: l::LayoutScalar>(width: f64) -> l::LayoutRootRequestOf<S> {
-    l::LayoutRootRequestOf::viewport(l::Size::new(
-        l::AvailableOf::definite(S::from_f64(width)),
-        l::AvailableOf::definite(S::from_f64(15.0)),
-    ))
-    .unwrap()
+    {
+        let sizing_request = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(width)), Some(S::from_f64(15.0))),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::WritingMode::SidewaysRl,
+                surgeist_layout::Direction::Ltr,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 
 fn compute_float<S: l::LayoutScalar>(

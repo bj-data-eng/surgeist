@@ -190,7 +190,15 @@ fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Opti
     // control. The tree has genuine neutral Contribution endpoints, not
     // physical BoxEdges that would already make geometry caching ineligible.
     let ordinary = admit(host, root, WrappingInput::default());
-    let cold = compute_layout_with_flow(&ordinary, root, request(n(100.0))).unwrap();
+    let cold = compute_layout_with_flow(
+        &ordinary,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(cold.native_inline_box_families().count(), 0);
     assert_eq!(cold.native_inline_box_pieces().count(), 0);
     if let Some(node) = shape {
@@ -232,7 +240,15 @@ fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Opti
         Some(seed.output())
     );
     host.hits.borrow_mut().clear();
-    let warm = compute_layout_with_flow(&ordinary, root, request(n(100.0))).unwrap();
+    let warm = compute_layout_with_flow(
+        &ordinary,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert!(
         host.hits
             .borrow()
@@ -358,13 +374,29 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         "the measured-leaf fixture premise must execute"
     );
     let good = admit(&host, root, wrapping);
-    let first = compute_layout_with_flow(&good, root, request(n(100.0))).unwrap();
+    let first = compute_layout_with_flow(
+        &good,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((good).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     check_family(&first);
     let c = box_piece(&first, 12).fragment();
     let a = box_piece(&first, 13).fragment();
     let mut sink = host.sink();
     first.apply_to(&mut sink).unwrap();
-    let repeat = compute_layout_with_flow(&good, root, request(n(100.0))).unwrap();
+    let repeat = compute_layout_with_flow(
+        &good,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((good).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     check_family(&repeat);
     assert_eq!(box_piece(&repeat, 12).fragment(), c);
     assert_eq!(box_piece(&repeat, 13).fragment(), a);
@@ -376,8 +408,16 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     let before = host.committed.borrow().clone();
     host.fail.set(Some(14));
     host.measured.borrow_mut().clear();
-    let error = crate::compute_layout_with_flow_invalidated(&good, root, request(n(100.0)), &[14])
-        .unwrap_err();
+    let error = crate::compute_layout_with_flow_invalidated(
+        &good,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((good).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+        &[14],
+    )
+    .unwrap_err();
     assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(14));
     assert_eq!(error.operation(), crate::LayoutOperation::LeafMeasurement);
     assert!(
@@ -412,8 +452,16 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     // admitted input after recovery must retain its family and global IDs.
     host.fail.set(None);
     host.measured.borrow_mut().clear();
-    let retry =
-        crate::compute_layout_with_flow_invalidated(&good, root, request(n(100.0)), &[14]).unwrap();
+    let retry = crate::compute_layout_with_flow_invalidated(
+        &good,
+        root,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((good).tree(), root);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+        &[14],
+    )
+    .unwrap();
     assert!(host.measured.borrow().contains(&14));
     check_family(&retry);
     assert_eq!(box_piece(&retry, 12).fragment(), c);
@@ -444,7 +492,15 @@ fn empty_completion<S: LayoutScalar>() {
         child_order: vec![order(GeneratedBoxRef::Node(0), vec![])],
     };
     let demanded = admit(&host, 0, wrapping);
-    let first = compute_layout_with_flow(&demanded, 0, request(n(100.0))).unwrap();
+    let first = compute_layout_with_flow(
+        &demanded,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(first.native_inline_box_families().count(), 1);
     assert_eq!(
         first
@@ -463,7 +519,15 @@ fn empty_completion<S: LayoutScalar>() {
     assert_eq!(output(&first, 0).size, Size::new(n(100.0), S::ZERO));
     let mut sink = host.sink();
     first.apply_to(&mut sink).unwrap();
-    let repeated = compute_layout_with_flow(&demanded, 0, request(n(100.0))).unwrap();
+    let repeated = compute_layout_with_flow(
+        &demanded,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         repeated.native_inline_box_families().collect::<Vec<_>>(),
         first.native_inline_box_families().collect::<Vec<_>>()

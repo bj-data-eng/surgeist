@@ -259,12 +259,23 @@ fn attach<S: l::LayoutScalar>(
     }
 }
 
-fn request<S: l::LayoutScalar>(inline: f64) -> l::LayoutRootRequestOf<S> {
-    l::LayoutRootRequestOf::viewport(l::Size::new(
-        l::AvailableOf::definite(n(40.0)),
-        l::AvailableOf::definite(n(inline)),
-    ))
-    .unwrap()
+fn request<S: l::LayoutScalar>(inline: f64, frame: l::FlowAxes) -> l::LayoutRootRequestOf<S> {
+    {
+        let sizing_request = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(n(40.0)), Some(n(inline))),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            frame,
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    }
 }
 
 fn compute<S: l::LayoutScalar>(
@@ -280,7 +291,18 @@ fn compute<S: l::LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    l::compute_layout_with_flow(&flow, 0, request(inline)).unwrap()
+    l::compute_layout_with_flow(
+        &flow,
+        0,
+        request(
+            inline,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            ),
+        ),
+    )
+    .unwrap()
 }
 
 fn placed<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) -> &t::Layout {
@@ -536,7 +558,18 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
             Vec::new(),
         )
         .unwrap();
-        l::compute_layout_with_flow_invalidated(&flow, 0, request(4.0), changed)
+        l::compute_layout_with_flow_invalidated(
+            &flow,
+            0,
+            request(
+                4.0,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                ),
+            ),
+            changed,
+        )
     }
 }
 

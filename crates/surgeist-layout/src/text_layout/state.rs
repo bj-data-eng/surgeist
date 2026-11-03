@@ -199,7 +199,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         nodes: &[Node],
         segment: &surgeist_text::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
-        mode: super::fit::Available,
+        mode: crate::AxisSizingRequestOf<f64>,
     ) -> super::formatted::FormattedTailSnapshot {
         if let Some(state) = &self.formatted {
             state.snapshot(&state.binding(container, nodes, segment, input, mode))
@@ -216,7 +216,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         nodes: &[Node],
         segment: &surgeist_text::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
-        mode: super::fit::Available,
+        mode: crate::AxisSizingRequestOf<f64>,
         uses: super::formatted::FormattedTailUses,
     ) -> Option<super::formatted::FormattedFlowItem<Node, S>> {
         if self.formatted.is_none() && uses.demands.is_empty() && uses.roles.is_empty() {
@@ -291,7 +291,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub(crate) fn formatted_begin_flow(
         &mut self,
         input: crate::ComputeInputOf<S>,
-        available: crate::AvailableOf<S>,
+        available: crate::AxisSizingRequestOf<S>,
         publication: bool,
     ) {
         if self.formatted_active()

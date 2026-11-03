@@ -458,7 +458,7 @@ impl Fixture {
         rtl: bool,
         width: Option<f64>,
         float: bool,
-        available: AvailableOf<S>,
+        sizing_request: SizingRequestOf<S>,
     ) -> CompletedLayoutBatchOf<u32, S> {
         let tree = self.tree(start, end, rtl, width, float);
         let capture = LayoutFlowInput::try_new(
@@ -477,7 +477,16 @@ impl Fixture {
         compute_layout_with_flow(
             &capture,
             0,
-            LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),
+            LayoutRootRequestOf::standalone(
+                sizing_request,
+                FlowAxes::new(
+                    WritingMode::HorizontalTb,
+                    if rtl { Direction::Rtl } else { Direction::Ltr },
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            ),
         )
         .unwrap()
     }

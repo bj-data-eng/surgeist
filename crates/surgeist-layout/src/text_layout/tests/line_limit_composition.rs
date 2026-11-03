@@ -173,7 +173,15 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         (&swapped_capture, uncapped.as_slice(), capped.as_slice()),
         (&capture, capped.as_slice(), uncapped.as_slice()),
     ] {
-        let batch = compute_layout_with_flow(input, 0, request(30.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            input,
+            0,
+            request(30.0, {
+                let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         assert_eq!(batch.placed_text().len(), 2);
         assert_block(&batch, &first, 10, 1, first_expected);
         assert_block(&batch, &second, 20, 2, second_expected);

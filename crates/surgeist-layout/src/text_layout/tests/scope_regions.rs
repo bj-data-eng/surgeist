@@ -255,7 +255,15 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let mut generated: Vec<_> = batch
         .final_inline_fragments()
         .iter()

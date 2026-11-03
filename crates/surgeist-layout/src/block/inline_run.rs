@@ -5,8 +5,8 @@ use super::scroll::{
 };
 use super::sizing::{resolve_auto_optional, resolve_length_or_zero};
 use super::*;
-use crate::FlowAxes;
 use crate::inline::InlineSourcePositionOf;
+use crate::{AxisSizingRequestOf, FlowAxes};
 
 #[cfg(test)]
 mod baseline_offset_tests;
@@ -373,6 +373,8 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+    pub(super) inline_request: AxisSizingRequestOf<S>,
+    pub(super) child_request: crate::SizingRequestOf<S>,
     pub(super) box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     pub(super) line_box_context: crate::line_box::LineBoxContext,
     pub(super) tail: crate::text_layout::fit::TailContext,
@@ -405,7 +407,7 @@ fn resolved_inline_float_terminal_block_end<S: LayoutScalar>(
 fn forced_line_break_control<S: LayoutScalar>(
     source_index: usize,
     input: LineBreakInputOf<S>,
-    available_inline_extent: AvailableOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
 ) -> ForcedLineBreakControlOf<S> {
     ForcedLineBreakControlOf::new(
         source_index,
@@ -423,7 +425,7 @@ fn forced_line_break_control<S: LayoutScalar>(
 fn inline_boundary_control<S: LayoutScalar>(
     source_index: usize,
     input: InlineBoundaryInputOf<S>,
-    available_inline_extent: AvailableOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
 ) -> InlineBoundaryControlOf<S> {
     InlineBoundaryControlOf::new(
         source_index,
@@ -464,6 +466,8 @@ where
         adjoining_margin,
     } = request;
     let InlineRunContext {
+        inline_request: available_inline_extent,
+        child_request: pass_sizing_request,
         mut box_frontier,
         line_box_context,
         indent_state,
@@ -484,15 +488,12 @@ where
     let mut cursor_block = cursor_block + adjoining_margin;
     let mut margin = InlineRunMargin::Separates;
     let logical_node_inner_size = constants.flow_axes.logical_size(node_inner_size);
-    let available_inline_extent = logical_node_inner_size
-        .inline
-        .map(AvailableOf::<S>::definite)
-        .unwrap_or(
-            constants
-                .flow_axes
-                .logical_size(constants.available_content)
-                .inline,
-        );
+    let provider_enabled = available_inline_extent.operation() == crate::SizingOperation::Normal;
+    let child_run_mode = if provider_enabled {
+        input.run_mode().for_child()
+    } else {
+        RunMode::ComputeSize
+    };
     let containing_size = constants.containing_size(logical_node_inner_size);
     let mut participants = Vec::new();
     let mut atomic_children = Vec::new();
@@ -680,16 +681,23 @@ where
             .transpose_with_node(tree, child)?;
         let named_demand = named_atomic_demand(&child_style, constants.inline_baseline_context);
         let mut child_request = ComputeInputOf::<S>::for_child(
-            input.run_mode().for_child(),
+            child_run_mode,
             SizingMode::InherentSize,
             RequestedAxis::Both,
             Size::NONE,
             constants.definite_child_containing_block_size(),
             ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
-            constants.flow_axes.physical_size(LogicalSizeOf::new(
-                available_inline_extent,
-                AvailableOf::<S>::MAX_CONTENT,
-            )),
+            pass_sizing_request.with_axes(
+                constants.flow_axes.physical_size(LogicalSizeOf::new(
+                    available_inline_extent,
+                    super::in_flow::in_flow_child_block_request(
+                        constants
+                            .flow_axes
+                            .logical_size(pass_sizing_request.axes())
+                            .block,
+                    ),
+                )),
+            ),
         )
         .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
         .with_named_baseline_demand(named_demand);
@@ -699,7 +707,7 @@ where
             let axes = child_style.common.flow_axes;
             let parent = constants.child_containing_block_size(axes);
             let logical_parent = axes.logical_size(parent);
-            let available = axes.logical_size(constants.available_content);
+            let available = axes.logical_size(pass_sizing_request.axes());
             let margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
                 *child_style.common.margin,
                 node_inner_size,
@@ -710,8 +718,16 @@ where
                 .map(super::in_flow::resolved_length_auto_fallback_zero);
             let inline = logical_parent
                 .inline
-                .or(available.inline.into_option())
-                .map(|inline| (inline - margin.inline_sum()).max(S::ZERO));
+                .or(available
+                    .inline
+                    .space()
+                    .definite_size()
+                    .map(crate::NonNegativeFiniteOf::get))
+                .map(|inline| {
+                    crate::layout_math::remaining_available_extent(inline, margin.inline_sum())
+                })
+                .transpose()
+                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
             let known = super::in_flow::in_flow_child_known_size::<Tree, M>(
                 tree,
                 child,
@@ -719,10 +735,12 @@ where
                 child_padding + child_border,
                 axes,
                 logical_parent,
-                inline,
+                (available.inline.operation() == crate::SizingOperation::Normal)
+                    .then_some(inline)
+                    .flatten(),
             )?;
             child_request = ComputeInputOf::<S>::for_child(
-                input.run_mode().for_child(),
+                child_run_mode,
                 SizingMode::InherentSize,
                 RequestedAxis::Both,
                 known,
@@ -731,15 +749,20 @@ where
                     constants.flow_axes,
                     ParentFormattingContext::BlockFlow,
                 ),
-                axes.physical_size(LogicalSizeOf::new(
-                    super::in_flow::in_flow_child_available_inline(
-                        &child_style,
-                        axes,
-                        inline,
-                        available.inline,
-                    ),
-                    AvailableOf::<S>::MAX_CONTENT,
-                )),
+                pass_sizing_request.with_axes(
+                    axes.physical_size(LogicalSizeOf::new(
+                        super::in_flow::in_flow_child_inline_request(
+                            &child_style,
+                            axes,
+                            inline,
+                            available.inline,
+                        )
+                        .map_err(|error| {
+                            crate::error::sizing_resolution_error(child, error.into())
+                        })?,
+                        super::in_flow::in_flow_child_block_request(available.block),
+                    )),
+                ),
             )
             .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
             .with_block_indent_context(crate::text_indent::BlockIndentContext {
@@ -913,20 +936,18 @@ where
                         rect.origin().x,
                     )
                 });
-        let available = match available_inline_extent {
-            AvailableOf::Definite(_) => actual_content.map_or(available_inline_extent, |rect| {
-                AvailableOf::definite(constants.flow_axes.logical_size(rect.size()).inline)
-            }),
-            // An intrinsic result is not a newly authored definite constraint.
-            AvailableOf::MinContent | AvailableOf::MaxContent => available_inline_extent,
-        };
-        let formatted_mode = match available {
-            AvailableOf::Definite(value) => {
-                crate::text_layout::fit::Available::Definite(value.to_f64())
-            }
-            AvailableOf::MinContent => crate::text_layout::fit::Available::Minimum,
-            AvailableOf::MaxContent => crate::text_layout::fit::Available::Maximum,
-        };
+        let available =
+            if crate::layout_math::normal_available_size(available_inline_extent).is_some() {
+                crate::layout_math::with_available_extent(
+                    available_inline_extent,
+                    actual_content.map(|rect| constants.flow_axes.logical_size(rect.size()).inline),
+                )
+                .map_err(|error| crate::error::sizing_resolution_error(container, error.into()))?
+            } else {
+                // A measured intrinsic result does not turn into a used constraint.
+                available_inline_extent
+            };
+        let formatted_mode = crate::layout_math::text_axis_request(available);
         let formatted = tree
             .text_computation()
             .map(|state| {
@@ -1135,14 +1156,14 @@ where
                 })
             })
             .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
-        let intrinsic_max =
-            !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
+        let intrinsic_max = !float_events.is_empty()
+            && (available.operation() == crate::SizingOperation::MaxContent);
         let quality_replay = matches!(
             constants.wrap_style,
             crate::TextWrapStyle::Balance
                 | crate::TextWrapStyle::AvoidShortLastLine
                 | crate::TextWrapStyle::Pretty
-        ) && matches!(available, AvailableOf::Definite(_));
+        ) && crate::layout_math::normal_available_size(available).is_some();
         let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
             float_events,
             exclusions.clone(),
@@ -1154,7 +1175,7 @@ where
             },
             quality_replay
                 || tail == crate::text_layout::fit::TailContext::CompleteBlock
-                    && matches!(available, AvailableOf::Definite(_)),
+                    && crate::layout_math::normal_available_size(available).is_some(),
             quality_replay,
         ));
         let result = crate::text_layout::run::layout(
@@ -1182,7 +1203,7 @@ where
                     let block_end = crate::text_layout::run::number::<S>(block_end)?;
                     let start = cursor_block + block_start;
                     let end = cursor_block + block_end;
-                    let band = if set_layout {
+                    let band = if provider_enabled {
                         match encounters
                             .borrow()
                             .band()
@@ -1244,7 +1265,7 @@ where
                 },
                 replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
                     .borrow_mut()
-                    .replay(tree, container, line, replay, set_layout)
+                    .replay(tree, container, line, replay, provider_enabled)
                 {
                     Ok(basis) => Ok(basis),
                     Err(error) => {
@@ -1319,7 +1340,9 @@ where
                             &nodes,
                         )
                         .map(|projection| {
-                            if matches!(available_inline_extent, AvailableOf::MinContent) {
+                            if available_inline_extent.operation()
+                                == crate::SizingOperation::MinContent
+                            {
                                 projection.without_avoidance()
                             } else {
                                 projection
@@ -1333,15 +1356,16 @@ where
             margin = InlineRunMargin::Adjoins;
             cursor_block = uncollapsed_cursor_block;
         }
-        let observe_formatted = matches!(
-            constants.wrap_style,
-            crate::TextWrapStyle::Balance
-                | crate::TextWrapStyle::AvoidShortLastLine
-                | crate::TextWrapStyle::Pretty
-        ) && matches!(available_inline_extent, AvailableOf::Definite(_))
-            || tree
-                .text_computation()
-                .is_some_and(|state| state.formatted_active());
+        let observe_formatted =
+            matches!(
+                constants.wrap_style,
+                crate::TextWrapStyle::Balance
+                    | crate::TextWrapStyle::AvoidShortLastLine
+                    | crate::TextWrapStyle::Pretty
+            ) && crate::layout_math::normal_available_size(available_inline_extent).is_some()
+                || tree
+                    .text_computation()
+                    .is_some_and(|state| state.formatted_active());
         let numeric_input = MixedInlineRunInputOf {
             inline_baseline_context: constants.inline_baseline_context,
             groups: tree
@@ -1368,7 +1392,7 @@ where
             |block_start, block_end| {
                 let query_block_start = cursor_block + block_start;
                 let query_block_end = cursor_block + block_end;
-                let band = if !set_layout || provider_error.borrow().is_some() {
+                let band = if !provider_enabled || provider_error.borrow().is_some() {
                     float_exclusions.query_rectangular_line_band(query_block_start, query_block_end)
                 } else {
                     match float_exclusions.query_provider_band(
@@ -1446,7 +1470,7 @@ where
             ));
         }
         report.hyphenation_state = hyphenation_state;
-        if matches!(available_inline_extent, AvailableOf::Definite(_))
+        if crate::layout_math::normal_available_size(available_inline_extent).is_some()
             && !report.line_bands.is_empty()
         {
             // The numeric box/control path committed real nonhyphenated lines.
@@ -1584,13 +1608,7 @@ where
                 prepared: output.paragraph.prepared.clone(),
                 nodes: run.to_vec(),
                 input,
-                available: match available_inline_extent {
-                    AvailableOf::Definite(value) => {
-                        crate::text_layout::fit::Available::Definite(value.to_f64())
-                    }
-                    AvailableOf::MinContent => crate::text_layout::fit::Available::Minimum,
-                    AvailableOf::MaxContent => crate::text_layout::fit::Available::Maximum,
-                },
+                available: crate::layout_math::text_axis_request(available_inline_extent),
                 trials: output.box_uses.clone(),
             });
         }
@@ -2482,12 +2500,12 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
 fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     policy: crate::TextIndentOf<S>,
-    own_available: AvailableOf<S>,
+    own_available: AxisSizingRequestOf<S>,
 ) -> LayoutResultOf<Node, crate::text_indent::ResolvedTextIndent<S>, S, M> {
     let amount =
-        match own_available {
-            AvailableOf::MinContent | AvailableOf::MaxContent => policy.amount.absolute_px(),
-            AvailableOf::Definite(width) => match policy.amount.resolve_against(
+        match crate::layout_math::normal_available_size(own_available) {
+            None => policy.amount.absolute_px(),
+            Some(width) => match policy.amount.resolve_against(
                 crate::PercentageBasisOf::definite(width).map_err(|_| {
                     LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
@@ -2519,7 +2537,7 @@ fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
                 }
             },
         };
-    if let AvailableOf::Definite(width) = own_available {
+    if let Some(width) = crate::layout_math::normal_available_size(own_available) {
         let capacity = width - amount;
         if !capacity.is_finite() {
             return Err(LayoutErrorOf::new(

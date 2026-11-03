@@ -9,14 +9,14 @@ mod measurements;
 
 fn intrinsic<S: LayoutScalar>(
     text: &str,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
 ) -> super::super::run::Output<u32, S> {
     run_in_band(text, available, false)
 }
 
 fn run_in_band<S: LayoutScalar>(
     text: &str,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     narrow_before_twenty: bool,
 ) -> super::super::run::Output<u32, S> {
     let paragraph = PreparedParagraph::plain(1, Source::new(text), ahem_style(10.0, 10.0));
@@ -174,10 +174,22 @@ fn qualify<S: LayoutScalar>(
 }
 
 fn minimum<S: LayoutScalar>() {
-    let ordinary = intrinsic::<S>("XX", AvailableOf::MIN_CONTENT);
+    let ordinary = intrinsic::<S>(
+        "XX",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+    );
     qualify(&ordinary, &[88, 88], &[20.0]);
     assert_eq!(ordinary.report.inline_extent, S::from_f64(20.0));
-    let output = intrinsic::<S>("X \nY", AvailableOf::MIN_CONTENT);
+    let output = intrinsic::<S>(
+        "X \nY",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+    );
     qualify(&output, &[88, 32, 10, 89], &[20.0, 10.0]);
     // The real Forced separator contributes no minimum intrinsic width; this
     // does not change either source-forced line's actual shaped advance.
@@ -194,13 +206,25 @@ fn minimum_content_omits_conditional_space_without_rewriting_raw_lines_f64() {
 }
 
 fn maximum<S: LayoutScalar>() {
-    let ordinary = intrinsic::<S>("XX", AvailableOf::MAX_CONTENT);
+    let ordinary = intrinsic::<S>(
+        "XX",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+    );
     qualify(&ordinary, &[88, 88], &[20.0]);
     assert_eq!(
         ordinary.line_bounds[0].allocation.size().width,
         S::from_f64(20.0)
     );
-    let output = intrinsic::<S>("X \nY", AvailableOf::MAX_CONTENT);
+    let output = intrinsic::<S>(
+        "X \nY",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+    );
     qualify(&output, &[88, 32, 10, 89], &[20.0, 10.0]);
     assert_eq!(output.report.inline_extent, S::from_f64(20.0));
     // A genuine maximum request includes the retained conditional SPACE in
@@ -221,7 +245,16 @@ fn maximum_content_includes_conditional_space_in_actual_line_allocation_f64() {
 }
 
 fn finite_fit<S: LayoutScalar>() {
-    let fitting = run_in_band::<S>("X", AvailableOf::definite(S::from_f64(40.0)), true);
+    let fitting = run_in_band::<S>(
+        "X",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        true,
+    );
     assert_eq!(fitting.paragraph.entries.len(), 1);
     assert_eq!(
         fitting.paragraph.entries[0]
@@ -231,7 +264,16 @@ fn finite_fit<S: LayoutScalar>() {
         10.0
     );
     assert_eq!(fitting.line_bounds[0].allocation.origin().y, S::ZERO);
-    let wider = run_in_band::<S>("XX", AvailableOf::definite(S::from_f64(40.0)), true);
+    let wider = run_in_band::<S>(
+        "XX",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        true,
+    );
     assert_eq!(wider.paragraph.entries.len(), 1);
     assert_eq!(
         wider.paragraph.entries[0]
@@ -244,7 +286,16 @@ fn finite_fit<S: LayoutScalar>() {
         wider.line_bounds[0].allocation.origin().y,
         S::from_f64(20.0)
     );
-    let output = run_in_band::<S>("X \nY", AvailableOf::definite(S::from_f64(40.0)), true);
+    let output = run_in_band::<S>(
+        "X \nY",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        true,
+    );
     assert_eq!(
         output
             .paragraph

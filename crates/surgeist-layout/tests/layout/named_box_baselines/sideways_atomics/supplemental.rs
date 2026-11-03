@@ -360,11 +360,19 @@ fn guards<S: l::LayoutScalar>() {
     let mut input = child_input(t::InlineBoxKind::InFlow);
     input.display = l::Display::Block;
     host.push(Some(0), l::LayoutInputOf::box_input(input));
-    l::compute_layout(
-        &host,
-        0,
-        l::LayoutRootRequestOf::viewport(available(40.0, 40.0)).unwrap(),
-    )
+    l::compute_layout(&host, 0, {
+        let sizing_request = available(40.0, 40.0);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .unwrap();
 }
 

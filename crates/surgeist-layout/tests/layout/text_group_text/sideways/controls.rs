@@ -232,7 +232,19 @@ fn refusal_transaction<S: l::LayoutScalar>() {
         let error = l::compute_layout_with_flow_invalidated(
             &flow,
             0,
-            l::LayoutRootRequestOf::viewport(available(40.0, 15.0)).unwrap(),
+            {
+                let sizing_request = available(40.0, 15.0);
+                l::LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::LayoutTree::node_input(&host, 0).writing_mode,
+                        surgeist_layout::LayoutTree::node_input(&host, 0).direction,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            },
             &[0],
         )
         .unwrap_err();

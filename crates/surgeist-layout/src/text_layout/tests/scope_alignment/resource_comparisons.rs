@@ -165,7 +165,15 @@ fn qualify<S: LayoutScalar>(work: usize) {
     assert_eq!(flow.scope_alignments.rows(), [row]);
     // The original tested default cap is the successful pipeline prerequisite;
     // the sufficient-bound control uses a fresh capture with WORK+2.
-    let batch = compute_layout_with_flow(&flow, 0, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &flow,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let finalized = lines(&batch);
     assert_eq!(finalized.len(), 1);
     let line = &finalized[0];
@@ -265,7 +273,14 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
     // Actual execution established that capture, preparation and flow admission
     // succeed at4096, while complete computation needs more. Keep this genuine
     // refusal without pinning the internal operation or its exact visit count.
-    let error = match compute_layout_with_flow(&flow, 0, request(100.0)) {
+    let error = match compute_layout_with_flow(
+        &flow,
+        0,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    ) {
         Ok(_) => panic!("the independently retained small-cap witness published a complete batch"),
         Err(error) => error,
     };

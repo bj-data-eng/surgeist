@@ -5,7 +5,7 @@ use crate::inline::{
     layout_mixed_inline_run_with_formatted_observation,
 };
 use crate::test_support::text::{PreparedParagraph, ahem_style};
-use crate::{AvailableOf, ComputeInputOf, Direction, FlowAxes, Size, WritingMode};
+use crate::{ComputeInputOf, Direction, FlowAxes, Size, WritingMode};
 use surgeist_text::PreparedText;
 
 fn prepared() -> PreparedText {
@@ -25,7 +25,25 @@ fn input() -> ComputeInputOf<f64> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             crate::ParentFormattingContext::BlockFlow,
         ),
-        Size::new(AvailableOf::definite(40.0), AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .unwrap()
 }
@@ -51,7 +69,10 @@ fn state(prepared: &PreparedText) -> (FormattedState<u32, f64>, RunBinding<u32, 
         &[1],
         &prepared.source_segments().next().unwrap(),
         input(),
-        super::super::fit::Available::Definite(40.0),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
     );
     (state, binding)
 }
@@ -132,7 +153,10 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
                 Direction::Ltr,
             ),
             observe_tail: false,
-            available_inline_extent: AvailableOf::definite(40.0),
+            available_inline_extent: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
             flow_axes: flow,
             text_align: crate::TextAlign::Start,
             text_align_last: crate::TextAlignLast::Auto,
@@ -144,7 +168,10 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
                     InlineFlowOf::new(
                         WritingMode::HorizontalTb,
                         Direction::Ltr,
-                        AvailableOf::MAX_CONTENT,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
                     ),
                     metrics,
                     InlineControlAlignment::Baseline,
@@ -249,7 +276,10 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
         &[1],
         &p.source_segments().next().unwrap(),
         input(),
-        super::super::fit::Available::Definite(40.0),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
     );
     assert!(!snapshot.observes());
     assert!(
@@ -259,7 +289,12 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
                 &[1],
                 &p.source_segments().next().unwrap(),
                 input(),
-                super::super::fit::Available::Definite(40.0),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap()
+                    ),
+                    crate::SizingOperation::Normal
+                ),
                 FormattedTailUses::default()
             )
             .is_none()

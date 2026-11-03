@@ -538,6 +538,24 @@ impl ParserArenaSession {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(storage.fragment.as_ref().map(|fragment| &fragment.context))
     }
+    /// The parser's scripting mode (HTML877d "other parsing state flags"). A
+    /// fragment parse retains the effective mode that also selected its
+    /// initial tokenizer state and insertion mode; a document parse has no
+    /// fragment and is admitted only with Disabled scripting
+    /// (`tree_builder::entry::EntryRejection::for_request`), so Disabled is
+    /// its mode.
+    pub(crate) fn scripting_mode(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<surgeist_html::parsing::HtmlParserScriptingMode, SessionError> {
+        let storage = self.active()?;
+        storage.require(c)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        Ok(storage.fragment.as_ref().map_or(
+            surgeist_html::parsing::HtmlParserScriptingMode::Disabled,
+            |fragment| fragment.mode,
+        ))
+    }
     pub(crate) fn retain_fragment_bootstrap(
         &mut self,
         c: &mut ParseControl,

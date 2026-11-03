@@ -290,3 +290,36 @@ fn completed_invalid_syntax_is_a_report_without_processing_failure_or_allocation
         raw.shared_code_units()
     ));
 }
+
+/// Total work charged to interpret `text` through both phases.
+fn interpretation_work(text: &str) -> usize {
+    let raw = DocumentString::from(text);
+    let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
+    let (work, _) = drive(owner.as_mut().unwrap());
+    let report = Interpretation::try_finish(&mut owner).unwrap();
+    assert!(matches!(
+        report.recovery(),
+        HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(_))
+    ));
+    work
+}
+
+/// "parse a duration string" (html-source:7160-7340) steps 6-8 repeat per
+/// component, and each component's scan consumes only its own units. The
+/// charge must therefore grow with the input, not with the input times the
+/// number of components.
+#[test]
+fn recovery_duration_charge_grows_linearly_with_component_count() {
+    let charges: Vec<usize> = [256, 512, 1024, 2048]
+        .into_iter()
+        .map(|components| interpretation_work(&"1s".repeat(components)))
+        .collect();
+    for pair in charges.windows(2) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 22,
+            "doubling the components grew the charge from {} to {}: {charges:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}

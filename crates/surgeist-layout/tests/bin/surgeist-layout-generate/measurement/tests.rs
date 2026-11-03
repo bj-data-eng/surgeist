@@ -1,8 +1,12 @@
+// Closed-schema decoder fixtures explicitly author an 800x600 Auto body frame.
+// No recorded root/child rectangle is used to supply that frame.
+// Box diagnostics below are independently authored fixture geometry at the
+// stated zero world phase; non-Box Range/boundary roles acquire no geometry.
 use super::*;
 use serde_json::json;
 
 fn box_fixture() -> serde_json::Value {
-    json!({"layoutInput":"box","tagName":"div","useRounding":false,"viewport":{"rootContext":"root","width":{"unit":"max-content"},"height":{"unit":"max-content"}},"style":{},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]})
+    json!({"layoutInput":"box","tagName":"div","gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"worldRoundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]})
 }
 fn decode_fixture(value: &serde_json::Value) -> Result<DecodedMeasurement, MeasurementError> {
     decode(&value.to_string(), "fixture/case", "border-box-ltr")
@@ -54,7 +58,13 @@ fn unsupported_reason_precedence_does_not_require_supported_geometry() {
 }
 #[test]
 fn required_supported_fields_never_default() {
-    for field in ["useRounding", "viewport", "children", "unroundedLayout"] {
+    for field in [
+        "useRounding",
+        "viewport",
+        "children",
+        "unroundedLayout",
+        "worldRoundedLayout",
+    ] {
         let mut value = box_fixture();
         value.as_object_mut().unwrap().remove(field);
         let error = decode_fixture(&value).unwrap_err();
@@ -223,8 +233,7 @@ fn duplicate_shape_queries_are_rejected() {
 
 #[test]
 fn unsupported_roles_require_reasons_and_cannot_hide_foreign_inline_payloads() {
-    let mut fixture = box_fixture();
-    fixture["layoutInput"] = json!("unsupported");
+    let fixture = json!({"layoutInput":"unsupported"});
     let error = decode_fixture(&fixture).unwrap_err();
     assert_eq!(error.kind, MeasurementErrorKind::MissingField);
     assert_eq!(error.field_path, "unsupportedReason");
@@ -286,7 +295,7 @@ fn unsupported_classification_does_not_bypass_structural_alternatives() {
             "inlineBoundary.kind",
         ),
         (
-            json!({"layoutInput":"box","unsupportedReason":"known","viewport":{"rootContext":"root","width":{"unit":"max-content"},"height":{"unit":"max-content"},"hostInlineSize":20}}),
+            json!({"layoutInput":"box","unsupportedReason":"known","viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":799,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}}}),
             "viewport.rootContext",
         ),
         (
@@ -301,16 +310,17 @@ fn unsupported_classification_does_not_bypass_structural_alternatives() {
     }
     let mut root = box_fixture();
     root["unsupportedReason"] = json!("known");
-    root["viewport"] = json!({"rootContext":"flex-item","width":{"unit":"max-content"},"height":{"unit":"max-content"},"parentWritingMode":"horizontal-tb","parentDirection":"bogus","hostInlineSize":-1});
+    root["viewport"]["rootContext"]["parentDirection"] = json!("bogus");
     let error = decode_fixture(&root).unwrap_err();
-    assert_eq!(error.kind, MeasurementErrorKind::InvalidValue);
-    assert_eq!(error.field_path, "viewport.parentDirection");
+    assert_eq!(error.kind, MeasurementErrorKind::Decode);
+    assert!(error.field_path.starts_with("viewport.rootContext"));
+    assert!(error.to_string().contains("bogus"));
 }
 
 #[test]
 fn block_br_used_extents_keep_width_height_order_before_insets() {
     let mut root = box_fixture();
-    root["children"] = json!([{"layoutInput":"box","tagName":"br","style":{"display":"block","size":{"height":{"unit":"px","value":1}},"inset":{"left":{"unit":"px","value":3}}},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]}]);
+    root["children"] = json!([{"layoutInput":"box","tagName":"br","style":{"display":"block","size":{"height":{"unit":"px","value":1}},"inset":{"left":{"unit":"px","value":3}}},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"worldRoundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]}]);
     let xml = crate::xml::generate_xml("block-br", &supported(&root));
     assert!(
         xml.contains(
@@ -347,30 +357,25 @@ fn cdata_terminators_in_text_are_escaped_without_changing_text() {
 }
 
 #[test]
-fn viewport_constraints_use_available_space_alternatives() {
-    for dimension in [
-        json!({"unit":"auto"}),
-        json!({"unit":"percent","value":0.5}),
-        json!({"unit":"fraction","value":1}),
+fn root_context_requires_actual_finite_frame_facts_even_on_unsupported_nodes() {
+    for malformed in [
+        json!("max-content"),
+        json!({"unit":"px","value":800}),
+        json!(null),
     ] {
         let mut value = box_fixture();
-        value["viewport"]["width"] = dimension;
+        value["viewport"]["rootContext"]["parentInlineExtent"] = malformed;
         value["unsupportedReason"] = json!("known");
         let error = decode_fixture(&value).unwrap_err();
-        assert_eq!(error.kind, MeasurementErrorKind::InvalidValue);
-        assert_eq!(error.field_path, "viewport.width");
+        assert_eq!(error.kind, MeasurementErrorKind::Decode);
+        assert!(error.field_path.starts_with("viewport.rootContext"));
     }
     let mut value = box_fixture();
-    value["viewport"]["width"] = json!({"unit":"px","value":-1});
-    assert_eq!(
-        decode_fixture(&value).unwrap_err().field_path,
-        "viewport.width"
-    );
+    value["viewport"]["rootContext"]["parentInlineExtent"] = json!(-1);
     value["unsupportedReason"] = json!("known");
-    assert!(matches!(
-        decode_fixture(&value),
-        Ok(DecodedMeasurement::Unsupported { .. })
-    ));
+    let error = decode_fixture(&value).unwrap_err();
+    assert_eq!(error.kind, MeasurementErrorKind::InvalidValue);
+    assert_eq!(error.field_path, "viewport.rootContext.parentInlineExtent");
 }
 
 #[test]
@@ -406,7 +411,8 @@ fn prepared_control_fixture() -> serde_json::Value {
     fixture["children"] = json!([
         {"layoutInput":"box","tagName":"br","style":{"display":"inline"},
          "lineControlParticipation":{"kind":"forced-break"},
-         "unroundedLayout":{"x":0,"y":0,"width":0,"height":12},"children":[]},
+         "unroundedLayout":{"x":0,"y":0,"width":0,"height":12},
+         "worldRoundedLayout":{"x":0,"y":0,"width":0,"height":12},"children":[]},
         text
     ]);
     fixture
@@ -446,7 +452,8 @@ fn prepared_control_capture_rejects_mismatched_actual_child_before_xml() {
     // source anchor, but that child is an ordinary box, not an inline BR.
     ordinary_box["children"][0] = json!({"layoutInput":"box","tagName":"span",
         "style":{"display":"inline-block"},
-        "unroundedLayout":{"x":0,"y":0,"width":10,"height":12},"children":[]});
+        "unroundedLayout":{"x":0,"y":0,"width":10,"height":12},
+        "worldRoundedLayout":{"x":0,"y":0,"width":10,"height":12},"children":[]});
     let mut wrong_boundary = prepared_control_fixture();
     wrong_boundary["preparedParagraph"]["controls"][0]["kind"] = json!("inline-boundary-start");
     wrong_boundary["children"][0] = json!({"layoutInput":"inline-boundary",
@@ -529,7 +536,8 @@ fn prepared_atomic_fixture() -> serde_json::Value {
     fixture["children"][0] = json!({"layoutInput":"box","tagName":"span",
         "style":{"display":"inline-block","size":{
             "width":{"unit":"px","value":10},"height":{"unit":"px","value":12}}},
-        "unroundedLayout":{"x":0,"y":0,"width":10,"height":12},"children":[]});
+        "unroundedLayout":{"x":0,"y":0,"width":10,"height":12},
+        "worldRoundedLayout":{"x":0,"y":0,"width":10,"height":12},"children":[]});
     fixture
 }
 
@@ -617,6 +625,7 @@ fn br_band_fixture(rounding: bool, participation: bool) -> serde_json::Value {
         "browserBrObservation":"font-band",
         "unroundedLayout":{"x":1.125,"y":5.25,"width":0.0,"height":20.125},
         "smartRoundedLayout":{"x":1.0,"y":5.0,"width":0.0,"height":20.0},
+        "worldRoundedLayout":{"x":1.0,"y":5.0,"width":0.0,"height":20.0},
         "children":[]
     });
     if participation {
@@ -787,11 +796,35 @@ fn prepared_source_and_range_rectangles_remain_distinct_closed_channels() {
     let fixture = prepared_fixture();
     let measurement = supported(&fixture);
     let xml = crate::xml::generate_xml("actual-source", &measurement);
-    assert!(xml.contains("measurement-version=\"2\""));
-    assert!(xml.contains("<prepared-paragraph capture="));
-    assert!(xml.contains("<range-fragment origin=\"0\""));
-    assert!(xml.contains("advance=\"999\""));
-    assert!(!xml.contains("inline-extent="));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let test = document.root_element();
+    assert_eq!(test.attribute("measurement-version"), Some("4"));
+    let input = test
+        .children()
+        .find(|node| node.has_tag_name("input"))
+        .unwrap();
+    let source = input
+        .descendants()
+        .find(|node| node.has_tag_name("prepared-paragraph"))
+        .unwrap();
+    assert!(source.attribute("capture").is_some());
+    let observations = test
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .unwrap();
+    let range = observations
+        .descendants()
+        .find(|node| node.has_tag_name("range-fragment"))
+        .unwrap();
+    assert_eq!(range.attribute("origin"), Some("0"));
+    assert_eq!(range.attribute("advance"), Some("999"));
+    // The owned Text input/range channels must not acquire a measured-width
+    // input attribute. V4 viewport parent-inline-extent is a separate authority.
+    assert!(input.descendants().all(|node| {
+        node.attributes()
+            .all(|attribute| attribute.name() != "inline-extent")
+    }));
+    assert!(range.attribute("inline-extent").is_none());
     // Observation changes cannot enter the serialized source capture.
     let mut changed = fixture.clone();
     changed["children"][0]["rangeFragments"][0]["advance"] = json!(1.0);

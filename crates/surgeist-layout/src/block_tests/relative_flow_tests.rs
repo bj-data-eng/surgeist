@@ -42,11 +42,25 @@ fn compute<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatc
     compute_layout(
         tree,
         0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(px::<S>(50.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            Size::new(Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::new(Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()), None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        )),
     )
     .unwrap()
 }
@@ -160,11 +174,28 @@ fn inline_size_and_visual_overflow<S: LayoutScalar>(fixed_width: bool) {
                     compute_layout(
                         tree,
                         0,
-                        LayoutRootRequestOf::viewport(Size::new(
-                            AvailableOf::MAX_CONTENT,
-                            AvailableOf::MAX_CONTENT,
-                        ))
-                        .unwrap(),
+                        crate::test_support::requests::NativeRootFrameOf::new(
+                            FlowAxes::new(
+                                tree.node_input(0).writing_mode,
+                                tree.node_input(0).direction,
+                            ),
+                            Size::new(None, None),
+                            OrthogonalFallbackOf::new(
+                                Size::new(None, None),
+                                NearestScrollportOf::Absent,
+                                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        )
+                        .request(Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::Normal,
+                            ),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::Normal,
+                            ),
+                        )),
                     )
                     .unwrap()
                 };
@@ -255,11 +286,28 @@ fn nested_visual_overflow<S: LayoutScalar>() {
                 compute_layout(
                     tree,
                     0,
-                    LayoutRootRequestOf::viewport(Size::new(
-                        AvailableOf::MAX_CONTENT,
-                        AvailableOf::MAX_CONTENT,
-                    ))
-                    .unwrap(),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(
+                            tree.node_input(0).writing_mode,
+                            tree.node_input(0).direction,
+                        ),
+                        Size::new(None, None),
+                        OrthogonalFallbackOf::new(
+                            Size::new(None, None),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    )
+                    .request(Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    )),
                 )
                 .unwrap()
             };
@@ -782,11 +830,27 @@ fn reversed_block_axis<S: LayoutScalar>(display: Display) {
             compute_layout(
                 tree,
                 0,
-                LayoutRootRequestOf::viewport(Size::new(
-                    AvailableOf::MAX_CONTENT,
-                    AvailableOf::definite(px::<S>(50.0)),
-                ))
-                .unwrap(),
+                crate::test_support::requests::NativeRootFrameOf::new(
+                    FlowAxes::new(
+                        tree.node_input(0).writing_mode,
+                        tree.node_input(0).direction,
+                    ),
+                    Size::new(None, Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap())),
+                    OrthogonalFallbackOf::new(
+                        Size::new(None, Some(NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap())),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                )
+                .request(Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(px::<S>(50.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                )),
             )
             .unwrap()
         };

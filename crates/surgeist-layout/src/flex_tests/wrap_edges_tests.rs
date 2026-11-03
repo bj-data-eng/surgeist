@@ -23,11 +23,11 @@ fn cells<S: LayoutScalar>() -> [NodeInputOf<S>; 3] {
 fn run<S: LayoutScalar>(
     items: [NodeInputOf<S>; 3],
     width: Option<f64>,
-    available: AvailableOf<S>,
+    available: AxisSizingRequestOf<S>,
+    frame: crate::test_support::requests::NativeRootFrameOf<S>,
     reverse: bool,
     wrap: FlexWrap,
-    main_gap: f64,
-    row_gap: f64,
+    gap: Size<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let mut tree = PublicLayoutTreeOf::new().children(0, [1, 2, 3]).style(
         0,
@@ -49,8 +49,8 @@ fn run<S: LayoutScalar>(
                 PreferredSizeOf::AUTO,
             ),
             gap: Size::new(
-                LengthOf::px(S::from_f64(main_gap)),
-                LengthOf::px(S::from_f64(row_gap)),
+                LengthOf::px(S::from_f64(gap.width)),
+                LengthOf::px(S::from_f64(gap.height)),
             ),
             ..NodeInputOf::default()
         },
@@ -61,7 +61,10 @@ fn run<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),
+        frame.request(Size::new(
+            available,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        )),
     )
     .unwrap()
 }
@@ -130,11 +133,30 @@ fn flex_edge_values_rank_real_fitting_groups_in_both_scalar_lanes_and_main_direc
                     let batch = run(
                         items,
                         Some(25.0),
-                        AvailableOf::definite(S::from_f64(25.0)),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        crate::test_support::requests::NativeRootFrameOf::new(
+                            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                                None,
+                            ),
+                            OrthogonalFallbackOf::new(
+                                Size::new(
+                                    Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                                    None,
+                                ),
+                                NearestScrollportOf::Absent,
+                                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                         reverse,
                         FlexWrap::Wrap,
-                        0.0,
-                        0.0,
+                        Size::new(0.0, 0.0),
                     );
                     assert_size(&batch, 25.0, 20.0);
                     let avoid = matches!(edge, WrapEdge::Avoid | WrapEdge::AvoidFlex);
@@ -155,11 +177,30 @@ fn flex_edge_values_rank_real_fitting_groups_in_both_scalar_lanes_and_main_direc
                         let necessary = run(
                             items,
                             Some(15.0),
-                            AvailableOf::definite(S::from_f64(15.0)),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                            crate::test_support::requests::NativeRootFrameOf::new(
+                                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                                Size::new(
+                                    Some(NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap()),
+                                    None,
+                                ),
+                                OrthogonalFallbackOf::new(
+                                    Size::new(
+                                        Some(NonNegativeFiniteOf::new(S::from_f64(15.0)).unwrap()),
+                                        None,
+                                    ),
+                                    NearestScrollportOf::Absent,
+                                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                                ),
+                            ),
                             reverse,
                             FlexWrap::Wrap,
-                            0.0,
-                            0.0,
+                            Size::new(0.0, 0.0),
                         );
                         assert_size(&necessary, 15.0, 30.0);
                         assert_cells(
@@ -198,11 +239,30 @@ fn flex_force_wins_at_shared_edges_but_nowrap_keeps_one_overflowing_group() {
                 let batch = run(
                     items.clone(),
                     Some(100.0),
-                    AvailableOf::definite(S::from_f64(100.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 assert_size(&batch, 100.0, 20.0);
                 assert_cells(
@@ -216,11 +276,30 @@ fn flex_force_wins_at_shared_edges_but_nowrap_keeps_one_overflowing_group() {
                 let nowrap = run(
                     items,
                     Some(25.0),
-                    AvailableOf::definite(S::from_f64(25.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::NoWrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 assert_size(&nowrap, 25.0, 10.0);
                 assert_cells(
@@ -250,11 +329,30 @@ fn flex_edges_follow_actual_item_order_and_exterior_forces_add_no_empty_gap() {
             let forced = run(
                 ordered.clone(),
                 Some(100.0),
-                AvailableOf::definite(S::from_f64(100.0)),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                crate::test_support::requests::NativeRootFrameOf::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                        None,
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                            None,
+                        ),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
                 reverse,
                 FlexWrap::Wrap,
-                0.0,
-                0.0,
+                Size::new(0.0, 0.0),
             );
             assert_size(&forced, 100.0, 20.0);
             assert_cells(
@@ -271,11 +369,30 @@ fn flex_edges_follow_actual_item_order_and_exterior_forces_add_no_empty_gap() {
             let exterior = run(
                 ordered,
                 Some(25.0),
-                AvailableOf::definite(S::from_f64(25.0)),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(
+                        NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                    ),
+                    SizingOperation::Normal,
+                ),
+                crate::test_support::requests::NativeRootFrameOf::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                        None,
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                            None,
+                        ),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
                 reverse,
                 FlexWrap::Wrap,
-                0.0,
-                3.0,
+                Size::new(0.0, 3.0),
             );
             // Flex6 requires an item in each line. Two10px lines + one3px gap.
             assert_size(&exterior, 25.0, 23.0);
@@ -324,11 +441,30 @@ fn flex_edge_fit_uses_signed_outer_margins_and_real_collection_gaps() {
                 let signed = run(
                     items,
                     Some(25.0),
-                    AvailableOf::definite(S::from_f64(25.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 assert_size(&signed, 25.0, 20.0);
                 assert_cells(
@@ -349,11 +485,30 @@ fn flex_edge_fit_uses_signed_outer_margins_and_real_collection_gaps() {
                 let gapped = run(
                     items,
                     Some(25.0),
-                    AvailableOf::definite(S::from_f64(25.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(25.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    5.0,
-                    0.0,
+                    Size::new(5.0, 0.0),
                 );
                 assert_size(&gapped, 25.0, 20.0);
                 assert_cells(
@@ -386,11 +541,30 @@ fn flex_zero_main_item_keeps_its_real_line_height_and_edge_identity() {
                 let batch = run(
                     items,
                     Some(20.0),
-                    AvailableOf::definite(S::from_f64(20.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 assert_size(&batch, 20.0, 35.0);
                 assert_item(&batch, 1, [0.0, 0.0, 20.0, 10.0]);
@@ -431,22 +605,44 @@ fn flex_intrinsic_groups_honor_force_and_yield_soft_avoidance() {
                 let min = run(
                     items.clone(),
                     None,
-                    AvailableOf::MIN_CONTENT,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MinContent,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(None, None),
+                        OrthogonalFallbackOf::new(
+                            Size::new(None, None),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 assert_size(&min, 10.0, 30.0);
                 assert_cells(&min, [[0.0, 0.0], [0.0, 10.0], [0.0, 20.0]]);
                 let max = run(
                     items,
                     None,
-                    AvailableOf::MAX_CONTENT,
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(None, None),
+                        OrthogonalFallbackOf::new(
+                            Size::new(None, None),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    0.0,
+                    Size::new(0.0, 0.0),
                 );
                 if edge == WrapEdge::Flex {
                     assert_size(&max, 20.0, 20.0);
@@ -475,11 +671,19 @@ fn flex_intrinsic_groups_honor_force_and_yield_soft_avoidance() {
             let nowrap_min = run(
                 items,
                 None,
-                AvailableOf::MIN_CONTENT,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                crate::test_support::requests::NativeRootFrameOf::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    Size::new(None, None),
+                    OrthogonalFallbackOf::new(
+                        Size::new(None, None),
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
                 reverse,
                 FlexWrap::NoWrap,
-                0.0,
-                0.0,
+                Size::new(0.0, 0.0),
             );
             assert_size(&nowrap_min, 30.0, 10.0);
             assert_cells(
@@ -529,11 +733,30 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                 let batch = run(
                     items,
                     Some(100.0),
-                    AvailableOf::definite(S::from_f64(100.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    3.0,
+                    Size::new(0.0, 3.0),
                 );
                 assert_size(&batch, 100.0, if separated { 43.0 } else { 30.0 });
                 assert_eq!(
@@ -560,11 +783,30 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                 let batch = run(
                     items,
                     Some(100.0),
-                    AvailableOf::definite(S::from_f64(100.0)),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        Size::new(
+                            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                            None,
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::new(
+                                Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+                                None,
+                            ),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
                     reverse,
                     FlexWrap::Wrap,
-                    0.0,
-                    3.0,
+                    Size::new(0.0, 3.0),
                 );
                 assert_size(&batch, 100.0, 10.0);
                 assert_item(

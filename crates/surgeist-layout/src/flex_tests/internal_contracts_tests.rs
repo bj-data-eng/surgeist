@@ -30,7 +30,24 @@ fn layout_children<S: LayoutScalar>(
     let batch = compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(size.map(AvailableOf::definite)).unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+            OrthogonalFallbackOf::new(
+                size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(size.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        })),
     )
     .expect("valid flex layout succeeds");
     [1, 2].map(|node| {
@@ -263,9 +280,21 @@ fn assert_auto_margin_does_not_expand_baseline_line<S: LayoutScalar>() {
             Size::NONE,
             Size::new(Some(S::from_f64(200.0)), None),
             ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
-            Size::new(
-                AvailableOf::definite(S::from_f64(200.0)),
-                AvailableOf::MAX_CONTENT,
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )

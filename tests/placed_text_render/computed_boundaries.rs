@@ -378,11 +378,14 @@ fn assert_computed_scope_before(
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(40.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     assert_eq!(batch.placed_text().len(), 1);

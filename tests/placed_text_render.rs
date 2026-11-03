@@ -8,6 +8,10 @@ use std::convert::Infallible;
 
 use surgeist::{layout, render, text};
 
+#[path = "support/native_viewport.rs"]
+mod native_viewport;
+use native_viewport::NativeViewport;
+
 #[path = "placed_text_render/inter_word.rs"]
 mod inter_word;
 
@@ -231,11 +235,14 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
     let batch = layout::compute_layout_with_flow(
         &capture,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(100.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(100.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     let placed = batch.placed_text()[0].layout();
@@ -469,11 +476,14 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         Vec::new(),
     )
     .unwrap();
-    let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-        layout::Available::Definite(if expanded { 65.0 } else { 45.0 }),
-        layout::Available::MaxContent,
-    ))
-    .unwrap();
+    let request = NativeViewport::new(
+        layout::Size::new(Some(if expanded { 65.0 } else { 45.0 }), None),
+        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+    )
+    .request(layout::Size::new(
+        layout::SizingOperation::Normal,
+        layout::SizingOperation::Normal,
+    ));
     let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     let committed = &batch.placed_text()[0];
@@ -797,11 +807,14 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
     let batch = layout::compute_layout_with_flow(
         &capture,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(40.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     let placed = batch.placed_text()[0].layout();
@@ -1090,7 +1103,8 @@ mod kana_transform {
     fn capture(
         system: &mut text::System,
         enabled: bool,
-        available: layout::Available,
+        authored_width: Option<f32>,
+        request: layout::LayoutRootRequest,
     ) -> (
         layout::CompletedLayoutBatch<usize>,
         text::PreparedOrigin,
@@ -1174,11 +1188,11 @@ mod kana_transform {
                 layout::LayoutInput::box_input(layout::NodeInput {
                     display: layout::Display::Block,
                     size: layout::Size::new(
-                        match available {
-                            layout::Available::Definite(width) => layout::PreferredSizeOf::value(
+                        match authored_width {
+                            Some(width) => layout::PreferredSizeOf::value(
                                 layout::LengthPercentageOf::px(width).unwrap(),
                             ),
-                            _ => layout::PreferredSizeOf::AUTO,
+                            None => layout::PreferredSizeOf::AUTO,
                         },
                         layout::PreferredSizeOf::AUTO,
                     ),
@@ -1213,16 +1227,7 @@ mod kana_transform {
             Vec::new(),
         )
         .unwrap();
-        let batch = layout::compute_layout_with_flow(
-            &capture,
-            0,
-            layout::LayoutRootRequest::viewport(layout::Size::new(
-                available,
-                layout::Available::MaxContent,
-            ))
-            .unwrap(),
-        )
-        .unwrap();
+        let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
         (batch, origin, source)
     }
 
@@ -1241,7 +1246,18 @@ mod kana_transform {
             let (batch, origin, source) = capture(
                 &mut system,
                 enabled,
-                layout::Available::Definite(if enabled { 25.0 } else { 40.0 }),
+                Some(if enabled { 25.0 } else { 40.0 }),
+                NativeViewport::new(
+                    layout::Size::new(Some(if enabled { 25.0 } else { 40.0 }), None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(
+                    layout::SizingOperation::Normal,
+                    layout::SizingOperation::Normal,
+                )),
             );
             let units = [0x41, 0xd82c, 0xdd32, 0x43];
             let placed = batch.placed_text()[0].layout();
@@ -1420,8 +1436,22 @@ mod kana_transform {
         .unwrap();
         system.register_fonts(bytes).unwrap();
         for enabled in [false, true] {
-            let (batch, _, source) =
-                capture(&mut system, enabled, layout::Available::Definite(17.0));
+            let (batch, _, source) = capture(
+                &mut system,
+                enabled,
+                Some(17.0),
+                NativeViewport::new(
+                    layout::Size::new(Some(17.0), None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(
+                    layout::SizingOperation::Normal,
+                    layout::SizingOperation::Normal,
+                )),
+            );
             let placed = batch.placed_text()[0].layout();
             let advances = batch
                 .final_inline_fragments()
@@ -1483,14 +1513,29 @@ mod kana_transform {
                     vec![(35, 10.0), (82, 10.0), (37, 10.0)]
                 }
             );
-            for (available, expected) in [
-                (layout::Available::MinContent, 10.0),
+            for (operation, expected) in [
+                (layout::SizingOperation::MinContent, 10.0),
                 (
-                    layout::Available::MaxContent,
+                    layout::SizingOperation::MaxContent,
                     if enabled { 25.0 } else { 30.0 },
                 ),
             ] {
-                let (intrinsic, _, same_source) = capture(&mut system, enabled, available);
+                let (intrinsic, _, same_source) = capture(
+                    &mut system,
+                    enabled,
+                    None,
+                    NativeViewport::new(
+                        layout::Size::new(None, None),
+                        layout::FlowAxes::new(
+                            layout::WritingMode::HorizontalTb,
+                            layout::Direction::Ltr,
+                        ),
+                    )
+                    .request(layout::Size::new(
+                        operation,
+                        layout::SizingOperation::Normal,
+                    )),
+                );
                 assert_eq!(same_source.text().code_units(), source.text().code_units());
                 let root = intrinsic
                     .final_entries()

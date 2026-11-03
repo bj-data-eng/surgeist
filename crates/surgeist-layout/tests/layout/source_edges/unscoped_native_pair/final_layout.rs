@@ -232,7 +232,15 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
         let flow=layout::LayoutFlowInput::try_new_with_edges(&tree,0,vec![binding.clone()],
             final_pair_wrapping(&host),Vec::new(), &receipt)
             .expect("the same real native pair must admit with its own early receipt, without an InlineScope");
-        let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
+        let batch = layout::compute_layout_with_flow(
+            &flow,
+            0,
+            request(layout::FlowAxes::new(
+                layout::WritingMode::HorizontalTb,
+                direction,
+            )),
+        )
+        .unwrap();
         qualify_final_pair(&batch, &prepared, direction);
         let late = layout::LayoutFlowInput::try_new(
             &tree,

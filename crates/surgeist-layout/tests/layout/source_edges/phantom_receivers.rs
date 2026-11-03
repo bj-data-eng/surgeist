@@ -337,7 +337,15 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     };
     let flow =
         layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new()).unwrap();
-    let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
+    let batch = layout::compute_layout_with_flow(
+        &flow,
+        0,
+        request(layout::FlowAxes::new(
+            layout::WritingMode::HorizontalTb,
+            direction,
+        )),
+    )
+    .unwrap();
     assert_eq!(
         prepared
             .boundary_incidences(
@@ -762,7 +770,15 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
+    let batch = layout::compute_layout_with_flow(
+        &flow,
+        0,
+        request(layout::FlowAxes::new(
+            layout::WritingMode::HorizontalTb,
+            direction,
+        )),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text(), f.processed.source().text());
     assert_eq!(
@@ -1007,7 +1023,15 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
+    let batch = layout::compute_layout_with_flow(
+        &flow,
+        0,
+        request(layout::FlowAxes::new(
+            layout::WritingMode::HorizontalTb,
+            direction,
+        )),
+    )
+    .unwrap();
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().text(), &text::Text::from("AB"));
     assert_eq!(

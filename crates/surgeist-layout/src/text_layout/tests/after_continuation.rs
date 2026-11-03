@@ -106,7 +106,11 @@ fn compute<S: LayoutScalar>(
         .unwrap()
 }
 
-fn intrinsic<S: LayoutScalar>(p: &PreparedParagraph, available: AvailableOf<S>, expected: f64) {
+fn intrinsic<S: LayoutScalar>(
+    p: &PreparedParagraph,
+    available: crate::AxisSizingRequestOf<S>,
+    expected: f64,
+) {
     let tree = PublicLayoutTreeOf::<S>::new()
         .children(2, [10])
         .children(10, [])
@@ -131,8 +135,39 @@ fn intrinsic<S: LayoutScalar>(p: &PreparedParagraph, available: AvailableOf<S>, 
         Vec::new(),
     )
     .unwrap();
-    let request =
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((captured).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&captured, 2, request).unwrap();
     assert_eq!(output(&batch, 2).size.width, S::from_f64(expected));
 }
@@ -207,14 +242,35 @@ fn automatic_priority<S: LayoutScalar>() {
             );
         }
     }
-    intrinsic::<S>(&p, AvailableOf::MIN_CONTENT, 60.0);
-    intrinsic::<S>(&p, AvailableOf::MAX_CONTENT, 90.0);
+    intrinsic::<S>(
+        &p,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        60.0,
+    );
+    intrinsic::<S>(
+        &p,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+        90.0,
+    );
     let manual_only = PreparedParagraph::plain(
         10,
         Source::new("as\u{ad}sociate"),
         style(text::Hyphens::Manual, text::OverflowWrap::Normal),
     );
-    intrinsic::<S>(&manual_only, AvailableOf::MIN_CONTENT, 80.0);
+    intrinsic::<S>(
+        &manual_only,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        80.0,
+    );
 }
 
 #[test]

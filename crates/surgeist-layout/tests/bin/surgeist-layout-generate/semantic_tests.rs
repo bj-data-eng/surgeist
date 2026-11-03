@@ -1,3 +1,5 @@
+// Decoder fixtures below explicitly author an 800x600 zero-edge body context.
+// Their recorded node rectangles are independent observations, never context inputs.
 //! Preserved layout helper and XML contract tests.
 
 use super::*;
@@ -26,6 +28,23 @@ fn generate_xml(name: &str, node: &Value) -> String {
     measured_xml(name, node).expect("canonical supported measurement must validate")
 }
 
+fn xml_input_root<'a, 'input: 'a>(
+    document: &'a roxmltree::Document<'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let input = document
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("input"))
+        .expect("one input collection");
+    let mut roots = input.children().filter(roxmltree::Node::is_element);
+    let root = roots.next().expect("one input root");
+    assert!(
+        roots.next().is_none(),
+        "one input root without metadata siblings"
+    );
+    root
+}
+
 fn input_attrs(node: &Value) -> measurement::Attributes {
     measurement::style_attributes(&node.to_string())
         .expect("canonical style attributes must validate")
@@ -45,9 +64,9 @@ fn track_definition(value: &Value) -> Option<String> {
 
 fn fri08_c05_inputs_synthetic_grid_node() -> Value {
     json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"absolute-root-local","containingWidth":800,"containingHeight":600,"containingDirection":"ltr","hypotheticalDirection":"ltr","hypotheticalDisplay":"grid","hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,"fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"absolute",
             "display": "grid",
             "gridTemplateRows": [
                 {"kind": "scalar", "unit": "px", "value": 20},
@@ -59,6 +78,7 @@ fn fri08_c05_inputs_synthetic_grid_node() -> Value {
             ],
             "gridTemplateAreas": [["head", "head"], ["nav", "main"]]
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 40, "scrollWidth": 80, "scrollHeight": 40},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 40, "scrollWidth": 80, "scrollHeight": 40},
         "unroundedLayout": {"x": 0, "y": 0, "width": 80, "height": 40, "scrollWidth": 80, "scrollHeight": 40},
         "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 40},
@@ -71,7 +91,8 @@ fn fri08_c05_inputs_synthetic_grid_node() -> Value {
                     "gridRowStart": {"kind": "named-line", "name": "head-start", },
                     "gridRowEnd": {"kind": "named-line", "name": "head-end", }
                 },
-                "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+                "worldRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+        "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "unroundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 20},
                 "children": []
@@ -84,7 +105,8 @@ fn fri08_c05_inputs_synthetic_grid_node() -> Value {
                     "gridRowStart": {"kind": "named-line", "name": "main-start", },
                     "gridRowEnd": {"kind": "named-line", "name": "main-end", }
                 },
-                "smartRoundedLayout": {"x": 30, "y": 20, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
+                "worldRoundedLayout": {"x": 30, "y": 20, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
+        "smartRoundedLayout": {"x": 30, "y": 20, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
                 "unroundedLayout": {"x": 30, "y": 20, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
                 "naivelyRoundedLayout": {"clientWidth": 50, "clientHeight": 20},
                 "children": []
@@ -576,10 +598,11 @@ fn fri07_c04_collapse_serializer_rejects_every_noncollapsed_explicit_state() {
         let node = json!({
             "layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-            "style": {"flexItemCollapse": value},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 1, "height": 1},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","flexItemCollapse": value},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 1, "height": 1},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 1, "height": 1},
             "children": []
         });
         let error = measured_xml("invalid-collapse", &node).unwrap_err();
@@ -923,9 +946,10 @@ if (JSON.stringify(bands) !== JSON.stringify([
 
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 100}, "height": {"unit": "max-content"}},
-        "style": {"display": "block"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 60},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 60},
         "children": [{"layoutInput": "box",
             "tagName": "div",
@@ -935,7 +959,8 @@ if (JSON.stringify(bands) !== JSON.stringify([
                 {"bandMinimum": 20, "bandMaximum": 40, "interval": {"minimum": 0, "maximum": 28}, },
                 {"bandMinimum": 40, "bandMaximum": 60},
             ],
-            "unroundedLayout": {"x": 0, "y": 0, "width": 44, "height": 60},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 44, "height": 60},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 44, "height": 60},
             "children": [],
         }],
     });
@@ -1016,6 +1041,12 @@ describeElement = function(element) {
         height: { unit: "px", value: 18 },
       },
     },
+    // Explicit old world-corner diagnostic for this zero-origin synthetic frame.
+    worldRoundedLayout: {
+      x: Math.round(element.x), y: Math.round(element.y),
+      width: Math.round(element.x + element.width) - Math.round(element.x),
+      height: Math.round(element.y + 18) - Math.round(element.y),
+    },
     unroundedLayout: { x: element.x, y: element.y, width: element.width, height: 18 },
     children: [],
   };
@@ -1025,9 +1056,11 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
-  viewport: { rootContext: "root", width: { unit: "px", value: 72 }, height: { unit: "max-content" } },
+  viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: { display: "block", size: { width: { unit: "px", value: 72 } } },
+  worldRoundedLayout: { x: 0, y: 0, width: 72, height: 38 },
   unroundedLayout: { x: 0, y: 0, width: 72, height: 38 },
   children,
 }));
@@ -1128,6 +1161,12 @@ describeElement = function(element) {
         height: { unit: "px", value: element.height || 16 },
       },
     },
+    // Explicit old world-corner diagnostic for this zero-origin synthetic frame.
+    worldRoundedLayout: {
+      x: Math.round(element.x), y: Math.round(element.y),
+      width: Math.round(element.x + element.width) - Math.round(element.x),
+      height: Math.round(element.y + (element.height || 16)) - Math.round(element.y),
+    },
     unroundedLayout: {
       x: element.x,
       y: element.y,
@@ -1148,9 +1187,11 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: true,
-  viewport: { rootContext: "root", width: { unit: "px", value: 180 }, height: { unit: "max-content" } },
+  viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: { display: "block", size: { width: { unit: "px", value: 180 } } },
+  worldRoundedLayout: { x: 0, y: 0, width: 180, height: 63 },
   unroundedLayout: { x: 0, y: 0, width: 180, height: 63 },
   smartRoundedLayout: { x: 0, y: 0, width: 180, height: 63 },
   children,
@@ -1570,13 +1611,11 @@ fn fri06_c08_t1_serializer_gates_control_on_explicit_fact() {
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root",
-                "width": {"unit": "px", "value": 100},
-                "height": {"unit": "max-content"},
-            },
-            "style": {"display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
             "children": [child],
         })
     };
@@ -1588,7 +1627,8 @@ fn fri06_c08_t1_serializer_gates_control_on_explicit_fact() {
                 "inlineMetrics": {"baseline": 8, "lineHeight": 10},
 
             },
-            "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+            "worldRoundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+        "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
             "children": [],
         });
         if let Some(participation) = participation {
@@ -1651,13 +1691,11 @@ fn fri06_c08_t1_serializer_rejects_malformed_and_non_br_control_facts() {
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root",
-                "width": {"unit": "px", "value": 100},
-                "height": {"unit": "max-content"},
-            },
-            "style": {"display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
             "children": [child],
         })
     };
@@ -1670,7 +1708,8 @@ fn fri06_c08_t1_serializer_rejects_malformed_and_non_br_control_facts() {
                 "inlineMetrics": {"baseline": 8, "lineHeight": 10},
 
             },
-            "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+            "worldRoundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+        "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
             "children": [],
         })
     };
@@ -1686,12 +1725,13 @@ fn fri06_c08_t1_serializer_rejects_malformed_and_non_br_control_facts() {
         (
             "non-BR",
             json!({"layoutInput": "box",
-                "tagName": "span",
-                "lineControlParticipation": {"kind": "forced-break"},
-                "style": {"display": "inline"},
-                "unroundedLayout": {"x": 10, "y": 0, "width": 10, "height": 10},
-                "children": [],
-            }),
+                    "tagName": "span",
+                    "lineControlParticipation": {"kind": "forced-break"},
+                    "style": {"display": "inline"},
+                    "worldRoundedLayout": {"x": 10, "y": 0, "width": 10, "height": 10},
+            "unroundedLayout": {"x": 10, "y": 0, "width": 10, "height": 10},
+                    "children": [],
+                }),
         ),
         (
             "inline text",
@@ -1756,12 +1796,9 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
         };
         let node = json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root",
-                "width": {"unit": "px", "value": 100},
-                "height": {"unit": "px", "value": 100},
-            },
-            "style": {
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative",
                 "display": root_display,
                 "direction": "ltr",
                 "writingMode": writing_mode,
@@ -1770,7 +1807,8 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
                     "height": {"unit": "px", "value": 100},
                 },
             },
-            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 100},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 100},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 100},
             "children": [{"layoutInput": "box",
                 "tagName": "br",
                 "style": {
@@ -1780,7 +1818,13 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
                     "inlineMetrics": {"baseline": 8, "lineHeight": 10},
 
                 },
-                "unroundedLayout": {
+                "worldRoundedLayout": {
+                    "x": 0,
+                    "y": 0,
+                    "width": width,
+                    "height": height,
+                },
+        "unroundedLayout": {
                     "x": 0,
                     "y": 0,
                     "width": width,
@@ -1834,23 +1878,22 @@ fn fri06_c08_recovery_inputs_block_br_used_size_round_trips_as_an_ordinary_box()
 
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root",
-            "width": {"unit": "px", "value": 20},
-            "height": {"unit": "px", "value": 10},
-        },
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "size": {
                 "width": {"unit": "px", "value": 20},
                 "height": {"unit": "px", "value": 10},
             },
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 20, "height": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 20, "height": 10},
         "children": [{"layoutInput": "box",
             "tagName": "br",
             "style": {"display": "block"},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
             "children": [],
         }],
     });
@@ -1866,13 +1909,11 @@ fn fri06_c08_recovery_inputs_block_br_validation_and_non_br_controls_stay_narrow
     let root = |child: Value| {
         json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root",
-                "width": {"unit": "px", "value": 100},
-                "height": {"unit": "max-content"},
-            },
-            "style": {"display": "block"},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": "block"},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
             "children": [child],
         })
     };
@@ -1884,7 +1925,9 @@ fn fri06_c08_recovery_inputs_block_br_validation_and_non_br_controls_stay_narrow
                 "inlineMetrics": {"baseline": 8, "lineHeight": 10},
 
             },
-            "unroundedLayout": layout,
+            // Keep this diagnostic valid while mutating the selected BR tuple below.
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
+        "unroundedLayout": layout,
             "children": [],
         })
     };
@@ -1914,6 +1957,7 @@ fn fri06_c08_recovery_inputs_block_br_validation_and_non_br_controls_stay_narrow
     let ordinary = json!({"layoutInput": "box",
         "tagName": "span",
         "style": {"display": "block"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 19},
         "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 19},
         "children": [],
     });
@@ -1933,6 +1977,7 @@ fn fri06_c08_recovery_inputs_block_br_validation_and_non_br_controls_stay_narrow
             "inlineMetrics": {"baseline": 8, "lineHeight": 10},
 
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 10},
         "children": [],
     });
@@ -1985,12 +2030,23 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
-  viewport: { rootContext: "root", width: { unit: "px", value: 100 }, height: { unit: "px", value: 100 } },
+  // Declared synthetic codec context; the 100px root/Range rectangles do
+  // not supply its containing extent, Auto block basis, or ICB authority.
+  viewport: { rootContext: {
+    kind: "block-flow-auto", parentInlineExtent: 800, parentDirection: "ltr",
+    fallback: {
+      initialContainingBlock: { width: 800, height: 600 },
+      nearestScrollport: "none",
+      containingLimits: { width: "unbounded", height: "unbounded" },
+    },
+  } },
   style: {
     display: "block",
     size: { width: { unit: "px", value: 100 }, height: { unit: "px", value: 100 } },
   },
+  worldRoundedLayout: { x: 0, y: 0, width: 100, height: 100 },
   unroundedLayout: { x: 0, y: 0, width: 100, height: 100 },
   children,
 }));
@@ -2216,6 +2272,12 @@ describeElement = function(element) {
         height: { unit: "px", value: element.height },
       },
     },
+    // Explicit old world-corner diagnostic for this zero-origin synthetic frame.
+    worldRoundedLayout: {
+      x: Math.round(element.x), y: Math.round(element.y),
+      width: Math.round(element.x + element.width) - Math.round(element.x),
+      height: Math.round(element.y + element.height) - Math.round(element.y),
+    },
     unroundedLayout: { x: element.x, y: element.y, width: element.width, height: element.height },
     children: [],
   };
@@ -2232,8 +2294,9 @@ console.log(JSON.stringify({
   layoutInput: "box",
   tagName: "div",
   layoutReadyInlineRoot: true,
+  gridAlignmentProfile: { profile: 1, owners: [] },
   useRounding: false,
-  viewport: { rootContext: "root", width: { unit: "px", value: 180 }, height: { unit: "max-content" } },
+  viewport: {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
   style: {
     display: "block",
     direction: "ltr",
@@ -2243,6 +2306,7 @@ console.log(JSON.stringify({
     lineHeight: { unit: "px", value: 20 },
     size: { width: { unit: "px", value: 180 }, height: { unit: "auto" } },
   },
+  worldRoundedLayout: { x: 0, y: 0, width: 180, height: 60 },
   unroundedLayout: { x: 0, y: 0, width: 180, height: 60 },
   children,
 }));
@@ -2353,10 +2417,11 @@ fn fri06_c08_recovery_inputs_shape_source_rejects_wrong_duplicate_range_br_and_f
 fn fri06_c08_t1_typed_inline_children_replace_legacy_raw_fallback() {
     let typed_parent = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 100}, "height": {"unit": "max-content"}},
-        "style": {"display": "block"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block"},
         "textContent": "duplicate raw fallback",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": [{
             "layoutInput": "inline-text",
@@ -2411,22 +2476,24 @@ fn fri06_c08_t1_spill_matrix_preserves_64_legacy_variants() {
     for family in families {
         for variant in variants {
             let node = json!({"layoutInput": "box",
-                "tagName": "div",
-                "useRounding": false,
-                "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 100}, "height": {"unit": "max-content"}},
-                "style": {"display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
-                "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
-                "children": [{"layoutInput": "box",
-                    "tagName": "br",
-                    "style": {
-                        "display": "inline",
-                        "inlineMetrics": {"baseline": 0, "lineHeight": 0},
+                    "tagName": "div",
+                    "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+                    "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+                    "style": {"position":"relative","display": "block", "direction": "ltr", "writingMode": "horizontal-tb"},
+                    "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+                    "children": [{"layoutInput": "box",
+                        "tagName": "br",
+                        "style": {
+                            "display": "inline",
+                            "inlineMetrics": {"baseline": 0, "lineHeight": 0},
 
-                    },
-                    "unroundedLayout": {"x": 0, "y": 10, "width": 0, "height": 0},
-                    "children": [],
-                }],
-            });
+                        },
+                        "worldRoundedLayout": {"x": 0, "y": 10, "width": 0, "height": 0},
+            "unroundedLayout": {"x": 0, "y": 10, "width": 0, "height": 0},
+                        "children": [],
+                    }],
+                });
             let xml = generate_xml(&format!("{family}__{variant}"), &node);
             assert!(
                 xml.contains(r#"source-tag="br""#),
@@ -2620,12 +2687,10 @@ for (const [direction, writingMode, physicalStartEdge, start, advance] of [
 fn fri06_c08_range_rectangle_serializer_emits_only_physical_inline_observations() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root",
-            "width": {"unit": "px", "value": 100},
-            "height": {"unit": "max-content"},
-        },
-        "style": {"display": "block"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": [{
             "layoutInput": "inline-text",
@@ -2670,23 +2735,22 @@ fn fri06_c08_range_rectangle_serializer_emits_only_physical_inline_observations(
 fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_lines() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": true,
-        "viewport": {"rootContext": "root",
-            "width": {"unit": "px", "value": 140},
-            "height": {"unit": "max-content"},
-        },
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "direction": "ltr",
             "writingMode": "horizontal-tb",
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 140, "height": 72},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 140, "height": 72},
         "unroundedLayout": {"x": 0, "y": 0, "width": 140, "height": 72},
         "children": [
             {"layoutInput": "box",
                 "tagName": "span",
                 "style": {"display": "inline-block"},
-                "smartRoundedLayout": {"x": 0, "y": 5, "width": 32, "height": 12},
+                "worldRoundedLayout": {"x": 0, "y": 5, "width": 32, "height": 12},
+        "smartRoundedLayout": {"x": 0, "y": 5, "width": 32, "height": 12},
                 "unroundedLayout": {"x": 0, "y": 5, "width": 32, "height": 12},
                 "children": [],
             },
@@ -2694,7 +2758,8 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
                 "tagName": "br",
                 "lineControlParticipation": {"kind": "forced-break"},
                 "style": {"display": "inline"},
-                "smartRoundedLayout": {"x": 32, "y": 2, "width": 0, "height": 19},
+                "worldRoundedLayout": {"x": 32, "y": 2, "width": 0, "height": 19},
+        "smartRoundedLayout": {"x": 32, "y": 2, "width": 0, "height": 19},
                 "unroundedLayout": {"x": 32, "y": 2, "width": 0, "height": 19},
                 "children": [],
             },
@@ -2702,14 +2767,16 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
                 "tagName": "br",
                 "lineControlParticipation": {"kind": "forced-break"},
                 "style": {"display": "inline"},
-                "smartRoundedLayout": {"x": 0, "y": 26, "width": 0, "height": 19},
+                "worldRoundedLayout": {"x": 0, "y": 26, "width": 0, "height": 19},
+        "smartRoundedLayout": {"x": 0, "y": 26, "width": 0, "height": 19},
                 "unroundedLayout": {"x": 0, "y": 26, "width": 0, "height": 19},
                 "children": [],
             },
             {"layoutInput": "box",
                 "tagName": "span",
                 "style": {"display": "inline-block"},
-                "smartRoundedLayout": {"x": 0, "y": 53, "width": 48, "height": 12},
+                "worldRoundedLayout": {"x": 0, "y": 53, "width": 48, "height": 12},
+        "smartRoundedLayout": {"x": 0, "y": 53, "width": 48, "height": 12},
                 "unroundedLayout": {"x": 0, "y": 53, "width": 48, "height": 12},
                 "children": [],
             },
@@ -2731,16 +2798,14 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
 
     let unobserved = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root",
-            "width": {"unit": "px", "value": 100},
-            "height": {"unit": "max-content"},
-        },
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "direction": "ltr",
             "writingMode": "horizontal-tb",
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": [
             {
@@ -2767,7 +2832,8 @@ fn fri06_c08_browser_control_serializer_emits_only_source_slot_and_neighbor_line
                 "tagName": "br",
                 "lineControlParticipation": {"kind": "forced-break"},
                 "style": {"display": "inline"},
-                "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+                "worldRoundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
+        "unroundedLayout": {"x": 10, "y": 0, "width": 0, "height": 10},
                 "children": [],
             },
         ],
@@ -2891,13 +2957,11 @@ fn fri06_c08_range_rectangle_serializer_rejects_every_ordinary_metric_and_scroll
     for (label, incompatible_state) in incompatible_states {
         let mut node = json!({"layoutInput": "box",
             "tagName": "div",
-            "useRounding": false,
-            "viewport": {"rootContext": "root",
-                "width": {"unit": "px", "value": 100},
-                "height": {"unit": "max-content"},
-            },
-            "style": {"display": "block"},
-            "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": "block"},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
+        "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
             "children": [{
                 "layoutInput": "inline-text",
                 "inlineSegments": [{
@@ -3003,12 +3067,10 @@ if ("y" in rangeInk || "height" in rangeInk || "baselineX" in rangeInk || "basel
 fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_schema() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
-        "useRounding": false,
-        "viewport": {"rootContext": "root",
-            "width": {"unit": "px", "value": 100},
-            "height": {"unit": "max-content"},
-        },
-        "style": {"display": "block"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": [
             {
@@ -3043,7 +3105,8 @@ fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_sc
                     "bidiLevel": 1,
                     "followingBreak": "prohibited",
                 },
-                "unroundedLayout": {"x": 24.5, "y": 0, "width": 10, "height": 10},
+                "worldRoundedLayout": {"x": 24.5, "y": 0, "width": 10, "height": 10},
+        "unroundedLayout": {"x": 24.5, "y": 0, "width": 10, "height": 10},
                 "children": [],
             },
             {"layoutInput": "box",
@@ -3054,7 +3117,8 @@ fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_sc
                     "inlineMetrics": {"baseline": 0, "lineHeight": 0},
 
                 },
-                "unroundedLayout": {"x": 34.5, "y": 0, "width": 0, "height": 0},
+                "worldRoundedLayout": {"x": 34.5, "y": 0, "width": 0, "height": 0},
+        "unroundedLayout": {"x": 34.5, "y": 0, "width": 0, "height": 0},
                 "children": [],
             },
         ],
@@ -3075,18 +3139,20 @@ fn fri06_c08_existing_serializer_emits_c06_shaped_atomic_control_and_fragment_sc
 #[test]
 fn xml_generation_preserves_browser_parity_fixture_shape() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {"display": "block", "direction": "ltr", "size": {"width": {"unit": "px", "value": 50}}},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block", "direction": "ltr", "size": {"width": {"unit": "px", "value": 50}}},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "naivelyRoundedLayout": {"clientWidth": 50, "clientHeight": 20},
         "children": [
             {"layoutInput": "box",
                 "useRounding": true,
-                "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-                "style": {"direction": "ltr", "size": {"height": {"unit": "px", "value": 10}}},
-                "smartRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
+                "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+                "style": {"position":"relative","direction": "ltr", "size": {"height": {"unit": "px", "value": 10}}},
+                "worldRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
+        "smartRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
                 "unroundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
                 "naivelyRoundedLayout": {"clientWidth": 50, "clientHeight": 10},
                 "children": []
@@ -3096,10 +3162,26 @@ fn xml_generation_preserves_browser_parity_fixture_shape() {
 
     let xml = generate_xml("block_basic__border_box_ltr", &node);
 
-    assert!(xml.contains("<test name=\"block_basic__border_box_ltr\" measurement-version=\"2\" use-rounding=\"true\">"));
-    assert!(xml.contains("  <viewport width=\"max-content\" height=\"max-content\"/>"));
-    assert!(xml.contains("    <div display=\"block\" direction=\"ltr\" width=\"50px\">"));
-    assert!(xml.contains("      <div direction=\"ltr\" height=\"10px\"/>"));
+    assert!(xml.contains("<test name=\"block_basic__border_box_ltr\" measurement-version=\"4\" observation-frame=\"root-border\" use-rounding=\"true\">"));
+    assert!(xml.contains("  <viewport root-context=\"block-flow-auto\" parent-inline-extent=\"800px\" parent-direction=\"ltr\" fallback-icb-width=\"800px\" fallback-icb-height=\"600px\" fallback-nearest-scrollport=\"none\" fallback-containing-width-limit=\"unbounded\" fallback-containing-height-limit=\"unbounded\"/>"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("div"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("direction"), Some("ltr"));
+    assert_eq!(root.attribute("width"), Some("50px"));
+    let profile: Value =
+        serde_json::from_str(root.attribute("grid-alignment-profile").unwrap()).unwrap();
+    assert_eq!(profile, json!({"profile":1,"owners":[]}));
+    let children: Vec<_> = root
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(children.len(), 1);
+    assert!(children[0].has_tag_name("div"));
+    assert_eq!(children[0].attribute("direction"), Some("ltr"));
+    assert_eq!(children[0].attribute("height"), Some("10px"));
+    assert_eq!(children[0].attribute("grid-alignment-profile"), None);
     assert!(xml.contains("    <node x=\"0\" y=\"0\" width=\"50\" height=\"20\">"));
     assert!(xml.contains("      <node x=\"0\" y=\"0\" width=\"50\" height=\"10\"/>"));
 }
@@ -3107,18 +3189,20 @@ fn xml_generation_preserves_browser_parity_fixture_shape() {
 #[test]
 fn xml_generation_normalizes_root_expectation_to_origin() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {"display": "inline-grid"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "inline-grid"},
+        "worldRoundedLayout": {"x": 7, "y": 4, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "smartRoundedLayout": {"x": 7, "y": 4, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "unroundedLayout": {"x": 7, "y": 4, "width": 50, "height": 20, "scrollWidth": 50, "scrollHeight": 20},
         "naivelyRoundedLayout": {"clientWidth": 50, "clientHeight": 20},
         "children": [
             {"layoutInput": "box",
                 "useRounding": true,
-                "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-                "style": {"display": "block"},
-                "smartRoundedLayout": {"x": 1, "y": 2, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
+                "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+                "style": {"position":"relative","display": "block"},
+                "worldRoundedLayout": {"x": 1, "y": 2, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
+        "smartRoundedLayout": {"x": 1, "y": 2, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
                 "unroundedLayout": {"x": 1, "y": 2, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
                 "naivelyRoundedLayout": {"clientWidth": 10, "clientHeight": 10},
                 "children": []
@@ -3133,18 +3217,12 @@ fn xml_generation_normalizes_root_expectation_to_origin() {
 }
 
 #[test]
-fn xml_generation_marks_viewport_flex_item_root_context() {
+fn xml_generation_marks_qualified_block_flow_root_context() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {
-            "width": {"unit": "px", "value": 400},
-            "height": {"unit": "max-content"},
-            "rootContext": "flex-item",
-            "parentWritingMode": "horizontal-tb",
-            "parentDirection": "ltr",
-            "hostInlineSize": 160
-        },
-        "style": {"display": "grid"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "grid"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "naivelyRoundedLayout": {"clientWidth": 160, "clientHeight": 20},
@@ -3153,40 +3231,32 @@ fn xml_generation_marks_viewport_flex_item_root_context() {
 
     let xml = generate_xml("grid_flex_item__border_box_ltr", &node);
 
-    assert!(xml.contains(concat!(
-        "  <viewport width=\"400px\" height=\"max-content\" ",
-        "root-context=\"flex-item\" parent-writing-mode=\"horizontal-tb\" ",
-        "parent-direction=\"ltr\" host-inline-size=\"160px\"/>"
-    )));
+    assert!(xml.contains("  <viewport root-context=\"block-flow-auto\" parent-inline-extent=\"800px\" parent-direction=\"ltr\" fallback-icb-width=\"800px\" fallback-icb-height=\"600px\" fallback-nearest-scrollport=\"none\" fallback-containing-width-limit=\"unbounded\" fallback-containing-height-limit=\"unbounded\"/>"));
 }
 
 #[test]
 fn xml_generation_serializes_exact_order_and_parent_axes() {
     let flex_item = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {
-            "width": {"unit": "px", "value": 400},
-            "height": {"unit": "max-content"},
-            "rootContext": "flex-item",
-            "parentWritingMode": "vertical-rl",
-            "parentDirection": "rtl",
-            "hostInlineSize": 37.5
-        },
-        "style": {"display": "grid", "order": "0", "writingMode": "horizontal-tb"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "grid", "order": "0", "writingMode": "horizontal-tb"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 160, "height": 20, "scrollWidth": 160, "scrollHeight": 20},
         "naivelyRoundedLayout": {"clientWidth": 160, "clientHeight": 20},
         "children": [
             {"layoutInput": "box",
                 "style": {"order": "-2147483648"},
-                "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+                "worldRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+        "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "unroundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 20},
                 "children": []
             },
             {"layoutInput": "box",
                 "style": {"order": "2147483647"},
-                "smartRoundedLayout": {"x": 80, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+                "worldRoundedLayout": {"x": 80, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
+        "smartRoundedLayout": {"x": 80, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "unroundedLayout": {"x": 80, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
                 "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 20},
                 "children": []
@@ -3194,15 +3264,10 @@ fn xml_generation_serializes_exact_order_and_parent_axes() {
         ]
     });
     let root = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {
-            "width": {"unit": "max-content"},
-            "height": {"unit": "max-content"},
-            "rootContext": "root",
-            "parentWritingMode": "sideways-lr",
-            "parentDirection": "rtl"
-        },
-        "style": {"display": "block", "order": "0"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block", "order": "0"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "naivelyRoundedLayout": {"clientWidth": 0, "clientHeight": 0},
@@ -3210,48 +3275,38 @@ fn xml_generation_serializes_exact_order_and_parent_axes() {
     });
 
     let flex_xml = generate_xml("exact_flex_item_metadata", &flex_item);
-    assert!(flex_xml.contains(concat!(
-        "<viewport width=\"400px\" height=\"max-content\" ",
-        "root-context=\"flex-item\" parent-writing-mode=\"vertical-rl\" ",
-        "parent-direction=\"rtl\" host-inline-size=\"37.5px\"/>"
-    )));
+    assert!(flex_xml.contains("<viewport root-context=\"block-flow-auto\" parent-inline-extent=\"800px\" parent-direction=\"ltr\" fallback-icb-width=\"800px\" fallback-icb-height=\"600px\" fallback-nearest-scrollport=\"none\" fallback-containing-width-limit=\"unbounded\" fallback-containing-height-limit=\"unbounded\"/>"));
     assert!(!flex_xml.contains("order=\"0\""));
     assert!(flex_xml.contains("order=\"-2147483648\""));
     assert!(flex_xml.contains("order=\"2147483647\""));
 
-    let mut zero_host = flex_item.clone();
-    zero_host["viewport"]["hostInlineSize"] = json!(0);
-    let zero_host_xml = generate_xml("zero_flex_host_allocation", &zero_host);
-    assert!(zero_host_xml.contains("host-inline-size=\"0px\""));
-
-    let error = measured_xml("root_rejects_parent_metadata", &root).unwrap_err();
-    assert_eq!(error.kind, MeasurementErrorKind::ContradictoryFields);
+    let mut zero_parent = flex_item.clone();
+    zero_parent["viewport"]["rootContext"]["parentInlineExtent"] = json!(0);
+    zero_parent["viewport"]["rootContext"]["fallback"]["initialContainingBlock"]["width"] =
+        json!(0);
+    let zero_xml = generate_xml("zero_qualified_parent", &zero_parent);
+    assert!(zero_xml.contains("parent-inline-extent=\"0px\""));
+    let mut malformed = root.clone();
+    malformed["viewport"]["rootContext"]["hostInlineSize"] = json!(0);
+    let error = measured_xml("rejects_unqualified_host_metadata", &malformed).unwrap_err();
+    assert_eq!(error.kind, MeasurementErrorKind::Decode);
     assert_eq!(error.node_path, "root");
-    assert_eq!(error.field_path, "viewport.rootContext");
-    let mut root = root;
-    root["viewport"]
-        .as_object_mut()
-        .unwrap()
-        .remove("parentWritingMode");
-    root["viewport"]
-        .as_object_mut()
-        .unwrap()
-        .remove("parentDirection");
-    let root_xml = generate_xml("root_omits_parent_metadata", &root);
+    assert!(error.field_path.starts_with("viewport.rootContext"));
+    let root_xml = generate_xml("root_retains_containing_direction", &root);
     assert!(!root_xml.contains("order=\"0\""));
-    assert!(!root_xml.contains("parent-writing-mode="));
-    assert!(!root_xml.contains("parent-direction="));
+    assert!(root_xml.contains("parent-direction=\"ltr\""));
 }
 
 #[test]
 fn xml_generation_keeps_grid_text_elements_as_containers() {
     for display in ["grid", "inline-grid", "grid-lanes", "inline-grid-lanes"] {
         let node = json!({"layoutInput": "box",
-            "useRounding": true,
-            "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-            "style": {"display": display, "direction": "ltr"},
+            "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","display": display, "direction": "ltr"},
             "textContent": "hello",
-            "smartRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
+        "smartRoundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
             "unroundedLayout": {"x": 0, "y": 0, "width": 50, "height": 10, "scrollWidth": 50, "scrollHeight": 10},
             "naivelyRoundedLayout": {"clientWidth": 50, "clientHeight": 10},
             "children": []
@@ -3259,20 +3314,22 @@ fn xml_generation_keeps_grid_text_elements_as_containers() {
 
         let xml = generate_xml("grid_text__border_box_ltr", &node);
 
-        assert!(xml.contains(&format!(
-            "    <div display=\"{display}\" direction=\"ltr\">"
-        )));
-        assert!(xml.contains("      hello"));
-        assert!(!xml.contains(&format!("<text display=\"{display}\"")));
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let root = xml_input_root(&document);
+        assert!(root.has_tag_name("div"));
+        assert_eq!(root.attribute("display"), Some(display));
+        assert_eq!(root.attribute("direction"), Some("ltr"));
+        assert_eq!(root.text().map(str::trim), Some("hello"));
+        assert!(!root.descendants().any(|node| node.has_tag_name("text")));
     }
 }
 
 #[test]
 fn xml_generation_preserves_explicit_grid_line_names() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "grid-lanes",
             "gridTemplateColumns": [
                 {"kind": "line-names", "names": ["lane"]},
@@ -3284,6 +3341,7 @@ fn xml_generation_preserves_explicit_grid_line_names() {
                 {"kind": "line-names", "names": ["lane"]}
             ]
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 90, "height": 0, "scrollWidth": 90, "scrollHeight": 0},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 90, "height": 0, "scrollWidth": 90, "scrollHeight": 0},
         "unroundedLayout": {"x": 0, "y": 0, "width": 90, "height": 0, "scrollWidth": 90, "scrollHeight": 0},
         "naivelyRoundedLayout": {"clientWidth": 90, "clientHeight": 0},
@@ -3298,13 +3356,14 @@ fn xml_generation_preserves_explicit_grid_line_names() {
 #[test]
 fn xml_generation_preserves_calc_lengths() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 200}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "size": {"width": {"unit": "calc", "value": "calc(50% + 20px)"}},
             "margin": {"left": {"unit": "calc", "value": "calc(10% - 4px)"}}
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 120, "height": 10, "scrollWidth": 120, "scrollHeight": 10},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 120, "height": 10, "scrollWidth": 120, "scrollHeight": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 120, "height": 10, "scrollWidth": 120, "scrollHeight": 10},
         "naivelyRoundedLayout": {"clientWidth": 120, "clientHeight": 10},
@@ -3320,15 +3379,16 @@ fn xml_generation_preserves_calc_lengths() {
 #[test]
 fn xml_generation_preserves_calc_grid_tracks() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 240}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "grid",
             "gridTemplateColumns": [
                 {"kind": "scalar", "unit": "calc", "value": "calc(25% + 20px)"},
                 {"kind": "scalar", "unit": "px", "value": 80}
             ]
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 240, "height": 10, "scrollWidth": 240, "scrollHeight": 10},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 240, "height": 10, "scrollWidth": 240, "scrollHeight": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 240, "height": 10, "scrollWidth": 240, "scrollHeight": 10},
         "naivelyRoundedLayout": {"clientWidth": 240, "clientHeight": 10},
@@ -3343,9 +3403,9 @@ fn xml_generation_preserves_calc_grid_tracks() {
 #[test]
 fn xml_generation_preserves_grid_template_areas() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "grid",
             "gridTemplateRows": [
                 {"kind": "scalar", "unit": "px", "value": 20},
@@ -3360,6 +3420,7 @@ fn xml_generation_preserves_grid_template_areas() {
                 ["nav", "main"]
             ]
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 60, "scrollWidth": 80, "scrollHeight": 60},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 60, "scrollWidth": 80, "scrollHeight": 60},
         "unroundedLayout": {"x": 0, "y": 0, "width": 80, "height": 60, "scrollWidth": 80, "scrollHeight": 60},
         "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 60},
@@ -3377,13 +3438,14 @@ fn xml_generation_preserves_grid_template_areas() {
 #[test]
 fn xml_generation_preserves_non_default_font_size() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "fontSize": {"unit": "px", "value": 12},
         },
         "textContent": "x",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 12, "height": 12, "scrollWidth": 12, "scrollHeight": 12},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 12, "height": 12, "scrollWidth": 12, "scrollHeight": 12},
         "unroundedLayout": {"x": 0, "y": 0, "width": 12, "height": 12, "scrollWidth": 12, "scrollHeight": 12},
         "naivelyRoundedLayout": {"clientWidth": 12, "clientHeight": 12},
@@ -3392,19 +3454,26 @@ fn xml_generation_preserves_non_default_font_size() {
 
     let xml = generate_xml("font_size__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" font-size=\"12px\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("font-size"), Some("12px"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn xml_generation_preserves_non_default_font_family() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "fontFamily": "monospace",
         },
         "textContent": "x",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "naivelyRoundedLayout": {"clientWidth": 10, "clientHeight": 10},
@@ -3413,19 +3482,26 @@ fn xml_generation_preserves_non_default_font_family() {
 
     let xml = generate_xml("font_family__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" font-family=\"monospace\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("font-family"), Some("monospace"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn xml_generation_elides_default_ahem_font_size() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "fontSize": {"unit": "px", "value": 10},
         },
         "textContent": "x",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "naivelyRoundedLayout": {"clientWidth": 10, "clientHeight": 10},
@@ -3440,13 +3516,14 @@ fn xml_generation_elides_default_ahem_font_size() {
 #[test]
 fn xml_generation_preserves_non_default_line_height() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "lineHeight": {"unit": "px", "value": 0},
         },
         "textContent": "x",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 0, "scrollWidth": 10, "scrollHeight": 0},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 0, "scrollWidth": 10, "scrollHeight": 0},
         "unroundedLayout": {"x": 0, "y": 0, "width": 10, "height": 0, "scrollWidth": 10, "scrollHeight": 0},
         "naivelyRoundedLayout": {"clientWidth": 10, "clientHeight": 0},
@@ -3455,20 +3532,27 @@ fn xml_generation_preserves_non_default_line_height() {
 
     let xml = generate_xml("line_height__border_box_ltr", &node);
 
-    assert!(xml.contains("    <text display=\"block\" line-height=\"0px\">"));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("text"));
+    assert_eq!(root.attribute("display"), Some("block"));
+    assert_eq!(root.attribute("line-height"), Some("0px"));
+    assert_eq!(root.text().map(str::trim), Some("x"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn br_inline_metrics_xml_generation_serializes_complete_br_metrics() {
     let node = json!({"layoutInput": "box",
         "tagName": "br",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "inline",
             "inlineMetrics": {"baseline": 21, "lineHeight": 30},
 
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0, "scrollWidth": 0, "scrollHeight": 0},
         "naivelyRoundedLayout": {"clientWidth": 0, "clientHeight": 0},
@@ -3477,17 +3561,22 @@ fn br_inline_metrics_xml_generation_serializes_complete_br_metrics() {
 
     let xml = generate_xml("br_inline_metrics__border_box_ltr", &node);
 
-    assert!(xml.contains(
-            "    <div source-tag=\"br\" display=\"inline\" inline-baseline=\"21px\" inline-line-height=\"30px\"/>"
-        ));
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let root = xml_input_root(&document);
+    assert!(root.has_tag_name("div"));
+    assert_eq!(root.attribute("source-tag"), Some("br"));
+    assert_eq!(root.attribute("display"), Some("inline"));
+    assert_eq!(root.attribute("inline-baseline"), Some("21px"));
+    assert_eq!(root.attribute("inline-line-height"), Some("30px"));
+    assert!(!root.children().any(|node| node.is_element()));
 }
 
 #[test]
 fn br_inline_metrics_xml_generation_does_not_infer_metrics_from_text_styles() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "block",
             "fontSize": {"unit": "px", "value": 20},
             "lineHeight": {"unit": "px", "value": 30},
@@ -3495,6 +3584,7 @@ fn br_inline_metrics_xml_generation_does_not_infer_metrics_from_text_styles() {
 
         },
         "textContent": "x",
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 20, "height": 30, "scrollWidth": 20, "scrollHeight": 30},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 20, "height": 30, "scrollWidth": 20, "scrollHeight": 30},
         "unroundedLayout": {"x": 0, "y": 0, "width": 20, "height": 30, "scrollWidth": 20, "scrollHeight": 30},
         "naivelyRoundedLayout": {"clientWidth": 20, "clientHeight": 30},
@@ -3512,12 +3602,13 @@ fn br_inline_metrics_xml_generation_does_not_infer_metrics_from_text_styles() {
 #[test]
 fn xml_generation_preserves_vertical_align_top() {
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative",
             "display": "inline-grid-lanes",
             "verticalAlign": "top",
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 10, "height": 10, "scrollWidth": 10, "scrollHeight": 10},
         "naivelyRoundedLayout": {"clientWidth": 10, "clientHeight": 10},
@@ -3527,12 +3618,6 @@ fn xml_generation_preserves_vertical_align_top() {
     let xml = generate_xml("vertical_align__border_box_ltr", &node);
 
     assert!(xml.contains("vertical-align=\"top\""));
-}
-
-#[test]
-fn bundled_helper_falls_back_to_computed_min_size_units() {
-    assert!(TEST_HELPER_SOURCE.contains("parseResolvedDimension(lengthStyleValue(\"minWidth\")"));
-    assert!(TEST_HELPER_SOURCE.contains("parseResolvedDimension(lengthStyleValue(\"minHeight\")"));
 }
 
 #[test]
@@ -3625,15 +3710,26 @@ assertEqual("vertical", capture({{ inlineSize: "24px", blockSize: "72px" }}, "ve
   width: {{ unit: "px", value: 72 }},
   height: {{ unit: "px", value: 24 }},
 }});
-assertEqual("physical wins", capture({{
-  width: "10px",
-  height: "11px",
-  inlineSize: "24px",
-  blockSize: "72px",
-}}, "vertical-rl"), {{
+assertEqual("horizontal distinct axes", capture({{ width: "10px", blockSize: "72px" }}, "horizontal-tb"), {{
   width: {{ unit: "px", value: 10 }},
-  height: {{ unit: "px", value: 11 }},
+  height: {{ unit: "px", value: 72 }},
 }});
+assertEqual("vertical distinct axes", capture({{ width: "10px", inlineSize: "24px" }}, "vertical-rl"), {{
+  width: {{ unit: "px", value: 10 }},
+  height: {{ unit: "px", value: 24 }},
+}});
+let conflict;
+try {{
+  capture({{
+    width: "10px",
+    height: "11px",
+    inlineSize: "24px",
+    blockSize: "72px",
+  }}, "vertical-rl");
+}} catch (error) {{ conflict = error.message; }}
+if (conflict !== 'Root context: ConflictingSizingDeclarations') {{
+  throw new Error(`mixed physical/logical sizing needs cascade authority, got ${{conflict}}`);
+}}
 "#
     );
     fs::write(&script_path, script).expect("script");
@@ -4469,7 +4565,6 @@ unsupportedElementReason = () => undefined;
 unsupportedChildNodesReason = () => undefined;
 getScrollBarWidth = () => 0;
 parseEffectiveMargin = () => ({{}});
-parseViewportConstraint = () => ({{ width: {{ unit: "max-content" }}, height: {{ unit: "max-content" }}, rootContext: "root" }});
 layoutReadyShapeBands = () => undefined;
 normalizedFlexItemCollapse = () => undefined;
 
@@ -4559,9 +4654,9 @@ console.log(JSON.stringify(mutated));
     assert_eq!(helper_areas, json!([["computed", "computed"]]));
 
     let node = json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"absolute-root-local","containingWidth":800,"containingHeight":600,"containingDirection":"ltr","hypotheticalDirection":"ltr","hypotheticalDisplay":"grid","hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,"fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"absolute",
             "display": "grid",
             "gridTemplateRows": [
                 {"kind": "scalar", "unit": "px", "value": 20}
@@ -4572,6 +4667,7 @@ console.log(JSON.stringify(mutated));
             ],
             "gridTemplateAreas": helper_areas
         },
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 80, "height": 20, "scrollWidth": 80, "scrollHeight": 20},
         "naivelyRoundedLayout": {"clientWidth": 80, "clientHeight": 20},
@@ -4620,20 +4716,7 @@ for (const [kind, value] of [
 }
 
 #[test]
-fn bundled_helper_records_default_root_viewport_as_max_content() {
-    assert!(TEST_HELPER_SOURCE.contains("width: rootFillsBrowserViewport"));
-    assert!(TEST_HELPER_SOURCE.contains(": { unit: 'max-content' }"));
-}
-
-#[test]
-fn bundled_helper_records_viewport_width_when_root_fills_browser_viewport() {
-    assert!(TEST_HELPER_SOURCE.contains("rootFillsBrowserViewport"));
-    assert!(TEST_HELPER_SOURCE.contains("px(window.innerWidth)"));
-    assert!(TEST_HELPER_SOURCE.contains("Math.round(boundingRect.width) === window.innerWidth"));
-}
-
-#[test]
-fn bundled_helper_captures_exact_order_and_flex_parent_axes() {
+fn bundled_helper_captures_resolved_minima_and_order_without_parent_authority() {
     let script = format!(
         r#"
 const window = {{ innerWidth: 800 }};
@@ -4662,6 +4745,8 @@ const element = {{
   tagName: "DIV",
   classList: {{ contains() {{ return false; }} }},
   style: {{
+    minWidth: "2em",
+    minHeight: "0.5em",
     gridTemplateRows: "",
     gridTemplateColumns: "",
     gridAutoRows: "",
@@ -4703,8 +4788,8 @@ function getComputedStyle(target) {{
     lineHeight: "10px",
     width: "160px",
     height: "20px",
-    minWidth: "0px",
-    minHeight: "0px",
+    minWidth: "20px",
+    minHeight: "5px",
     maxWidth: "none",
     maxHeight: "none",
     marginLeft: "0px",
@@ -4728,14 +4813,14 @@ for (const testCase of [
   if (data.style.order !== testCase.order) {{
     throw new Error(`expected exact order ${{testCase.order}}, got ${{data.style.order}}`);
   }}
-  if (data.viewport.rootContext !== "flex-item") {{
-    throw new Error(`expected flex-item root, got ${{data.viewport.rootContext}}`);
+  if (JSON.stringify(data.style.minSize) !== JSON.stringify({{
+    width: {{ unit: "px", value: 20 }},
+    height: {{ unit: "px", value: 5 }},
+  }})) {{
+    throw new Error(`computed minima must retain the actual 10px-font resolutions: ${{JSON.stringify(data.style.minSize)}}`);
   }}
-  if (data.viewport.parentWritingMode !== testCase.writingMode || data.viewport.parentDirection !== testCase.direction) {{
-    throw new Error(`expected parent axes, got ${{JSON.stringify(data.viewport)}}`);
-  }}
-  if (data.viewport.hostInlineSize !== testCase.hostInlineSize) {{
-    throw new Error(`expected host inline size ${{testCase.hostInlineSize}}, got ${{data.viewport.hostInlineSize}}`);
+  if (data.viewport !== undefined) {{
+    throw new Error("describeElement fabricated a root request from node geometry");
   }}
 }}
 "#
@@ -4828,26 +4913,29 @@ fn bundled_helper_reports_missing_test_root_as_unsupported() {
 #[test]
 fn xml_generation_applies_root_rounding_policy_to_descendants() {
     let node = json!({"layoutInput": "box",
-        "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": {"direction": "ltr"},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","direction": "ltr"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 200, "height": 42, "scrollWidth": 200, "scrollHeight": 42},
         "smartRoundedLayout": {"x": 0, "y": 0, "width": 200, "height": 42, "scrollWidth": 200, "scrollHeight": 42},
         "unroundedLayout": {"x": 0, "y": 0, "width": 200, "height": 42.15625, "scrollWidth": 200, "scrollHeight": 42},
         "naivelyRoundedLayout": {"clientWidth": 200, "clientHeight": 42},
         "children": [
             {"layoutInput": "box",
                 "useRounding": true,
-                "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-                "style": {"direction": "ltr"},
-                "smartRoundedLayout": {"x": 8, "y": 8, "width": 97, "height": 26, "scrollWidth": 97, "scrollHeight": 26},
+                "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+                "style": {"position":"relative","direction": "ltr"},
+                "worldRoundedLayout": {"x": 8, "y": 8, "width": 97, "height": 26, "scrollWidth": 97, "scrollHeight": 26},
+        "smartRoundedLayout": {"x": 8, "y": 8, "width": 97, "height": 26, "scrollWidth": 97, "scrollHeight": 26},
                 "unroundedLayout": {"x": 8, "y": 8, "width": 97, "height": 26.15625, "scrollWidth": 97, "scrollHeight": 26},
                 "naivelyRoundedLayout": {"clientWidth": 97, "clientHeight": 26},
                 "children": [
                     {"layoutInput": "box",
                         "useRounding": true,
-                        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-                        "style": {"direction": "ltr"},
-                        "smartRoundedLayout": {"x": 10, "y": 10, "width": 38, "height": 6, "scrollWidth": 38, "scrollHeight": 6},
+                        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+                        "style": {"position":"relative","direction": "ltr"},
+                        "worldRoundedLayout": {"x": 10, "y": 10, "width": 38, "height": 6, "scrollWidth": 38, "scrollHeight": 6},
+        "smartRoundedLayout": {"x": 10, "y": 10, "width": 38, "height": 6, "scrollWidth": 38, "scrollHeight": 6},
                         "unroundedLayout": {"x": 10.078125, "y": 10.078125, "width": 38.40625, "height": 6, "scrollWidth": 38, "scrollHeight": 6},
                         "naivelyRoundedLayout": {"clientWidth": 38, "clientHeight": 6},
                         "children": []
@@ -4860,7 +4948,7 @@ fn xml_generation_applies_root_rounding_policy_to_descendants() {
     let xml = generate_xml("percentage_moderate_complexity__border_box_ltr", &node);
 
     assert!(xml.contains(
-        "<test name=\"percentage_moderate_complexity__border_box_ltr\" measurement-version=\"2\" use-rounding=\"false\">"
+        "<test name=\"percentage_moderate_complexity__border_box_ltr\" measurement-version=\"4\" observation-frame=\"root-border\" use-rounding=\"false\">"
     ));
     assert!(xml.contains("    <node x=\"0\" y=\"0\" width=\"200\" height=\"42.15625\">"));
     assert!(xml.contains("      <node x=\"8\" y=\"8\" width=\"97\" height=\"26.15625\">"));
@@ -4877,10 +4965,11 @@ fn layout_xml_attrs_use_f32_compatible_browser_fixture_boundary() {
         (10.0, "10"),
     ] {
         let node = json!({
-            "layoutInput": "box", "useRounding": false,
-            "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-            "style": {"size": {"width": {"unit": "px", "value": 55.00000000000001}}},
-            "unroundedLayout": {"x": 0, "y": 0, "width": width, "height": 10}, "children": []
+            "layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+            "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+            "style": {"position":"relative","size": {"width": {"unit": "px", "value": 55.00000000000001}}},
+            "worldRoundedLayout": {"x": 0, "y": 0, "width": width, "height": 10},
+        "unroundedLayout": {"x": 0, "y": 0, "width": width, "height": 10}, "children": []
         });
         let xml = generate_xml("numeric-boundaries", &node);
         assert!(xml.contains(&format!(
@@ -4902,7 +4991,7 @@ fn browser_document_script_writes_json_escaped_html() {
 }
 
 #[test]
-fn browser_fixture_document_inlines_base_style_only_when_authored_fixture_references_it() {
+fn browser_fixture_document_preserves_authored_link_for_source_qualified_setup() {
     let raw_without_style =
         "<!doctype html><html><head></head><body><div id=\"test-root\"></div></body></html>";
     let raw_with_style = r#"<!doctype html><html><head><link rel="stylesheet" href="../../scripts/gentest/test_base_style.css"></head><body><div></div></body></html>"#;
@@ -4912,9 +5001,14 @@ fn browser_fixture_document_inlines_base_style_only_when_authored_fixture_refere
         .expect("fixture document");
 
     assert!(with_style.contains("<base href=\"file:///tmp/fixtures/flex/\">"));
-    assert!(with_style.contains("#test-root"));
+    assert!(
+        with_style.contains(
+            r#"<link rel="stylesheet" href="../../scripts/gentest/test_base_style.css">"#
+        )
+    );
+    assert!(!with_style.contains("<style"));
     assert!(without_style.contains("<base href=\"file:///tmp/fixtures/html/\">"));
-    assert!(!without_style.contains("#test-root"));
+    assert!(!without_style.contains("<style"));
 }
 
 #[test]
@@ -4941,10 +5035,11 @@ fn browser_fixture_document_inserts_head_inside_no_head_html_document() {
 #[test]
 fn xml_generation_is_comment_free() {
     let node = serde_json::json!({"layoutInput": "box",
-        "useRounding": true,
-        "viewport": {"rootContext": "root",  "width": {"unit": "max-content"}, "height": {"unit": "max-content"} },
-        "style": { "display": "block" },
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": true,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative", "display": "block" },
         "children": [],
+        "worldRoundedLayout": { "x": 0, "y": 0, "width": 10, "height": 20 },
         "smartRoundedLayout": { "x": 0, "y": 0, "width": 10, "height": 20 },
         "unroundedLayout": { "x": 0, "y": 0, "width": 10, "height": 20 },
         "naivelyRoundedLayout": { "clientWidth": 10, "clientHeight": 20 }
@@ -5088,9 +5183,10 @@ fn fri06_c08r_fixture_input_serializer_emits_closed_explicit_forms() {
     let node = json!({"layoutInput": "box",
         "tagName": "div",
         "layoutReadyInlineRoot": true,
-        "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 100}, "height": {"unit": "max-content"}},
-        "style": {"display": "block", "size": {"width": {"unit": "px", "value": 100}}},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": "block", "size": {"width": {"unit": "px", "value": 100}}},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 10},
         "children": [
             {"layoutInput": "inline-boundary", "inlineBoundary": {"kind": "start"}, "children": []},
@@ -5138,6 +5234,7 @@ fn fri06_c08r_fixture_input_box(display: &str, children: Vec<Value>) -> Value {
     json!({"layoutInput": "box",
         "tagName": "div",
         "style": {"display": display},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": children
     })
@@ -5151,6 +5248,7 @@ fn fri06_c08r_fixture_input_atomic(width: u64) -> Value {
             "size": {"width": {"unit": "px", "value": width}, "height": {"unit": "px", "value": 10}}
         },
         "atomicInlineParticipation": {"bidiLevel": 0, "followingBreak": "prohibited"},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": width, "height": 10},
         "unroundedLayout": {"x": 0, "y": 0, "width": width, "height": 10},
         "children": []
     })
@@ -5160,9 +5258,10 @@ fn fri06_c08r_fixture_input_root(display: &str, children: Vec<Value>) -> Value {
     json!({"layoutInput": "box",
         "tagName": "div",
         "layoutReadyInlineRoot": true,
-        "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "px", "value": 100}, "height": {"unit": "max-content"}},
-        "style": {"display": display, "size": {"width": {"unit": "px", "value": 100}}},
+        "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        "viewport": {"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},
+        "style": {"position":"relative","display": display, "size": {"width": {"unit": "px", "value": 100}}},
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "unroundedLayout": {"x": 0, "y": 0, "width": 100, "height": 20},
         "children": children
     })
@@ -5718,9 +5817,73 @@ rejectUnusedLayoutReadyInlineBidiLevels(rtlAtomic);
 
 #[test]
 fn malformed_supported_geometry_is_not_silently_serialized_as_zero() {
-    let node = json!({"layoutInput": "box", "useRounding": false, "viewport":{"rootContext": "root", "width":{"unit":"max-content"},"height":{"unit":"max-content"}},"style":{},"unroundedLayout":{"x":0,"y":0,"width":"invalid","height":1},"children":[]});
+    let node = json!({"layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false, "viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"worldRoundedLayout": {"x":0,"y":0,"width":"invalid","height":1},
+        "unroundedLayout":{"x":0,"y":0,"width":"invalid","height":1},"children":[]});
     let error = measured_xml("malformed", &node).unwrap_err();
     assert_eq!(error.kind, MeasurementErrorKind::Decode);
     assert_eq!(error.node_path, "root");
     assert_eq!(error.field_path, "unroundedLayout.width");
 }
+
+#[test]
+fn v4_world_rounding_diagnostics_preserve_f64_without_donating_native_geometry() {
+    let mut node = fri08_c05_inputs_synthetic_grid_node();
+    node["worldRoundedLayout"]["y"] = json!(1e100);
+    let xml = generate_xml("local-diagnostic", &node);
+    assert!(xml.contains("measurement-version=\"4\" observation-frame=\"root-border-local\""));
+    let golden = browser_parity_support::Golden::parse(&xml).unwrap();
+    assert_eq!(golden.world_rounding_diagnostics.len(), 3);
+    assert_eq!(golden.world_rounding_diagnostics[0].node_path, "0");
+    assert_eq!(golden.world_rounding_diagnostics[0].y, 1e100);
+    assert_eq!(golden.expectations.y, Some(0.0));
+    assert_eq!(golden.expectations.width, Some(80.0));
+    browser_parity_support::assert_surgeist_matches(&golden).unwrap();
+}
+#[test]
+fn v4_local_and_world_channels_refuse_missing_or_contradictory_payloads() {
+    let node = fri08_c05_inputs_synthetic_grid_node();
+    let mut missing = node.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("worldRoundedLayout");
+    let error = measured_xml("missing-world", &missing).unwrap_err();
+    assert_eq!(error.field_path, "worldRoundedLayout");
+    let mut origin = node.clone();
+    origin["unroundedLayout"]["x"] = json!(1);
+    assert_eq!(
+        measured_xml("bad-local", &origin).unwrap_err().kind,
+        MeasurementErrorKind::ContradictoryFields
+    );
+    for (field, value) in [
+        ("width", json!(-1)),
+        ("x", Value::Null),
+        ("extra", json!(1)),
+    ] {
+        let mut invalid = node.clone();
+        invalid["worldRoundedLayout"][field] = value;
+        assert!(measured_xml("bad-world", &invalid).is_err(), "{field}");
+    }
+    let xml = generate_xml("strict-world", &node);
+    for invalid in [
+        xml.replace("node-path=\"0.0\"", "node-path=\"0.00\""),
+        xml.replace("node-path=\"0.1\"", "node-path=\"0.0\""),
+        xml.replace(
+            "world-rounded-layout node-path=\"0\"",
+            "world-rounded-layout extra=\"1\" node-path=\"0\"",
+        ),
+        xml.replace("<diagnostics>", "<diagnostics extra=\"1\">"),
+        xml.replace(
+            "observation-frame=\"root-border-local\"",
+            "observation-frame=\"root-border\"",
+        ),
+    ] {
+        assert!(browser_parity_support::Golden::parse(&invalid).is_err());
+    }
+}
+
+#[path = "atomic_metrics_semantic_tests.rs"]
+mod atomic_metrics_semantic_tests;
+
+#[path = "grid_reference_semantic_tests.rs"]
+mod grid_reference_semantic_tests;

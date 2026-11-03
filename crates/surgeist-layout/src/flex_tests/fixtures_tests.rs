@@ -24,9 +24,22 @@ pub(super) fn fri07_c02_collapse_round_output<S: LayoutScalar>(
         .output()
 }
 
-pub(super) fn fri07_c02_collapse_round_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(300.0))))
-        .expect("collapsed-flex test viewport is finite")
+pub(super) fn fri07_c02_collapse_round_request<S: LayoutScalar>(
+    flow_axes: FlowAxes,
+) -> LayoutRootRequestOf<S> {
+    crate::test_support::requests::NativeRootFrameOf::new(
+        flow_axes,
+        Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(300.0)).unwrap()),
+        SizingOperation::Normal,
+    )))
 }
 
 pub(super) fn fri07_c02_collapse_round_item<S: LayoutScalar>(
@@ -148,7 +161,19 @@ pub(super) fn fri05_c04_flex_input(size: Size<f32>, flow_axes: FlowAxes) -> Comp
         size.map(Some),
         size.map(Some),
         ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-        size.map(Available::definite),
+        SizingRequestOf::new(
+            size.map(|value| {
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(value).unwrap()),
+                    SizingOperation::Normal,
+                )
+            }),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
 }
 

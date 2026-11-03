@@ -102,7 +102,19 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,
-            l::LayoutRootRequestOf::viewport(available(40.0, self.capacity)).unwrap(),
+            {
+                let sizing_request = available(40.0, self.capacity);
+                l::LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                        surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            },
             changed,
         )
     }

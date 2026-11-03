@@ -77,7 +77,7 @@ pub(super) fn root_test_scroll_geometry<S: LayoutScalar>(
 // It does not preserve an obsolete shaped-text mode or create a Text paragraph.
 pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
     items: Vec<(f64, u8, InlineBreakOpportunity)>,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     writing_mode: WritingMode,
     direction: Direction,
     text_align: TextAlign,
@@ -130,14 +130,16 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 }
 
 pub(super) fn prepared_source_batch<S: LayoutScalar>(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
     source: surgeist_text::Source,
     style: surgeist_text::Style,
-    available: AvailableOf<S>,
-    writing_mode: WritingMode,
-    direction: Direction,
+    available: crate::AxisSizingRequestOf<S>,
+    flow_axes: FlowAxes,
     text_align: TextAlign,
     replacements: Vec<surgeist_text::ParagraphReplacement>,
 ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
+    let writing_mode = flow_axes.writing_mode();
+    let direction = flow_axes.direction();
     let paragraph = PreparedParagraph::with_replacements(
         vec![ParagraphPart::text(1, source, style.clone())],
         style,
@@ -174,13 +176,14 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
         },
         Vec::new(),
     )?;
-    let available = FlowAxes::new(writing_mode, direction)
-        .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
-    compute_layout_with_flow(
-        &capture,
-        0,
-        LayoutRootRequestOf::viewport(available).unwrap(),
-    )
+    let available = flow_axes.physical_size(LogicalSizeOf::new(
+        available,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::Normal,
+        ),
+    ));
+    compute_layout_with_flow(&capture, 0, native_frame.request(available))
 }
 
 pub(super) type OriginFragmentAssociation<S> = (
@@ -287,8 +290,9 @@ pub(super) fn prepared_atomic_style<S: LayoutScalar>(
 }
 
 pub(super) fn fri06_c03_mixed_batch_with_root<S: LayoutScalar>(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
     children: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
-    available_inline: AvailableOf<S>,
+    available_inline: crate::AxisSizingRequestOf<S>,
     root_input: NodeInputOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let root_input = NodeInputOf {
@@ -310,16 +314,22 @@ pub(super) fn fri06_c03_mixed_batch_with_root<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(Size::new(available_inline, AvailableOf::MAX_CONTENT))
-            .unwrap(),
+        native_frame.request(Size::new(
+            available_inline,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
+        )),
     )
     .unwrap()
 }
 
 pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
     paragraph: &PreparedParagraph,
     children: Vec<(u32, LayoutInputOf<S>, NodeInputOf<S>)>,
-    available_inline: AvailableOf<S>,
+    available_inline: crate::AxisSizingRequestOf<S>,
     root: NodeInputOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let root = NodeInputOf {
@@ -364,8 +374,13 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
     compute_layout_with_flow(
         &capture,
         0,
-        LayoutRootRequestOf::viewport(Size::new(available_inline, AvailableOf::MAX_CONTENT))
-            .unwrap(),
+        native_frame.request(Size::new(
+            available_inline,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
+        )),
     )
     .unwrap()
 }
@@ -394,8 +409,9 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
 }
 
 pub(super) fn prepared_front_door_batch<S: LayoutScalar>(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
     root_style: NodeInputOf<S>,
-    logical_available: LogicalSizeOf<AvailableOf<S>>,
+    logical_available: LogicalSizeOf<crate::AxisSizingRequestOf<S>>,
     root_children: Vec<u32>,
     nodes: Vec<Fri06C04FrontDoorNode<S>>,
     paragraphs: Vec<TextParagraphBinding<u32>>,
@@ -411,7 +427,7 @@ pub(super) fn prepared_front_door_batch<S: LayoutScalar>(
         inputs,
         children,
         paragraphs,
-        LayoutRootRequestOf::viewport(axes.physical_size(logical_available)).unwrap(),
+        native_frame.request(axes.physical_size(logical_available)),
     )
 }
 
@@ -468,7 +484,29 @@ pub(super) fn fri06_c04_line_batch<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(root_size.map(AvailableOf::definite)).unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            flow_axes,
+            root_size.map(|value| {
+                Some(
+                    crate::NonNegativeFiniteOf::new(value)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                )
+            }),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(root_size.map(|value| {
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(value)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )
+        })),
     )
     .unwrap()
 }
@@ -498,7 +536,29 @@ pub(super) fn fri06_c04_bfc_batch<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(root_size.map(AvailableOf::definite)).unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            flow_axes,
+            root_size.map(|value| {
+                Some(
+                    crate::NonNegativeFiniteOf::new(value)
+                        .expect("declared fixture extent is finite and nonnegative"),
+                )
+            }),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(root_size.map(|value| {
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(value)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )
+        })),
     )
     .unwrap()
 }
@@ -506,8 +566,9 @@ pub(super) fn fri06_c04_bfc_batch<S: LayoutScalar>(
 pub(super) type Fri06C04FrontDoorNode<S> = (u32, LayoutInputOf<S>, NodeInputOf<S>, Vec<u32>);
 
 pub(super) fn fri06_c04_front_door_batch<S: LayoutScalar>(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<S>,
     root_style: NodeInputOf<S>,
-    logical_available: LogicalSizeOf<AvailableOf<S>>,
+    logical_available: LogicalSizeOf<crate::AxisSizingRequestOf<S>>,
     root_children: Vec<u32>,
     nodes: Vec<Fri06C04FrontDoorNode<S>>,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -523,7 +584,7 @@ pub(super) fn fri06_c04_front_door_batch<S: LayoutScalar>(
     compute_layout(
         &tree,
         0,
-        LayoutRootRequestOf::viewport(flow_axes.physical_size(logical_available)).unwrap(),
+        native_frame.request(flow_axes.physical_size(logical_available)),
     )
     .unwrap()
 }
@@ -569,7 +630,13 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             InlineFlowOf::new(
                 axes.writing_mode(),
                 axes.direction(),
-                AvailableOf::definite(S::from_f64(100.0)),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
             ),
             InlineMetricsOf::from_ascent_descent(
                 crate::InlineBaselineContext::Physical,
@@ -592,7 +659,13 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             axes.direction(),
         ),
         observe_tail: false,
-        available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: axes,
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
@@ -728,6 +801,21 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
         },
     );
     let batch = prepared_mixed_batch(
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(root.writing_mode, root.direction),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(210.0))
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                None,
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
         &paragraph,
         vec![
             (
@@ -738,7 +826,13 @@ pub(super) fn assert_fri06_c08_mixed_inline_atomic_x<S: LayoutScalar>(
             (2, paragraph.text_input(2), NodeInputOf::non_box()),
             (3, LayoutInputOf::box_input(atomic.clone()), atomic),
         ],
-        AvailableOf::definite(S::from_f64(210.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(210.0))
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         root,
     );
 
@@ -854,6 +948,21 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         },
     );
     let batch = prepared_mixed_batch(
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(root.writing_mode, root.direction),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                None,
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
         &paragraph,
         vec![
             (1, LayoutInputOf::box_input(left_float.clone()), left_float),
@@ -889,7 +998,13 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
                 fourth_atomic,
             ),
         ],
-        AvailableOf::definite(S::from_f64(180.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(180.0))
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         root,
     );
 
@@ -1071,6 +1186,23 @@ pub(super) fn fri06_c12_t08_forced_break_fallback_batch<S: LayoutScalar>(
         nodes.push(atomic(second_atomic));
     }
     fri06_c04_front_door_batch(
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr).physical_size(
+                LogicalSizeOf::new(
+                    Some(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(160.0))
+                            .expect("declared fixture extent is finite and nonnegative"),
+                    ),
+                    None,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
         NodeInputOf {
             display: Display::Block,
             size: Size::new(
@@ -1080,8 +1212,17 @@ pub(super) fn fri06_c12_t08_forced_break_fallback_batch<S: LayoutScalar>(
             ..NodeInputOf::default()
         },
         LogicalSizeOf::new(
-            AvailableOf::definite(S::from_f64(160.0)),
-            AvailableOf::MAX_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(160.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
         ),
         vec![1, 5, 9],
         nodes,
@@ -1614,11 +1755,34 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
 }
 
 pub(super) fn fri06_c02_stateful_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(S::from_f64(20.0)),
-        AvailableOf::MAX_CONTENT,
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(
+            Some(
+                crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                    .expect("declared fixture extent is finite and nonnegative"),
+            ),
+            None,
+        ),
+        crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Unknown,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+    )
+    .request(Size::new(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(20.0))
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::Normal,
+        ),
     ))
-    .unwrap()
 }
 
 pub(super) fn assert_positive_physical_range<S: LayoutScalar>(
@@ -1951,14 +2115,14 @@ pub(super) fn root_writing_mode_directions() -> [(WritingMode, Direction); 10] {
 }
 
 pub(super) fn assert_public_scroll_geometry_error_without_batch(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<Scalar>,
     tree: &RootSessionTree,
-    available: Size<Available>,
+    available: Size<crate::AxisSizingRequest>,
     expected_site: LayoutErrorSite<u32>,
     expected_operation: LayoutOperation,
     expected_invariant: LayoutInternalInvariant,
 ) {
-    let request =
-        LayoutRootRequest::viewport(available).expect("finite root availability is valid");
+    let request = native_frame.request(available);
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         compute_layout(tree, 0, request)
     }));
@@ -2038,15 +2202,17 @@ impl<S: LayoutScalar> LayoutTree for Fri05C03MeasuredLeafTree<S> {
 
 pub(super) fn fri05_c03_root_measurement_size(input: LeafMeasureInput) -> Size<f32> {
     assert_eq!(input.known_content_size(), Size::NONE);
-    input.available_content_size().map(|available| {
+    input.content_sizing_request().axes().map(|available| {
         available
-            .definite_value()
+            .space()
+            .definite_size()
             .expect("FRI-05 root measurement availability is definite")
             .get()
     })
 }
 
 pub(super) fn fri05_c03_tree_leaf_layout(
+    native_frame: crate::test_support::requests::NativeRootFrameOf<crate::Scalar>,
     style: NodeInput,
     measured: Size<f32>,
     available: Size<f32>,
@@ -2056,8 +2222,15 @@ pub(super) fn fri05_c03_tree_leaf_layout(
         measured,
         measurement_inputs: RefCell::new(Vec::new()),
     };
-    let request = LayoutRootRequest::viewport(available.map(Available::definite))
-        .expect("FRI-05 root request is valid");
+    let request = native_frame.request(available.map(|value| {
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(value)
+                    .expect("fixture physical extent is finite and nonnegative"),
+            ),
+            crate::SizingOperation::Normal,
+        )
+    }));
     let batch = compute_layout(&tree, 0, request).expect("tree-backed measured leaf succeeds");
     let output = batch
         .unrounded_entries()

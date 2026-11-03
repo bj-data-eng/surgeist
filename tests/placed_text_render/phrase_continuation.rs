@@ -326,11 +326,14 @@ fn capture() -> (
     let batch = layout::compute_layout_with_flow(
         &captured,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(200.0),
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(200.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     drop(system);
