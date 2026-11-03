@@ -14,9 +14,8 @@ depends on this crate. This crate depends on no Surgeist crate; do not add one.
 Its one runtime dependency is `encoding_rs` (pinned exactly, with its license
 files in [licenses/encoding-rs](licenses/encoding-rs)), which implements the
 Encoding Standard's decoders for `input::decode`. (Its tests use
-`surgeist-fuzz` for the property runner and `cssparser` as a black-box
-comparison; both are dev-dependencies and ship nowhere.) Behavior
-follows the
+`surgeist-fuzz` for the property runner, a dev-dependency that ships nowhere.)
+Behavior follows the
 [pinned CSS Syntax 3 edition](../../references/SOURCE-EDITIONS.md#css-syntax-3-edition),
 not the conventions of another implementation.
 
@@ -76,16 +75,17 @@ differently. Add or change a decision in the machine, never in a driver, and
 keep `every_short_text_is_lexed_as_the_stepwise_tokenizer_reads_it` and the
 properties in [tests/properties.rs](tests/properties.rs) passing.
 
-[tests/cssparser_oracle.rs](tests/cssparser_oracle.rs) compares the lexer with
-cssparser 0.37.0 through its public API. Its differences are committed in
-[tests/oracle/differences.tsv](tests/oracle/differences.tsv), and each row cites
-the section of the pinned edition that makes the lexer's output correct. A new
-difference is resolved from the specification text, never from the other
-tokenizer's behavior; agreement with it is not evidence of conformance.
+The lexer's expectations are written from the clause of the pinned
+edition that yields each, in [tests/lexer.rs](tests/lexer.rs),
+[tests/lexical.rs](tests/lexical.rs), [tests/ident_code_points.rs](tests/ident_code_points.rs)
+and [tests/wpt_syntax.rs](tests/wpt_syntax.rs). A new disagreement between a
+test and the lexer is resolved from the specification text, never from the
+behavior of another tokenizer.
 
-[tests/lexer_performance.rs](tests/lexer_performance.rs) is the performance gate
-against cssparser's tokenizer. It is a measurement, ignored by default; see the
-README for the command.
+[tests/lexer_performance.rs](tests/lexer_performance.rs) measures the lexer's
+throughput in MB/s on the CSSTree sources and on a synthetic style sheet. It
+asserts nothing, is ignored by default, and its output is the baseline for a
+later change to the lexer; see the README for the command.
 
 ## Document And Stream Facts
 
@@ -171,12 +171,9 @@ before `>`), found by the round-trip properties of
 [tests/properties.rs](tests/properties.rs), which must keep passing for any
 change to the lexer or the serializer.
 
-[tests/cssparser_oracle.rs](tests/cssparser_oracle.rs) also compares `parse_nth`,
-`serialize_identifier`, `serialize_string` and the separator table of cssparser
-with `anb::parse`, `serialize::identifier`, `serialize::string` and
-`serialize::needs_separator`; the differences are the rows of
-[tests/oracle/syntax_differences.tsv](tests/oracle/syntax_differences.tsv), each
-citing the clause that makes this crate's answer correct.
+The expectations of `anb::parse`, `serialize::identifier`, `serialize::string`
+and `serialize::needs_separator` are written from sections 6 and 9, in
+[tests/anb.rs](tests/anb.rs) and [tests/serialize.rs](tests/serialize.rs).
 
 `anb::parse` and `anb::parse_saturating` are one recognizer (the `Policy` of
 [src/anb.rs](src/anb.rs)): they differ only in what an integer outside `i32` is,

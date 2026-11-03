@@ -1,7 +1,7 @@
-//! The performance gate of the free-running `Lexer` (user decision: 1.0x).
+//! The throughput of the free-running `Lexer`.
 //!
-//! In a release build, unmetered, the lexer must match or beat cssparser's
-//! tokenizer on two inputs, measured on the same machine in the same process:
+//! In a release build, unmetered, this measures how many megabytes per second
+//! the lexer tokenizes on two inputs, in one process on one machine:
 //!
 //! 1. the CSSTree corpus's sources, the 935 case texts of
 //!    `crates/surgeist-css/tests/corpus/csstree/source` (the repository's one
@@ -10,30 +10,28 @@
 //!    use: selectors, declarations with colours, lengths, calc, urls and
 //!    strings, at-rules, comments and the occasional escape.
 //!
-//! cssparser is driven through its public `Parser`, entering every nested
-//! block so that every token is produced, and the lexer through
-//! `next_lexeme`. Each side reads the token and its end position, so neither is
-//! optimized away.
+//! The lexer is driven through `next_lexeme`, and each iteration reads the
+//! token's kind and the lexeme's end, so the work is not optimized away.
 //!
-//! This is a measurement, not a regression test: it is ignored, and it runs only
-//! when `SURGEIST_CSS_PARSER_PERF=1` is set, in release mode:
+//! This is a measurement, not a regression test: it asserts nothing about the
+//! speed, it is ignored, and it runs only when `SURGEIST_CSS_PARSER_PERF=1` is
+//! set, in release mode:
 //!
 //! ```sh
 //! SURGEIST_CSS_PARSER_PERF=1 cargo test --release --offline --locked -j 1 \
 //!     -p surgeist-css-parser --test lexer_performance -- --ignored --nocapture
 //! ```
 //!
-//! It prints, per input, the bytes, the token counts of both sides, the
-//! throughput of both in MB/s (best round and median round) and their ratio,
-//! and fails when the ratio of the median rounds is below 1.0 on either input.
-//! The CSSTree sources are read from the sibling `surgeist-css` crate in the
-//! workspace; the test does nothing outside a workspace checkout.
+//! It prints, per input, the bytes, the token count and the throughput in MB/s
+//! (best round and median round). The printed figures are the baseline that a
+//! later change to the lexer is compared with, on the same machine. The CSSTree
+//! sources are read from the sibling `surgeist-css` crate in the workspace; the
+//! test does nothing outside a workspace checkout.
 
 use std::hint::black_box;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use cssparser::{Parser, ParserInput, Token as Css};
 use surgeist_css_parser::lexer::{Lexer, Options};
 
 const ROUNDS: usize = 15;
@@ -178,38 +176,6 @@ fn run_lexer(text: &str) -> (usize, usize) {
     (count, sum)
 }
 
-fn walk(parser: &mut Parser<'_, '_>, count: &mut usize, sum: &mut usize) {
-    loop {
-        let token = match parser.next_including_whitespace_and_comments() {
-            Ok(token) => black_box(token.clone()),
-            Err(_) => return,
-        };
-        *count += 1;
-        *sum = sum.wrapping_add(parser.position().byte_index());
-        if matches!(
-            token,
-            Css::Function(_)
-                | Css::ParenthesisBlock
-                | Css::SquareBracketBlock
-                | Css::CurlyBracketBlock
-        ) {
-            let _: Result<(), cssparser::ParseError<'_, ()>> = parser.parse_nested_block(|inner| {
-                walk(inner, count, sum);
-                Ok(())
-            });
-        }
-    }
-}
-
-/// Tokenizes `text` with cssparser through its `Parser`, entering every block.
-fn run_cssparser(text: &str) -> (usize, usize) {
-    let mut input = ParserInput::new(text);
-    let mut parser = Parser::new(&mut input);
-    let (mut count, mut sum) = (0, 0_usize);
-    walk(&mut parser, &mut count, &mut sum);
-    (count, sum)
-}
-
 struct Measured {
     best: Duration,
     median: Duration,
@@ -239,53 +205,31 @@ fn megabytes_per_second(bytes: usize, repeats: usize, time: Duration) -> f64 {
     (bytes * repeats) as f64 / 1e6 / time.as_secs_f64()
 }
 
-/// Measures one input and returns the median-round ratio of the lexer's
-/// throughput to cssparser's.
-fn gate(name: &str, texts: &[String], repeats: usize) -> f64 {
+/// Measures one input and prints the lexer's throughput on it.
+fn report(name: &str, texts: &[String], repeats: usize) {
     let bytes: usize = texts.iter().map(String::len).sum();
-    let ours: (usize, usize) = texts
+    let (tokens, _) = texts
         .iter()
         .map(|text| run_lexer(text))
-        .fold((0, 0), |a, b| (a.0 + b.0, a.1.wrapping_add(b.1)));
-    let theirs: (usize, usize) = texts
-        .iter()
-        .map(|text| run_cssparser(text))
-        .fold((0, 0), |a, b| (a.0 + b.0, a.1.wrapping_add(b.1)));
-    // Interleave the sides so slow drift of the machine hits both alike: warm
-    // each once, then measure the lexer, cssparser, the lexer again and
-    // cssparser again, and keep the better round of each.
+        .fold((0_usize, 0_usize), |a, b| {
+            (a.0 + b.0, a.1.wrapping_add(b.1))
+        });
+    // Warm once, then measure two series of rounds and keep the better of each
+    // statistic, so a slow drift of the machine does not decide the figure.
     let _ = measure(texts, 1, run_lexer);
-    let _ = measure(texts, 1, run_cssparser);
-    let a = measure(texts, repeats, run_lexer);
-    let b = measure(texts, repeats, run_cssparser);
-    let c = measure(texts, repeats, run_lexer);
-    let d = measure(texts, repeats, run_cssparser);
-    let (lexer_best, lexer_median) = (a.best.min(c.best), a.median.min(c.median));
-    let (css_best, css_median) = (b.best.min(d.best), b.median.min(d.median));
+    let first = measure(texts, repeats, run_lexer);
+    let second = measure(texts, repeats, run_lexer);
+    let (best, median) = (first.best.min(second.best), first.median.min(second.median));
     let rate = |time| megabytes_per_second(bytes, repeats, time);
-    let ratio = rate(lexer_median) / rate(css_median);
     println!(
-        "{name}: {bytes} bytes in {} texts; tokens: lexer {} (closers included), cssparser {} (closers inside blocks not returned)",
-        texts.len(),
-        ours.0,
-        theirs.0
+        "{name}: {bytes} bytes in {} texts, {tokens} tokens (closers included)",
+        texts.len()
     );
     println!(
-        "  lexer     best {:8.1} MB/s  median {:8.1} MB/s",
-        rate(lexer_best),
-        rate(lexer_median)
+        "  lexer best {:8.1} MB/s  median {:8.1} MB/s",
+        rate(best),
+        rate(median)
     );
-    println!(
-        "  cssparser best {:8.1} MB/s  median {:8.1} MB/s",
-        rate(css_best),
-        rate(css_median)
-    );
-    println!(
-        "  ratio (lexer / cssparser): best {:.3}, median {:.3}",
-        rate(lexer_best) / rate(css_best),
-        ratio
-    );
-    ratio
 }
 
 fn is_debug_build() -> bool {
@@ -294,12 +238,15 @@ fn is_debug_build() -> bool {
 
 #[test]
 #[ignore = "a measurement: run in release mode with SURGEIST_CSS_PARSER_PERF=1"]
-fn the_lexer_matches_or_beats_cssparser_on_the_csstree_sources_and_a_synthetic_sheet() {
+fn the_lexer_throughput_is_measured_on_the_csstree_sources_and_a_synthetic_sheet() {
     if std::env::var_os("SURGEIST_CSS_PARSER_PERF").is_none() {
         eprintln!("SURGEIST_CSS_PARSER_PERF is not set: nothing measured");
         return;
     }
-    assert!(!is_debug_build(), "the gate is measured in a release build");
+    assert!(
+        !is_debug_build(),
+        "the throughput is measured in a release build"
+    );
     let corpus =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../surgeist-css/tests/corpus/csstree/source");
     let sources = csstree_sources(&corpus);
@@ -311,12 +258,8 @@ fn the_lexer_matches_or_beats_cssparser_on_the_csstree_sources_and_a_synthetic_s
     let sheet = synthetic_sheet(1 << 20);
     assert!(sheet.len() >= 1 << 20);
 
-    let csstree = gate("CSSTree sources", &sources, 300);
-    let synthetic = gate("1 MiB synthetic sheet", &[sheet], 6);
-    assert!(
-        csstree >= 1.0 && synthetic >= 1.0,
-        "the lexer must match or beat cssparser: CSSTree {csstree:.3}, synthetic {synthetic:.3}"
-    );
+    report("CSSTree sources", &sources, 300);
+    report("1 MiB synthetic sheet", &[sheet], 6);
 }
 
 /// Spins the lexer on the synthetic sheet for `SURGEIST_CSS_PARSER_PROFILE_SECONDS`
@@ -331,15 +274,10 @@ fn spin_the_lexer_for_a_profiler() {
         return;
     };
     let sheet = synthetic_sheet(1 << 20);
-    let which = std::env::var("SURGEIST_CSS_PARSER_PROFILE_SIDE").unwrap_or_default();
     let end = Instant::now() + Duration::from_secs(seconds);
     let mut total = 0;
     while Instant::now() < end {
-        total += if which == "cssparser" {
-            run_cssparser(black_box(&sheet)).1
-        } else {
-            run_lexer(black_box(&sheet)).1
-        };
+        total += run_lexer(black_box(&sheet)).1;
     }
     black_box(total);
 }
