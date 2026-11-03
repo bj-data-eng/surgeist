@@ -565,7 +565,7 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
     }
 }
 
-/// A zero-edge horizontal absolute root observed in its own border-box frame.
+/// A horizontal absolute root observed in its own border-box frame.
 ///
 /// The producer certifies the authentic containing block and a signed offset
 /// along the independently authenticated hypothetical inline progression, mapped
@@ -581,7 +581,14 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// layout proof belongs to the producer; computed blockification alone does not
 /// supply it.
 ///
-/// All root insets are Auto. Root-local continuous coordinates are established
+/// All root insets are Auto and margins are zero. Padding and border require
+/// the root's own inline preferred size to resolve genuinely definite against
+/// the full containing width; authored box-sizing and min/max constraints then
+/// retain their normal meaning. Auto or intrinsic inline preferred sizes require
+/// zero padding and border: this profile does not supply a general edge-aware
+/// shrink-to-fit formula.
+///
+/// Root-local continuous coordinates are established
 /// before canonical geometry and publication rounding. Percentage bases use the
 /// full containing size, independently of reduced inline fitting space; Auto
 /// block sizing has indefinite physical availability, not invented remaining

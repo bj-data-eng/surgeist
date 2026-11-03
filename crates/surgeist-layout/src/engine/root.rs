@@ -124,7 +124,12 @@ where
             false,
         ),
         crate::LayoutRootContextOf::BlockFlow(context) => {
-            admit_zero_edge_root(root, style, crate::Position::Relative)?;
+            admit_root_box(
+                root,
+                style,
+                crate::Position::Relative,
+                RootEdgeProfile::Zero,
+            )?;
             (
                 context.parent_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -135,7 +140,7 @@ where
             )
         }
         crate::LayoutRootContextOf::PositionedAutoInsets(context) => {
-            admit_positioned_root(root, style)?;
+            admit_positioned_root(root, style, RootEdgeProfile::Zero)?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -146,7 +151,13 @@ where
             )
         }
         crate::LayoutRootContextOf::RootLocalPositioned(context) => {
-            admit_positioned_root(root, style)?;
+            admit_positioned_root(
+                root,
+                style,
+                RootEdgeProfile::DefiniteInline {
+                    percentage_parent: context.containing_size().width,
+                },
+            )?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -247,10 +258,20 @@ fn root_context_error<Node, S: LayoutScalar, M>(
     )
 }
 
-fn admit_zero_edge_root<Node, S: LayoutScalar, M>(
+// Only the root-local profile can request padding/border admission, and only
+// through actual definite preferred-inline resolution against its full CB.
+enum RootEdgeProfile<S: LayoutScalar> {
+    Zero,
+    DefiniteInline {
+        percentage_parent: crate::NonNegativeFiniteOf<S>,
+    },
+}
+
+fn admit_root_box<Node, S: LayoutScalar, M>(
     node: Node,
     style: &NodeInputOf<S>,
     position: crate::Position,
+    edges: RootEdgeProfile<S>,
 ) -> LayoutResultOf<Node, (), S, M>
 where
     Node: Copy,
@@ -263,27 +284,53 @@ where
         Some(crate::RootContextMismatch::Float)
     } else if style.clear != crate::Clear::None {
         Some(crate::RootContextMismatch::Clearance)
-    } else if style.margin != Edges::all(crate::LengthAutoOf::ZERO)
-        || style.padding != Edges::all(crate::LengthOf::ZERO)
-        || style.border != Edges::all(crate::LengthOf::ZERO)
-    {
+    } else if style.margin != Edges::all(crate::LengthAutoOf::ZERO) {
         Some(crate::RootContextMismatch::BoxEdges)
-    } else if style.inset != Edges::all(crate::LengthAutoOf::AUTO) {
-        Some(crate::RootContextMismatch::Insets)
     } else {
         None
     };
-    mismatch.map_or(Ok(()), |reason| Err(root_context_error(node, reason)))
+    if let Some(reason) = mismatch {
+        return Err(root_context_error(node, reason));
+    }
+    if style.padding != Edges::all(crate::LengthOf::ZERO)
+        || style.border != Edges::all(crate::LengthOf::ZERO)
+    {
+        let allowed = match edges {
+            RootEdgeProfile::Zero => false,
+            RootEdgeProfile::DefiniteInline { percentage_parent } => matches!(
+                resolve_preferred_sizing(
+                    &style.size.width,
+                    SizingAlgorithm::Block,
+                    PhysicalAxis::Horizontal,
+                    Some(percentage_parent.get()),
+                    false,
+                )
+                .map_err(|error| sizing_resolution_error(node, error))?,
+                ResolvedPreferredSize::Definite(_)
+            ),
+        };
+        if !allowed {
+            return Err(root_context_error(
+                node,
+                crate::RootContextMismatch::BoxEdges,
+            ));
+        }
+    }
+    if style.inset != Edges::all(crate::LengthAutoOf::AUTO) {
+        return Err(root_context_error(node, crate::RootContextMismatch::Insets));
+    }
+    Ok(())
 }
 
 fn admit_positioned_root<Node, S: LayoutScalar, M>(
     root: Node,
     style: &NodeInputOf<S>,
+    edges: RootEdgeProfile<S>,
 ) -> LayoutResultOf<Node, (), S, M>
 where
     Node: Copy,
 {
-    admit_zero_edge_root(root, style, crate::Position::Absolute)?;
+    admit_root_box(root, style, crate::Position::Absolute, edges)?;
     if style.writing_mode != crate::WritingMode::HorizontalTb {
         return Err(root_context_error(
             root,
