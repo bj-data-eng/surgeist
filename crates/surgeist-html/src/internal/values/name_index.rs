@@ -8,7 +8,10 @@
 //! - A slot is opaque, so a consumer cannot forge an entry.
 //! - An index has a unique identity and is neither `Clone` nor `Copy`, so its count cannot be
 //!   duplicated. It binds to the storage it is first lent, which must be empty, and refuses any
-//!   other storage afterwards, so its count always describes the storage it guards.
+//!   other storage afterwards. That detects accidental mismatch: storage of the wrong length,
+//!   populated first storage and a different buffer. It is not a custody guarantee. A consumer
+//!   that clears, swaps or replaces its own slots is outside it, because the consumer owns that
+//!   memory.
 //! - Probes come only from the index and carry its identity, and the only way to write is to
 //!   insert at the [`HtmlNameIndexVacancy`] that a probe produces at the first empty slot of its
 //!   sequence, which carries the identity too. Nothing is removed, so a later lookup of a name

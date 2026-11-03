@@ -265,3 +265,64 @@ fn an_index_refuses_populated_other_and_wrongly_sized_storage() {
     );
     assert!(wrong.to_string().contains("slots"));
 }
+
+/// A vacancy may be held across other inserts, because it borrows nothing: a second vacancy on the
+/// same slot is then stale, one on another slot still inserts, and a fresh probe moves on to the
+/// next empty slot.
+#[test]
+fn a_vacancy_held_across_inserts_is_stale_only_when_its_own_slot_was_taken() {
+    let slots = HtmlNameIndexSlots::for_entries(4);
+    assert_eq!(slots.get(), 8);
+    let mut index = HtmlNameIndex::new(slots);
+    let mut storage = empty_storage(slots);
+    let (first, second, other_slot) = {
+        let table = HtmlNameIndexTable::new(&mut index, &mut storage).unwrap();
+        let mut vacancies = [2_u64, 2, 6].map(|hash| {
+            let mut probe = table.probe(hash);
+            let Ok(Some(HtmlNameIndexStep::Vacant(vacancy))) = table.advance(&mut probe) else {
+                panic!("an empty table is vacant at once");
+            };
+            vacancy
+        });
+        let other_slot = vacancies.pop().unwrap();
+        let second = vacancies.pop().unwrap();
+        let first = vacancies.pop().unwrap();
+        (first, second, other_slot)
+    };
+    let mut table = HtmlNameIndexTable::new(&mut index, &mut storage).unwrap();
+    assert_eq!(table.insert(first, 0), Ok(()));
+    // Another slot is unaffected by the unrelated insert.
+    assert_eq!(table.insert(other_slot, 1), Ok(()));
+    // The stale vacancy names a slot that is now taken, and nothing is written.
+    assert_eq!(
+        table.insert(second, 2),
+        Err(HtmlNameIndexInsertError::SlotTaken)
+    );
+    assert_eq!(index_len(&table), 2);
+    // A fresh probe from the same hash passes the taken slot and offers the next empty one.
+    let mut probe = table.probe(2);
+    assert_eq!(
+        table.advance(&mut probe),
+        Ok(Some(HtmlNameIndexStep::Occupied(0)))
+    );
+    let Ok(Some(HtmlNameIndexStep::Vacant(next))) = table.advance(&mut probe) else {
+        panic!("the next slot is empty");
+    };
+    assert_eq!(table.insert(next, 2), Ok(()));
+    assert_eq!(table.advance(&mut probe), Ok(None));
+}
+
+/// The entries recorded in the index that a table was lent.
+fn index_len(table: &HtmlNameIndexTable<'_>) -> usize {
+    let mut found = 0;
+    for hash in 0..8_u64 {
+        let mut probe = table.probe(hash);
+        if matches!(
+            table.advance(&mut probe),
+            Ok(Some(HtmlNameIndexStep::Occupied(_)))
+        ) {
+            found += 1;
+        }
+    }
+    found
+}
