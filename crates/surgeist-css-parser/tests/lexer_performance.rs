@@ -3,9 +3,10 @@
 //! In a release build, unmetered, this measures how many megabytes per second
 //! the lexer tokenizes on two inputs, in one process on one machine:
 //!
-//! 1. the CSSTree corpus's sources, the 935 case texts of
-//!    `crates/surgeist-css/tests/corpus/csstree/source` (the repository's one
-//!    corpus of real-shaped CSS fragments); and
+//! 1. the inputs of the crate's WPT vectors (`tests/corpus/wpt/*.json`: the
+//!    `input` text of every case of the token, whitespace, unit, consecutive
+//!    token, escaped identifier and unclosed construct vectors), each lexed as
+//!    its own text; and
 //! 2. a 1 MiB synthetic style sheet built from rule shapes that real sheets
 //!    use: selectors, declarations with colours, lengths, calc, urls and
 //!    strings, at-rules, comments and the occasional escape.
@@ -24,101 +25,43 @@
 //!
 //! It prints, per input, the bytes, the token count and the throughput in MB/s
 //! (best round and median round). The printed figures are the baseline that a
-//! later change to the lexer is compared with, on the same machine. The CSSTree
-//! sources are read from the sibling `surgeist-css` crate in the workspace; the
-//! test does nothing outside a workspace checkout.
+//! change to the lexer is compared with, on the same machine.
 
 use std::hint::black_box;
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use surgeist_css_parser::lexer::{Lexer, Options};
 
 const ROUNDS: usize = 15;
 
-/// Reads the string value of every `"source"` key in the corpus's JSON files.
-fn csstree_sources(root: &Path) -> Vec<String> {
-    fn files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        let mut entries: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
-        entries.sort();
-        for path in entries {
-            if path.is_dir() {
-                files(&path, out);
-            } else if path
-                .extension()
-                .is_some_and(|extension| extension == "json")
-                && !path
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().starts_with('.'))
-            {
-                out.push(path);
-            }
-        }
+/// The vectors whose cases carry an `input` text.
+const WPT_VECTORS: [&str; 6] = [
+    include_str!("corpus/wpt/tokens.json"),
+    include_str!("corpus/wpt/not-whitespace.json"),
+    include_str!("corpus/wpt/units.json"),
+    include_str!("corpus/wpt/consecutive-tokens.json"),
+    include_str!("corpus/wpt/escaped-identifier-round-trips.json"),
+    include_str!("corpus/wpt/unclosed-constructs.json"),
+];
+
+/// The `input` text of every case of the WPT vectors.
+fn wpt_inputs() -> Vec<String> {
+    let mut inputs = Vec::new();
+    for vector in WPT_VECTORS {
+        let document: serde_json::Value =
+            serde_json::from_str(vector).unwrap_or_else(|error| panic!("a WPT vector: {error}"));
+        let cases = document
+            .get("cases")
+            .and_then(serde_json::Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        inputs.extend(
+            cases
+                .iter()
+                .filter_map(|case| case.get("input").and_then(serde_json::Value::as_str))
+                .map(str::to_owned),
+        );
     }
-    let mut paths = Vec::new();
-    files(root, &mut paths);
-    let mut sources = Vec::new();
-    for path in paths {
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let mut rest = text.as_str();
-        while let Some(at) = rest.find("\"source\":") {
-            rest = &rest[at + "\"source\":".len()..];
-            let Some(open) = rest.find('"') else { break };
-            let mut value = String::new();
-            let mut chars = rest[open + 1..].chars();
-            let mut consumed = open + 1;
-            while let Some(point) = chars.next() {
-                consumed += point.len_utf8();
-                match point {
-                    '"' => break,
-                    '\\' => {
-                        let Some(escape) = chars.next() else { break };
-                        consumed += escape.len_utf8();
-                        match escape {
-                            'n' => value.push('\n'),
-                            'r' => value.push('\r'),
-                            't' => value.push('\t'),
-                            'f' => value.push('\u{c}'),
-                            'b' => value.push('\u{8}'),
-                            'u' => {
-                                let mut code = 0_u32;
-                                for _ in 0..4 {
-                                    if let Some(digit) = chars.next() {
-                                        consumed += 1;
-                                        code = code * 16 + digit.to_digit(16).unwrap_or(0);
-                                    }
-                                }
-                                // A high surrogate pairs with the escape after it.
-                                if (0xd800..0xdc00).contains(&code) {
-                                    let mut low = 0_u32;
-                                    for index in 0..6 {
-                                        if let Some(digit) = chars.next() {
-                                            consumed += 1;
-                                            if index >= 2 {
-                                                low = low * 16 + digit.to_digit(16).unwrap_or(0);
-                                            }
-                                        }
-                                    }
-                                    code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
-                                }
-                                value.push(char::from_u32(code).unwrap_or('\u{fffd}'));
-                            }
-                            other => value.push(other),
-                        }
-                    }
-                    other => value.push(other),
-                }
-            }
-            sources.push(value);
-            rest = &rest[consumed.min(rest.len())..];
-        }
-    }
-    sources
+    inputs
 }
 
 /// A style sheet of at least `minimum` bytes, built from rule shapes that real
@@ -238,7 +181,7 @@ fn is_debug_build() -> bool {
 
 #[test]
 #[ignore = "a measurement: run in release mode with SURGEIST_CSS_PARSER_PERF=1"]
-fn the_lexer_throughput_is_measured_on_the_csstree_sources_and_a_synthetic_sheet() {
+fn the_lexer_throughput_is_measured_on_the_wpt_vector_inputs_and_a_synthetic_sheet() {
     if std::env::var_os("SURGEIST_CSS_PARSER_PERF").is_none() {
         eprintln!("SURGEIST_CSS_PARSER_PERF is not set: nothing measured");
         return;
@@ -247,18 +190,12 @@ fn the_lexer_throughput_is_measured_on_the_csstree_sources_and_a_synthetic_sheet
         !is_debug_build(),
         "the throughput is measured in a release build"
     );
-    let corpus =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../surgeist-css/tests/corpus/csstree/source");
-    let sources = csstree_sources(&corpus);
-    assert_eq!(
-        sources.len(),
-        935,
-        "the CSSTree corpus holds 935 case sources"
-    );
+    let inputs = wpt_inputs();
+    assert!(!inputs.is_empty(), "the WPT vectors hold case inputs");
     let sheet = synthetic_sheet(1 << 20);
     assert!(sheet.len() >= 1 << 20);
 
-    report("CSSTree sources", &sources, 300);
+    report("WPT vector inputs", &inputs, 300);
     report("1 MiB synthetic sheet", &[sheet], 6);
 }
 
