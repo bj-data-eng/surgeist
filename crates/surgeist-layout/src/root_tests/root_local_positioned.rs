@@ -619,3 +619,184 @@ lanes!(
     root_local_real_text_f64,
     real_text
 );
+
+// A fixed own inline preferred size is distinct from edge-sensitive Auto
+// shrink-to-fit. These real Grid roots use authored sizes, never measured Grid
+// outputs. The existing zero-edge request is the baseline for the same inputs.
+fn fixed_padding_border<S: LayoutScalar>(box_sizing: BoxSizing) {
+    for case in 0..3 {
+        let mut root = root_style::<S>(Direction::Ltr);
+        root.display = Display::Grid;
+        root.box_sizing = box_sizing;
+        root.size = if case == 1 {
+            // The real full CB is200x400; remaining inline availability is20.
+            Size::new(
+                PreferredSizeOf::percent(n(0.5)),
+                PreferredSizeOf::percent(n(0.25)),
+            )
+        } else {
+            Size::new(PreferredSizeOf::px(n(100.0)), PreferredSizeOf::px(n(100.0)))
+        };
+        if case == 2 {
+            root.max_size.width = MaxSizeOf::px(n(80.0));
+            root.min_size.height = MinSizeOf::px(n(120.0));
+        }
+        let make_tree = |root: NodeInputOf<S>| {
+            PublicLayoutTreeOf::new()
+                .children(0, [1])
+                .children(1, [])
+                .style(0, root)
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        box_sizing: BoxSizing::BorderBox,
+                        size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
+                        ..NodeInputOf::default()
+                    },
+                )
+        };
+        let context = RootLocalPositionedContextOf::horizontal_auto_insets(
+            Size::new(nn(200.0), nn(400.0)),
+            Direction::Rtl,
+            n(180.0),
+            fallback(),
+        )
+        .unwrap();
+        let request = LayoutRootRequestOf::positioned_root_local(context).unwrap();
+        assert_eq!(
+            request.sizing_request().axes().width.space(),
+            AvailableSpaceOf::Definite(nn(20.0))
+        );
+        let used = if case == 2 {
+            Size::new(n(80.0), n(120.0))
+        } else {
+            Size::new(n(100.0), n(100.0))
+        };
+        let baseline = compute_layout(&make_tree(root.clone()), 0, request).unwrap();
+        for finalized in [false, true] {
+            let actual = output(&baseline, 0, finalized);
+            assert_eq!(actual.location, Point::ZERO);
+            assert_eq!(
+                actual.size, used,
+                "case{case}: authentic zero-edge fixed/percentage/constraint baseline"
+            );
+            assert_eq!(
+                actual.scroll_geometry.unwrap().content_box().origin(),
+                Point::ZERO
+            );
+            assert_eq!(actual.scroll_geometry.unwrap().content_box().size(), used);
+            assert_eq!(output(&baseline, 1, finalized).location, Point::ZERO);
+            assert_eq!(
+                output(&baseline, 1, finalized).size,
+                Size::new(n(10.0), n(10.0))
+            );
+        }
+        root.padding = Edges::all(LengthOf::px(n(10.0)));
+        root.border = Edges::all(LengthOf::px(n(10.0)));
+        let tree = make_tree(root);
+        let batch = compute_layout(&tree, 0, request).expect(
+            "a genuinely definite own inline preferred size admits actual padding and border",
+        );
+        // PB totals40 per physical axis. Content-box authoring adds that to
+        // used100 (or constrained80/120); border-box authoring includes it.
+        let (border, content) = match box_sizing {
+            BoxSizing::ContentBox => (Size::new(used.width + n(40.0), used.height + n(40.0)), used),
+            BoxSizing::BorderBox => (used, Size::new(used.width - n(40.0), used.height - n(40.0))),
+        };
+        for finalized in [false, true] {
+            let actual = output(&batch, 0, finalized);
+            assert_eq!(actual.location, Point::ZERO);
+            assert_eq!(
+                actual.size, border,
+                "case{case}, {box_sizing:?}: real fixed border dimensions"
+            );
+            assert_eq!(actual.padding, Edges::all(n(10.0)));
+            assert_eq!(actual.border, Edges::all(n(10.0)));
+            assert_eq!(actual.margin, Edges::all(S::ZERO));
+            assert_eq!(actual.content_box_size(), content);
+            let geometry = actual.scroll_geometry.unwrap();
+            assert_eq!(
+                geometry.content_box().origin(),
+                Point::new(n(20.0), n(20.0))
+            );
+            assert_eq!(geometry.content_box().size(), content);
+            let child = output(&batch, 1, finalized);
+            assert_eq!(
+                child.location,
+                Point::new(n(20.0), n(20.0)),
+                "actual Grid content start"
+            );
+            assert_eq!(child.size, Size::new(n(10.0), n(10.0)));
+        }
+    }
+}
+fn fixed_padding_border_content_box<S: LayoutScalar>() {
+    fixed_padding_border::<S>(BoxSizing::ContentBox);
+}
+fn fixed_padding_border_border_box<S: LayoutScalar>() {
+    fixed_padding_border::<S>(BoxSizing::BorderBox);
+}
+fn padding_border_profile_guards<S: LayoutScalar>() {
+    let mut fixed = root_style::<S>(Direction::Ltr);
+    fixed.display = Display::Grid;
+    fixed.size = Size::new(PreferredSizeOf::px(n(100.0)), PreferredSizeOf::px(n(100.0)));
+    fixed.padding = Edges::all(LengthOf::px(n(10.0)));
+    fixed.border = Edges::all(LengthOf::px(n(10.0)));
+    let assert_box_edges = |style: NodeInputOf<S>, request| {
+        let tree = PublicLayoutTreeOf::new().children(0, []).style(0, style);
+        let error = compute_layout(&tree, 0, request).unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+        assert_eq!(error.operation(), LayoutOperation::RootLayout);
+        assert!(
+            matches!(
+                error.kind(),
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
+                    RootContextMismatch::BoxEdges
+                ))
+            ),
+            "{error:?}"
+        );
+    };
+    for width in [
+        PreferredSizeOf::AUTO,
+        PreferredSizeOf::MIN_CONTENT,
+        PreferredSizeOf::MAX_CONTENT,
+    ] {
+        let mut unsupported = fixed.clone();
+        unsupported.size.width = width;
+        assert_box_edges(unsupported, request(50.0, Direction::Ltr));
+    }
+    for margin in [-1.0, 1.0] {
+        let mut unsupported = fixed.clone();
+        unsupported.margin.left = LengthAutoOf::px(n(margin));
+        assert_box_edges(unsupported, request(50.0, Direction::Ltr));
+    }
+    // The initial-start positioned capability remains zero-edge, even for a
+    // genuinely fixed root. Only the separate root-local profile is extended.
+    assert_box_edges(
+        fixed,
+        LayoutRootRequestOf::positioned_auto_insets(
+            PositionedRootContextOf::horizontal_auto_insets(
+                Size::new(nn(200.0), nn(400.0)),
+                Direction::Ltr,
+                fallback(),
+            ),
+        ),
+    );
+}
+lanes!(
+    root_local_fixed_padding_border_content_box_f32,
+    root_local_fixed_padding_border_content_box_f64,
+    fixed_padding_border_content_box
+);
+lanes!(
+    root_local_fixed_padding_border_border_box_f32,
+    root_local_fixed_padding_border_border_box_f64,
+    fixed_padding_border_border_box
+);
+lanes!(
+    root_local_padding_border_profile_guards_f32,
+    root_local_padding_border_profile_guards_f64,
+    padding_border_profile_guards
+);
