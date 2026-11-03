@@ -1223,7 +1223,7 @@ fn usage_of_import(
 fn fragment_builder(nodes: usize, depth: usize) -> HtmlFragmentBuilder {
     HtmlFragment::builder(HtmlConstructionLimits::new(
         nodes + 8,
-        nodes + 8,
+        2 * nodes + 8,
         0,
         64 * nodes + 256,
         depth + 8,
@@ -1265,6 +1265,43 @@ fn chain_fragment(depth: usize) -> HtmlConstructionCaptureUsage {
             .unwrap();
     }
     usage_of_import(native.finish(), depth + 1, depth)
+}
+/// A fragment root holding a template whose contents hold a template, and so on
+/// `templates` times: the contents are attached to their template after their
+/// own contents have been established.
+fn nested_templates(templates: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 2 * templates + 1;
+    let mut native = fragment_builder(nodes, 2 * templates);
+    let mut parent = native.root();
+    for _ in 0..templates {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        parent = native.template_contents(&template).unwrap().unwrap();
+    }
+    usage_of_import(native.finish(), nodes, 2 * templates)
+}
+/// A chain of `size` nested elements whose deepest element holds `size`
+/// templates, each with one element in its contents.
+fn chain_with_templates(size: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 1 + size + 3 * size;
+    let mut native = fragment_builder(nodes, size + 2);
+    let mut parent = native.root();
+    for _ in 0..size {
+        parent = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+    }
+    for _ in 0..size {
+        let template = native
+            .append_element(&parent, name("template"), OrderedAttributes::default())
+            .unwrap();
+        let contents = native.template_contents(&template).unwrap().unwrap();
+        native
+            .append_element(&contents, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), nodes, size + 2)
 }
 /// Every doubling of the size must at most double a charge that does not depend
 /// on the other nodes. A little slack covers the amortized growth of arrays,
@@ -1314,6 +1351,24 @@ fn charged_work_stays_linear_when_every_container_has_children() {
     );
 }
 #[test]
+fn charged_work_stays_linear_through_nested_template_contents() {
+    assert_charge_is_linear(
+        "nested templates",
+        "work",
+        nested_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
+fn charged_work_stays_linear_for_templates_below_a_deep_chain() {
+    assert_charge_is_linear(
+        "chain with templates",
+        "work",
+        chain_with_templates,
+        HtmlConstructionCaptureUsage::work,
+    );
+}
+#[test]
 fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
     assert_charge_is_linear(
         "wide",
@@ -1331,6 +1386,18 @@ fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
         "chain",
         "scratch entries",
         chain_fragment,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "nested templates",
+        "scratch entries",
+        nested_templates,
+        HtmlConstructionCaptureUsage::scratch_entries,
+    );
+    assert_charge_is_linear(
+        "chain with templates",
+        "scratch entries",
+        chain_with_templates,
         HtmlConstructionCaptureUsage::scratch_entries,
     );
 }
