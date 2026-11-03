@@ -679,3 +679,35 @@ inline_offset = 0
 kind = "fixed"
 width = 40
 height = 10
+
+[[records]]
+source = "html/qualification/indented-inline-flex-text.html"
+source_sha256 = "8845a88751f7c4da1cce34f03582a6928ce6719bbada3246ae0791f02b84eafd"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedInheritedIndent"
+
+[[records]]
+source = "html/qualification/indented-inline-flex-cross-direction.html"
+source_sha256 = "6a36066d3e70978f5d8c125e268b7a5b8d52a18c6e51347a8232ea9cbf5ccaf1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedInheritedIndent"
+
+[[records]]
+source = "html/qualification/static-spacer-with-content.html"
+source_sha256 = "8c8914901ff27931408b6c5679b809155cd8e1fc1807683cced849c088d02a71"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/static-spacer-after-root.html"
+source_sha256 = "c54e7ee257691fbe89c19d2d537eda5de8239a240015e705488ea8e965503eba"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
