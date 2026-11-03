@@ -1344,3 +1344,145 @@ fn cyclic_main_calc_gap_retains_fixed_term_f32() {
 fn cyclic_main_calc_gap_retains_fixed_term_f64() {
     cyclic_main_gap::<f64>(5.0);
 }
+
+fn normal_compute_size_finishes_inline_ratio_main<S: LayoutScalar>() {
+    for definite_inline in [true, false] {
+        let mut parent = native_box::<S>(
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            BoxSizing::BorderBox,
+            if definite_inline {
+                PreferredSizeOf::px(scalar(200.0))
+            } else {
+                PreferredSizeOf::AUTO
+            },
+            PreferredSizeOf::AUTO,
+        );
+        parent.flex_direction = FlexDirection::Column;
+        let fixed = native_box(
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            BoxSizing::BorderBox,
+            PreferredSizeOf::px(scalar(200.0)),
+            PreferredSizeOf::px(scalar(10.0)),
+        );
+        let mut ratio = native_box(
+            WritingMode::HorizontalTb,
+            Direction::Ltr,
+            BoxSizing::BorderBox,
+            PreferredSizeOf::percent(scalar(0.5)),
+            PreferredSizeOf::AUTO,
+        );
+        ratio.aspect_ratio = AspectRatioOf::new(scalar(2.0));
+        // No measurements or staged outputs are supplied to this harness. Its
+        // actual child dispatcher invokes production compute_flex/compute_block.
+        let mut tree = OracleTreeOf::<S>::new()
+            .children(2, [3, 4])
+            .children(3, [])
+            .children(4, [])
+            .style(2, parent)
+            .style(3, fixed)
+            .style(4, ratio);
+        assert!(tree.node_input(2).size.height.is_auto());
+        if !definite_inline {
+            assert!(tree.node_input(2).size.width.is_auto());
+        }
+        assert_eq!(
+            tree.node_input(4).size.width,
+            PreferredSizeOf::percent(scalar(0.5))
+        );
+        assert!(tree.node_input(4).size.height.is_auto());
+        assert_eq!(
+            tree.node_input(4).aspect_ratio,
+            AspectRatioOf::new(scalar(2.0))
+        );
+        let sizing_request = SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(300.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(scalar(600.0)).unwrap()),
+                    Some(NonNegativeFiniteOf::new(scalar(400.0)).unwrap()),
+                ),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let input = ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                ParentFormattingContext::NoParent,
+            ),
+            sizing_request,
+        );
+        assert_eq!(input.run_mode(), RunMode::ComputeSize);
+        assert_eq!(input.known(), Size::NONE);
+        assert_eq!(input.parent(), Size::NONE);
+        assert_eq!(input.sizing_request().axes(), sizing_request.axes());
+        assert_eq!(
+            input.sizing_request().axes().width.operation(),
+            SizingOperation::Normal
+        );
+        assert_eq!(
+            input.sizing_request().axes().height.operation(),
+            SizingOperation::Normal
+        );
+        let measured = {
+            let mut owner = tree.borrow_compute();
+            for node in [2, 3, 4] {
+                assert!(!owner.has_leaf_measurement(node));
+            }
+            owner
+                .compute_child(2, input)
+                .expect("real Normal ComputeSize Flex dispatch")
+        };
+        // Finite300 space is neither a known size nor an allocation. The fixed
+        // sibling determines inline200;50% then resolves100 and ratio2 transfers
+        // to block50. Normal size demand therefore includes10+50=60 even though
+        // it publishes no geometry. This is not an intrinsic MIN/MAX operation.
+        assert_eq!(measured.size, Size::new(scalar(200.0), scalar(60.0)));
+        assert_eq!(measured.scroll_geometry, None);
+        assert_eq!(tree.inputs(2).first(), Some(&input));
+        for node in [2, 3, 4] {
+            assert_eq!(
+                tree.layout(node),
+                None,
+                "ComputeSize must not stage node{node} geometry"
+            );
+            assert_eq!(
+                tree.final_layout(node),
+                None,
+                "ComputeSize must not finalize node{node} geometry"
+            );
+        }
+        // A separate real PerformLayout on the unchanged declared tree agrees
+        // on Normal sizing; changing run mode does not select another operation.
+        let performed_input = input.with_run_mode(RunMode::PerformLayout);
+        assert_eq!(performed_input.sizing_request(), input.sizing_request());
+        let performed = tree
+            .borrow_compute()
+            .compute_child(2, performed_input)
+            .expect("same source production Normal PerformLayout");
+        assert_eq!(performed.size, Size::new(scalar(200.0), scalar(60.0)));
+        assert!(performed.scroll_geometry.is_some());
+    }
+}
+
+#[test]
+fn normal_compute_size_with_unknown_dimensions_finishes_inline_ratio_main_f32() {
+    normal_compute_size_finishes_inline_ratio_main::<f32>();
+}
+#[test]
+fn normal_compute_size_with_unknown_dimensions_finishes_inline_ratio_main_f64() {
+    normal_compute_size_finishes_inline_ratio_main::<f64>();
+}
