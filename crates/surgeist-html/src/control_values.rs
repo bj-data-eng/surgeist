@@ -95,8 +95,8 @@ enum OutputPhase {
 /// not skip the required tree replacement. Reset clears override only after its
 /// replacement, while a value setter stores the read default before replacing.
 /// This is not a form-wide event-bearing reset or a capture-availability model.
-/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
-/// every effect still needs the consumer's own operation.
+/// Fixed-size and allocation-free; it holds no consumer references, so every effect still needs
+/// the consumer's own operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlOutputCursor {
     phase: OutputPhase,

@@ -618,9 +618,8 @@ pub enum HtmlMachineReadableTime {
     /// form it accepts fewer than four digits.
     Year(HtmlYear),
     /// The result of the parse a duration string algorithm (HTML877d #durations). Unlike a valid
-    /// duration string, it accepts repeated or reordered unit components such as `1h1H`, lowercase
-    /// units, ASCII whitespace between components and a fraction of any length on seconds, and
-    /// the value keeps every digit.
+    /// duration string, it accepts a unit scale repeated within one string, such as `1h1H`, and a
+    /// fraction of any length on seconds, and the value keeps every digit.
     Duration(HtmlParsedDuration),
 }
 

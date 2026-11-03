@@ -189,7 +189,8 @@ impl HtmlInputImageCoordinate {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueSanitization {
     /// A string-level rule that `HtmlInputSanitizationCursor` evaluates on exact UTF-16 code
-    /// units. `Email` also needs whether the `multiple` attribute is present (`HtmlInputEmailMode`).
+    /// units. `Email` also needs whether the `multiple` attribute is present
+    /// (`HtmlInputEmailMode`).
     /// `HtmlInputSanitization::retain_unit` completes only `Preserve` and `StripCrLf`; the other
     /// rules need trimming, comma processing or whole-value validation, which a per-unit
     /// predicate cannot supply.
@@ -824,8 +825,8 @@ pub enum HtmlInputTypeEffect {
 }
 /// The ordered effects of the type-change algorithm in HTML877d #input-type-change. The adapter
 /// applies each effect, including nested attribute effects, before it asks for the next one.
-/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
-/// every effect still needs the consumer's own operation.
+/// Fixed-size and allocation-free; it holds no consumer references, so every effect still needs
+/// the consumer's own operation.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputTypeChange {
     previous: HtmlInputType,

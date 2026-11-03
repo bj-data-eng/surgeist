@@ -507,7 +507,7 @@ pub enum HtmlRelLinks {
     /// exists. An `a` or `area` with an `href` is then a hyperlink by default.
     ImpliedHyperlink,
     /// No token creates the link and an unresolved unknown token exists, so a registered extension
-    /// might still create it. On a `link` no token is allowed at all. On an `a`, `area` or `form`
+    /// might still create it. On a `link` no token has an effect. On an `a`, `area` or `form`
     /// no token has the hyperlink effect, though tokens with other effects, such as `nofollow`,
     /// may be present.
     ExtensionEffectsUnchecked,

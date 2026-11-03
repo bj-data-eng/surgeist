@@ -64,8 +64,8 @@ pub enum HtmlConstructionCommand {
     /// nothing. Every other insertion runs the full ordering and ancestry phases, including
     /// appending a child that is already last or inserting a child before its own next sibling.
     Insert {
-        /// The record to insert. Documents, fragments and fragments that belong to an owner
-        /// (template contents and shadow contents) cannot be moved this way. A `template`
+        /// The record to insert. Documents and fragments, including template contents and
+        /// shadow contents, cannot be moved this way. A `template`
         /// element or a shadow host can, because moving it leaves its association in place.
         node: HtmlBuilderNode,
         /// The new parent. It must be able to contain ordinary children, so a `template` element

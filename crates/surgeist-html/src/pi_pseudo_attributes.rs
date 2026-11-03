@@ -51,7 +51,8 @@ pub enum Action {
         reference: bool,
     },
     /// Report the length, in UTF-16 code units, of the name of the committed pair at this index,
-    /// to compare it with the name of the pair being scanned for a duplicate. Reply with `Reply::Length`.
+    /// to compare it with the name of the pair being scanned for a duplicate. Reply with
+    /// `Reply::Length`.
     NameLength(usize),
     /// Report one UTF-16 code unit at this index of the named field, for the same duplicate
     /// comparison. Reply with `Reply::Unit(Some(unit))`.

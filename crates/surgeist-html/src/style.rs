@@ -139,8 +139,9 @@ impl HtmlStyleState {
         )
     }
     /// Whether a document parser created the Style. Implicit render blocking also needs that
-    /// parser to be the Style's node document's parser, a relation `style_is_potentially_render_blocking`
-    /// takes from the tree owner. This fact persists after the parser pops the element.
+    /// parser to be the Style's node document's parser, a relation that
+    /// `style_is_potentially_render_blocking` takes from the tree owner. This fact persists after
+    /// the parser pops the element.
     pub const fn created_by_document_parser(self) -> bool {
         matches!(self.creation, StyleCreation::DocumentParser { .. })
     }
@@ -251,8 +252,8 @@ impl Error for HtmlStyleProtocolError {}
 /// Complete each actual owner action before acknowledging. Removal precedes ALL
 /// guards. CSP receives exact direct-child Text, current Document and nonce/policy
 /// context; neither no browsing context nor absent loader proves permission.
-/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
-/// every effect still needs the consumer's own operation.
+/// Fixed-size and allocation-free; it holds no consumer references, so every effect still needs
+/// the consumer's own operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleUpdateCursor {
     action: HtmlStyleUpdateAction,
@@ -445,8 +446,8 @@ pub enum HtmlStyleNotificationReply {
 /// The event action must complete before reading current predicates. The
 /// consumer permits event-handler reentry and then reads the live element's
 /// current Document; queue-time owner or blocking observations are insufficient.
-/// Constant-state and allocation-free; cloning it gives no mutation or replay authority, because
-/// every effect still needs the consumer's own operation.
+/// Fixed-size and allocation-free; it holds no consumer references, so every effect still needs
+/// the consumer's own operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleNotificationCursor {
     action: HtmlStyleNotificationAction,

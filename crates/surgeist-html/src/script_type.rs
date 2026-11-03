@@ -52,9 +52,9 @@ const KEYWORDS: [(&[u8], HtmlScriptKind); 3] = [
 /// map these concrete credits to their existing categories; no controller is held.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeWork {
-    /// Charge this many visits before a read: two for the initial selection of the input, and one
-    /// for starting each candidate comparison, which includes its length step before any unit
-    /// is compared.
+    /// Charge this many visits before a read: two for the initial selection of the input, then,
+    /// for each candidate comparison, one to start it and one for its length step, which precedes
+    /// any unit comparison.
     RecordVisit(u64),
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),
