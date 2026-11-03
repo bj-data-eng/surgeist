@@ -590,7 +590,7 @@ pub(crate) fn construct_feature_value(
                 crate::diagnostic::error::unexpected_component_value_at(
                     component,
                     expectation,
-                    CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
+                    serialized.position_at(offset),
                 )
             },
         )

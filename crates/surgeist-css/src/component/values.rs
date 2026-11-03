@@ -1451,12 +1451,62 @@ impl CssSerializedOriginSegment {
 }
 
 /// Token-preserving CSS text and a complete map back to originating syntax.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CssSerializedValue {
     css: String,
     segments: Box<[CssSerializedOriginSegment]>,
     end: CssSerializedOrigin,
     component_paths: Box<[(Range<usize>, Vec<usize>)]>,
+    lookups: SerializedLookups,
+}
+
+/// Lookups over the text and component paths of a serialization, built by the
+/// first query that needs them, so that a query costs about its answer rather
+/// than the size of the serialization.
+#[derive(Default)]
+struct SerializedLookups {
+    /// The indexes of `component_paths`, ordered by path and then by index.
+    by_path: std::sync::OnceLock<Box<[usize]>>,
+    /// The position of the start of the text and of about every
+    /// `COARSE_CHECKPOINT_STRIDE` bytes after it.
+    checkpoints: std::sync::OnceLock<Box<[crate::source::CssSourcePosition]>>,
+    /// The position of the text found last.
+    cursor: std::sync::Mutex<Option<crate::source::CssSourcePosition>>,
+}
+
+impl SerializedLookups {
+    fn cursor(&self) -> Option<crate::source::CssSourcePosition> {
+        self.cursor.lock().ok().and_then(|cursor| *cursor)
+    }
+}
+
+impl Clone for SerializedLookups {
+    fn clone(&self) -> Self {
+        Self {
+            by_path: self.by_path.clone(),
+            checkpoints: self.checkpoints.clone(),
+            cursor: std::sync::Mutex::new(self.cursor()),
+        }
+    }
+}
+
+// The lookups are a cache of the other fields, not part of the value.
+impl fmt::Debug for CssSerializedValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CssSerializedValue")
+            .field("css", &self.css)
+            .field("segments", &self.segments)
+            .field("end", &self.end)
+            .field("component_paths", &self.component_paths)
+            .finish()
+    }
+}
+
+// Test-only work counter: the component paths that lookups by path compared.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static PATH_COMPARISONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 impl CssSerializedValue {
@@ -1493,6 +1543,7 @@ impl CssSerializedValue {
             segments: segments.into_boxed_slice(),
             end: CssSerializedOrigin::End(last),
             component_paths: Box::new([]),
+            lookups: SerializedLookups::default(),
         })
     }
     pub(crate) fn component_path_at(&self, byte: usize) -> Option<&[usize]> {
@@ -1501,17 +1552,53 @@ impl CssSerializedValue {
             .find(|(range, _)| range.start == byte)
             .map(|(_, path)| path.as_slice())
     }
+    /// The range of the first component with the path `path`, found among the
+    /// paths in order.
+    fn range_for_path(&self, path: &[usize]) -> Option<&Range<usize>> {
+        let order = self.lookups.by_path.get_or_init(|| {
+            let mut order: Vec<usize> = (0..self.component_paths.len()).collect();
+            order.sort_unstable_by(|a, b| {
+                self.component_paths[*a]
+                    .1
+                    .cmp(&self.component_paths[*b].1)
+                    .then(a.cmp(b))
+            });
+            order.into_boxed_slice()
+        });
+        let first = order.partition_point(|index| {
+            #[cfg(test)]
+            PATH_COMPARISONS.with(|compared| compared.set(compared.get() + 1));
+            self.component_paths[*index].1.as_slice() < path
+        });
+        let (range, candidate) = self.component_paths.get(*order.get(first)?)?;
+        (candidate.as_slice() == path).then_some(range)
+    }
     pub(crate) fn component_offset_for_path(&self, path: &[usize]) -> Option<usize> {
-        self.component_paths
-            .iter()
-            .find(|(_, candidate)| candidate.as_slice() == path)
-            .map(|(range, _)| range.start)
+        self.range_for_path(path).map(|range| range.start)
     }
     pub(crate) fn component_end_for_path(&self, path: &[usize]) -> Option<usize> {
-        self.component_paths
-            .iter()
-            .find(|(_, candidate)| candidate.as_slice() == path)
-            .map(|(range, _)| range.end)
+        self.range_for_path(path).map(|range| range.end)
+    }
+    /// The position of the byte `byte_offset` of the generated text, or of its
+    /// end when it lies past it. The walk starts at the position found last or
+    /// at a checkpoint, whichever is nearer.
+    pub(crate) fn position_at(&self, byte_offset: usize) -> crate::source::CssSourcePosition {
+        let checkpoints = self.lookups.checkpoints.get_or_init(|| {
+            crate::source::position::checkpoints_of(
+                &self.css,
+                crate::source::position::COARSE_CHECKPOINT_STRIDE,
+            )
+        });
+        let position = crate::source::position::locate(
+            &self.css,
+            checkpoints,
+            self.lookups.cursor(),
+            byte_offset,
+        );
+        if let Ok(mut cursor) = self.lookups.cursor.lock() {
+            *cursor = Some(position);
+        }
+        position
     }
     pub(crate) fn value_origin_at(&self, byte: usize) -> Option<&CssValueOrigin> {
         match self.origin_at(byte)? {
@@ -1623,6 +1710,102 @@ impl CssComponentValues {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lookup by path answers with the first component of that path, in the
+    /// order the serialization recorded them, and with nothing for a path that
+    /// no component has.
+    #[test]
+    fn a_serialized_value_prints_its_text_origins_and_paths_without_its_lookups() {
+        let values = crate::component::values::parse_component_values("a b").unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
+        let before = format!("{serialized:?}");
+        assert!(before.starts_with("CssSerializedValue { css: \"a b\", segments: ["));
+        assert!(before.contains(", end: End("));
+        assert!(before.contains(", component_paths: ["));
+        assert!(!before.contains("lookups"));
+        // A lookup fills the cache, which is not part of the value.
+        assert_eq!(serialized.component_offset_for_path(&[0]), Some(0));
+        let _ = serialized.position_at(1);
+        assert_eq!(format!("{serialized:?}"), before);
+        assert_eq!(format!("{:?}", serialized.clone()), before);
+    }
+
+    #[test]
+    fn lookups_by_path_answer_as_a_scan_of_the_components_in_order() {
+        let values = crate::component::values::parse_component_values(
+            "a(b (c d) [e f]) g (h(i)) a(b (c d) [e f]) /*x*/ j {k: l}",
+        )
+        .unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
+        assert!(serialized.component_paths.len() > 20);
+        let scan = |path: &[usize]| {
+            serialized
+                .component_paths
+                .iter()
+                .find(|(_, candidate)| candidate.as_slice() == path)
+                .map(|(range, _)| range.clone())
+        };
+        for (_, path) in serialized.component_paths.iter() {
+            let expected = scan(path).unwrap();
+            assert_eq!(
+                serialized.component_offset_for_path(path),
+                Some(expected.start),
+                "{path:?}"
+            );
+            assert_eq!(
+                serialized.component_end_for_path(path),
+                Some(expected.end),
+                "{path:?}"
+            );
+        }
+        for absent in [&[][..], &[99], &[0, 99], &[0, 1, 1, 1, 1], &[1, 0, 0]] {
+            assert_eq!(scan(absent), None, "{absent:?}");
+            assert_eq!(serialized.component_offset_for_path(absent), None);
+            assert_eq!(serialized.component_end_for_path(absent), None);
+        }
+    }
+
+    /// A position of the generated text is the position a walk from its start
+    /// finds, whatever order the positions are asked for in: around each kind
+    /// of line break and astral scalar, across the checkpoints and past the end.
+    #[test]
+    fn positions_of_a_serialization_are_those_of_a_walk_from_its_start() {
+        use crate::source::position::COARSE_CHECKPOINT_STRIDE as STRIDE;
+        let unit = "ab\r\ncd\ref\u{000c}\u{1f600}g\nh\r";
+        let text = unit.repeat(2 * STRIDE / unit.len() + 40);
+        assert!(text.len() > 2 * STRIDE);
+        let mut offsets: Vec<usize> = (0..80).collect();
+        for around in [STRIDE, 2 * STRIDE, text.len()] {
+            offsets.extend(around.saturating_sub(40)..around + 40);
+        }
+        offsets.extend((0..text.len()).step_by(97));
+        offsets.retain(|at| text.is_char_boundary((*at).min(text.len())));
+        offsets.sort_unstable();
+        offsets.dedup();
+        let jumping: Vec<usize> = offsets
+            .iter()
+            .zip(offsets.iter().rev())
+            .flat_map(|(low, high)| [*low, *high])
+            .collect();
+        let serialized = CssSerializedValue::from_numeric_tokens(vec![(
+            text.clone(),
+            CssValueOrigin::Programmatic,
+        )])
+        .unwrap();
+        for (order, asked) in [
+            ("in order", offsets.clone()),
+            ("in reverse", offsets.iter().rev().copied().collect()),
+            ("between the ends", jumping),
+        ] {
+            for offset in asked {
+                assert_eq!(
+                    serialized.position_at(offset),
+                    crate::source::CssSourcePosition::from_byte_offset_in(&text, offset),
+                    "byte {offset} {order}"
+                );
+            }
+        }
+    }
 
     /// Publishing consumers abort on a resource refusal but keep recovering
     /// from a syntax or representation failure.

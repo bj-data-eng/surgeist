@@ -62,7 +62,7 @@ pub(super) fn at_serialized_offset(
     serialized: &CssSerializedValue,
     offset: usize,
 ) -> CssSourcePosition {
-    CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset)
+    serialized.position_at(offset)
 }
 
 /// The byte of the serialization of `values` that the boundary `site` of the

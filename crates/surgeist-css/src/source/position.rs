@@ -392,6 +392,55 @@ mod tests {
         }
     }
 
+    /// A position found from a checkpoint or from a position found before is
+    /// the position found from the start, for every pair, stride and text.
+    #[test]
+    fn a_position_located_from_checkpoints_and_a_cursor_is_the_position_found_from_the_start() {
+        let pieces = [
+            "a",
+            "\n",
+            "\r",
+            "\r\n",
+            "\u{000c}",
+            "\u{e9}",
+            "\u{1f600}",
+            "bc",
+            " ",
+        ];
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = move |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        for _ in 0..150 {
+            let text: String = (0..next(16)).map(|_| pieces[next(pieces.len())]).collect();
+            let boundaries: Vec<usize> = (0..=text.len() + 2)
+                .filter(|offset| text.is_char_boundary((*offset).min(text.len())))
+                .collect();
+            for stride in [1_usize, 3, 8] {
+                let checkpoints = checkpoints_of(&text, stride);
+                for &target in &boundaries {
+                    let expected = CssSourcePosition::from_byte_offset_in(&text, target);
+                    assert_eq!(
+                        locate(&text, &checkpoints, None, target),
+                        expected,
+                        "{text:?} stride {stride} to {target}"
+                    );
+                    for &from in &boundaries {
+                        let cursor = CssSourcePosition::from_byte_offset_in(&text, from);
+                        assert_eq!(
+                            locate(&text, &checkpoints, Some(cursor), target),
+                            expected,
+                            "{text:?} stride {stride} from {from} to {target}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn source_span_rejects_reverse_order_and_allows_zero_width() {
         let start = position_after_tokenizing("a");
@@ -425,13 +474,19 @@ struct SourceCheckpoints {
     values: Vec<CssSourcePosition>,
     position: CssSourcePosition,
     start: usize,
+    /// The bytes between two checkpoints, at least.
+    stride: usize,
 }
 impl SourceCheckpoints {
     fn new() -> Self {
+        Self::with_stride(64)
+    }
+    fn with_stride(stride: usize) -> Self {
         Self {
             values: Vec::new(),
             position: CssSourcePosition::from_byte_offset_in("", 0),
             start: 0,
+            stride,
         }
     }
     fn fill<E>(
@@ -455,7 +510,7 @@ impl SourceCheckpoints {
             // Advance over this one scalar (or indivisible CRLF), rather than
             // rescanning a whole checkpoint suffix after its metered walk.
             current = current.advanced_by(&source[offset..end]);
-            if end - self.start >= 64 {
+            if end - self.start >= self.stride {
                 self.position = current;
                 reserve(&mut self.values)?;
                 self.values.push(self.position);
@@ -464,6 +519,85 @@ impl SourceCheckpoints {
         }
         Ok(())
     }
+}
+
+/// The bytes between the checkpoints of a text that holds no snapshot: far
+/// enough apart that they cost a small fraction of the text, and near enough
+/// that a position found from one is found in bounded work.
+pub(crate) const COARSE_CHECKPOINT_STRIDE: usize = 4096;
+
+/// The checkpoints of `text`: its position at the start and after about every
+/// `stride` bytes, as the checkpoints of a source snapshot.
+pub(crate) fn checkpoints_of(text: &str, stride: usize) -> Box<[CssSourcePosition]> {
+    let mut checkpoints = SourceCheckpoints::with_stride(stride);
+    // The start and at most one checkpoint for each stride of the text.
+    checkpoints
+        .values
+        .reserve_exact(text.len() / stride.max(1) + 1);
+    let Ok(()) = checkpoints.fill(
+        text,
+        || Ok::<(), std::convert::Infallible>(()),
+        |values| {
+            values.reserve(1);
+            Ok(())
+        },
+    );
+    checkpoints.values.into_boxed_slice()
+}
+
+/// The position of the byte `byte_offset` of `text`, found from the last of its
+/// `checkpoints` at or before it, or `None` when the byte is not a character
+/// boundary of `text`.
+pub(crate) fn position_from_checkpoints(
+    text: &str,
+    checkpoints: &[CssSourcePosition],
+    byte_offset: usize,
+) -> Option<CssSourcePosition> {
+    if !text.is_char_boundary(byte_offset) {
+        return None;
+    }
+    let index =
+        checkpoints.partition_point(|position| position.byte_offset().value() <= byte_offset);
+    let checkpoint = checkpoints.get(index.checked_sub(1)?)?;
+    text.get(checkpoint.byte_offset().value()..byte_offset)
+        .map(|suffix| checkpoint.advanced_by(suffix))
+}
+
+/// The position of the byte `byte_offset` of `text`, or of its end when the byte
+/// lies past it, found from the nearer of the last of `checkpoints` at or before
+/// it and `cursor`, a position found before in the same text: positions asked
+/// for in the order of the text, or near one another, cost the bytes between
+/// them, and any position at most the stride of the checkpoints.
+pub(crate) fn locate(
+    text: &str,
+    checkpoints: &[CssSourcePosition],
+    cursor: Option<CssSourcePosition>,
+    byte_offset: usize,
+) -> CssSourcePosition {
+    let target = byte_offset.min(text.len());
+    let Some(checkpoint) = text
+        .is_char_boundary(target)
+        .then(|| {
+            checkpoints
+                .partition_point(|position| position.byte_offset().value() <= target)
+                .checked_sub(1)
+                .and_then(|index| checkpoints.get(index))
+        })
+        .flatten()
+    else {
+        return CssSourcePosition::from_byte_offset_in(text, byte_offset);
+    };
+    let from_checkpoint = target - checkpoint.byte_offset().value();
+    if let Some(cursor) = cursor
+        && cursor.byte_offset().value().abs_diff(target) <= from_checkpoint
+    {
+        return cursor.resolved_near(text, target);
+    }
+    text.get(checkpoint.byte_offset().value()..target)
+        .map_or_else(
+            || CssSourcePosition::from_byte_offset_in(text, byte_offset),
+            |suffix| checkpoint.advanced_by(suffix),
+        )
 }
 
 struct SecondarySourceFormation {
@@ -655,17 +789,7 @@ impl CssSourceSnapshot {
     }
 
     pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {
-        if !self.as_str().is_char_boundary(byte_offset) {
-            return None;
-        }
-        let index = self
-            .0
-            .checkpoints
-            .partition_point(|position| position.byte_offset().value() <= byte_offset);
-        let checkpoint = self.0.checkpoints[index - 1];
-        self.as_str()
-            .get(checkpoint.byte_offset().value()..byte_offset)
-            .map(|suffix| checkpoint.advanced_by(suffix))
+        position_from_checkpoints(self.as_str(), &self.0.checkpoints, byte_offset)
     }
 
     /// Returns the complete UTF8 parser input: original for UTF8 ingress,
