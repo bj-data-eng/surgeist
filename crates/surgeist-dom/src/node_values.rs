@@ -285,6 +285,12 @@ fn release_scratch(buffer: Vec<u16>, budget: Option<&Formation>) -> Result<(), D
     Ok(())
 }
 
+/// Cursor requests served by `parse_attributes` on this thread, for work-growth tests.
+#[cfg(test)]
+thread_local! {
+    static PI_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn parse_attributes(
     data: &DocumentString,
     budget: Option<&Formation>,
@@ -298,6 +304,8 @@ fn parse_attributes(
     let mut pairs: Vec<(DocumentString, DocumentString)> = Vec::new();
     while let Some(action) = cursor.action() {
         formation::step(budget, cancelled)?;
+        #[cfg(test)]
+        PI_REQUESTS.with(|requests| requests.set(requests.get() + 1));
         let reply = match action {
             Action::Read(offset) => Reply::Unit(data.code_units().get(offset).copied()),
             Action::Step => Reply::Ack,
@@ -602,6 +610,30 @@ mod source_tests {
                 ),
                 Err(DomError::InvalidCharacter)
             ));
+        }
+    }
+    /// XML-stylesheet 20101028 section 3 makes a repeated name an error, so each name is checked
+    /// against the earlier ones; the requests that this takes must grow no faster than the pairs.
+    #[test]
+    fn pseudo_attribute_requests_grow_linearly_with_distinct_names() {
+        let requests: Vec<usize> = [250, 500, 1000, 2000]
+            .into_iter()
+            .map(|pairs| {
+                let names: Vec<String> = (0..pairs).map(|n| format!("p{n}=''")).collect();
+                let data = DocumentString::from(names.join(" "));
+                PI_REQUESTS.with(|requests| requests.set(0));
+                let parsed = parse_attributes(&data, None, &AtomicBool::new(false)).unwrap();
+                assert_eq!(parsed.len(), pairs);
+                PI_REQUESTS.with(std::cell::Cell::get)
+            })
+            .collect();
+        for pair in requests.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "doubling the pairs grew the requests from {} to {}: {requests:?}",
+                pair[0],
+                pair[1]
+            );
         }
     }
     #[test]
