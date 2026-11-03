@@ -57,7 +57,8 @@ pub enum HtmlProgressNumberAuthorState {
     /// Exact mathematical keys exceeded checked native representation bounds.
     /// This is neither invalid grammar nor binary64 overflow.
     RepresentationUnavailable,
-    /// The rule does not apply because the element is not an HTML `progress`.
+    /// The rule does not apply because the element is not an HTML `progress` or the supplied
+    /// attribute is not one the rule covers.
     Unapplied,
 }
 

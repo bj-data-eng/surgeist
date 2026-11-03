@@ -25,8 +25,10 @@ pub struct HtmlValuePoolUsage {
     utf16_units: usize,
 }
 impl HtmlValuePoolUsage {
-    /// Known retained bytes: payload capacity plus the inline vector headers, excluding `Arc` and
-    /// allocator internals.
+    /// Known retained bytes, excluding `Arc` and allocator internals. For a candidate value it is
+    /// the payload capacity plus the inline vector header. For the pool's own `heap_usage` it is
+    /// the page slots, undo cells, directory and weak target `Vec` headers, which carry no
+    /// payload, so `utf16_units` is 0 there.
     pub fn bytes(self) -> usize {
         self.bytes
     }
@@ -123,13 +125,15 @@ impl HtmlValuePoolLayout {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlValuePoolError {
-    /// A root, mark or action came from a different pool owner.
+    /// A root, mark, seal, operation or action came from a different pool owner.
     ForeignOwner,
-    /// The action is not the operation's pending action: it is stale, replayed, or from another
-    /// operation.
+    /// The action is not for this operation's pending step: it belongs to another operation, its
+    /// serial or phase does not match, or it was passed to the wrong entry point (a pool action
+    /// to `read`, or a read action to the pool). A stale action with an older serial is not
+    /// this error: the operation bypasses sharing and finishes.
     WrongAction,
-    /// The operation or root is not in the required state: an operation has an unfinished step, or
-    /// a root has an outstanding mark or is frozen.
+    /// The operation or root is not in the required state: an operation has an unfinished step, a
+    /// root has an outstanding mark or is frozen, or the root or seal is stale.
     NotReady,
     /// Layout arithmetic overflowed on this platform.
     RepresentationExhausted,
@@ -237,13 +241,15 @@ impl HtmlValuePoolAction {
 /// before the upgrade. Release destroys that strong value before its receipt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlValuePoolProgress {
-    /// The action completed and the operation has a further action to describe.
+    /// The action completed. `next_action` then describes a further action, or returns `None`
+    /// when the operation is already terminal, as after the touch of a hit.
     Continue,
     /// The action upgraded a weak occurrence into a strongly held candidate. The consumer pairs
     /// the candidate with the reservation it made before the upgrade.
     CandidateAcquired,
-    /// The action destroyed the candidate, for example after a comparison mismatch. The consumer
-    /// then releases the candidate's reservation.
+    /// The action destroyed the candidate, for example after a comparison mismatch, or found the
+    /// weak occurrence already expired so that no candidate could be acquired. The consumer then
+    /// releases the reservation it made for the candidate.
     CandidateReleased,
     /// The operation reached a terminal state. Complete it with `try_finish`.
     Finished,
@@ -637,8 +643,8 @@ macro_rules! concrete_pool {
                 self.inner.abort(root)
             }
             /// Freezes `root` for sealing when no mark is outstanding. Otherwise the refusal
-            /// returns the root unfrozen, with `NotReady` for outstanding marks or a frozen root
-            /// and `ForeignOwner` for another pool's root.
+            /// returns the root unfrozen, with `NotReady` for outstanding marks, a frozen root or a
+            /// stale root, and `ForeignOwner` for another pool's root.
             pub fn prepare_seal(
                 &mut self,
                 root: HtmlValuePoolRoot,
@@ -692,8 +698,10 @@ macro_rules! concrete_pool {
         }
         impl $operation<'_> {
             /// Performs a read action, such as hashing or comparing, outside the consumer's pool
-            /// lock. Returns `WrongAction` for an action that is not this operation's pending
-            /// action and `ForeignOwner` for another pool's action.
+            /// lock. Returns `WrongAction` for an action of another operation, with a serial or
+            /// phase that does not match, or for the wrong entry point, and `ForeignOwner` for
+            /// another pool's action. A stale action with an older serial bypasses sharing and
+            /// yields `Finished` instead of an error.
             pub fn read(
                 &mut self,
                 action: HtmlValuePoolAction,
@@ -760,8 +768,10 @@ macro_rules! concrete_pool {
             /// No equal value was found and the input was inserted. The change reports the
             /// insertion and any released occurrences.
             Offered(HtmlValuePoolChange),
-            /// Sharing was skipped: the value is ineligible, an optional reservation was refused
-            /// or a private qualifier was exhausted. The input is unchanged and remains usable.
+            /// Sharing was skipped, for example because the value is ineligible, an optional
+            /// reservation was refused, a private qualifier or the metadata cap was exhausted, the
+            /// root is not open or active, the operation was superseded or a checkpoint changed,
+            /// or reserving metadata failed. The input is unchanged and remains usable.
             Bypassed,
         }
     };

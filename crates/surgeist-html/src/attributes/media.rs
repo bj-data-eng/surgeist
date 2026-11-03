@@ -5,8 +5,9 @@ use crate::{HtmlMediaCursorAction, HtmlMediaValue, HtmlMediaValueCursor, HtmlMet
 
 /// The kind of HTML element whose `media` attribute is interpreted.
 ///
-/// Only these four elements carry a `media` attribute; any other element is
-/// `DifferentElement` and has no role.
+/// Only these four elements carry a `media` attribute. Applicability checks a foreign element
+/// namespace first (`ForeignElementNamespace`), then a different attribute
+/// (`DifferentAttribute`); any other element is then `DifferentElement` and has no role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlMediaElementRole {
     /// A `link` element.
@@ -38,8 +39,9 @@ pub enum HtmlMediaPlacementObservation {
     Unapplied,
     /// The actual meta name field was not supplied.
     Unchecked,
-    /// The `media` attribute was checked against the `name` field. The payload
-    /// is the verdict; an absent `media` attribute is `NotSpecified`.
+    /// The placement has a verdict. When `media` is absent the verdict is `NotSpecified` and no
+    /// `name` is read; otherwise the `media` attribute was checked against the supplied `name`
+    /// field.
     Known(HtmlMetaMediaPlacement),
 }
 /// Exact original fields and independent HTML observations. CSS is unchecked.

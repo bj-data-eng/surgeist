@@ -65,8 +65,8 @@ impl HtmlModificationDatetimeReport {
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.attribute.observation()
     }
-    /// Whether the rule applies to these expanded names: only HTML `ins` and
-    /// `del` elements carry `datetime`.
+    /// Whether the rule applies to these expanded names. This rule covers only HTML `ins` and
+    /// `del` elements; `time` also carries a `datetime` attribute, which a separate rule covers.
     pub fn applicability(&self) -> HtmlAttributeApplicability {
         self.attribute.applicability()
     }

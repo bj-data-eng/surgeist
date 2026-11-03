@@ -153,8 +153,8 @@ impl HtmlStylesheetLinkAttributeContext {
     pub fn rel(&self) -> Option<&DocumentString> {
         self.rel.as_ref()
     }
-    /// Returns whether the `rel` value contains the `stylesheet` token under the ASCII
-    /// case-insensitive comparison the Infra token split uses.
+    /// Returns whether the `rel` value, split on ASCII whitespace, contains the `stylesheet` token
+    /// compared ASCII case-insensitively.
     pub fn contains_stylesheet(&self) -> bool {
         self.contains_stylesheet
     }
@@ -278,8 +278,8 @@ pub enum HtmlAttributeRecognition {
     /// The attribute is absent; nothing was recognised.
     Missing,
     /// The attribute is present with an empty value that matched no keyword. For a Boolean
-    /// attribute this is the conforming empty spelling; for an enumerated attribute the rule's
-    /// empty value default, if any, applies.
+    /// attribute this is the conforming empty spelling. For an enumerated attribute the rule's
+    /// empty value default applies, or the invalid value default when the rule has no empty one.
     Empty,
     /// The selected text rule recognizes an exact nonempty value.
     NonemptyText,
@@ -310,8 +310,9 @@ pub enum HtmlAttributeRecognition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlAttributeConformanceError {
-    /// The value of an enumerated attribute matches no keyword and the attribute defines no empty
-    /// value default for it.
+    /// The value of an enumerated attribute matches no keyword. Every nonempty unmatched value is
+    /// refused, whatever the empty value default; an empty value is refused only when the
+    /// attribute defines no empty value default.
     UnrecognizedKeyword,
     /// A source-recognized keyword spelling is forbidden in authored markup.
     NonconformingKeyword,
@@ -1612,7 +1613,8 @@ pub enum HtmlBooleanAttribute {
     Checked,
     /// The `multiple` attribute of `input` in the Email or File state and of `select`.
     Multiple,
-    /// The `readonly` attribute of editable `input` states and of `textarea`.
+    /// The `readonly` attribute of editable `input` states, of `textarea` and of a classified
+    /// form-associated custom element (see `readonly_for_custom_control`).
     Readonly,
     /// The `required` attribute of `input`, `select` and `textarea`.
     Required,

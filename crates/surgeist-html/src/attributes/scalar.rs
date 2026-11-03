@@ -1179,8 +1179,9 @@ impl HtmlFormEnctype {
 /// ReflectDefault is zero), rendered geometry, or current selection state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSelectDisplaySize<'a> {
-    /// The display size is known: `value` is the integer and `origin` says whether parsing, a
-    /// default or a clamp produced it.
+    /// The display size is known: `value` is the integer and `origin` says whether it was
+    /// recovered from the attribute or is the default for a missing or unparsable value. A
+    /// `select` size is never clamped.
     Value {
         /// The display-size integer.
         value: &'a HtmlNonNegativeInteger,

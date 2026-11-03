@@ -462,7 +462,8 @@ pub enum HtmlSandboxAuthorState {
     /// The attribute is present but breaks one or more author rules; the payload lists every
     /// violation independently.
     Nonconforming(HtmlSandboxAuthorDiagnostics),
-    /// The rule does not apply because the element is not an HTML `iframe`.
+    /// The rule does not apply because the element is not an HTML `iframe` or the supplied
+    /// attribute is not `sandbox`.
     Unapplied,
 }
 

@@ -64,8 +64,9 @@ pub enum HtmlConstructionCommand {
     /// nothing. Every other insertion runs the full ordering and ancestry phases, including
     /// appending a child that is already last or inserting a child before its own next sibling.
     Insert {
-        /// The record to insert. Documents, fragments, association fragments and nodes that hold
-        /// an association cannot be moved this way.
+        /// The record to insert. Documents, fragments and fragments that belong to an owner
+        /// (template contents and shadow contents) cannot be moved this way. A `template`
+        /// element or a shadow host can, because moving it leaves its association in place.
         node: HtmlBuilderNode,
         /// The new parent. It must be able to contain ordinary children, so a `template` element
         /// and a leaf node are refused.
@@ -74,7 +75,9 @@ pub enum HtmlConstructionCommand {
         /// `parent`. `None` appends after the last child.
         before: Option<HtmlBuilderNode>,
     },
-    /// Removes `node` from its ordinary parent. A node that has no parent is left unchanged.
+    /// Removes `node` from its ordinary parent. The node must be movable: a Document, a fragment
+    /// or an owned association fragment is refused even when it has no parent. A movable node
+    /// that has no parent is left unchanged.
     Detach {
         /// The record to detach.
         node: HtmlBuilderNode,
@@ -260,11 +263,11 @@ pub enum HtmlConstructionActionDescription<'a> {
         allocation: &'a HtmlConstructionAllocationSnapshot,
         /// The least length the bank must be able to hold afterwards.
         required_len: usize,
-        /// The least capacity that suffices. `perform` reserves exactly this capacity unless
-        /// `growth` is `Geometric`.
+        /// The least capacity that suffices. `perform` always reserves exactly this capacity;
+        /// only `perform_with_capacity` can reserve more, and only when `growth` is `Geometric`.
         minimum_capacity: usize,
-        /// Whether `perform` reserves the minimum exactly or the consumer may request a larger,
-        /// amortizing capacity.
+        /// Whether the minimum is the capacity to reserve (`Exact`) or the consumer may reserve a
+        /// larger, amortizing capacity with `perform_with_capacity` (`Geometric`).
         growth: HtmlConstructionGrowth,
     },
     /// Creates the shared arena allocation that publication returns.
@@ -274,7 +277,8 @@ pub enum HtmlConstructionActionDescription<'a> {
         /// The allocation that the action creates, reported before it runs.
         allocation: &'a HtmlConstructionAllocationSnapshot,
     },
-    /// Creates the shared node identities that the change stores, such as the host, contents or
+    /// Creates the shared node identities that the change stores: the identity of each record a
+    /// creation command makes (two for a `template` and its contents), or the host, contents or
     /// template identity of an association.
     ShareReferences {
         /// The provider requests, one per identity created.
@@ -303,8 +307,10 @@ pub enum HtmlConstructionActionDescription<'a> {
         /// consumer admits the node, edge, attribute, UTF-16 and depth limits against it.
         usage: HtmlConstructionUsage,
     },
-    /// Applies the prepaid writes and moves of the command; the next step is
-    /// `HtmlConstructionOperation::try_ready`.
+    /// Describes the prepaid writes and moves of the command. Performing this action applies no
+    /// write: it makes the operation ready, after checking that the planned order edits still
+    /// hold. The writes and moves are applied by `HtmlConstructionReadyOperation::commit`, which
+    /// follows `HtmlConstructionOperation::try_ready`.
     Commit {
         /// Commands without an earlier usage boundary observe depth here.
         depth_observation: Option<usize>,

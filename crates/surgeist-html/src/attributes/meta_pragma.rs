@@ -15,8 +15,9 @@ pub enum HtmlMetaPragma {
     /// The `x-ua-compatible` keyword, whose `content` must be `IE=edge`
     /// compared ASCII case-insensitively (HTML877d #pragma-directives).
     XUaCompatible,
-    /// The `content-security-policy` keyword, whose `content` must be a valid
-    /// Content Security Policy (HTML877d #pragma-directives).
+    /// The `content-security-policy` keyword, whose `content` must be a valid Content Security
+    /// Policy that contains no `report-uri`, `frame-ancestors` or `sandbox` directive
+    /// (HTML877d #pragma-directives).
     ContentSecurityPolicy,
 }
 impl HtmlMetaPragma {

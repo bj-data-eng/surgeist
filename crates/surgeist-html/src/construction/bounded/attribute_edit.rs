@@ -103,7 +103,8 @@ pub enum HtmlConstructionAttributeDescription<'a> {
         /// The work the reservation costs.
         work: HtmlConstructionAttributeWork,
     },
-    /// Applies the prepaid writes of the positional edit and stores the new usage.
+    /// Describes the prepaid writes of the positional edit and the new usage. Performing this
+    /// action applies nothing; `HtmlConstructionReadyAttributeSlot::commit` applies the writes.
     Commit {
         /// The work the commit costs.
         work: HtmlConstructionAttributeWork,
@@ -290,8 +291,10 @@ impl HtmlConstructionAttributeEdit {
     pub fn storage_view(&self) -> &HtmlConstructionStorage {
         &self.storage
     }
-    /// The element's shared attribute backing. Returns the not-ready error before the first action
-    /// qualified the target and the wrong-node-kind error if the target is not an element.
+    /// The element's shared attribute backing. Returns the not-ready error until the first action
+    /// has qualified the target. That action fails for a target that is not an element, so the
+    /// target is never recorded as qualified and this method returns not-ready, not
+    /// wrong-node-kind, in that case.
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         if !self.target_checked {
             return Err(HtmlConstructionErrorKind::OperationNotReady.into());
@@ -1396,8 +1399,9 @@ impl HtmlConstructionAttributeSlotObservation<'_, '_> {
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         self.slot.shared_attributes()
     }
-    /// The backing's dimensions when the performed action reserved capacity, including after a
-    /// failed reservation; `None` otherwise.
+    /// The backing's dimensions when the performed action reserved capacity; `None` otherwise. A
+    /// failed reservation returns an error and produces no observation, so only the slot's own
+    /// `capacity` survives such a failure.
     pub fn capacity(&self) -> Option<HtmlConstructionAttributeCapacity> {
         self.capacity.then_some(self.slot.edit.capacity)
     }

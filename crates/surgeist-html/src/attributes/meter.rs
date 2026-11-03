@@ -123,8 +123,8 @@ pub enum HtmlMeterNumberAuthorState {
     Nonconforming(HtmlValueSyntaxError),
     /// Checked exact-key representation bounds, not binary64 overflow or syntax.
     RepresentationUnavailable,
-    /// The rule does not apply because the element is not an HTML `meter`, so no author verdict
-    /// exists for this slot.
+    /// The rule does not apply because the element is not an HTML `meter` or the supplied attribute
+    /// is not one the rule covers, so no author verdict exists for this slot.
     Unapplied,
 }
 
@@ -190,8 +190,8 @@ impl HtmlMeterAuthorRelation {
         }
     }
 }
-/// Why an authoring inequality has no verdict. The first operand that cannot be compared, left
-/// operand first, supplies the reason.
+/// Why an authoring inequality has no verdict. A missing required `value` is reported first;
+/// otherwise the first operand that cannot be compared, left operand first, supplies the reason.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlMeterRelationUnavailable {
@@ -215,7 +215,8 @@ pub enum HtmlMeterRelationState {
     Violated,
     /// The inequality cannot be decided; the payload gives the reason.
     Unavailable(HtmlMeterRelationUnavailable),
-    /// The rule does not apply because the element is not an HTML `meter`.
+    /// The rule does not apply because the element is not an HTML `meter` or the supplied attribute
+    /// is not one the rule covers.
     Unapplied,
 }
 
@@ -453,8 +454,9 @@ pub enum HtmlMeterNativeError {
     /// All slots are valid but an authoring inequality fails. The payload is the first failing
     /// relation in declaration order.
     RelationViolation(HtmlMeterAuthorRelation),
-    /// All slots are valid but an exact key or comparison exceeds the checked representation
-    /// bounds, so the inequalities cannot be decided.
+    /// An exact key or comparison exceeds the checked representation bounds, so the
+    /// inequalities cannot be decided. Slots are examined in slot order and the first syntax or
+    /// key failure is returned, so a later slot may also have a syntax failure.
     RepresentationUnavailable,
 }
 impl fmt::Display for HtmlMeterNumberRole {

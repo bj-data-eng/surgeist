@@ -457,8 +457,8 @@ impl HtmlNonNegativeInteger {
     // reads/writes m+1 each; UTF-8 validation m+1.
     /// The upper bound on the digit-visiting steps the matching `try_added_to` performs, for the
     /// caller to precharge before it runs. It is a loop-derived envelope, not an instruction count
-    /// or a cancellation quantum. `None` means the bound itself is not representable in `usize`. It
-    /// covers the longer of the two operands, and `None` also covers an overflowing sum of lengths.
+    /// or a cancellation quantum. The bound is `8 * m + 12`, where `m` is the digit count of the
+    /// longer operand. `None` means that value overflows `usize`.
     pub fn added_to_work_bound(&self, other: &Self) -> Option<usize> {
         let m = self.digits.len().max(other.digits.len());
         let n = m.checked_add(1)?;
@@ -841,9 +841,11 @@ pub enum IntegerUnitStepError {
     ActualCapacityLimitExceeded {
         /// The caller's byte limit.
         limit: usize,
-        /// The bytes that were requested from the allocator.
+        /// The bytes requested so far, counting earlier allocations of the same operation when it
+        /// materializes several buffers.
         requested: usize,
-        /// The capacity in bytes the allocator actually granted.
+        /// The capacity in bytes the allocator has granted so far, counting earlier allocations
+        /// of the same operation.
         capacity_bytes: usize,
     },
     /// The allocator could not provide the requested bytes.

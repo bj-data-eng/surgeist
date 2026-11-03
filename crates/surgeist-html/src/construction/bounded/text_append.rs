@@ -123,8 +123,9 @@ pub enum HtmlConstructionTextAppendDescription {
         /// The work the copy costs.
         work: HtmlConstructionTextAppendWork,
     },
-    /// Applies the prepaid writes: swaps in a preserved copy if one was made and stores the new
-    /// usage.
+    /// Describes the prepaid writes: swapping in a preserved copy if one was made and storing the
+    /// new usage. Performing this action applies nothing; `HtmlConstructionTextAppendReady::commit`
+    /// applies them.
     Commit {
         /// The usage that the commit stores.
         usage: HtmlConstructionUsage,
@@ -278,7 +279,8 @@ impl HtmlConstructionTextAppend {
         }
     }
     /// The dimensions of the candidate backing. `None` before the first action has qualified the
-    /// target.
+    /// target, and, when the append works in a preserved copy, until the backing initialization
+    /// has created that copy.
     pub fn capacity(&self) -> Option<HtmlConstructionTextAppendCapacity> {
         self.candidate().map(HtmlConstructionTextAppendCapacity::of)
     }
@@ -648,7 +650,8 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
     }
 }
 impl HtmlConstructionTextAppendObservation<'_> {
-    /// The dimensions of the candidate backing after the performed action.
+    /// The dimensions of the candidate backing after the performed action. `None` under the same
+    /// conditions as the owner's `capacity`.
     pub fn capacity(&self) -> Option<HtmlConstructionTextAppendCapacity> {
         self.owner.capacity()
     }

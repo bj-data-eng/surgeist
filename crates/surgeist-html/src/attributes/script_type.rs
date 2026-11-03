@@ -36,7 +36,7 @@ impl HtmlScriptTypeKeyword {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeMeaning {
     /// The `type` value selects a script kind through the standard's keywords or a JavaScript MIME
-    /// type essence match.
+    /// type essence match. An omitted or empty `type` selects `Classic`.
     Script(HtmlScriptKind),
     /// The `type` value is any other nonempty string, so the element is a data block that the user
     /// agent does not process (HTML877d #the-script-element).
@@ -45,7 +45,8 @@ pub enum HtmlScriptTypeMeaning {
 /// Local author checking, independent of content meaning and processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeAuthorState {
-    /// The rule does not apply because the element is not an HTML `script`.
+    /// The rule does not apply because the element is not an HTML `script` or the supplied
+    /// attribute is not `type`.
     Unapplied,
     /// The HTML-defined omitted/empty/essence/keyword branch is established.
     /// Independent script contents/context are not certified; see author advice.
@@ -119,8 +120,8 @@ impl HtmlScriptTypeReport {
     pub fn author_advice(&self) -> HtmlScriptTypeAuthorAdvice {
         self.advice
     }
-    /// The wider author-context verdict: `Unapplied` for the wrong element, `Unchecked` for any
-    /// present value, and `NotRequired` for an absent attribute.
+    /// The wider author-context verdict: `Unapplied` for the wrong element or attribute,
+    /// `Unchecked` for any present value, and `NotRequired` for an absent attribute.
     pub fn context_author(&self) -> HtmlAttributeContextAuthorState {
         if self.applicability != HtmlAttributeApplicability::Applicable {
             HtmlAttributeContextAuthorState::Unapplied
@@ -137,7 +138,8 @@ impl HtmlScriptTypeReport {
 /// It neither installs saved metadata nor claims script preparation/execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlScriptTypeClassification {
-    /// The rule does not apply because the element is not an HTML `script`.
+    /// The rule does not apply because the element is not an HTML `script` or the supplied
+    /// attribute is not `type`.
     Unapplied,
     /// The step selects this script kind.
     Script(HtmlScriptKind),

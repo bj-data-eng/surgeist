@@ -15,8 +15,9 @@ pub use text_append::*;
 /// One hidden allocation's role in a construction owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionAllocationRole {
-    /// The shared identity allocation. Every builder handle, result id and storage weakly refers
-    /// to it, so it distinguishes one construction owner from another.
+    /// The shared identity allocation. Builder node handles and allocation ids refer to it
+    /// weakly, while published node ids and the arena hold it strongly, so it distinguishes one
+    /// construction owner from another.
     Identity,
     /// The vector of retained node records.
     Records,
@@ -26,7 +27,9 @@ pub enum HtmlConstructionAllocationRole {
     /// The temporary decision vector that an attribute edit builds for one target element before
     /// it commits.
     AttributePlan,
-    /// The shared arena allocation that publication creates; it reports no payload bytes.
+    /// The shared arena allocation that publication creates. The report taken before it is
+    /// created shows no initialized payload bytes. The snapshot after publication, and the
+    /// lease's, reports the size of the arena itself.
     ArenaWrapper,
 }
 
