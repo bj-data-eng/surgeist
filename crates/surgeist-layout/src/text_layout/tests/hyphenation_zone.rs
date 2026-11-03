@@ -288,7 +288,15 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(0.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(0.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout.source().text().code_units(),

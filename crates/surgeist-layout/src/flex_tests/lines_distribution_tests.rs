@@ -31,8 +31,15 @@ fn assert_fri07_c02_collapse_round_single_line_and_gap<S: LayoutScalar>() {
             fri07_c02_collapse_round_item(20.0, 10.0, FlexItemCollapse::Normal),
         );
 
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("single-line collapsed flex layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("single-line collapsed flex layout succeeds");
     let container = fri07_c02_collapse_round_output(&batch, 1);
     let collapsed = fri07_c02_collapse_round_output(&batch, 2);
     let normal = fri07_c02_collapse_round_output(&batch, 3);
@@ -82,8 +89,15 @@ fn assert_fri07_c02_collapse_round_single_line_and_gap<S: LayoutScalar>() {
                 ..fri07_c02_collapse_round_item(20.0, 10.0, FlexItemCollapse::Normal)
             },
         );
-    let zero_main_batch = compute_layout(&zero_main_tree, 1, fri07_c02_collapse_round_request())
-        .expect("zero-main collapsed flex layout succeeds");
+    let zero_main_batch = compute_layout(
+        &zero_main_tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            zero_main_tree.node_input(1).writing_mode,
+            zero_main_tree.node_input(1).direction,
+        )),
+    )
+    .expect("zero-main collapsed flex layout succeeds");
     let auto_margin_normal = fri07_c02_collapse_round_output(&zero_main_batch, 3);
     assert_eq!(
         fri07_c02_collapse_round_output(&zero_main_batch, 1)
@@ -137,8 +151,15 @@ fn assert_fri07_c02_collapse_round_rewraps_by_zero_main_size_and_identity<S: Lay
             fri07_c02_collapse_round_item(30.0, 10.0, FlexItemCollapse::Normal),
         );
 
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("wrapped collapsed flex layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("wrapped collapsed flex layout succeeds");
     let container = fri07_c02_collapse_round_output(&batch, 1);
     let first = fri07_c02_collapse_round_output(&batch, 2);
     let second = fri07_c02_collapse_round_output(&batch, 4);
@@ -200,8 +221,15 @@ fn fri07_c02_collapse_round_margin_case<S: LayoutScalar>(
             4,
             fri07_c02_collapse_round_item(20.0, 10.0, FlexItemCollapse::Normal),
         );
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("collapsed main-margin layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("collapsed main-margin layout succeeds");
     fri07_c02_collapse_round_output(&batch, 4)
 }
 
@@ -250,8 +278,15 @@ fn assert_fri07_c02_collapse_round_largest_strut_and_all_collapsed<S: LayoutScal
             3,
             fri07_c02_collapse_round_item(70.0, 30.0, FlexItemCollapse::Collapsed),
         );
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("all-collapsed flex layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("all-collapsed flex layout succeeds");
 
     assert_eq!(
         fri07_c02_collapse_round_output(&batch, 1).size,
@@ -305,8 +340,15 @@ fn assert_fri07_c02_collapse_round_align_content_stretch_is_captured<S: LayoutSc
             4,
             fri07_c02_collapse_round_item(80.0, 30.0, FlexItemCollapse::Normal),
         );
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("align-content stretch collapse layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("align-content stretch collapse layout succeeds");
 
     assert_eq!(
         fri07_c02_collapse_round_output(&batch, 4).location.y,
@@ -391,8 +433,15 @@ fn assert_fri07_c02_collapse_round_flow_matrix<S: LayoutScalar>() {
                             ..NodeInputOf::default()
                         },
                     );
-                let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-                    .expect("flow-mapped collapse layout succeeds");
+                let batch = compute_layout(
+                    &tree,
+                    1,
+                    fri07_c02_collapse_round_request(FlowAxes::new(
+                        tree.node_input(1).writing_mode,
+                        tree.node_input(1).direction,
+                    )),
+                )
+                .expect("flow-mapped collapse layout succeeds");
                 let normal = fri07_c02_collapse_round_output(&batch, 3);
 
                 assert_eq!(
@@ -476,8 +525,15 @@ fn assert_fri07_c02_collapse_round_intrinsic_replaced_controls<S: LayoutScalar>(
                 fri07_c02_collapse_round_item(20.0, 10.0, FlexItemCollapse::Normal),
             )
             .measure(2, Size::new(S::from_f64(75.0), S::from_f64(24.0)));
-        let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-            .expect("intrinsic replaced collapse layout succeeds");
+        let batch = compute_layout(
+            &tree,
+            1,
+            fri07_c02_collapse_round_request(FlowAxes::new(
+                tree.node_input(1).writing_mode,
+                tree.node_input(1).direction,
+            )),
+        )
+        .expect("intrinsic replaced collapse layout succeeds");
 
         assert_eq!(
             fri07_c02_collapse_round_output(&batch, 1).size.height,
@@ -587,8 +643,15 @@ fn assert_fri07_c02_collapse_round_ledger_is_finite<S: LayoutScalar>() {
         ]),
         requests: RefCell::new(Vec::new()),
     };
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("measurement-ledger collapse layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("measurement-ledger collapse layout succeeds");
     let requests = tree.requests.borrow();
 
     assert_eq!(
@@ -767,13 +830,13 @@ fn assert_fri07_c02_collapsed_output_zero_and_hidden_subtree<S: LayoutScalar>() 
     let hostile = compute_layout(
         &fri07_c02_collapsed_output_subtree::<S>(true),
         1,
-        fri07_c02_collapse_round_request(),
+        fri07_c02_collapse_round_request(FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)),
     )
     .expect("collapsed subtree layout succeeds");
     let leaf = compute_layout(
         &fri07_c02_collapsed_output_subtree::<S>(false),
         1,
-        fri07_c02_collapse_round_request(),
+        fri07_c02_collapse_round_request(FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)),
     )
     .expect("collapsed leaf control layout succeeds");
 
@@ -1034,7 +1097,10 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S>
 
 fn assert_fri07_c02_collapsed_output_cache_and_failures_are_atomic<S: LayoutScalar>() {
     let mut tree = Fri07C02CollapsedOutputTree::<S>::new();
-    let request = fri07_c02_collapse_round_request();
+    let request = fri07_c02_collapse_round_request(FlowAxes::new(
+        tree.node_input(1).writing_mode,
+        tree.node_input(1).direction,
+    ));
     let cold = compute_layout(&tree, 1, request).expect("cold collapsed layout succeeds");
     let cold_unrounded = cold.unrounded_entries().to_vec();
     let cold_final = cold.final_entries().to_vec();
@@ -1124,7 +1190,10 @@ fn assert_flex_collapse_transition_restores_geometry_strut_and_descendants<S: La
             )),
         );
     }
-    let request = fri07_c02_collapse_round_request();
+    let request = fri07_c02_collapse_round_request(FlowAxes::new(
+        tree.node_input(1).writing_mode,
+        tree.node_input(1).direction,
+    ));
 
     // Flexbox 4.4/9.4: the same item keeps its first-round cross-size strut,
     // but contributes neither its 40px main size nor the committed 9px gap.
@@ -1288,7 +1357,10 @@ fn fri07_c02_composition_atomic_tree<S: LayoutScalar>() -> Fri07C02CollapsedOutp
 
 fn assert_fri07_c02_composition_cache_failures_and_siblings<S: LayoutScalar>() {
     let mut tree = fri07_c02_composition_atomic_tree::<S>();
-    let request = fri07_c02_collapse_round_request();
+    let request = fri07_c02_collapse_round_request(FlowAxes::new(
+        tree.node_input(1).writing_mode,
+        tree.node_input(1).direction,
+    ));
     let cold = compute_layout(&tree, 1, request).expect("cold collapse composition succeeds");
     let cold_unrounded = cold.unrounded_entries().to_vec();
     let cold_final = cold.final_entries().to_vec();
@@ -1429,11 +1501,14 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CompositionMatrixTree<S> {
             return None;
         }
         self.requests.borrow_mut().push((node, input));
-        let available_main = self.axes.main_size(input.available_content_size());
-        let intrinsic_main = match available_main {
-            MeasurementAvailableOf::MinContent => S::from_f64(24.25),
-            MeasurementAvailableOf::MaxContent => S::from_f64(58.75),
-            MeasurementAvailableOf::Definite(value) => value.get().min(S::from_f64(72.5)),
+        let available_main = self.axes.main_size(input.content_sizing_request().axes());
+        let intrinsic_main = match available_main.operation() {
+            SizingOperation::MinContent => S::from_f64(24.25),
+            SizingOperation::MaxContent => S::from_f64(58.75),
+            SizingOperation::Normal => match available_main.space() {
+                AvailableSpaceOf::Definite(value) => value.get().min(S::from_f64(72.5)),
+                AvailableSpaceOf::Indefinite => S::from_f64(58.75),
+            },
         };
         let (main, cross) = if node == 2 {
             (intrinsic_main, S::from_f64(31.25))
@@ -1622,8 +1697,15 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
     case_index: usize,
 ) -> Vec<f64> {
     let tree = fri07_c02_composition_matrix_tree::<S>(case);
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .unwrap_or_else(|error| panic!("bounded composition case {case_index} failed: {error:?}"));
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .unwrap_or_else(|error| panic!("bounded composition case {case_index} failed: {error:?}"));
     let target = fri07_c02_collapse_round_output(&batch, 2);
     let peer = fri07_c02_collapse_round_output(&batch, 3);
     let absolute = fri07_c02_collapse_round_output(&batch, 4);
@@ -1651,13 +1733,18 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
     }
 
     let expected_intrinsic = if case.max_content_basis {
-        MeasurementAvailableOf::MAX_CONTENT
+        SizingOperation::MaxContent
     } else {
-        MeasurementAvailableOf::MIN_CONTENT
+        SizingOperation::MinContent
     };
     assert!(
         tree.requests.borrow().iter().any(|(node, input)| {
-            *node == 2 && tree.axes.main_size(input.available_content_size()) == expected_intrinsic
+            *node == 2
+                && tree
+                    .axes
+                    .main_size(input.content_sizing_request().axes())
+                    .operation()
+                    == expected_intrinsic
         }),
         "bounded case {case_index}: selected intrinsic basis reaches the provider"
     );
@@ -1683,10 +1770,17 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
     }
     if case.collapse == FlexItemCollapse::Collapsed {
         let control = fri07_c02_composition_without_collapsed_scroll_source::<S>(case);
-        let control_batch = compute_layout(&control, 1, fri07_c02_collapse_round_request())
-            .unwrap_or_else(|error| {
-                panic!("collapsed scroll control case {case_index} failed: {error:?}")
-            });
+        let control_batch = compute_layout(
+            &control,
+            1,
+            fri07_c02_collapse_round_request(FlowAxes::new(
+                control.node_input(1).writing_mode,
+                control.node_input(1).direction,
+            )),
+        )
+        .unwrap_or_else(|error| {
+            panic!("collapsed scroll control case {case_index} failed: {error:?}")
+        });
         let control_scroll = fri07_c02_collapse_round_output(&control_batch, 1)
             .scroll_geometry
             .expect("collapsed scroll control root publishes scroll geometry");
@@ -1767,16 +1861,77 @@ struct Fri07C02CompositionMeasurement<S: LayoutScalar> {
     node: u32,
     known_main: Option<S>,
     known_cross: Option<S>,
-    available_main: MeasurementAvailableOf<S>,
-    available_cross: MeasurementAvailableOf<S>,
+    available_main: AxisSizingRequestOf<S>,
+    available_cross: AxisSizingRequestOf<S>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Fri07C02CompositionMeasurementExpectation<S: LayoutScalar> {
+    node: u32,
+    known_main: Option<S>,
+    known_cross: Option<S>,
+    main_operation: SizingOperation,
+    main_space: Option<AvailableSpaceOf<S>>,
+    cross_operation: SizingOperation,
+    cross_space: Option<AvailableSpaceOf<S>>,
+}
+
+fn fri07_c02_composition_assert_trace<S: LayoutScalar>(
+    actual: &[Fri07C02CompositionMeasurement<S>],
+    expected: &[Fri07C02CompositionMeasurementExpectation<S>],
+    context: &str,
+) {
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "{context}: actual protocol records {actual:?}"
+    );
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert_eq!(
+            (actual.node, actual.known_main, actual.known_cross),
+            (expected.node, expected.known_main, expected.known_cross),
+            "{context}: record{index} actual owner/known fields"
+        );
+        assert_eq!(
+            actual.available_main.operation(),
+            expected.main_operation,
+            "{context}: record{index} main operation"
+        );
+        assert_eq!(
+            actual.available_cross.operation(),
+            expected.cross_operation,
+            "{context}: record{index} cross operation"
+        );
+        if let Some(space) = expected.main_space {
+            assert_eq!(
+                actual.available_main.space(),
+                space,
+                "{context}: record{index} main space"
+            );
+        }
+        if let Some(space) = expected.cross_space {
+            assert_eq!(
+                actual.available_cross.space(),
+                space,
+                "{context}: record{index} cross space"
+            );
+        }
+    }
 }
 
 fn fri07_c02_composition_measurement_trace<S: LayoutScalar>(
     case: Fri07C02CompositionCase,
 ) -> Vec<Fri07C02CompositionMeasurement<S>> {
     let tree = fri07_c02_composition_matrix_tree::<S>(case);
-    compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("composed measurement trace layout succeeds");
+    compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("composed measurement trace layout succeeds");
     tree.requests
         .borrow()
         .iter()
@@ -1784,28 +1939,38 @@ fn fri07_c02_composition_measurement_trace<S: LayoutScalar>(
             node: *node,
             known_main: tree.axes.main_size(input.known_content_size()),
             known_cross: tree.axes.cross_size(input.known_content_size()),
-            available_main: tree.axes.main_size(input.available_content_size()),
-            available_cross: tree.axes.cross_size(input.available_content_size()),
+            available_main: tree.axes.main_size(input.content_sizing_request().axes()),
+            available_cross: tree.axes.cross_size(input.content_sizing_request().axes()),
         })
         .collect()
 }
 
-fn fri07_c02_composition_definite<S: LayoutScalar>(value: f64) -> MeasurementAvailableOf<S> {
-    MeasurementAvailableOf::definite(S::from_f64(value))
-        .expect("composed measurement target is finite and non-negative")
+fn fri07_c02_composition_definite<S: LayoutScalar>(
+    value: f64,
+) -> (SizingOperation, Option<AvailableSpaceOf<S>>) {
+    (
+        SizingOperation::Normal,
+        Some(AvailableSpaceOf::Definite(
+            NonNegativeFiniteOf::new(S::from_f64(value)).unwrap(),
+        )),
+    )
 }
 
 fn assert_fri07_c02_composition_exact_round_sequences<S: LayoutScalar>() {
     let measurement =
         |node: u32,
          known_main: Option<f64>,
-         available_main: MeasurementAvailableOf<S>,
-         available_cross: MeasurementAvailableOf<S>| Fri07C02CompositionMeasurement {
-            node,
-            known_main: known_main.map(S::from_f64),
-            known_cross: None,
-            available_main,
-            available_cross,
+         available_main: (SizingOperation, Option<AvailableSpaceOf<S>>),
+         available_cross: (SizingOperation, Option<AvailableSpaceOf<S>>)| {
+            Fri07C02CompositionMeasurementExpectation {
+                node,
+                known_main: known_main.map(S::from_f64),
+                known_cross: None,
+                main_operation: available_main.0,
+                main_space: available_main.1,
+                cross_operation: available_cross.0,
+                cross_space: available_cross.1,
+            }
         };
     let definite = fri07_c02_composition_definite::<S>;
     let no_auto = Fri07C02CompositionCase {
@@ -1819,13 +1984,13 @@ fn assert_fri07_c02_composition_exact_round_sequences<S: LayoutScalar>() {
         replaced: false,
         overflow: computed_overflow(Overflow::Visible, Overflow::Clip),
     };
-    assert_eq!(
-        fri07_c02_composition_measurement_trace(no_auto),
-        [
+    fri07_c02_composition_assert_trace(
+        &fri07_c02_composition_measurement_trace(no_auto),
+        &[
             measurement(
                 2,
                 None,
-                MeasurementAvailableOf::MIN_CONTENT,
+                (SizingOperation::MinContent, None),
                 definite(39.75),
             ),
             measurement(3, None, definite(35.125), definite(63.75)),
@@ -1833,7 +1998,7 @@ fn assert_fri07_c02_composition_exact_round_sequences<S: LayoutScalar>() {
             measurement(3, Some(101.5), definite(101.5), definite(63.75)),
             measurement(3, None, definite(101.5), definite(18.75)),
         ],
-        "the composed non-auto case performs one intrinsic measurement, then the exact first-round, second-round, and final normal-item sequence"
+        "the composed non-auto case performs one intrinsic measurement, then the exact first-round, second-round, and final normal-item sequence",
     );
 
     let auto = Fri07C02CompositionCase {
@@ -1847,21 +2012,21 @@ fn assert_fri07_c02_composition_exact_round_sequences<S: LayoutScalar>() {
         replaced: false,
         overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
     };
-    assert_eq!(
-        fri07_c02_composition_measurement_trace(auto),
-        [
-            measurement(2, None, MeasurementAvailableOf::MAX_CONTENT, definite(37.5),),
+    fri07_c02_composition_assert_trace(
+        &fri07_c02_composition_measurement_trace(auto),
+        &[
+            measurement(2, None, (SizingOperation::MaxContent, None), definite(37.5)),
             measurement(3, None, definite(35.125), definite(60.5)),
             measurement(3, Some(38.5), definite(38.5), definite(60.5)),
             measurement(3, Some(101.5), definite(101.5), definite(60.5)),
             measurement(3, None, definite(101.5), definite(18.75)),
-            measurement(2, None, MeasurementAvailableOf::MAX_CONTENT, definite(37.5),),
+            measurement(2, None, (SizingOperation::MaxContent, None), definite(37.5)),
             measurement(3, None, definite(35.125), definite(60.5)),
             measurement(3, Some(35.25), definite(35.25), definite(60.5)),
             measurement(3, Some(98.25), definite(98.25), definite(60.5)),
             measurement(3, None, definite(98.25), definite(18.75)),
         ],
-        "the composed auto-overflow case performs exactly one bounded five-measurement sequence before and after the 3.25px settled scrollbar changes the main target"
+        "the composed auto-overflow case performs exactly one bounded five-measurement sequence before and after the 3.25px settled scrollbar changes the main target",
     );
 }
 
@@ -1922,8 +2087,15 @@ fn fri07_c02_composition_dimension_outputs<S: LayoutScalar>(
             3,
             item(30.0, 20.0, orders.1, Edges::all(LengthAutoOf::ZERO)),
         );
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("composition dimension control layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("composition dimension control layout succeeds");
     (
         fri07_c02_collapse_round_output(&batch, 2),
         fri07_c02_collapse_round_output(&batch, 3),
@@ -2085,8 +2257,15 @@ fn assert_fri07_c02_composition_replacedness_is_observable<S: LayoutScalar>() {
                 fri07_c02_collapse_round_item(0.0, 15.0, FlexItemCollapse::Collapsed),
             )
             .measure(2, Size::new(S::from_f64(90.0), S::from_f64(10.0)));
-        let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-            .expect("replacedness composition control succeeds");
+        let batch = compute_layout(
+            &tree,
+            1,
+            fri07_c02_collapse_round_request(FlowAxes::new(
+                tree.node_input(1).writing_mode,
+                tree.node_input(1).direction,
+            )),
+        )
+        .expect("replacedness composition control succeeds");
         let target = fri07_c02_collapse_round_output(&batch, 2);
         assert_eq!(target.size.height, S::from_f64(20.0));
         assert_eq!(target.source_index, SourceIndex::new(0));
@@ -2153,7 +2332,20 @@ fn flex_row_distributes_positive_free_space_with_flex_grow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2224,7 +2416,20 @@ fn flex_row_with_grow_sum_below_one_uses_that_fraction_of_free_space() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2286,7 +2491,20 @@ fn flex_row_distributes_negative_free_space_with_flex_shrink() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2344,7 +2562,17 @@ fn flex_row_relayouts_content_box_percentage_item_at_shrunk_target() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2397,7 +2625,10 @@ fn flex_row_visible_item_does_not_shrink_below_automatic_min_content_width() {
         .measure_when(
             2,
             OracleMeasurementOf::new(ComputeOutput::from_outer_size(Size::new(90.0, 20.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .operations(Size::new(
+                    Some(SizingOperation::MinContent),
+                    Some(SizingOperation::Normal),
+                )),
         )
         .measure_when(
             2,
@@ -2423,7 +2654,20 @@ fn flex_row_visible_item_does_not_shrink_below_automatic_min_content_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2432,7 +2676,7 @@ fn flex_row_visible_item_does_not_shrink_below_automatic_min_content_width() {
     assert!(
         tree.inputs(2).iter().any(|input| {
             input.run_mode() == RunMode::ComputeSize
-                && input.available().width == Available::MIN_CONTENT
+                && input.sizing_request().axes().width.operation() == SizingOperation::MinContent
         }),
         "visible flex item should be measured with min-content for its automatic minimum"
     );
@@ -2488,7 +2732,20 @@ fn flex_row_with_shrink_sum_below_one_uses_that_fraction_of_negative_free_space(
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2547,7 +2804,20 @@ fn flex_row_wraps_items_into_multiple_lines() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2611,7 +2881,20 @@ fn flex_row_auto_width_wraps_against_definite_available_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2712,9 +2995,26 @@ where
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     ParentFormattingContext::NoParent,
                 ),
-                Size::new(
-                    AvailableOf::definite(S::from_f64(60.0)),
-                    AvailableOf::definite(S::from_f64(20.0)),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(60.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(20.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
                 ),
             ),
         )
@@ -2792,7 +3092,20 @@ fn flex_row_growth_respects_max_main_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2856,7 +3169,20 @@ fn flex_row_reverse_places_items_from_the_reversed_main_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2916,7 +3242,20 @@ fn flex_row_rtl_places_items_from_the_right_edge() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2984,7 +3323,20 @@ fn flex_row_rtl_relative_insets_follow_rtl_main_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3044,7 +3396,20 @@ fn flex_column_reverse_places_items_from_the_reversed_main_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();

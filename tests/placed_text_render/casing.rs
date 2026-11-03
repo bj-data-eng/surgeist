@@ -5,7 +5,8 @@ const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fo
 fn capture(
     system: &mut text::System,
     uppercase: bool,
-    available: layout::Available,
+    authored_width: Option<f32>,
+    request: layout::LayoutRootRequest,
 ) -> (
     layout::CompletedLayoutBatch<usize>,
     text::PreparedOrigin,
@@ -75,11 +76,11 @@ fn capture(
             layout::LayoutInput::box_input(layout::NodeInput {
                 display: layout::Display::Block,
                 size: layout::Size::new(
-                    match available {
-                        layout::Available::Definite(width) => layout::PreferredSizeOf::value(
+                    match authored_width {
+                        Some(width) => layout::PreferredSizeOf::value(
                             layout::LengthPercentageOf::px(width).unwrap(),
                         ),
-                        _ => layout::PreferredSizeOf::AUTO,
+                        None => layout::PreferredSizeOf::AUTO,
                     },
                     layout::PreferredSizeOf::AUTO,
                 ),
@@ -114,16 +115,7 @@ fn capture(
         Vec::new(),
     )
     .unwrap();
-    let batch = layout::compute_layout_with_flow(
-        &capture,
-        0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            available,
-            layout::Available::MaxContent,
-        ))
-        .unwrap(),
-    )
-    .unwrap();
+    let batch = layout::compute_layout_with_flow(&capture, 0, request).unwrap();
     (batch, origin, source)
 }
 
@@ -138,7 +130,19 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
     .unwrap();
     system.register_fonts(AHEM.to_vec()).unwrap();
     for uppercase in [false, true] {
-        let (batch, _, source) = capture(&mut system, uppercase, layout::Available::Definite(12.0));
+        let (batch, _, source) = capture(
+            &mut system,
+            uppercase,
+            Some(12.0),
+            NativeViewport::new(
+                layout::Size::new(Some(12.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
+        );
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.source(), &source);
         assert_eq!(source.text().code_units(), [0xdf]);
@@ -189,14 +193,29 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
             .collect::<std::collections::BTreeMap<_, _>>();
         assert_eq!(advances.len(), lines.len());
         assert!(advances.values().all(|advance| *advance == 10.0));
-        for (available, expected) in [
-            (layout::Available::MinContent, 10.0),
+        for (operation, expected) in [
+            (layout::SizingOperation::MinContent, 10.0),
             (
-                layout::Available::MaxContent,
+                layout::SizingOperation::MaxContent,
                 if uppercase { 20.0 } else { 10.0 },
             ),
         ] {
-            let (intrinsic, _, _) = capture(&mut system, uppercase, available);
+            let (intrinsic, _, _) = capture(
+                &mut system,
+                uppercase,
+                None,
+                NativeViewport::new(
+                    layout::Size::new(None, None),
+                    layout::FlowAxes::new(
+                        layout::WritingMode::HorizontalTb,
+                        layout::Direction::Ltr,
+                    ),
+                )
+                .request(layout::Size::new(
+                    operation,
+                    layout::SizingOperation::Normal,
+                )),
+            );
             let root = intrinsic
                 .final_entries()
                 .iter()
@@ -214,7 +233,19 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
     })
     .unwrap();
     system.register_fonts(AHEM.to_vec()).unwrap();
-    let (batch, origin, source) = capture(&mut system, true, layout::Available::Definite(12.0));
+    let (batch, origin, source) = capture(
+        &mut system,
+        true,
+        Some(12.0),
+        NativeViewport::new(
+            layout::Size::new(Some(12.0), None),
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
+    );
     let placed = batch.placed_text()[0].layout();
     let position_at = |x, y| {
         placed
@@ -306,7 +337,19 @@ fn casing_expansion_enriches_original_accessibility_with_actual_geometry() {
         })
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
-        let (batch, _, _) = capture(&mut system, uppercase, layout::Available::Definite(30.0));
+        let (batch, _, _) = capture(
+            &mut system,
+            uppercase,
+            Some(30.0),
+            NativeViewport::new(
+                layout::Size::new(Some(30.0), None),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+            )
+            .request(layout::Size::new(
+                layout::SizingOperation::Normal,
+                layout::SizingOperation::Normal,
+            )),
+        );
         let placed = batch.placed_text()[0].layout();
         let analyzed = placed.analyzed_source();
         drop(system);

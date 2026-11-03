@@ -1,5 +1,5 @@
 use super::{
-    AtomicInlineParticipation, AvailableOf, Clear, DefaultScalar, Direction, Edges,
+    AtomicInlineParticipation, AxisSizingRequestOf, Clear, DefaultScalar, Direction, Edges,
     InlineBoundaryEdgeOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf,
     LayoutScalar, Size, TextAlign, WritingMode,
 };
@@ -58,7 +58,7 @@ pub(super) fn inline_candidate_scan_visits() -> usize {
 #[cfg(test)]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct InlineRunInput<S: LayoutScalar = DefaultScalar> {
-    pub available_width: AvailableOf<S>,
+    pub available_width: AxisSizingRequestOf<S>,
     pub writing_mode: WritingMode,
     pub direction: Direction,
     pub items: Vec<InlineParticipant<S>>,
@@ -82,7 +82,7 @@ pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
     pub line_box_context: crate::line_box::LineBoxContext,
     pub observe_tail: bool,
     pub wrapping: Option<crate::inline_wrapping::NumericWrapping>,
-    pub available_inline_extent: AvailableOf<S>,
+    pub available_inline_extent: AxisSizingRequestOf<S>,
     pub flow_axes: FlowAxes,
     pub text_align: TextAlign,
     pub text_align_last: crate::TextAlignLast,
@@ -1224,12 +1224,18 @@ fn resolved_inline_available<S: LayoutScalar>(
         participants: &input.participants,
         supplied,
     };
-    match input.available_inline_extent {
-        AvailableOf::Definite(value) => Ok(value),
-        AvailableOf::MinContent => {
+    match (
+        input.available_inline_extent.operation(),
+        input.available_inline_extent.space(),
+    ) {
+        (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(value)) => {
+            Ok(value.get())
+        }
+        (crate::SizingOperation::MinContent, _) => {
             inline_min_content(run, input.flow_axes, input.wrapping.as_ref())
         }
-        AvailableOf::MaxContent => {
+        (crate::SizingOperation::MaxContent, _)
+        | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
             inline_max_content(run, input.flow_axes, input.wrapping.as_ref())
         }
     }
@@ -2692,7 +2698,8 @@ where
         participants: &input.participants,
         supplied,
     };
-    let wraps = !matches!(input.available_inline_extent, AvailableOf::MaxContent);
+    let wraps = input.available_inline_extent.operation() == crate::SizingOperation::MinContent
+        || crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let NumericSequence {
         state,
         selected_lines,
@@ -3000,7 +3007,7 @@ where
             input.flow_axes,
             line.alignment,
             line_direction,
-            if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
+            if crate::layout_math::normal_available_size(input.available_inline_extent).is_some() {
                 input.groups.insets::<S>(line_box_context.resolve(None))?
             } else {
                 surgeist_text::LineAlignmentInsets::ZERO
@@ -3497,14 +3504,14 @@ where
     let balance = match input.text_wrap_style {
         crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
         crate::TextWrapStyle::Balance => {
-            matches!(input.available_inline_extent, AvailableOf::Definite(_))
+            crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
         }
         crate::TextWrapStyle::AvoidShortLastLine | crate::TextWrapStyle::Pretty => false,
     };
     let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
-        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
-        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+        && crate::layout_math::normal_available_size(input.available_inline_extent).is_some();
     let mut sequence = NumericSequence::new(
         &input,
         observe_formatted || balance || repair_tail || pretty,
@@ -3578,13 +3585,14 @@ where
     let mut controls = Vec::new();
     let mut nonformatted_controls = Vec::new();
     let mut group_lines = Vec::new();
-    let group_insets = if matches!(input.available_inline_extent, AvailableOf::Definite(_)) {
-        input
-            .groups
-            .insets::<S>(input.line_box_context.resolve(None))?
-    } else {
-        surgeist_text::LineAlignmentInsets::ZERO
-    };
+    let group_insets =
+        if crate::layout_math::normal_available_size(input.available_inline_extent).is_some() {
+            input
+                .groups
+                .insets::<S>(input.line_box_context.resolve(None))?
+        } else {
+            surgeist_text::LineAlignmentInsets::ZERO
+        };
     let mut post_line_clear_intents = Vec::new();
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
@@ -3676,7 +3684,7 @@ where
             input.wrapping.as_ref(),
         )?;
         if input.groups.is_active()
-            && matches!(input.available_inline_extent, AvailableOf::Definite(_))
+            && crate::layout_math::normal_available_size(input.available_inline_extent).is_some()
         {
             group_lines.push(crate::group_alignment::NaturalLine {
                 width: (line.band.inline_end - line.band.inline_start).to_f64(),
@@ -3971,7 +3979,7 @@ fn consumed_line_end<S: LayoutScalar>(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct InlineFlowOf<S: LayoutScalar = DefaultScalar> {
     flow_axes: FlowAxes,
-    available_inline_extent: AvailableOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
 }
 
 impl<S: LayoutScalar> InlineFlowOf<S> {
@@ -3979,7 +3987,7 @@ impl<S: LayoutScalar> InlineFlowOf<S> {
     pub(super) const fn new(
         writing_mode: WritingMode,
         direction: Direction,
-        available_inline_extent: AvailableOf<S>,
+        available_inline_extent: AxisSizingRequestOf<S>,
     ) -> Self {
         Self {
             flow_axes: FlowAxes::new(writing_mode, direction),
@@ -4000,7 +4008,7 @@ impl<S: LayoutScalar> InlineFlowOf<S> {
 
     #[cfg(test)]
     #[must_use]
-    pub(super) const fn available_inline_extent(self) -> AvailableOf<S> {
+    pub(super) const fn available_inline_extent(self) -> AxisSizingRequestOf<S> {
         self.available_inline_extent
     }
 }
@@ -4311,7 +4319,10 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
 #[must_use]
 pub(super) fn inline_run_min_content_width<S: LayoutScalar>(items: &[InlineParticipant<S>]) -> S {
     layout_inline_run(InlineRunInput {
-        available_width: AvailableOf::MIN_CONTENT,
+        available_width: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
         items: items.to_vec(),
@@ -4324,7 +4335,10 @@ pub(super) fn inline_run_min_content_width<S: LayoutScalar>(items: &[InlineParti
 #[cfg(test)]
 pub(super) fn inline_run_max_content_width<S: LayoutScalar>(items: &[InlineParticipant<S>]) -> S {
     layout_inline_run(InlineRunInput {
-        available_width: AvailableOf::MAX_CONTENT,
+        available_width: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
         writing_mode: WritingMode::HorizontalTb,
         direction: Direction::Ltr,
         items: items.to_vec(),

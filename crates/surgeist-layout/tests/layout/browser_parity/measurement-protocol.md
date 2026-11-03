@@ -1,14 +1,360 @@
-# Browser measurement protocol, version 2
+# Browser measurement protocol, version 4
 
 This is the private interchange between layout's bundled JavaScript helper and
 its Rust browser-corpus adapter. It describes measured fixture data, not authored
 CSS, a public layout API, or the generator crate's report schema. Browser reports
 continue to use schema 4 independently of this protocol version.
 
+## Root requests and observation frames
+
+Version 4 separates sizing operation, physical availability and observation
+frame. Preferred CSS width/height, an observed root rectangle and a
+viewport-filling test do not issue intrinsic operations. The closed
+`viewport.rootContext` alternatives are:
+
+| Kind | Required fields | Observation |
+| --- | --- | --- |
+| `absolute-root-local` | `containingWidth`, `containingHeight`, `containingDirection`, `hypotheticalDirection`, `hypotheticalDisplay`, `hypotheticalAnchor`, `hypotheticalInlineOffset`, `fallback` | `observation-frame="root-border-local"`; no document-space placement claim. |
+| `block-flow-auto` | `parentInlineExtent`, `parentDirection`, `fallback` | `observation-frame="root-border"` with independently checked actual Native body placement. |
+
+Absolute-local containing extents and direction belong to the actual ICB/html
+frame. Hypothetical direction belongs to the body; root direction remains its
+own captured style. The authenticated pre-blockification display comes from the
+original inline declaration or the exact owned base sheet's DIV default, not
+computed Grid. Its selected set is `block`, `flow-root`, `flex`, `inline-flex`,
+`grid`, `inline-grid` and `grid-lanes`, subject to all other source checks.
+
+The anchor is `inline-start`. Its finite signed offset `s` is a distance along
+the hypothetical body's progression over the same physical containing width
+`W`, not a physical-left coordinate. LTR and RTL both use `max(0, W - s)` once
+as inline availability; the offset itself is never converted to `W - s` for RTL.
+The request keeps full actual CB width/height as percentage bases, Normal
+operations and independently indefinite block availability. Native shrink-to-fit
+acceptance uses genuine min/max contributions. Root-local output starts at zero.
+
+The ordinary zero-offset profile has an empty, unindented, start-aligned
+hypothetical first line, with only collapsible ASCII whitespace/comments and no
+inline advance donor or preceding float. A separate literal-indent profile permits
+one body declaration, `text-indent`, as a finite nonnegative literal pixel length
+not greater than the containing width. HTML and body must both be horizontal LTR,
+with normal whitespace, start alignment and the admitted ordinary/isolate bidi
+state. The body has no element sibling of the root. The hypothetical display must
+be `flex` or `inline-flex`, and every direct Flex item must be an empty DIV with
+positive fixed-pixel width/height and `flex-shrink:0`, using the controlled base
+edges and positioning. Hypothetical block Flex has `s = 0`; inline Flex receives
+the literal first-line indent. Other inherited-indent consumers, nested/text
+content, nonzero cross-direction indentation and other body declarations refuse.
+The profile does not invent a font, strut or line rectangle.
+
+A separately qualified static spacer prefix may contain empty DIVs with exactly
+`display:block; position:static; width:0px; height:<positive literal px>`.
+They must have zero actual edges, no float/clear or external displacement, and
+precede the absolute root; element siblings after it refuse. They affect only the
+omitted common block translation. The complete root-local dependency proof still
+applies: no spacer/root rectangle, used body height or line metric supplies a
+request operand. Preserved whitespace, leading floats and arbitrary siblings
+remain unsupported. Indent and spacer profiles are not combined.
+
+BlockFlow has Normal operations, definite parent inline extent, independently
+indefinite Auto block extent and percentage parent `(Some(inline), None)`.
+Root flow remains independent. The reader checks actual unrounded Native body
+placement: LTR starts at zero; RTL at `parentInlineExtent - actual Native root
+width`. It then normalizes root observations using the computed Native origin.
+Only a source-qualified static/all-Auto root lowers to Native in-flow Relative
+with zero displacement; original static positioning remains in XML/provenance.
+Other static/offset profiles refuse.
+
+The public Native `PositionedRootContext` remains separate for genuine
+containing-frame placement; see the [Native root contexts](../../../src/output.rs).
+V4 has no `positioned-auto-insets` wire alias. Native root-local padding/border
+admission requires a definite preferred width under its sizing resolver. Browser
+absolute-local source admission permits padding/border only when the actual
+preferred inline projection is finite nonnegative pixels, or a percentage that
+resolves finitely against the full authenticated containing width. Margins stay
+zero. Auto, intrinsic and general calc preferred widths do not acquire an
+edge-sensitive shrink-to-fit formula through this profile.
+
+The non-collapsing initial-origin check remains with BlockFlow's placement
+certificate. An actual absolute root establishes its own formatting context,
+including visible-overflow Block; absolute-local admission instead requires the
+complete subtree translation-independence proof below. It does not certify a
+hypothetical block origin or derive one from zero. Source-frame admission alone
+does not establish Native font or geometry parity.
+
+### Source and stylesheet custody
+
+The adapter authenticates the exact captured base sheet, profile hash
+`5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6`.
+The helper authenticates the original direct-body DIV source, one helper and
+base LINK. It replaces only that exact live LINK in place with one owned STYLE
+containing unchanged captured bytes, including the data-URI font. Every variant
+checks the retained owner, text, CSSOM rules and complete sheet inventory.
+Repeated setup retains that owner; a marker cannot authorize replacement or
+repair changed source. Additional/adopted/opaque/changed sheets refuse.
+
+The closed profile has no extra scripts/frames or HTML inline declarations.
+Body declarations and extra body content are limited to the literal-indent and
+static-spacer profiles above, and only for absolute-root-local capture. Source
+and live body serialization must match. Retained live child-node references
+also authenticate body membership, source order and identity on every variant;
+repeated setup cannot repair replaced or reordered children. Source and live
+subtree/frame facts must remain stable.
+Absolute-local capture additionally checks every box for local facts that do
+not depend on a common translation. Fixed/sticky/transformed frames, external
+sizing and anchors, remaining-block-space dependence, noninitial scrolling and unqualified
+typed-inline/observation channels refuse. Boxless `display:none`/`contents`
+observations refuse with `RootLocalBoxlessObservation`; their world-zero rectangle
+is not normalized into a fabricated local zero. A genuine zero-size box remains
+a box. Hidden clipping within the admitted moving subtree remains local. The base
+`.viewport` class refuses because its sizes are absent from this inline-declaration-only sizing channel.
+
+The descriptor used by both root contexts validates preferred-size, bound,
+flex-basis, edge and gap projections. A present value whose actual projection is
+absent refuses with `Root context: UnresolvedSizingDeclaration`;
+for example, an unsupported own-width unit or unresolved own-width variable
+cannot disappear into Native Auto. Existing min/max computed projections and
+represented literals/calcs remain intact. Unconsumed shorthand reset fields are
+not sizing operands and do not trigger a blanket CSS-wide refusal. Token-parser
+grammars retain their absence contract; validation belongs to the descriptor
+consumer. This does not implement a cascade or qualify every source declaration.
+Preferred, minimum and maximum sizing share one actual node-writing-mode
+projection. Each group refuses simultaneous physical and corresponding logical
+size on one physical axis with `ConflictingSizingDeclarations`; declaration
+order or priority is not guessed. Single logical sizes/bounds and mixed
+declarations on distinct axes retain their role. Minimum/maximum getters keep
+their existing genuine computed projection before the shared mapping. Gap shorthand
+repeats a value only when one component was authored. An unsupported second
+component remains absent for validation and cannot be replaced by the first.
+Padding and inset inline-start/inline-end declarations share one mapping through
+that node's actual writing mode and direction. CSSOM supplies expanded logical
+longhands for authored inline shorthands. Physical and logical declarations on
+the same physical side refuse with `Root context: ConflictingEdgeDeclarations`;
+distinct or opposite sides remain independent, with existing literal, calc and
+percentage projection checks. The absolute-root-local source closure refuses
+logical block padding/inset declarations with
+`Root context: UnrepresentedLogicalBlockEdges`; this does not add block-edge,
+border or margin normalization or a cascade interpreter.
+Broader source profiles or a changed base asset need independent qualification.
+
+Extents come from the standards-mode unscaled CSSOM viewport after scrollbar
+reservation, with matching visual viewport and actual body inline extent. Used
+Auto body height and browser root rectangles never supply request operands.
+The `.rtl *` selector does not set body direction. Unsupported contexts retain
+precise `Root context:` reasons; no historical MaxContent field becomes Normal.
+
+Fallback requires independent `initialContainingBlock` physical width/height,
+`nearestScrollport: "none"` and `containingLimits` with both axes `unbounded`.
+This profile proves absent intervening element scrollports and default local
+limits. Other states need their own source proof. Native `OrthogonalFallback`
+owners retain/replace those components: a nearer unfixed scrollport must not
+inherit an older fixed bound.
+
+### Continuous local rounding and separate diagnostics
+
+Let `Q` be the existing coordinate-rounding operation. Absolute-local sizes use
+`Q(worldEnd - rootStart) - Q(worldStart - rootStart)`: continuous corners are
+normalized before rounding. Child locations retain `Q(worldStart - parentStart)`,
+not a difference of separately rounded root-local starts. Root selected x/y are
+zero. Unrounded sizes and child parent-local locations remain measured, with
+root x/y zero. The measured root start is an observation operand only.
+
+BlockFlow retains its actual world-corner size phase and parent-local locations,
+plus its body-placement check. Neither path drops size, child, scroll, source
+or control comparisons because root observations are local.
+
+Every wire `layoutInput: "box"`, including a BR/control box, requires
+`worldRoundedLayout`: the former smart-rounded values, with parent-local
+`Q(delta)` x/y and world-corner width/height. They are not document positions.
+Full x/y/width/height are required; scrollWidth/scrollHeight and
+clientWidth/clientHeight are optional complete pairs. Values remain finite f64,
+with signed locations and nonnegative extents. Non-box typed text, boundaries
+and reason-only unsupported alternatives cannot carry this field.
+
+XML retains them separately as
+`<diagnostics><world-rounded-layout node-path="0.0" .../></diagnostics>`.
+Numbers are unitless CSS pixels; optional pairs use `scroll-width`/`scroll-height`
+and `client-width`/`client-height`.
+Root path is `0`; later dot-separated indices select the actual measured child
+array. Structural XML metadata is not a child occurrence. The reader checks the
+per-box census against the input tree. Diagnostics never become Native inputs,
+selected expectations or a replacement oracle. Existing naive offset/offset-parent
+diagnostics likewise do not define local rounding.
+
+Historical XML 1/2/3 remains exact raw, unqualified capture. Its viewport cannot
+issue a current Native root operation: `MissingRootContextAuthority` remains
+visible. Genuine Native tests may use retained Source/font IR with independently
+authored requests. Old captures are not relabeled or supplied missing facts;
+fresh V4 capture is required for current browser parity. Prepared font/source
+capabilities are unchanged.
+
+The opaque analytic provider remains separate. Known, definite, formal MIN/MAX
+and parallel unbounded requests retain distinct operations. It does not claim
+the complete orthogonal infinite-containing-block algorithm: capture and reader
+refuse opaque analytic text through an orthogonal ancestor, including inherited
+infinity. Actual core-owned leaf/containing axes are checked before accepting
+Normal/Indefinite inline requests; no universal fallback cap is applied. Genuine
+Prepared paragraphs retain their independent source/font/context path; the
+absolute-local closure does not admit unqualified typed-inline channels.
+
+### Functional qualification before adoption
+
+Use the real [qualification example](../../../examples/qualify-root-context.rs)
+with `layout-golden-generate` and a verified cached browser. Its single source
+records own scheduling, declared outcomes and historical observation hashes.
+It uses the actual Layout adapter/public BrowserCorpus rather than a source or
+cascade mock. Follow the [corpus procedures](README.md) and
+[crate guide](../../../AGENTS.md) for execution/publication.
+
+Require closed decoder/reader controls for complete payloads, explicit zero,
+finite ranges, fallback facts, local-zero versus actual body placement,
+world-diagnostic census and historical refusal. Real capture preserves original
+source/resources and every historical observation field. Broader source profiles
+need their own real-browser operand/refusal qualification; schema checks alone
+establish no such provenance. Preserve original XML/raw mismatches until faithful
+capture and full comparison exist. Filtered or finite-example generation does
+not verify the full corpus. Do not alter counts, fonts, HTML, CSS or geometry to
+hide missing source authority.
+
+## Source-qualified Grid alignment reference
+
+Every supported source-qualified V4 root carries required
+`gridAlignmentProfile: { profile: 1, owners: [...] }`. Owners are complete
+source-preorder input paths: root `/`, then actual child indices such as
+`/0/0`. If every Grid owner is horizontal, the owner list is empty even when
+its paragraphs use vertical named metrics. The wire and reader independently
+derive required owner paths from the actual layout-ready-inline region, Box
+Grid role and own vertical writing mode, then require both records and header
+to match. This predicate demands the full typography proof; it does not infer
+a name. Coherent record and list deletion therefore cannot erase source intent.
+No second topology, fixture-name rule or child-metric registry is involved. XML retains the root
+JSON in `grid-alignment-profile`. Missing headers, individual deletions,
+duplicates, wrong scope, or orphan/out-of-order records refuse.
+
+Each demanded actual HTML DIV/SPAN Grid owner separately carries
+`gridAlignmentReference`, retained as `grid-alignment-reference` in XML:
+profile 1; own Grid/InlineGrid display, writing mode and direction; own
+Mixed/Upright text orientation; supported default dominant-baseline `auto`
+and raw non-SVG alignment-baseline `auto`/`baseline`; actual source-bound
+font descriptor/resource; and resolved reference `central`. Every own raw
+role/frame/font operand must agree, with explicit font authority preserved
+through default-compressed attributes. Authored reference overrides, foreign
+fonts, sideways orientation and unsupported authority refuse rather than
+selecting a fallback. Existing enclosing source/root profiles still govern
+which HTML roles can reach this capability.
+
+The source adapter derives the name from that full actual Grid-owner context.
+Pinned Blink 79051446 `grid_item.cc` reads the immediate parent Grid's font
+baseline; `ComputedStyle::GetFontBaseline` resolves the default through actual
+orientation. The [pinned writing-mode text baseline rule](../../../../../references/css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#text-baselines)
+selects Central for the qualified vertical Mixed/Upright context. Writing mode
+alone, descendant paragraph certificates, alignment First/Last roles or target
+coordinates do not establish this choice.
+
+The existing actual loaded CSS FontFace owner is shared. A Grid-only source
+can demand that same preparation; it neither constructs another loader nor
+borrows a paragraph font. Grid name selection issues no line-height, zero-strut,
+BR, glyph or paragraph-metric claim. In particular the Grid's own normal
+line-height remains unchanged, while an actual atomic paragraph separately
+retains its H0 checks. Real loaded-font custody observes both declared named
+consumer counts using the same retained face/load owner.
+
+After independent validation, the reader assigns only the existing local
+`NodeInput.grid_baseline_references` selectors to Named(Central). Inherited
+subgrid axes retain their actual owner; First/Last selection, paragraph
+`inline_baseline_context`, BR metrics and source correspondence do not change.
+Genuinely unrequested authored Native input retains Physical under its explicit
+Native test entry. That entry is distinct from the strict captured comparison,
+which requires the enclosing profile even if every record was deleted. There
+is no old-qualified-capture fallback or reinterpretation of historical XML.
+
+## Source-qualified atomic-only named metrics
+
+V4 optionally carries `atomicParagraphMetrics`, independently versioned by
+`profile: 1`. It is an explicit new source capability, not a reinterpretation
+of Physical measurements. XML retains the same JSON as the containing input
+box's `atomic-paragraph-metrics` attribute. Absence keeps the existing Physical
+operation. Prepared source/font capture remains separate and unchanged.
+
+The closed source candidate is a layout-ready, non-Prepared vertical block at
+line-height 0 with exactly two actual empty inline-block SPAN occurrences and one
+intervening actual inline BR. Only discarded ASCII whitespace/comments may be
+omitted. The profile authenticates the actual source indices and emitted child
+indices, order, homogeneous frame, default inline alignment and break roles.
+Its required `verticalAlign: "baseline"` is the applicable HTML alignment
+authority on the containing paragraph and each actual occurrence. Raw wire
+styles and XML may omit the separate non-inherited `vertical-align` field
+when it has its semantic initial baseline value; every present value must
+agree. The computed certificate field itself remains required. Inherited
+font-family/font-size authority remains explicit and is not inferred from
+absence.
+Occurrences must be undisplaced: static positioning, or relative positioning
+with Auto or zero used insets. All-Auto relative insets use zero under
+[CSS2 relative positioning](../../../../../references/css2--visuren.html--3f334c530cf4.md#relative-positioning).
+Nonzero resolved displacement refuses this closed profile.
+Mixed typography supplies neutral atomic levels 0/1 from the actual LTR/RTL
+paragraph direction. Upright is admitted only with actual LTR direction; the
+separate used-direction projection needed for Upright+RTL is not inferred.
+Authored bidi/break/strut overrides and other content require separate proof.
+
+The first font must be the actual normal 400 Ahem face from the controlled base
+stylesheet: the 1,496-byte WOFF2 SHA256
+`e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c`.
+This is Ahem 1.1, not the Prepared 1.50 TTF resource. The adapter already checks the
+exact base resource; its one CSS FontFace is loaded in the asynchronous setup
+stage without constructing a replacement face. Capture retains that loaded
+object and checks the same unique FontFaceSet member on every variant.
+Missing, competing, replaced, unloaded or unsupported face/style/metric authority
+refuses. Repeated setup never reloads or substitutes a face. A transient competing
+face must actually be removed before pristine capture can resume.
+
+The analytic certificate is limited to actual 10px regular font metrics and the
+supported default Mixed/Upright Central reference and line-fit context. The
+certificate preserves actual computed `alignmentBaseline` as `auto` or
+`baseline`; it does not turn the SVG property token into a general baseline
+alias. Pinned Blink 79051446 keeps this raw CSSOM token, skips its SVG
+alignment switch for HTML, and applies actual HTML `vertical-align: baseline`
+while the inline owner selects Central for vertical Mixed/Upright. The
+original WOFF2 has UPEM 1000, hhea/OS2 ascent 800/descent −200/gap 0, with no BASE,
+vhea, vmtx, fvar or MVAR. Used Central has symmetric 5/5 sides. At line-height 0,
+half-leading −5/−5 yields the certified before 0/after 0 tuple for the paragraph and
+each actual BR. Zero line-height alone is never this proof. Unsupported font,
+dominant/alignment-baseline, line-fit/trim or occurrence overrides refuse before
+certificate issuance. This is a closed resource proof, not a generic font-table
+parser, font provider identity, glyph paragraph or rectangle-derived metric.
+
+Raw named-coordinate absence and used upright metrics remain distinct. Text's
+`baseline(VerticalX, Central)` may be unavailable while `upright_metrics`
+separately supplies used em sides at the nominal pen. Text's public SFNT/TTC
+metric input does not admit these WOFF2 bytes unchanged; the closed proof does
+not register the different TTF under a fictional shared identity. See the
+[actual font metric owner](../../../../surgeist-text/src/font/metrics.rs),
+[used upright adapter](../../../../surgeist-text/src/font/metrics/upright.rs)
+and [font provenance](fonts/PROVENANCE.md).
+
+The decoder and independent reader validate the complete certificate and every
+actual atomic/BR binding. The reader sets only that paragraph's intrinsic
+`InlineBaselineContext::Named(Central)` and uses the matching checked zero BR
+metrics. No synthetic Text occurrence or boundary is inserted. An asymmetric
+signed zero-height tuple cannot fit the existing checked InlineMetrics API and
+refuses rather than being clamped. Parent Grid alignment-reference selection is
+a separate owner; a named paragraph does not choose or relabel that reference.
+
+The existing qualification inventory records the expected six paragraph/BR
+certificates for each original column/vertical-row source. Its real-browser
+[loaded-font custody mode](../../../examples/qualify-root-context/README.md#loaded-font-custody)
+inserts a real competing FontFace from the same owned src, requires exact
+refusal, removes only that introduced face, and requires fresh pristine capture
+with the original loaded identity. Destructive stylesheet checks use a separate
+non-font declaration because detaching a stylesheet can replace its FontFace
+generation. Unit browser-host controls do not substitute for this real
+FontFaceSet qualification. Strict
+Native errors and original XML observations remain visible; named metrics do not
+certify complete row geometry or whole corpus conformance.
+
 ## Authentic prepared-text input
 
-Version 2 adds a closed original-source profile, independently validated by the
-Rust generator and the default XML reader. The reader does not import the
+The original-source profile introduced in version 2 is independently validated
+by the Rust generator and the default XML reader. The reader does not import the
 generator's wire types. `data-surgeist-prepared-text="ahem-ttf-v1"` opts a real
 formatting container into capture. Its `<prepared-paragraph capture="…"/>`
 contains JSON, escaped as an XML attribute; source strings are arrays of exact
@@ -178,21 +524,22 @@ returns a **JSON string**, whose object has exactly these five required fields:
 
 | Field | Type | Measurement state / case suffix |
 | --- | --- | --- |
-| `schemaVersion` | Integer `2` | Version of this measurement contract |
+| `schemaVersion` | Integer `4` | Version of this measurement contract |
 | `borderBoxLtrData` | Node object | `border-box ltr` / `border_box_ltr` |
 | `contentBoxLtrData` | Node object | `content-box ltr` / `content_box_ltr` |
 | `borderBoxRtlData` | Node object | `border-box rtl` / `border_box_rtl` |
 | `contentBoxRtlData` | Node object | `content-box rtl` / `content_box_rtl` |
 
 Measurements occur in the table's order by changing `document.body.className`
-and describing the same `#test-root` each time. The version-2 adapter explicitly loads the pinned face before measurement; it
-does not add a second document or derive source inputs from measurements. A missing root
+and describing the same `#test-root` each time. For the genuine Prepared profile,
+the adapter explicitly loads its pinned face before measurement. It adds no
+second document and derives no source inputs from measurements. A missing root
 returns all four variants as `layoutInput: "unsupported"` nodes with
 `unsupportedReason: "Unsupported missing #test-root fixture root"`; it performs
 no measurements or body-class changes.
 
 The helper is injected only if `getTestData` is missing. A fixture's preloaded
-helper remains in effect and must implement version 2. Unversioned and unknown
+helper remains in effect and must implement version 4. Unversioned and unknown
 versions are errors; there is no production legacy decoder or automatic helper
 replacement. Preservation tests explicitly transform captured old measurements
 into the historical version-1 wire shape offline. That test harness is not part
@@ -238,6 +585,7 @@ separate semantic value. Explicit empty observations are preserved.
 | `layoutInput` | Required explicit tag: `box`, `prepared-text`, `inline-text` (historical schema only), `inline-boundary`, or `unsupported`. No node kind is inferred from a missing tag. |
 | `unsupportedReason` | Optional classification on a measured node; required by the reason-only `unsupported` tag. Classification uses the first reason after wire validation. |
 | `children` | Required ordered array on supported nodes; `[]` means no children. Unsupported reason-only nodes omit it. |
+| `worldRoundedLayout` | Required on every box; absent on non-box alternatives. Complete finite x/y/width/height, with optional paired scroll/client extents; retained only as separate world-phase diagnostics. |
 | Optional `style` fields | Omission means no explicit fixture declaration. XML default-value omission remains a serialization rule; the decoder does not fabricate an observed value. |
 | `style.inlineMetrics` | Optional numeric object with required `baseline` and `lineHeight`. Omit the object when metrics are absent. Empty strings, individual metric fields, and null are invalid. |
 | `size`, `minSize`, `maxSize`, `gap`, edge groups | Optional structured dimensions; missing axes or edges remain absent. The helper omits an entire group when none of its entries is present. |
@@ -246,6 +594,7 @@ separate semantic value. Explicit empty observations are preserved.
 | `shapeBands` | When present, a nonempty ordered table. Each query has required `bandMinimum` and `bandMaximum`, and optionally `interval: { minimum, maximum }`. Both interval endpoints are required when the interval exists. Flat endpoints and null are invalid. |
 | `inlineBoundary` | A `start` or `end` descriptor. A start has either no metrics or both `baseline` and `lineHeight`; an end has no metrics. Boundaries have no layout observation or child payload. |
 | `replacementInlineExtent` | Present only with `followingBreak: "allowed-with-replacement"`, where it is required. Other break kinds cannot carry replacement data. |
+| Grid reference profile | Every supported source-qualified root requires `gridAlignmentProfile` profile 1 and its complete owner paths, including an explicit empty list. `gridAlignmentReference` is a separate own-Grid typography record, never a paragraph strut. |
 | Layout-ready marker fields | When present, `layoutReadyInlineRoot` and `layoutReadyAnonymousGridTextWrapper` are exactly `true`. Absence means no marker. |
 
 An ordinary box uses geometry observations and may include explicit fragments.
@@ -263,13 +612,11 @@ refers to an actual box child. It cannot use a text replacement break. Explicit
 line-control participation is `forced-break` on an inline `br`; a block `br`
 remains a box.
 
-The supported root requires an explicit `useRounding` boolean and a viewport
-with width/height constraints and a required `rootContext`. Its context is `root`
-or `flex-item`; only a flex-item context includes parent writing mode, parent
-direction, and a finite nonnegative host inline size. Child viewport data does
-not change the root's context.
-Viewport dimensions are exactly `px`, `min-content`, or `max-content`; a supported
-pixel constraint must be nonnegative.
+The supported root requires an explicit `useRounding` boolean and the closed
+version-4 `viewport.rootContext` described above. Child viewport data cannot
+replace root authority. Historical width/height and root/flex-item tags remain
+opaque archival metadata; neither intrinsic keywords nor observed host extents
+are converted into a new operation.
 
 Dimensions use an explicit `unit`: numeric `px`, `percent`, or `fraction`;
 symbolic `calc` or `sizing` strings; or keyword-only `auto`, `none`, `content`,
@@ -315,12 +662,17 @@ line feeds, carriage returns, and legal Unicode remain unchanged; forbidden
 control characters fail at their original node and field location. This check
 does not parse symbolic sizing expressions or other opaque style strings.
 
-Only ordinary layout geometry crosses the existing `f32` formatting boundary,
-after representability has been checked. Segment metrics, fragments, Range rectangles,
+Only selected ordinary layout geometry crosses the existing `f32` formatting
+boundary, after representability has been checked. Segment metrics, fragments,
+Range rectangles,
 and dimensions retain their existing `f64` formatting. The root's `useRounding`
 chooses smart-rounded or unrounded geometry for the tree. Root `x` and `y` write
 as zero; child geometry stays relative to its parent. Scroll extents use the
 existing nonnegative difference from naive client measurements.
+
+World-rounded diagnostics retain f64 precision independently of selected ordinary
+geometry formatting. They serialize only under the separate `diagnostics` tree,
+with checked node paths; they never enter Native sizing or comparison operands.
 
 Source segment IDs retain their helper-provided values. Atomic placeholder
 indices count lowered input children, including inline boundaries. Expectation
@@ -330,7 +682,8 @@ containing-root line registry. No protocol step renumbers these identities.
 
 XML attribute order, default-value omission, whitespace, escaping, text trimming,
 and formatting are preservation contracts. The fixture reader in `support.rs`
-remains an independent consumer: it parses the generated XML and compares layout
-results without importing these private measurement types. Full-corpus changes
-must preserve XML bytes, accounting, and each fixture's parity outcome unless a
-separate browser-expectation change is explicitly intended.
+remains an independent consumer: it parses generated XML and compares layout
+without importing private measurement types. Versioned recapture retains original
+XML bytes and exact raw comparisons in history. Fresh metadata/diagnostics come
+from authenticated current inputs and are not patched into old artifacts.
+Accounting and each fixture's comparison outcome remain independently visible.

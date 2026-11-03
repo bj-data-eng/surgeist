@@ -381,7 +381,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
     fn try_compute(
         &self,
         inventory: l::WrappingInput<u32>,
-        available: l::AvailableOf<S>,
+        available: surgeist_layout::SizingRequestOf<S>,
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
         let flow = l::LayoutFlowInput::try_new(
             &self.tree,
@@ -402,9 +402,19 @@ impl<S: l::LayoutScalar> Fixture<S> {
             vec![self.capture.captured_paragraph(0).unwrap()]
         );
         assert!(flow.paragraphs()[0].nodes.is_empty());
-        let request =
-            l::LayoutRootRequestOf::viewport(l::Size::new(available, l::AvailableOf::MAX_CONTENT))
-                .unwrap();
+        let request = {
+            let sizing_request = available;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         l::compute_layout_with_flow(&flow, 0, request)
     }
 }
@@ -538,9 +548,27 @@ fn semantic_scheduling<S: l::LayoutScalar>(direction: l::Direction) {
     // The root's actual specified width is30 in every request. These vary the
     // public request mode, not the independently specified root width.
     for available in [
-        l::AvailableOf::definite(S::from_f64(30.0)),
-        l::AvailableOf::MIN_CONTENT,
-        l::AvailableOf::MAX_CONTENT,
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(None, None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::MinContent,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(None, None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::MaxContent,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
     ] {
         let batch = fixture.try_compute(fixture.inventory(), available)
             .expect("genuine node-free computed-Force paragraph must admit and execute in its unique empty-container gap");
@@ -569,7 +597,16 @@ fn semantic_scheduling<S: l::LayoutScalar>(direction: l::Direction) {
         _ => panic!("actual captured T row required"),
     }
     let error = fixture
-        .try_compute(missing, l::AvailableOf::definite(S::from_f64(30.0)))
+        .try_compute(
+            missing,
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        )
         .expect_err("phantom receiver must still demand the actual T metric witness");
     assert!(
         matches!(
@@ -587,9 +624,27 @@ fn neutral_metadata<S: l::LayoutScalar>(direction: l::Direction) {
     let fixture = Fixture::<S>::new(direction, false);
     fixture.inventory_facts(false);
     for available in [
-        l::AvailableOf::definite(S::from_f64(30.0)),
-        l::AvailableOf::MIN_CONTENT,
-        l::AvailableOf::MAX_CONTENT,
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(None, None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::MinContent,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
+        crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(None, None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::MaxContent,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
     ] {
         let batch = fixture.try_compute(fixture.inventory(), available).expect(
             "strict zero-participation captured metadata retains its actual container association",
@@ -963,11 +1018,25 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             Vec::new(),
         )
         .unwrap();
-        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(30.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         l::compute_layout_with_flow(&flow, 0, request).unwrap()
     }
 
@@ -1550,11 +1619,25 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             Vec::new(),
         )
         .unwrap();
-        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(30.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         l::compute_layout_with_flow(&flow, 0, request).unwrap()
     }
     fn assert_output(&self, batch: &l::CompletedLayoutBatchOf<u32, S>, direction: l::Direction) {
@@ -2260,14 +2343,26 @@ fn distinct_cut_sequence<S: l::LayoutScalar>(direction: l::Direction) {
         let batch = fixture
             .try_compute(
                 fixture.inventory(),
-                l::AvailableOf::definite(S::from_f64(30.0)),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                ),
             )
             .unwrap();
         fixture.assert_two_cut_output(&batch);
         let replay = fixture
             .try_compute(
                 fixture.inventory(),
-                l::AvailableOf::definite(S::from_f64(30.0)),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(Some(S::from_f64(30.0)), None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                ),
             )
             .unwrap();
         fixture.assert_two_cut_output(&replay);

@@ -302,11 +302,25 @@ impl<S: l::LayoutScalar> Fixture<S> {
             Vec::new(),
         )
         .unwrap();
-        let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-            l::AvailableOf::definite(S::from_f64(60.0)),
-            l::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(&self.tree, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        };
         l::compute_layout_with_flow(&flow, 0, request).unwrap()
     }
     fn assert_lines(
@@ -582,11 +596,25 @@ fn compute_changed_wrap_style<S: l::LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request = l::LayoutRootRequestOf::viewport(l::Size::new(
-        l::AvailableOf::definite(S::from_f64(60.0)),
-        l::AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let sizing_request = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    };
     let batch = l::compute_layout_with_flow_invalidated(&flow, 0, request, &[0]).unwrap();
     assert!(batch.invalidated_nodes().contains(&0));
     batch

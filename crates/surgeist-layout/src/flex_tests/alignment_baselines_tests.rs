@@ -77,8 +77,22 @@ fn fri07_c01_cross_auto_margin_case<S: LayoutScalar>(
     let batch = compute_layout(
         &tree,
         1,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(200.0))))
-            .expect("cross auto-margin viewport is finite"),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(1).writing_mode,
+                tree.node_input(1).direction,
+            ),
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap()),
+            SizingOperation::Normal,
+        ))),
     )
     .expect("cross auto-margin layout succeeds");
 
@@ -338,8 +352,19 @@ fn fri07_c01_cross_auto_margin_wrap_reversal_only_reverses_line_progression() {
 
 fn assert_fri07_c01_cross_auto_margin_controls<S: LayoutScalar>() {
     let viewport = || {
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(S::from_f64(200.0))))
-            .expect("cross auto-margin control viewport is finite")
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap()),
+            SizingOperation::Normal,
+        )))
     };
     let main_auto_tree = PublicLayoutTreeOf::new()
         .children(1, [2])
@@ -486,8 +511,15 @@ fn assert_fri07_c02_collapse_round_baseline_line_size_is_strut<S: LayoutScalar>(
             ),
         ]),
     };
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("baseline collapse layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("baseline collapse layout succeeds");
 
     assert_eq!(
         fri07_c02_collapse_round_output(&batch, 1).size.height,
@@ -542,8 +574,15 @@ fn assert_fri07_c02_collapsed_output_baseline_is_private<S: LayoutScalar>() {
             ),
         ]),
     };
-    let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request())
-        .expect("baseline-bearing collapsed layout succeeds");
+    let batch = compute_layout(
+        &tree,
+        1,
+        fri07_c02_collapse_round_request(FlowAxes::new(
+            tree.node_input(1).writing_mode,
+            tree.node_input(1).direction,
+        )),
+    )
+    .expect("baseline-bearing collapsed layout succeeds");
 
     assert_eq!(
         fri07_c02_collapse_round_output(&batch, 2),
@@ -1472,7 +1511,20 @@ fn flex_row_justifies_items_on_the_main_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1525,7 +1577,20 @@ fn flex_row_aligns_items_on_the_cross_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1581,7 +1646,20 @@ fn flex_row_reports_first_child_baseline() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1651,9 +1729,26 @@ where
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(
-                AvailableOf::definite(S::from_f64(200.0)),
-                AvailableOf::definite(S::from_f64(160.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(160.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )
@@ -1745,9 +1840,26 @@ where
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(
-                AvailableOf::definite(S::from_f64(200.0)),
-                AvailableOf::definite(S::from_f64(160.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(160.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )
@@ -1849,9 +1961,21 @@ fn assert_logical_flex_sizing_orthogonal_refreshes_mapped_main<S: LayoutScalar>(
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(
-                AvailableOf::MAX_CONTENT,
-                AvailableOf::definite(S::from_f64(container_main)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(container_main)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )
@@ -1987,9 +2111,26 @@ fn assert_logical_flex_final_size_selector_uses_vertical_row_main_axis<S: Layout
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(
-                AvailableOf::definite(S::from_f64(200.0)),
-                AvailableOf::definite(S::from_f64(100.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(200.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )
@@ -2102,7 +2243,20 @@ fn flex_row_aligns_baseline_items_by_child_baselines() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2156,7 +2310,20 @@ fn flex_row_stretches_auto_cross_size_items() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2219,7 +2386,20 @@ fn flex_row_aligns_wrapped_lines_with_align_content() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2279,7 +2459,20 @@ fn flex_column_wrap_with_one_line_honors_align_content_end() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2339,7 +2532,20 @@ fn flex_row_stretches_wrapped_lines_with_align_content_stretch() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2400,7 +2606,20 @@ fn flex_row_stretched_wrapped_line_stretches_auto_cross_size_item() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2466,7 +2685,20 @@ fn flex_row_wrap_reverse_places_lines_from_the_reversed_cross_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2519,7 +2751,20 @@ fn flex_row_wrap_reverse_flips_flex_start_item_alignment() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2577,7 +2822,20 @@ fn flex_row_wrap_reverse_respects_reversed_align_content() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2635,7 +2893,20 @@ fn flex_row_distributes_positive_space_to_main_axis_auto_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2693,7 +2964,20 @@ fn flex_row_distributes_cross_axis_auto_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2760,7 +3044,20 @@ fn flex_column_rtl_aligns_cross_start_to_the_right_edge() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2819,7 +3116,20 @@ fn flex_column_rtl_cross_axis_auto_margin_uses_rtl_edges() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();

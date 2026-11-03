@@ -41,7 +41,22 @@ fn assert_fri06_mr02_scroll_padding_leaf<S: LayoutScalar>() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            size.map(AvailableOf::definite),
+            crate::SizingRequestOf::new(
+                size.map(|value| {
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(value)
+                                .expect("fixture physical extent is finite and nonnegative"),
+                        ),
+                        crate::SizingOperation::Normal,
+                    )
+                }),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .expect("test leaf input is valid");
         let geometry = compute_leaf(input, &style, |_measurement| Ok::<_, ()>(size))
@@ -98,7 +113,17 @@ fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: L
                 containing_flow,
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         )
         .expect("valid direct leaf input");
 
@@ -156,7 +181,17 @@ fn parent_context_gates_measured_leaf_boundary_collapse_in_both_scalar_lanes() {
                 Size::NONE,
                 Size::NONE,
                 ContainingLayoutContext::new(flow_axes, parent_context),
-                Size::splat(AvailableOf::MAX_CONTENT),
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Unknown,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             )
             .expect("valid direct leaf input");
             let output = compute_leaf(input, &style, |_measurement| Ok::<_, ()>(Size::ZERO))
@@ -192,9 +227,28 @@ fn assert_leaf_uses_containing_flow_for_percentage_edges<S: LayoutScalar>() {
             crate::geometry::FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(
-            AvailableOf::definite(S::from_f64(5_000.0)),
-            AvailableOf::definite(S::from_f64(8_000.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(5_000.0))
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(8_000.0))
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
         ),
     )
     .expect("valid direct leaf input");
@@ -207,10 +261,22 @@ fn assert_leaf_uses_containing_flow_for_percentage_edges<S: LayoutScalar>() {
 
     compute_leaf(input, &style, |measurement| {
         assert_eq!(
-            measurement.available_content_size(),
+            measurement.content_sizing_request().axes(),
             Size::new(
-                MeasurementAvailableOf::definite(S::from_f64(1_400.0)).unwrap(),
-                MeasurementAvailableOf::definite(S::from_f64(4_400.0)).unwrap(),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(1_400.0))
+                            .expect("fixture physical extent is finite and nonnegative")
+                    ),
+                    crate::SizingOperation::Normal
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(4_400.0))
+                            .expect("fixture physical extent is finite and nonnegative")
+                    ),
+                    crate::SizingOperation::Normal
+                ),
             )
         );
         Ok::<_, ()>(Size::ZERO)
@@ -240,7 +306,23 @@ fn leaf_layout_returns_known_size_without_calling_measure() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let output = compute_leaf(input, &NodeInput::default(), |_input| -> Result<Size, ()> {
@@ -263,16 +345,41 @@ fn leaf_layout_uses_measure_for_auto_dimensions() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(300.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let output = compute_leaf(input, &NodeInput::default(), |measure_input| {
         let known = measure_input.known_content_size();
-        let available = measure_input.available_content_size();
+        let available = measure_input.content_sizing_request().axes();
         assert_eq!(known, Size::new(None, None));
         assert_eq!(
             available.width,
-            MeasurementAvailable::definite(300.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(300.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         Ok::<_, ()>(Size::new(90.0, 18.0))
     })
@@ -294,7 +401,23 @@ fn leaf_layout_adds_padding_and_border_to_measured_outer_size() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let node_input = NodeInput {
         padding: Edges::all(Length::px(3.0)),
@@ -323,7 +446,29 @@ fn leaf_layout_reserves_scrollbar_gutter_for_scroll_overflow() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(100.0), Available::definite(50.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(50.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let node_input = NodeInput {
         overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
@@ -334,14 +479,26 @@ fn leaf_layout_reserves_scrollbar_gutter_for_scroll_overflow() {
     };
 
     let output = compute_leaf(input, &node_input, |measure_input| {
-        let available = measure_input.available_content_size();
+        let available = measure_input.content_sizing_request().axes();
         assert_eq!(
             available.width,
-            MeasurementAvailable::definite(79.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(79.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         assert_eq!(
             available.height,
-            MeasurementAvailable::definite(44.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(44.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         Ok::<_, ()>(Size::new(40.0, 12.0))
     })
@@ -363,7 +520,29 @@ fn leaf_measurement_available_size_floors_below_insets_at_zero() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(8.0), Available::definite(6.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(8.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(6.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let node_input = NodeInput {
         overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
@@ -374,14 +553,26 @@ fn leaf_measurement_available_size_floors_below_insets_at_zero() {
     };
 
     compute_leaf(input, &node_input, |measure_input| {
-        let available = measure_input.available_content_size();
+        let available = measure_input.content_sizing_request().axes();
         assert_eq!(
             available.width,
-            MeasurementAvailable::definite(0.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(0.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         assert_eq!(
             available.height,
-            MeasurementAvailable::definite(0.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(0.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         Ok::<_, ()>(Size::ZERO)
     })
@@ -400,7 +591,23 @@ fn leaf_measurement_known_size_is_content_space_and_floored() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let node_input = NodeInput {
         padding: Edges::all(Length::px(3.0)),
@@ -430,7 +637,23 @@ fn leaf_measurement_provider_error_is_preserved() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let error = compute_leaf(input, &NodeInput::default(), |_input| {
@@ -458,7 +681,23 @@ fn leaf_measurement_rejects_negative_provider_width() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let error = compute_leaf(input, &NodeInput::default(), |_input| {
@@ -491,7 +730,23 @@ fn leaf_measurement_rejects_nan_provider_height() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let error = compute_leaf(input, &NodeInput::default(), |_input| {
@@ -524,7 +779,29 @@ fn leaf_layout_preserves_physical_end_scrollbar_gutter_for_rtl() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(100.0), Available::definite(50.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(50.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let node_input = NodeInput {
         direction: Direction::Rtl,
@@ -536,14 +813,26 @@ fn leaf_layout_preserves_physical_end_scrollbar_gutter_for_rtl() {
     };
 
     let output = compute_leaf(input, &node_input, |measure_input| {
-        let available = measure_input.available_content_size();
+        let available = measure_input.content_sizing_request().axes();
         assert_eq!(
             available.width,
-            MeasurementAvailable::definite(79.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(79.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         assert_eq!(
             available.height,
-            MeasurementAvailable::definite(44.0).unwrap()
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(44.0)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         Ok::<_, ()>(Size::new(40.0, 12.0))
     })
@@ -565,7 +854,26 @@ fn leaf_uses_validated_aspect_ratio() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(Available::definite(120.0), Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(120.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let style = NodeInput {
         size: Size::new(PreferredSize::px(60.0), PreferredSize::AUTO),
@@ -590,7 +898,26 @@ fn f64_leaf_layout_preserves_fractional_precision() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::definite(123.125), AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(123.125)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let style = NodeInputOf::<f64> {
         padding: Edges::all(LengthOf::px(0.125)),
@@ -600,11 +927,17 @@ fn f64_leaf_layout_preserves_fractional_precision() {
 
     let output = compute_leaf(input, &style, |measure_input| {
         let known = measure_input.known_content_size();
-        let available = measure_input.available_content_size();
+        let available = measure_input.content_sizing_request().axes();
         assert_eq!(known, Size::NONE);
         assert_eq!(
             available.width,
-            MeasurementAvailableOf::<f64>::definite(122.75).unwrap()
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(122.75)
+                        .expect("fixture physical extent is finite and nonnegative")
+                ),
+                crate::SizingOperation::Normal
+            )
         );
         Ok::<_, ()>(Size::new(16_777_217.25_f64, 7.75))
     })
@@ -626,7 +959,23 @@ fn f64_leaf_measurement_rejects_infinite_provider_height() {
             crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
             crate::ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let error = compute_leaf(input, &NodeInputOf::<f64>::default(), |_input| {
@@ -703,7 +1052,29 @@ fn fri04_c03_leaf_root_leaf_consumes_nested_sizes_in_compute_and_layout_modes() 
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::definite(80.0)),
+            crate::SizingRequestOf::new(
+                Size::new(
+                    crate::AxisSizingRequest::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(100.0)
+                                .expect("fixture physical extent is finite and nonnegative"),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    crate::AxisSizingRequest::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(80.0)
+                                .expect("fixture physical extent is finite and nonnegative"),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                ),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         );
 
         let output = compute_leaf(input, &style, |_input| Ok::<_, ()>(Size::new(1.0, 1.0)))
@@ -740,7 +1111,17 @@ fn fri04_c03_leaf_root_leaf_preserves_missing_basis_by_run_mode() {
         Size::NONE,
         Size::NONE,
         context,
-        Size::splat(Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let output = compute_leaf(compute_size, &style, |_input| {
         Ok::<_, ()>(Size::new(30.0, 5.0))
@@ -755,7 +1136,17 @@ fn fri04_c03_leaf_root_leaf_preserves_missing_basis_by_run_mode() {
         Size::NONE,
         Size::NONE,
         context,
-        Size::splat(Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let error = compute_leaf(layout, &style, |_input| Ok::<_, ()>(Size::new(30.0, 5.0)))
         .expect_err("layout requires the missing percentage basis");
@@ -778,7 +1169,29 @@ fn fri04_c04_leaf_block_positioned_leaf_calc_size_any_and_intrinsic_availability
         Size::NONE,
         Size::new(Some(200.0), Some(100.0)),
         context,
-        Size::new(Available::definite(150.0), Available::definite(90.0)),
+        crate::SizingRequestOf::new(
+            Size::new(
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(150.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(90.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let style = NodeInput {
         size: Size::new(
@@ -795,8 +1208,11 @@ fn fri04_c04_leaf_block_positioned_leaf_calc_size_any_and_intrinsic_availability
 
     let output = compute_leaf(input, &style, |measurement| {
         assert_eq!(
-            measurement.available_content_size().width,
-            MeasurementAvailable::MIN_CONTENT
+            measurement.content_sizing_request().axes().width,
+            crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(150.0).unwrap()),
+                crate::SizingOperation::MinContent
+            )
         );
         Ok::<_, ()>(Size::new(32.0, 12.0))
     })
@@ -817,7 +1233,20 @@ fn fri04_c04_leaf_block_positioned_leaf_reports_exact_unsupported_payload() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let style = NodeInput {
         min_size: Size::new(MinSize::AUTO, MinSize::STRETCH),
@@ -858,7 +1287,20 @@ fn fri04_c04_leaf_block_positioned_assert_leaf_unsupported(
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(Available::definite(100.0)),
+            crate::SizingRequestOf::new(
+                Size::splat(crate::AxisSizingRequest::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                )),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
         &style,
         |_measurement| -> Result<Size, ()> { panic!("unsupported sizing must precede measure") },
@@ -1091,7 +1533,17 @@ fn fri04_c04_leaf_block_positioned_missing_full_percentage_preserves_property_fa
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(Available::MAX_CONTENT),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
 
     let output = compute_leaf(input, &style, |_measurement| {
@@ -1126,7 +1578,20 @@ fn fri04_c04_leaf_block_positioned_calc_size_invalid_numeric_maps_exactly() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let error = compute_leaf(input, &style, |_measurement| Ok::<_, ()>(Size::ZERO))
         .expect_err("overflowing calc-size must fail");
@@ -1146,16 +1611,32 @@ fn fri05_c03_leaf_layout_input(size: Size<f32>) -> ComputeInput {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        size.map(Available::definite),
+        crate::SizingRequestOf::new(
+            size.map(|value| {
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(value)
+                            .expect("fixture physical extent is finite and nonnegative"),
+                    ),
+                    crate::SizingOperation::Normal,
+                )
+            }),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .expect("FRI-05 leaf input is valid")
 }
 
 fn fri05_c03_leaf_measurement_size(input: LeafMeasureInput) -> Size<f32> {
     assert_eq!(input.known_content_size(), Size::NONE);
-    input.available_content_size().map(|available| {
+    input.content_sizing_request().axes().map(|available| {
         available
-            .definite_value()
+            .space()
+            .definite_size()
             .expect("FRI-05 test availability is definite")
             .get()
     })
@@ -1543,7 +2024,20 @@ fn fri05_c03_leaf_auto_compute_size_keeps_zero_call_fast_path_and_no_geometry() 
         Size::splat(Some(100.0)),
         Size::splat(Some(100.0)),
         context,
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let style = NodeInput {
         display: Display::Block,
@@ -1568,7 +2062,20 @@ fn fri05_c03_leaf_auto_compute_size_keeps_zero_call_fast_path_and_no_geometry() 
         Size::NONE,
         Size::splat(Some(100.0)),
         context,
-        Size::splat(Available::definite(100.0)),
+        crate::SizingRequestOf::new(
+            Size::splat(crate::AxisSizingRequest::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(100.0)
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            )),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     );
     let measured_style = NodeInput {
         display: Display::Block,
@@ -1689,7 +2196,23 @@ fn fri05_c03_integration_padding_seed_direct_measured_leaf_retains_gutter_area_i
                     Size::NONE,
                     size.map(Some),
                     ContainingLayoutContext::new(flow_axes, ParentFormattingContext::NoParent),
-                    size.map(AvailableOf::definite),
+                    crate::SizingRequestOf::new(
+                        size.map(|value| {
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Definite(
+                                    crate::NonNegativeFiniteOf::new(value).expect(
+                                        "fixture physical extent is finite and nonnegative",
+                                    ),
+                                ),
+                                crate::SizingOperation::Normal,
+                            )
+                        }),
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Unknown,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        ),
+                    ),
                 )
                 .expect("FRI-05 direct measured-leaf input is valid");
                 let output = compute_leaf(input, &style, |_measurement| {

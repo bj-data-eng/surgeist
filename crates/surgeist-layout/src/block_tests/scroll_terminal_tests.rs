@@ -13,7 +13,22 @@ fn run<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatchOf<
     compute_layout(
         tree,
         0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            Size::splat(None),
+            OrthogonalFallbackOf::new(
+                Size::splat(None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal,
+        ))),
     )
     .unwrap()
 }
@@ -573,7 +588,22 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
     let actual = compute_layout_with_flow(
         &capture,
         0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            Size::splat(None),
+            OrthogonalFallbackOf::new(
+                Size::splat(None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::Normal,
+        ))),
     )
     .unwrap();
     assert_box(&actual, 0, (0.0, 0.0), (10.0, 4.0));

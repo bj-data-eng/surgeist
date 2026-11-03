@@ -13,8 +13,8 @@ use crate::layout_math::{
 use crate::scroll::ScrollContributionAccumulatorOf;
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
-    AvailableOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext, Direction, Edges,
-    LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
+    AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
+    Edges, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
     RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
 
@@ -81,10 +81,13 @@ where
             - constants.scrollbar_gutter.vertical_sum())
         .max(S::ZERO),
     );
-    let available = Size::new(
-        AvailableOf::<S>::definite(area_size.width),
-        AvailableOf::<S>::definite(area_size.height),
-    );
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        container_node,
+        area_size.map(|value| {
+            crate::layout_math::checked_available_space(value)
+                .map(|space| AxisSizingRequestOf::new(space, crate::SizingOperation::Normal))
+        }),
+    )?;
 
     for (source_index, child) in children.iter().copied().enumerate() {
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
@@ -210,7 +213,15 @@ where
                     constants.flow_axes,
                     ParentFormattingContext::BlockFlow,
                 ),
-                available,
+                constants
+                    .sizing_request
+                    .with_axes(available)
+                    .with_orthogonal_fallback(
+                        constants.sizing_request.orthogonal_fallback().for_child(
+                            constants.positioned_fallback_limits,
+                            crate::ScrollportFallbackChangeOf::Preserve,
+                        ),
+                    ),
             )
             .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )?;

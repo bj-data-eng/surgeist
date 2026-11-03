@@ -2,6 +2,9 @@
 
 //! Public native composition of the existing whitespace operations.
 
+#[path = "support/native_request.rs"]
+mod native_request;
+
 use std::{convert::Infallible, sync::Arc};
 use surgeist_layout as layout;
 use surgeist_text as text;
@@ -380,7 +383,7 @@ fn bind(prepared: text::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fixture {
     }
 }
 
-fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayoutBatch<usize> {
+fn compute(fixture: &Fixture, width: layout::SizingRequest) -> layout::CompletedLayoutBatch<usize> {
     let capture = layout::LayoutFlowInput::try_new(
         &fixture.tree,
         0,
@@ -394,15 +397,19 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
         Vec::new(),
     )
     .unwrap();
-    layout::compute_layout_with_flow(
-        &capture,
-        0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            width,
-            layout::Available::MAX_CONTENT,
-        ))
-        .unwrap(),
-    )
+    layout::compute_layout_with_flow(&capture, 0, {
+        let sizing_request = width;
+        layout::LayoutRootRequest::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(&fixture.tree, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .unwrap()
 }
 
@@ -452,7 +459,16 @@ fn preserve_spaces_conversion_soft_hanging_and_intrinsics_survive_bidi_placement
             processed.processed_source().processed_text().code_units(),
             expected.encode_utf16().collect::<Vec<_>>()
         );
-        let batch = compute(&fixture, layout::Available::definite(15.0));
+        let batch = compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(Some(15.0), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        );
         source_and_font(&fixture, &batch, value);
         let lines = finalized(&batch);
         assert_eq!(lines.len(), 2);
@@ -494,11 +510,29 @@ fn preserve_spaces_conversion_soft_hanging_and_intrinsics_survive_bidi_placement
             .collect();
         assert_eq!(first, [(0, first_x)]);
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MIN_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MinContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             10.0
         );
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MAX_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MaxContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             40.0
         );
     }
@@ -511,7 +545,16 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
         case.wrap = wrap;
         let fixture = fixture(case);
         for width in [15.0, 40.0] {
-            let batch = compute(&fixture, layout::Available::definite(width));
+            let batch = compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(Some(width), None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                ),
+            );
             source_and_font(&fixture, &batch, "X\t");
             let lines = finalized(&batch);
             assert_eq!(lines.len(), 1);
@@ -554,11 +597,29 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
             assert_eq!(pieces, [(10.0, 20.0)]);
         }
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MIN_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MinContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             if wrap == text::Wrap::Word { 10.0 } else { 20.0 }
         );
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MAX_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MaxContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             20.0
         );
     }
@@ -570,7 +631,16 @@ fn preserve_spaces_converted_tab_before_a_real_forced_control_hangs_conditionall
     case.forced_at = Some(2);
     let fixture = fixture(case);
     for (width, hanging) in [(15.0, 5.0), (40.0, 0.0)] {
-        let batch = compute(&fixture, layout::Available::definite(width));
+        let batch = compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(Some(width), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        );
         source_and_font(&fixture, &batch, "X\tY");
         let lines = finalized(&batch);
         assert_eq!(lines.len(), 2);
@@ -586,11 +656,29 @@ fn preserve_spaces_converted_tab_before_a_real_forced_control_hangs_conditionall
         assert_eq!(lines[1].feedback().advance, 10.0);
     }
     assert_eq!(
-        root_width(&compute(&fixture, layout::Available::MIN_CONTENT)),
+        root_width(&compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MinContent,
+                    surgeist_layout::SizingOperation::Normal
+                )
+            )
+        )),
         10.0
     );
     assert_eq!(
-        root_width(&compute(&fixture, layout::Available::MAX_CONTENT)),
+        root_width(&compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MaxContent,
+                    surgeist_layout::SizingOperation::Normal
+                )
+            )
+        )),
         20.0
     );
 }
@@ -639,7 +727,16 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
                 .count(),
             usize::from(ending == text::LineEnd::Forced)
         );
-        let batch = compute(&fixture, layout::Available::definite(10.0));
+        let batch = compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(Some(10.0), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        );
         source_and_font(&fixture, &batch, value);
         let lines = finalized(&batch);
         assert_eq!(
@@ -652,7 +749,16 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
         assert_eq!(lines[0].selected_line().request().context.end, ending);
         assert!(lines.iter().all(|line| line.feedback().hanging_end == 0.0));
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MIN_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MinContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             if ending == text::LineEnd::Paragraph {
                 20.0
             } else {
@@ -660,7 +766,16 @@ fn discard_removes_document_whitespace_breaks_but_keeps_independent_zwsp_and_for
             }
         );
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MAX_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MaxContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             if ending == text::LineEnd::Forced {
                 10.0
             } else {
@@ -687,7 +802,16 @@ fn collapse_removes_only_trailing_ogham_and_retains_its_original_range() {
             (text::Range::new(2, 3), 10.0)
         ],
     );
-    let batch = compute(&fixture, layout::Available::definite(40.0));
+    let batch = compute(
+        &fixture,
+        crate::native_request::sizing(
+            surgeist_layout::Size::new(Some(40.0), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        ),
+    );
     source_and_font(&fixture, &batch, "\u{1680}X\u{1680}");
     let lines = finalized(&batch);
     assert_eq!(lines.len(), 1);
@@ -736,7 +860,16 @@ fn contextual_trim_precedes_preserve_spaces_conversion_and_full_width_presentati
                 .code_units(),
             processed.encode_utf16().collect::<Vec<_>>()
         );
-        let batch = compute(&fixture, layout::Available::definite(100.0));
+        let batch = compute(
+            &fixture,
+            crate::native_request::sizing(
+                surgeist_layout::Size::new(Some(100.0), None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        );
         source_and_font(&fixture, &batch, "\tX\t");
         let lines = finalized(&batch);
         assert_eq!(lines.len(), 1);
@@ -759,11 +892,29 @@ fn contextual_trim_precedes_preserve_spaces_conversion_and_full_width_presentati
             }
         );
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MIN_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MinContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             minimum
         );
         assert_eq!(
-            root_width(&compute(&fixture, layout::Available::MAX_CONTENT)),
+            root_width(&compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::MaxContent,
+                        surgeist_layout::SizingOperation::Normal
+                    )
+                )
+            )),
             raw as f32
         );
     }
@@ -905,7 +1056,16 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                 .map(|offer| offer.boundary().view().source_after().get())
                 .collect();
             let fixture = bind(prepared, false, bytes);
-            let batch = compute(&fixture, layout::Available::definite(10.0));
+            let batch = compute(
+                &fixture,
+                crate::native_request::sizing(
+                    surgeist_layout::Size::new(Some(10.0), None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                ),
+            );
             source_and_font(&fixture, &batch, "X  Y");
             let advances: Vec<_> = finalized(&batch)
                 .iter()

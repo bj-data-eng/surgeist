@@ -17,9 +17,21 @@ fn relative_block_start<S: LayoutScalar>(mode: WritingMode, value: f64) -> Edges
 
 fn normal_request<S: LayoutScalar>(mode: WritingMode) -> ComputeInputOf<S> {
     let available = if vertical(mode) {
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::definite(n(100.0)))
+        Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        )
     } else {
-        Size::new(AvailableOf::definite(n(100.0)), AvailableOf::MAX_CONTENT)
+        Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        )
     };
     ComputeInputOf::for_child(
         RunMode::ComputeSize,
@@ -31,7 +43,14 @@ fn normal_request<S: LayoutScalar>(mode: WritingMode) -> ComputeInputOf<S> {
             FlowAxes::new(mode, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        available,
+        SizingRequestOf::new(
+            available,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Unknown,
+                Size::splat(OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
     )
     .with_named_baseline_demand(crate::output::NamedBaselineDemand::Fact {
         name: name(mode),
@@ -98,12 +117,40 @@ fn ordinary_relative_child_exports_normal_baseline<S: LayoutScalar>(mode: Writin
         let batch = compute_layout_with_flow(
             &capture,
             0,
-            LayoutRootRequestOf::viewport(if vertical(mode) {
-                Size::new(AvailableOf::MAX_CONTENT, AvailableOf::definite(n(100.0)))
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(mode, Direction::Ltr),
+                if vertical(mode) {
+                    Size::new(None, Some(NonNegativeFiniteOf::new(n(100.0)).unwrap()))
+                } else {
+                    Size::new(Some(NonNegativeFiniteOf::new(n(100.0)).unwrap()), None)
+                },
+                OrthogonalFallbackOf::new(
+                    if vertical(mode) {
+                        Size::new(None, Some(NonNegativeFiniteOf::new(n(100.0)).unwrap()))
+                    } else {
+                        Size::new(Some(NonNegativeFiniteOf::new(n(100.0)).unwrap()), None)
+                    },
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(if vertical(mode) {
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                )
             } else {
-                Size::new(AvailableOf::definite(n(100.0)), AvailableOf::MAX_CONTENT)
-            })
-            .unwrap(),
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(100.0)).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                )
+            }),
         )
         .unwrap();
         let delta = if offset == 0.0 {
@@ -252,11 +299,25 @@ fn relative_ancestor_keeps_normal_atomic_line<S: LayoutScalar>() {
         let batch = compute_layout_with_flow(
             &capture,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(n(30.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .unwrap(),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(Some(NonNegativeFiniteOf::new(n(30.0)).unwrap()), None),
+                OrthogonalFallbackOf::new(
+                    Size::new(Some(NonNegativeFiniteOf::new(n(30.0)).unwrap()), None),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(30.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .unwrap();
         let placed = batch

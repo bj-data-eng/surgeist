@@ -8,7 +8,7 @@ use super::fixtures::{
     fri08_c01_topology_for_style, fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat,
     fri08_c03_auto_fit_batch, fri08_c03_auto_fit_named_repeat, fri08_c03_nested_projection_tree,
     lp, map_grid_axis, subgrid_axis_report, subgrid_eligibility, subgrid_track, subgrid_track_of,
-    tagged_baseline, vertical_baseline_measure,
+    vertical_baseline_measure,
 };
 use super::*;
 
@@ -182,7 +182,19 @@ fn fri08_c08_t03_cache_input<S: LayoutScalar>(
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         ),
-        Size::splat(AvailableOf::definite(S::from_f64(available))),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(available)).unwrap(),
+                ),
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 
@@ -516,12 +528,25 @@ fn fri08_c03_nested_candidate_bounds_edges_and_reversal_are_scalar_stable() {
 fn fri08_c03_nested_projection_outputs<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
 ) -> [NodeOutputOf<S>; 4] {
-    let batch = compute_layout(
-        tree,
-        1,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-            .expect("nested max-content viewport"),
-    )
+    let batch = compute_layout(tree, 1, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("nested production projection succeeds");
     [
         fri08_c01_placement_output(&batch, 1),
@@ -1611,7 +1636,17 @@ fn fri04_c04_grid_dispatch_container_reports_exact_grid_capability() {
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            Size::splat(Available::definite(100.0)),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .expect_err("later-owned grid sizing must be rejected");
@@ -1671,9 +1706,26 @@ where
                     FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(
-                    AvailableOf::Definite(containing_width),
-                    AvailableOf::Definite(containing_width),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(containing_width).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(containing_width).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
                 ),
             ),
         )
@@ -1707,9 +1759,11 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
             ),
         };
         ancestor_baseline_member(AncestorBaselineMemberInput {
+            reference: crate::GridBaselineReference::Physical,
             source,
             axis,
             ancestor_span: GridTrackSpan::new(1, 2),
+            alignment_context_reversed: false,
             alignment: AlignItems::LastBaseline,
             block_auto_margins: false,
             synthesized_baseline_cycle: false,
@@ -1736,6 +1790,7 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
             start_adjustment: 0.0,
             end_adjustment: 0.0,
         })
+        .unwrap()
         .expect("last-baseline item participates")
     };
     for (axis, physical_axis) in [
@@ -1744,9 +1799,26 @@ fn fri06_c12_t08_row_and_column_groups_choose_the_lastmost_member() {
     ] {
         let direct = member(1_u32, axis, 25.0);
         let nested = member(2_u32, axis, 10.0);
-        let group = AncestorBaselineGroup::reduce(1_u32, axis, physical_axis, 1, [direct, nested]);
-        assert_eq!(group.target_for(nested), Some(40.0));
-        assert_eq!(group.intrinsic_shim(direct).after, 15.0);
+        let group = AncestorBaselineGroup::reduce(
+            1_u32,
+            axis,
+            physical_axis,
+            crate::GridBaselineReference::Physical,
+            1,
+            [direct, nested],
+        );
+        match axis {
+            GridAxisKind::Row => {
+                // Htb Last: distances from E50 end are 25 and40.
+                assert_eq!(group.target_for(nested), Some(40.0));
+                assert_eq!(group.intrinsic_shim(direct).after, 15.0);
+            }
+            GridAxisKind::Column => {
+                // VRL Last uses actual p25/p10 in the Htb owner First cohort.
+                assert_eq!(group.target_for(nested), Some(25.0));
+                assert_eq!(group.intrinsic_shim(nested).before, 15.0);
+            }
+        }
     }
 }
 
@@ -1759,102 +1831,189 @@ fn owner_to_current_placement_map_identity_has_zero_translation() {
         PhysicalProgression::Increasing,
         3,
     );
-
-    assert_eq!(map.owner(), 1);
-    assert_eq!(map.current_grid(), 1);
-    assert_eq!(map.boundary_count(), 0);
-    assert_eq!(map.track_count(), 3);
+    assert_eq!(
+        (
+            map.owner(),
+            map.current_grid(),
+            map.boundary_count(),
+            map.track_count()
+        ),
+        (1, 1, 0, 3)
+    );
     for local in 0..3 {
         assert_eq!(map.owner_track_for_local(local), Some(local));
-        assert_eq!(
-            map.translations_for(local, AncestorBaselineRole::First),
-            Some((0.0, 0.0)),
-        );
-        assert_eq!(
-            map.translations_for(local, AncestorBaselineRole::Last),
-            Some((0.0, 0.0)),
-        );
+        for port in [AncestorBaselineRole::First, AncestorBaselineRole::Last] {
+            let group = AncestorBaselineGroup::reduce(
+                1_u32,
+                GridAxisKind::Row,
+                PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
+                3,
+                [super::fixtures::inherited_placement_member(
+                    91,
+                    GridAxisKind::Row,
+                    port,
+                    local,
+                    17.0,
+                )],
+            );
+            let placement = InheritedCurrentGridBaselinePlacement::try_derive(
+                &group,
+                InheritedCurrentGridBaselinePlacementInput {
+                    reference: crate::GridBaselineReference::Physical,
+                    axis: GridAxisKind::Row,
+                    physical_axis: PhysicalAxis::Vertical,
+                    mapping: map.clone(),
+                    direct_witness: CurrentGridDirectWitness::new(
+                        1,
+                        11,
+                        GridAxisKind::Row,
+                        GridTrackSpan::new(local, local + 1),
+                        port,
+                        PhysicalProgression::Increasing,
+                        PhysicalProgression::Increasing,
+                    ),
+                    current_grid: 1,
+                    item: 11,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                (placement.frame_translation(), placement.translated_target()),
+                (0.0, 17.0)
+            );
+        }
     }
 }
 
 #[test]
 fn owner_to_current_placement_map_composes_reversal_and_physical_progression() {
-    let identity = CheckedOwnerToCurrentPlacementMap::identity(
-        1_u32,
+    let frames = super::fixtures::inherited_placement_frames(
         GridAxisKind::Row,
-        PhysicalAxis::Vertical,
-        PhysicalProgression::Increasing,
-        3,
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        SubgridTrackInheritanceInput {
+            parent_tracks: &[30.0, 40.0, 60.0],
+            parent_span: GridTrackSpan::new(1, 4),
+            reversed: true,
+            start_mbp: 0.0,
+            end_mbp: 0.0,
+            parent_gap: 10.0,
+            subgrid_gap: ResolvedSubgridGap::Length(20.0),
+        },
     );
-    let map = identity
-        .compose(owner_placement_boundary!(
-            1,
-            2,
-            GridTrackSpan::new(0, 3),
-            true,
-            PhysicalProgression::Increasing,
-            PhysicalProgression::Decreasing,
-            &[0.0, 40.0, 90.0],
-            &[30.0, 80.0, 150.0],
-            &[5.0, 45.0, 95.0],
-            &[35.0, 85.0, 155.0],
-            10.0,
-            20.0,
-            0.0,
-            0.0,
-        ))
-        .unwrap();
-
+    let map = super::fixtures::inherited_placement_mapping(GridAxisKind::Row, &frames);
     assert_eq!(map.owner_track_for_local(0), Some(2));
     assert_eq!(map.owner_track_for_local(2), Some(0));
     assert_eq!(map.current_progression(), PhysicalProgression::Decreasing);
-    assert_eq!(
-        map.translations_for(1, AncestorBaselineRole::First),
-        Some((5.0, -5.0)),
-    );
-    assert_eq!(
-        map.translations_for(1, AncestorBaselineRole::Last),
-        Some((5.0, 5.0)),
-    );
-}
-
-#[test]
-fn owner_to_current_placement_map_accumulates_positive_zero_and_negative_half_gaps() {
-    let expected = [(20.0, 5.0), (10.0, 0.0), (0.0, -5.0)];
-    for (current_gap, half_gap) in expected {
-        let identity = CheckedOwnerToCurrentPlacementMap::identity(
+    for (selected, owner_role, physical_point) in [
+        (
+            AncestorBaselineRole::First,
+            AncestorBaselineRole::Last,
+            63.0,
+        ),
+        (
+            AncestorBaselineRole::Last,
+            AncestorBaselineRole::First,
+            57.0,
+        ),
+    ] {
+        let group = AncestorBaselineGroup::reduce(
             1_u32,
             GridAxisKind::Row,
             PhysicalAxis::Vertical,
-            PhysicalProgression::Increasing,
+            crate::GridBaselineReference::Physical,
             3,
-        );
-        let map = identity
-            .compose(owner_placement_boundary!(
+            [super::fixtures::inherited_placement_member(
+                91,
+                GridAxisKind::Row,
+                owner_role,
                 1,
-                2,
-                GridTrackSpan::new(0, 3),
-                false,
+                17.0,
+            )],
+        );
+        let placement = super::fixtures::derive_inherited_placement(
+            &group,
+            GridAxisKind::Row,
+            selected,
+            1,
+            PhysicalProgression::Decreasing,
+            &frames,
+        )
+        .unwrap();
+        assert_eq!(
+            (placement.frame_translation(), placement.translated_target()),
+            (-5.0, 12.0)
+        );
+        // Parent track1 is 40..80. Current reversed track1 is 45..75 in
+        // physical parent coordinates; preserve the selected owner point.
+        let point = match selected {
+            AncestorBaselineRole::First => {
+                150.0 - frames.current.line_offset(1).unwrap() - placement.translated_target()
+            }
+            AncestorBaselineRole::Last => {
+                150.0 - (frames.current.line_offset(1).unwrap() + frames.current.sizes()[1])
+                    + placement.translated_target()
+            }
+        };
+        assert_eq!(point, physical_point);
+    }
+}
+
+#[test]
+fn owner_to_current_placement_map_uses_actual_positive_zero_and_negative_gap_frames() {
+    for (current_gap, target) in [(20.0, 12.0), (10.0, 17.0), (0.0, 22.0)] {
+        let frames = super::fixtures::inherited_placement_frames(
+            GridAxisKind::Row,
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            SubgridTrackInheritanceInput {
+                parent_tracks: &[30.0, 40.0, 60.0],
+                parent_span: GridTrackSpan::new(1, 4),
+                reversed: false,
+                start_mbp: 0.0,
+                end_mbp: 0.0,
+                parent_gap: 10.0,
+                subgrid_gap: ResolvedSubgridGap::Length(current_gap),
+            },
+        );
+        for (role, physical_point) in [
+            (AncestorBaselineRole::First, 57.0),
+            (AncestorBaselineRole::Last, 63.0),
+        ] {
+            let group = AncestorBaselineGroup::reduce(
+                1_u32,
+                GridAxisKind::Row,
+                PhysicalAxis::Vertical,
+                crate::GridBaselineReference::Physical,
+                3,
+                [super::fixtures::inherited_placement_member(
+                    91,
+                    GridAxisKind::Row,
+                    role,
+                    1,
+                    17.0,
+                )],
+            );
+            let placement = super::fixtures::derive_inherited_placement(
+                &group,
+                GridAxisKind::Row,
+                role,
+                1,
                 PhysicalProgression::Increasing,
-                PhysicalProgression::Increasing,
-                &[0.0, 40.0, 90.0],
-                &[30.0, 80.0, 150.0],
-                &[0.0, 40.0, 90.0],
-                &[30.0, 80.0, 150.0],
-                10.0,
-                current_gap,
-                0.0,
-                0.0,
-            ))
+                &frames,
+            )
             .unwrap();
-        assert_eq!(
-            map.translations_for(1, AncestorBaselineRole::First),
-            Some((0.0, half_gap)),
-        );
-        assert_eq!(
-            map.translations_for(1, AncestorBaselineRole::Last),
-            Some((0.0, -half_gap)),
-        );
+            assert_eq!(placement.translated_target(), target);
+            let point = match role {
+                AncestorBaselineRole::First => {
+                    frames.current.line_offset(1).unwrap() + placement.translated_target()
+                }
+                AncestorBaselineRole::Last => {
+                    frames.current.line_offset(1).unwrap() + frames.current.sizes()[1]
+                        - placement.translated_target()
+                }
+            };
+            assert_eq!(point, physical_point);
+        }
     }
 }
 
@@ -1867,25 +2026,25 @@ fn owner_to_current_placement_map_rejects_identity_discontinuity() {
         PhysicalProgression::Increasing,
         2,
     );
-    let result = identity.compose(owner_placement_boundary!(
-        9,
-        2,
-        GridTrackSpan::new(0, 2),
-        false,
-        PhysicalProgression::Increasing,
-        PhysicalProgression::Increasing,
-        &[0.0, 40.0],
-        &[30.0, 80.0],
-        &[0.0, 40.0],
-        &[30.0, 80.0],
-        10.0,
-        10.0,
-        0.0,
-        0.0,
-    ));
+    let result = identity.compose(OwnerToCurrentPlacementBoundaryInput {
+        parent_grid: 9,
+        current_grid: 2,
+        parent_axis: GridAxisKind::Row,
+        current_axis: GridAxisKind::Row,
+        physical_axis: PhysicalAxis::Vertical,
+        parent_progression: PhysicalProgression::Increasing,
+        current_progression: PhysicalProgression::Increasing,
+        parent_span: GridTrackSpan::new(0, 2),
+        reversed: false,
+        parent_first_frame_origins: &[0.0, -40.0],
+        parent_last_frame_origins: &[30.0, 80.0],
+        current_first_frame_origins: &[0.0, -40.0],
+        current_last_frame_origins: &[30.0, 80.0],
+        inherited: true,
+    });
     assert_eq!(
         result,
-        Err(InheritedCurrentGridBaselinePlacementError::OwnershipMismatch),
+        Err(InheritedCurrentGridBaselinePlacementError::OwnershipMismatch)
     );
 }
 
@@ -1932,12 +2091,17 @@ fn fri06_c12_t08_inline_column_direct_members_consume_column_group() {
     let second = tree
         .final_layout(3)
         .expect("second direct item is laid out");
-    assert_eq!(second.location.x, 15.0);
-    assert_eq!(first.location.x + 25.0, second.location.x + 10.0);
+    // Actual First ports of VRL subjects map to the Htb owner's Last
+    // cohort. Their end distances are 30−25=5 and 50−10=40. The
+    // 100-wide owner track therefore fixes the physical point at 100−40=60.
+    assert_eq!(first.location.x, 35.0);
+    assert_eq!(second.location.x, 50.0);
+    assert_eq!(first.location.x + 25.0, 60.0);
+    assert_eq!(second.location.x + 10.0, 60.0);
 }
 
 #[test]
-fn fri06_c12_t08_vertical_nested_direct_members_use_ancestor_half_gap() {
+fn fri06_c12_t08_vertical_nested_direct_members_conserve_actual_owner_point() {
     let mut tree = OracleTree::new()
         .children(1, [2, 3])
         .children(2, [])
@@ -1994,7 +2158,15 @@ fn fri06_c12_t08_vertical_nested_direct_members_use_ancestor_half_gap() {
 
     let direct = tree.final_layout(2).expect("direct member is laid out");
     let nested = tree.final_layout(4).expect("flattened member is laid out");
-    assert_eq!((direct.location.x, nested.location.x), (5.0, 25.0));
+    let subgrid = tree.final_layout(3).expect("subgrid frame is laid out");
+    // Owner row 2 is physically 0..60. The larger child gutter makes
+    // its inherited row 2 be 0..55: Astart=5. Its First port thus demands
+    // 5+(30−5)=30 from the owner start, versus the direct demand30−20=10.
+    // The one immutable physical point is 60−30=30; no second gap shift.
+    assert_eq!(subgrid.location.x, 0.0);
+    assert_eq!((direct.location.x, nested.location.x), (10.0, 25.0));
+    assert_eq!(direct.location.x + 20.0, 30.0);
+    assert_eq!(subgrid.location.x + nested.location.x + 5.0, 30.0);
 }
 
 fn fri06_c12_t08_refreshed_cross_flow_tree(
@@ -2203,7 +2375,23 @@ fn grid_auto_placement_continues_into_declared_rows_with_gap() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2321,7 +2509,23 @@ fn grid_auto_placement_creates_implicit_rows_from_auto_rows() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2390,7 +2594,23 @@ fn grid_auto_rows_repeat_for_multiple_implicit_rows() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2574,7 +2794,23 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2727,7 +2963,23 @@ fn grid_content_size_mode_ignores_authored_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2790,7 +3042,23 @@ fn grid_dense_auto_flow_backfills_earlier_free_cells() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2918,7 +3186,23 @@ fn grid_dense_row_flow_places_definite_row_items_before_auto_items() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2986,7 +3270,23 @@ fn grid_definite_column_auto_row_stays_in_auto_placement_order() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3045,7 +3345,23 @@ fn grid_definite_column_line_span_resolves_from_start_line() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3117,7 +3433,23 @@ fn grid_definite_column_span_line_resolves_to_end_line() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3189,7 +3521,23 @@ fn grid_row_span_auto_placement_creates_enough_implicit_rows() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3245,7 +3593,23 @@ fn grid_definite_column_line_creates_required_implicit_columns() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3302,7 +3666,23 @@ fn vertical_rl_grid_places_distinct_rows_on_physical_x_axis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3369,7 +3749,23 @@ fn grid_recomputes_min_content_columns_from_resolved_row_height() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3390,12 +3786,13 @@ fn grid_recomputes_min_content_columns_from_resolved_row_height() {
 }
 
 #[test]
-fn grid_spanning_item_redistributes_beyond_fit_content_limit() {
+fn grid_spanning_item_coupled_allocation_respects_fit_content_cap() {
     let mut tree = OracleTree::new()
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 40.0)))
-                .available_width(Available::MIN_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 40.0)));
     tree.insert_children(1, vec![2, 3, 4]);
@@ -3461,23 +3858,42 @@ fn grid_spanning_item_redistributes_beyond_fit_content_limit() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
 
+    // Grid 1 §11.5.1 caps base-size distribution by the fit-content argument.
+    // MIN40 therefore distributes as 30/10; under MAX, the uncapped first
+    // track absorbs the remaining 40, producing 70/10 and the same total 80.
     assert_eq!(output.size, Size::new(80.0, 40.0));
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
-        Size::new(60.0, 40.0)
+        Size::new(70.0, 40.0)
     );
     assert_eq!(
         tree.layout(3).expect("node layout is staged").location,
-        Point::new(60.0, 0.0)
+        Point::new(70.0, 0.0)
     );
     assert_eq!(
         tree.layout(3).expect("node layout is staged").size,
-        Size::new(20.0, 40.0)
+        Size::new(10.0, 40.0)
     );
     assert_eq!(
         tree.layout(4).expect("node layout is staged").size,
@@ -3531,7 +3947,23 @@ fn grid_content_size_for_later_column_uses_final_container_local_item_end() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3588,7 +4020,23 @@ fn grid_justify_self_overrides_parent_justify_items() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3730,11 +4178,34 @@ fn fri08_c01_topology_populated_area_only_grid_uses_the_same_explicit_edges() {
             },
         );
 
-    compute_root(
-        &mut tree.borrow_compute(),
-        1,
-        Size::new(Available::Definite(120.0), Available::Definite(20.0)),
-    )
+    {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        let style = tree.node_input(1);
+        let flow = FlowAxes::new(style.writing_mode, style.direction);
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            flow,
+            definite,
+        );
+        compute_root(&mut tree.borrow_compute(), 1, request)
+    }
     .unwrap();
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
@@ -3885,7 +4356,23 @@ fn invalid_named_grid_context_is_reported() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::Definite(120.0), Available::Definite(20.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3931,7 +4418,23 @@ fn invalid_named_grid_context_fallback_is_reported() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::Definite(40.0), Available::Definite(20.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3981,7 +4484,23 @@ fn invalid_grid_item_placement_reports_one_authored_fallback_once() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::Definite(40.0), Available::Definite(20.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4118,6 +4637,8 @@ fn auto_repeat_count_uses_f64_saturating_floor() {
 fn shared_grid_contexts_accept_non_default_scalar() {
     let named_lines = named::NamedGridLines::new(GridAxisKind::Column, 1);
     let inherited_axis = InheritedGridAxis::<f64, usize> {
+        baseline_reference: crate::GridBaselineReference::Physical,
+        minimum_functions: None,
         offset: 0.25,
         gap: 1.5,
         tracks: vec![10.0, 20.0],
@@ -4125,8 +4646,6 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         named_lines: named_lines.clone(),
         area_facts: None,
         template_area_expanded: false,
-        major_baselines: vec![Some(tagged_baseline(PhysicalAxis::Horizontal, 2.0))],
-        minor_baselines: vec![None],
         owner_baseline_targets: None,
         parent_start: 0,
         parent_end: 2,
@@ -4163,6 +4682,13 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         inherited_row_offset: None,
     };
     let constants = Constants::<f64> {
+        child_orthogonal_fallback: OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        ),
+        fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
         flow_axes: crate::geometry::FlowAxes::new(
             crate::WritingMode::HorizontalTb,
             crate::Direction::Ltr,
@@ -4181,11 +4707,12 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     let style = NodeInputOf::<f64>::default();
     let style_projection = grid_container_projection!(&style);
     let tracks = vec![TrackSizingOf::<f64>::AUTO];
+    let minimum_functions = GridMinimumParentFunctions {
+        columns: Some(GridMinimumTrackFunctions::new(&tracks, None)),
+        rows: Some(GridMinimumTrackFunctions::new(&tracks, None)),
+    };
     let placements = GridPlacementContext::empty();
     let subgrid_report = GridSubgridReport { items: Vec::new() };
-    let sizing_phases = GridTrackSizingPhases {
-        limit: GridSizingStage::COMPLETE,
-    };
     let column_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 1.0);
     let row_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 2.0);
 
@@ -4198,6 +4725,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         report: GridComputationReport::default(),
     };
     let _track_input = GridTrackResolutionInput::<usize, f64> {
+        minimum_functions,
         style: &style_projection,
         constants: &constants,
         column_tracks: &tracks,
@@ -4209,40 +4737,103 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             crate::Direction::Ltr,
         ),
         available: LogicalSizeOf::new(
-            AvailableOf::<f64>::MAX_CONTENT,
-            AvailableOf::<f64>::MAX_CONTENT,
+            AxisSizingRequestOf::<f64>::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            ),
+            AxisSizingRequestOf::<f64>::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            ),
         ),
         intrinsic_max_available: LogicalSizeOf::new(false, false),
         placements: &placements,
         stage: GridSizingStage::COMPLETE,
     };
-    let _track_resolution = GridTrackResolution::<f64> {
-        sizing_phases,
-        columns: vec![10.0],
-        rows: vec![20.0],
-        column_min_intrinsic_sizes: vec![1.0],
-        column_max_intrinsic_sizes: vec![2.0],
-        row_intrinsic_sizes: vec![3.0],
+    // Independent normalized f64 contributions preserve each role through reduction.
+    let column_inputs = intrinsic_stage::GridAxisTrackInputs {
+        rows: vec![GridIntrinsicContributionRow {
+            span: GridTrackSpan { start: 1, end: 2 },
+            contributions: GridTrackContributions {
+                minimum: 0.0,
+                min_content: 1.0,
+                max_content: 2.0,
+            },
+        }],
+        base_floors: Vec::new(),
+        min_content_base_floors: Vec::new(),
     };
-    let _child_input = GridChildLayoutInput::<usize, f64> {
-        sizing_phases,
-        style: &style_projection,
-        constants: &constants,
-        column_tracks: &tracks,
-        row_tracks: &tracks,
-        context: container_context.clone(),
-        columns: &[10.0],
-        rows: &[20.0],
-        column_min_intrinsic_sizes: &[1.0],
-        column_max_intrinsic_sizes: &[2.0],
-        row_intrinsic_sizes: &[3.0],
-        output_size: Size::new(100.0, 100.0),
-        subgrid_report: &subgrid_report,
-        parent_context: &parent_context,
-        placements: &placements,
-        containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState::INITIAL,
+    let row_inputs = intrinsic_stage::GridAxisTrackInputs {
+        rows: vec![GridIntrinsicContributionRow {
+            span: GridTrackSpan { start: 1, end: 2 },
+            contributions: GridTrackContributions {
+                minimum: 0.0,
+                min_content: 0.0,
+                max_content: 3.0,
+            },
+        }],
+        base_floors: Vec::new(),
+        min_content_base_floors: Vec::new(),
     };
+    let column_reduction =
+        intrinsic_stage::reduce_axis_track_inputs::<usize, f64, core::convert::Infallible>(
+            0,
+            &_track_input,
+            GridAxisKind::Column,
+            &column_inputs,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            intrinsic_stage::GridAxisTrackSpace::Intrinsic,
+        )
+        .unwrap();
+    let row_reduction =
+        intrinsic_stage::reduce_axis_track_inputs::<usize, f64, core::convert::Infallible>(
+            0,
+            &_track_input,
+            GridAxisKind::Row,
+            &row_inputs,
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            intrinsic_stage::GridAxisTrackSpace::Intrinsic,
+        )
+        .unwrap();
+    // Raw scalar payload construction remains independently qualified. A
+    // completed execution frame is produced only by the bounded stage owner.
+    let _column_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
+        intrinsic_stage::GridAxisTrackPreparation {
+            contributions: column_inputs,
+            available: column_reduction.available,
+            finishing_available: column_reduction.finishing_available,
+        },
+    );
+    let _row_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
+        intrinsic_stage::GridAxisTrackPreparation {
+            contributions: row_inputs,
+            available: row_reduction.available,
+            finishing_available: row_reduction.finishing_available,
+        },
+    );
+    let execution_input = ComputeInputOf::for_child(
+        RunMode::PerformLayout,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::splat(Some(120.0)),
+        Size::NONE,
+        ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
     let _layout_context = GridLayoutContext::<usize, f64> {
+        execution_input,
+        minimum_functions,
+        track_basis: container_context.percent_basis,
         style: &style_projection,
         constants: &constants,
         container_content_size: Size::new(100.0, 100.0),

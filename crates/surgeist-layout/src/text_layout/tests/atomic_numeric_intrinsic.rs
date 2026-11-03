@@ -3,12 +3,12 @@
 use super::*;
 
 fn numeric_tree<S: LayoutScalar>(
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     end_margin: f64,
     first_indent: f64,
 ) -> PublicLayoutTreeOf<S> {
-    let preferred = match available {
-        AvailableOf::Definite(value) => PreferredSizeOf::px(value),
+    let preferred = match available.space() {
+        crate::AvailableSpaceOf::Definite(value) => PreferredSizeOf::px(value.get()),
         _ => PreferredSizeOf::AUTO,
     };
     let mut host = PublicLayoutTreeOf::<S>::new().children(0, [1, 2]).style(
@@ -56,16 +56,44 @@ fn numeric_tree<S: LayoutScalar>(
 }
 
 fn numeric_batch<S: LayoutScalar>(
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     end_margin: f64,
     first_indent: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let host = numeric_tree(available, end_margin, first_indent);
-    compute_layout(
-        &host,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap(),
-    )
+    compute_layout(&host, 0, {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input(&host, 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    })
     .unwrap()
 }
 
@@ -136,14 +164,28 @@ fn numeric_intrinsic_minimum<S: LayoutScalar>() {
     // Two actual used margin boxes each advance10-4=6. The genuine Allowed
     // middle admits two independent pieces: paragraph min=max(6,6)=6.
     // Border geometry remains10 in each line at x0, with row tops0 and10.
-    let batch = numeric_batch::<S>(AvailableOf::MIN_CONTENT, -4.0, 0.0);
+    let batch = numeric_batch::<S>(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+        -4.0,
+        0.0,
+    );
     assert_actual_boxes(&batch, (6.0, 20.0), [(0.0, 0.0), (0.0, 10.0)], -4.0, 10.0);
 }
 
 fn numeric_intrinsic_maximum<S: LayoutScalar>() {
     // Max-content keeps both on one line: 6+6=12. The second border is6..16;
     // actual raw physical overflow is16, not the used intrinsic width12.
-    let batch = numeric_batch::<S>(AvailableOf::MAX_CONTENT, -4.0, 0.0);
+    let batch = numeric_batch::<S>(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MaxContent,
+        ),
+        -4.0,
+        0.0,
+    );
     assert_actual_boxes(&batch, (12.0, 10.0), [(0.0, 0.0), (6.0, 0.0)], -4.0, 16.0);
 }
 
@@ -154,14 +196,32 @@ fn numeric_signed_retraction<S: LayoutScalar>() {
     // prefix10 nor borders10..20 /0..10 establish an admission requirement.
     // The middle is genuinely Allowed, but must not force a spurious second
     // line merely because the first prefix/border extends beyond the band.
-    let batch = numeric_batch::<S>(AvailableOf::definite(S::from_f64(5.0)), -20.0, 10.0);
+    let batch = numeric_batch::<S>(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        -20.0,
+        10.0,
+    );
     assert_actual_boxes(&batch, (5.0, 10.0), [(10.0, 0.0), (0.0, 0.0)], -20.0, 20.0);
 }
 
 fn numeric_zero_flow<S: LayoutScalar>() {
     // Zero flow is not no participation: two distinct10px border boxes remain
     // at0..10, while each actual CSS margin box advances10-10=0.
-    let batch = numeric_batch::<S>(AvailableOf::definite(S::from_f64(5.0)), -10.0, 0.0);
+    let batch = numeric_batch::<S>(
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(5.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        -10.0,
+        0.0,
+    );
     assert_actual_boxes(&batch, (5.0, 10.0), [(0.0, 0.0), (0.0, 0.0)], -10.0, 10.0);
 }
 

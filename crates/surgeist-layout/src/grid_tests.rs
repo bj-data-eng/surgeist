@@ -41,3 +41,6 @@ mod tracks_intrinsic;
 
 #[path = "grid_tests/baseline_contribution.rs"]
 mod baseline_contribution;
+
+#[path = "grid_tests/empty_tracks_absolute.rs"]
+mod empty_tracks_absolute;

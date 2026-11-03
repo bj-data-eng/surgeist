@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 //! A real earlier float excludes an indivisible numeric inline box until y20.
+#[path = "support/native_request.rs"]
+mod native_request;
+
 use surgeist_layout as l;
 
 fn px(value: f32) -> l::PreferredSize {
@@ -72,11 +75,25 @@ impl l::LayoutTree for Tree {
 #[test]
 fn indivisible_numeric_inline_box_waits_for_the_real_wider_band_below_an_earlier_float() {
     let tree = Tree::new();
-    let request = l::LayoutRootRequest::viewport(l::Size::new(
-        l::Available::definite(40.0),
-        l::Available::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let sizing_request = crate::native_request::sizing(
+            surgeist_layout::Size::new(Some(40.0), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
+        l::LayoutRootRequest::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::WritingMode::HorizontalTb,
+                surgeist_layout::Direction::Ltr,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    };
     let batch = l::compute_layout(&tree, 0, request).unwrap();
     let actual = |node| {
         batch

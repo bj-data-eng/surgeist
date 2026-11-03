@@ -108,7 +108,7 @@ fn qualify_prepared(prepared: &text::PreparedText) {
 
 fn compute<S: LayoutScalar>(
     prepared: &text::PreparedText,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let origin = prepared.origin_views().next().unwrap().handle();
@@ -155,8 +155,39 @@ fn compute<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request =
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((captured).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let result = compute_layout_with_flow(&captured, 0, request).unwrap();
     assert_eq!(result.placed_text().len(), 1);
     assert_eq!(result.placed_text()[0].nodes(), [1]);
@@ -228,7 +259,16 @@ fn glyphs(line: &text::FinalizedLine) -> Vec<(text::Range, u32, f32)> {
 }
 
 fn qualify_whole<S: LayoutScalar>(p: &text::PreparedText) {
-    let batch = compute::<S>(p, AvailableOf::definite(S::from_f64(100.0)), Some(100.0));
+    let batch = compute::<S>(
+        p,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        Some(100.0),
+    );
     let actual = lines(&batch);
     assert_eq!(actual.len(), 1);
     assert_eq!(actual[0].feedback().advance, 50.0);
@@ -253,7 +293,16 @@ fn qualify_whole<S: LayoutScalar>(p: &text::PreparedText) {
 }
 
 fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
-    let batch = compute::<S>(p, AvailableOf::definite(S::from_f64(40.0)), Some(40.0));
+    let batch = compute::<S>(
+        p,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
+        Some(40.0),
+    );
     let actual = lines(&batch);
     assert_eq!(actual.len(), 2);
     let expected = if after { [20.0, 40.0] } else { [30.0, 30.0] };
@@ -292,8 +341,20 @@ fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
     assert_eq!(glyphs(&actual[1]), second);
     assert!(actual[0].selected_line().request().alternative.is_some());
     for (available, expected) in [
-        (AvailableOf::MIN_CONTENT, if after { 40.0 } else { 30.0 }),
-        (AvailableOf::MAX_CONTENT, 50.0),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+            if after { 40.0 } else { 30.0 },
+        ),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            50.0,
+        ),
     ] {
         let intrinsic = compute::<S>(p, available, None);
         let root = intrinsic

@@ -3,9 +3,19 @@ use serde_json::{Value, json};
 
 fn decode_style(style: Value, unsupported: bool) -> Result<DecodedMeasurement, MeasurementError> {
     let mut node = json!({
-        "layoutInput": "box", "useRounding": false,
-        "viewport": {"rootContext": "root", "width": {"unit": "max-content"}, "height": {"unit": "max-content"}},
-        "style": style, "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0}, "children": []
+        "layoutInput": "box", "gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding": false,
+        // Authored codec context, independent of this test's zero observation.
+        "viewport": {"rootContext": {
+            "kind": "block-flow-auto", "parentInlineExtent": 800, "parentDirection": "ltr",
+            "fallback": {
+                "initialContainingBlock": {"width": 800, "height": 600},
+                "nearestScrollport": "none",
+                "containingLimits": {"width": "unbounded", "height": "unbounded"}
+            }
+        }},
+        "style": style, "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0},
+        // Explicit zero-phase diagnostic for this authored Box codec fixture.
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0}, "children": []
     });
     if unsupported {
         node["unsupportedReason"] = json!("unsupported fixture");

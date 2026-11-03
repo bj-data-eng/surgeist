@@ -115,13 +115,6 @@ fn earliest(first: Option<f64>, second: Option<f64>) -> Option<f64> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Available {
-    Definite(f64),
-    Minimum,
-    Maximum,
-}
-
 /// Completion authority supplied by the actual owning block traversal.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum TailContext {
@@ -308,7 +301,7 @@ pub(crate) struct FitInput<'a> {
     pub inline_boxes: Option<&'a surgeist_text::PreparedInlineBoxFamily>,
     pub segment: surgeist_text::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
-    pub available: Available,
+    pub available: crate::AxisSizingRequestOf<f64>,
     pub base_direction: ParagraphBaseDirection,
     pub block_direction: ParagraphBaseDirection,
     pub alignment: TextAlign,
@@ -1308,7 +1301,7 @@ where
             }
         }
         if fitting.len() > 1
-            && matches!(input.available, Available::Definite(_))
+            && crate::layout_math::normal_available_size(input.available).is_some()
             && request.context.end == LineEnd::Soft
         {
             let mut frontier = None;
@@ -1519,18 +1512,22 @@ where
                 placed_start = actual_start;
                 continue;
             }
-            let fit_width = match input.available {
-                Available::Minimum => Some(finite((band.end - band.start).max(0.0))?),
-                Available::Definite(_) | Available::Maximum => request.context.available_inline,
+            let fit_width = match input.available.operation() {
+                crate::SizingOperation::MinContent => {
+                    Some(finite((band.end - band.start).max(0.0))?)
+                }
+                crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
+                    request.context.available_inline
+                }
             };
-            let admission = match input.available {
-                Available::Minimum => finalized
+            let admission = match input.available.operation() {
+                crate::SizingOperation::MinContent => finalized
                     .measurements()
                     .margin_edge_min_content_contribution(),
-                Available::Maximum => finalized
+                crate::SizingOperation::MaxContent => finalized
                     .measurements()
                     .margin_edge_max_content_contribution(),
-                Available::Definite(_) => finalized.measurements().margin_edge_fit(),
+                crate::SizingOperation::Normal => finalized.measurements().margin_edge_fit(),
             };
             let css_width = css_margin_edge_width(admission, request.context.indent)?;
             let fits = !disposition.is_formatted()
@@ -1618,13 +1615,15 @@ where
                     _ => None,
                 }
             });
-            if automatic.is_some() && matches!(input.available, Available::Maximum) {
+            if automatic.is_some()
+                && (input.available.operation() == crate::SizingOperation::MaxContent)
+            {
                 continue;
             }
             if let Some(alternative) = alternative.as_ref().filter(|_| automatic.is_some())
-                && let Some(limit) = query
-                    .hyphenation_state
-                    .suppressed_limit(matches!(input.available, Available::Minimum))
+                && let Some(limit) = query.hyphenation_state.suppressed_limit(
+                    input.available.operation() == crate::SizingOperation::MinContent,
+                )
             {
                 dispositions.push(ConditionalDisposition::AutoLineLimit {
                     alternative: alternative.clone(),
@@ -1633,7 +1632,7 @@ where
                 continue;
             }
             if let Some(cut) = &automatic
-                && matches!(input.available, Available::Definite(_))
+                && crate::layout_math::normal_available_size(input.available).is_some()
                 && let Some(word) = cut.view().word()
             {
                 let mut fallback: Option<EvaluatedCandidate> = None;
@@ -1741,7 +1740,7 @@ where
                 continue;
             }
             if let Some(cut) = &automatic
-                && matches!(input.available, Available::Definite(_))
+                && crate::layout_math::normal_available_size(input.available).is_some()
                 && let Some(word) = cut.view().word()
             {
                 let mut priority = None;
@@ -1804,7 +1803,7 @@ where
                 continue;
             }
             if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
-                if matches!(input.available, Available::Minimum) {
+                if input.available.operation() == crate::SizingOperation::MinContent {
                     dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
                 } else {
                     dispositions.push(ConditionalDisposition::AutoFitExhausted(
@@ -1828,7 +1827,7 @@ where
             if endpoint_choice.is_none() || fits {
                 endpoint_choice = Some(candidate);
             }
-            if fits && !matches!(input.available, Available::Minimum) {
+            if fits && (input.available.operation() != crate::SizingOperation::MinContent) {
                 break;
             }
         }
@@ -2108,12 +2107,13 @@ impl CandidatePosition {
     }
 }
 
-fn selection_width(available: Available, band: Band) -> Result<Option<f64>, FitError> {
-    match available {
-        Available::Definite(value) => {
-            Ok(Some(finite((band.end - band.start).max(0.0))?.min(value)))
-        }
-        Available::Minimum | Available::Maximum => Ok(None),
+fn selection_width(
+    available: crate::AxisSizingRequestOf<f64>,
+    band: Band,
+) -> Result<Option<f64>, FitError> {
+    match crate::layout_math::normal_available_size(available) {
+        Some(value) => Ok(Some(finite((band.end - band.start).max(0.0))?.min(value))),
+        None => Ok(None),
     }
 }
 
@@ -2127,7 +2127,7 @@ fn tab_context(
     if input.prepared.preparation_options().tabs() == TabPreparation::FontAdvance {
         return Ok(TabContext::FontAdvance);
     }
-    if matches!(input.available, Available::Minimum | Available::Maximum) {
+    if input.available.operation() != crate::SizingOperation::Normal {
         return Ok(TabContext::IntrinsicCssStops);
     }
     let displacement = if input.base_direction == input.block_direction {
@@ -2350,17 +2350,17 @@ pub(crate) fn fit(
     };
     match runner.input.wrap_style {
         crate::TextWrapStyle::Balance
-            if matches!(runner.input.available, Available::Definite(_)) =>
+            if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return balance::fit(&mut runner, entry, checkpoint_group);
         }
         crate::TextWrapStyle::AvoidShortLastLine
-            if matches!(runner.input.available, Available::Definite(_)) =>
+            if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return tail::fit(&mut runner, entry, checkpoint_group);
         }
         crate::TextWrapStyle::Pretty
-            if matches!(runner.input.available, Available::Definite(_)) =>
+            if crate::layout_math::normal_available_size(runner.input.available).is_some() =>
         {
             return runner.pretty(entry, checkpoint_group);
         }
@@ -2476,10 +2476,10 @@ where
         // transferred to a different line sequence. Every remaining actual variant
         // is still evaluated in the ordinary chooser's preference order.
         let constrained = input.tail == TailContext::CompleteBlock
-            && matches!(input.available, Available::Definite(_));
+            && crate::layout_math::normal_available_size(input.available).is_some();
         let wrapping = input
             .wrapping
-            .filter(|_| matches!(input.available, Available::Definite(_)));
+            .filter(|_| crate::layout_math::normal_available_size(input.available).is_some());
         let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
         let mut terminal_constraint_rejected = false;
         'sequence: loop {
@@ -2623,9 +2623,11 @@ where
                                     );
                                 }
                                 if (choice.is_none()
-                                    || (!matches!(input.available, Available::Minimum)
+                                    || ((input.available.operation()
+                                        != crate::SizingOperation::MinContent)
                                         && (candidate.fits
-                                            || matches!(input.available, Available::Maximum))))
+                                            || (input.available.operation()
+                                                == crate::SizingOperation::MaxContent))))
                                     && prefer_candidate(goal, &candidate, choice.as_ref())?
                                 {
                                     choice = Some(candidate);
@@ -2638,7 +2640,9 @@ where
                                     skipped_ordinary.extend(dispositions);
                                 }
                             }
-                            if matches!(input.available, Available::Minimum) && ordinary_formatted {
+                            if input.available.operation() == crate::SizingOperation::MinContent
+                                && ordinary_formatted
+                            {
                                 break;
                             }
                             if !matches!(
@@ -2710,12 +2714,16 @@ where
                             Err(FitError::FeedbackCycle)
                         };
                     };
-                    let purpose = match input.available {
-                        Available::Minimum => Some(ConditionalPurpose::MinContent),
-                        Available::Definite(_) if !candidate.fits => {
+                    let purpose = match input.available.operation() {
+                        crate::SizingOperation::MinContent => Some(ConditionalPurpose::MinContent),
+                        crate::SizingOperation::Normal
+                            if !candidate.fits
+                                && crate::layout_math::normal_available_size(input.available)
+                                    .is_some() =>
+                        {
                             Some(ConditionalPurpose::Overflow)
                         }
-                        Available::Definite(_) | Available::Maximum => None,
+                        crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => None,
                     };
                     let mut minimal_progress = None;
                     if let Some(purpose) = purpose
@@ -3005,7 +3013,7 @@ where
                         line_box_context.commit(candidate.request.context.line_box_direction);
                     }
                     accept_encounters()?;
-                    if matches!(input.available, Available::Definite(_))
+                    if crate::layout_math::normal_available_size(input.available).is_some()
                         && candidate.disposition.is_formatted()
                     {
                         hyphenation_state.commit(candidate.request.alternative.is_some());

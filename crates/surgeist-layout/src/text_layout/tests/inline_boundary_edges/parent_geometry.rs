@@ -185,7 +185,15 @@ fn compute<S: LayoutScalar>(
             Some(TextScopeAssociation::Inline { start: 22, end: 23 })
         );
     }
-    compute_layout_with_flow(&flow, 0, request(width)).unwrap()
+    compute_layout_with_flow(
+        &flow,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 
 fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bool) {

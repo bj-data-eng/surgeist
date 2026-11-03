@@ -175,17 +175,32 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                     children: [vec![1], vec![]],
                 };
                 let available = if horizontal {
-                    l::Size::new(
-                        l::AvailableOf::definite(n(100.0)),
-                        l::AvailableOf::MAX_CONTENT,
+                    crate::layout::native_request::sizing(
+                        surgeist_layout::Size::new(Some(n(100.0)), None),
+                        surgeist_layout::Size::new(
+                            surgeist_layout::SizingOperation::Normal,
+                            surgeist_layout::SizingOperation::Normal,
+                        ),
                     )
                 } else {
-                    l::Size::new(
-                        l::AvailableOf::MAX_CONTENT,
-                        l::AvailableOf::definite(n(100.0)),
+                    crate::layout::native_request::sizing(
+                        surgeist_layout::Size::new(None, Some(n(100.0))),
+                        surgeist_layout::Size::new(
+                            surgeist_layout::SizingOperation::Normal,
+                            surgeist_layout::SizingOperation::Normal,
+                        ),
                     )
                 };
-                let request = l::LayoutRootRequestOf::viewport(available).unwrap();
+                let request = {
+                    let sizing_request = available;
+                    l::LayoutRootRequestOf::standalone(
+                        sizing_request,
+                        surgeist_layout::FlowAxes::new(mode, direction),
+                        sizing_request
+                            .orthogonal_fallback()
+                            .initial_containing_block(),
+                    )
+                };
                 let context = format!(
                     "mode={mode:?}, direction={direction:?}, align={align:?}, last={last:?}"
                 );

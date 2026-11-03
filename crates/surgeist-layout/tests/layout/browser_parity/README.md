@@ -22,7 +22,8 @@ for a maximum track breadth, never a minimum track breadth or a box/flex
 property. Integration layers outside this layout-ready harness own authored CSS
 parsing and lowering.
 
-Prepared Text parity uses [measurement protocol version 2](measurement-protocol.md)
+Prepared Text parity retains the original-source profile introduced in
+[measurement protocol version 2](measurement-protocol.md)
 and the exact [pinned font](fonts/PROVENANCE.md). Source capture and browser Range
 observations are separate channels. Historical measured-width text tuples are
 schema-only; the native production reader rejects them. The complete
@@ -152,7 +153,7 @@ document/helper preparation, measurement decoding, unsupported classification,
 and XML serialization.
 `scripts/gentest` remains helper-only: `test_helper.js` and `test_base_style.css`.
 
-The helper and adapter use the strict [version-2 measurement
+The helper and adapter use the strict [version-4 measurement
 protocol](measurement-protocol.md). Closed wire decoding and semantic validation
 precede XML serialization. Preloaded helpers must implement that protocol;
 unversioned or malformed measurements return contextual adapter errors.
@@ -209,3 +210,10 @@ Those 16 cases exclude the additional atomic/BR metric families. Their
 explicit BR font-band requests retain measured geometry independently of native
 input participation; an unsupported band observation is not a parity pass. See
 the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).
+
+Root-context capture is versioned separately from the unchanged prepared font/source
+profile. The [measurement contract](measurement-protocol.md#root-requests-and-observation-frames)
+defines source-qualified root contexts and separate ICB/nearest-scrollport/local-limit
+facts. Historical viewport metadata cannot issue a Native operation. Preserve original
+XML and raw diagnostics while qualifying a self-contained candidate corpus. No browser
+root rectangle, used Auto body height or viewport-filling heuristic supplies new inputs.

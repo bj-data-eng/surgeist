@@ -2,7 +2,13 @@
 use super::*;
 
 fn actual_geometry<S: LayoutScalar>() {
-    let output = intrinsic::<S>("X \nY", AvailableOf::MIN_CONTENT);
+    let output = intrinsic::<S>(
+        "X \nY",
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Indefinite,
+            crate::SizingOperation::MinContent,
+        ),
+    );
     assert_eq!(output.report.inline_extent, S::from_f64(10.0));
     assert_eq!(
         output.line_bounds[0].allocation.size().width,

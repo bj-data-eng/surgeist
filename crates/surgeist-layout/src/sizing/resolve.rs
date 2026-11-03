@@ -361,3 +361,127 @@ pub(crate) fn resolve_flex_basis<S: LayoutScalar>(
         }
     }
 }
+
+/// Fixed-source evidence for orthogonal fallback, separate from query sizing.
+/// A caller leaves an unevaluated source Unqualified; admitted parent None is
+/// instead a declared indefinite percentage basis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FixedFallbackSource<S: LayoutScalar> {
+    Fixed(S),
+    NoFixedBound,
+    Unqualified,
+}
+
+fn fixed_fallback_dispatch<S: LayoutScalar>(
+    dispatch: SizingDispatch<'_, S>,
+    basis: PercentageBasisOf<S>,
+) -> Result<FixedFallbackSource<S>, SizingResolutionError<S>> {
+    match dispatch {
+        SizingDispatch::Unsupported(error) => Err(SizingResolutionError::Unsupported(error)),
+        SizingDispatch::Supported(
+            DispatchedSizingRequest::Auto
+            | DispatchedSizingRequest::None
+            | DispatchedSizingRequest::Content
+            | DispatchedSizingRequest::MinContent
+            | DispatchedSizingRequest::MaxContent,
+        ) => Ok(FixedFallbackSource::NoFixedBound),
+        SizingDispatch::Supported(request) => {
+            resolve_dispatched_numeric(request, basis, true).map(|value| {
+                value.map_or(
+                    FixedFallbackSource::NoFixedBound,
+                    FixedFallbackSource::Fixed,
+                )
+            })
+        }
+    }
+}
+
+/// Qualifies the original preferred source only when its owner demands it.
+pub(crate) fn fixed_fallback_preferred<S: LayoutScalar>(
+    value: &PreferredSizeOf<S>,
+    algorithm: SizingAlgorithm,
+    axis: PhysicalAxis,
+    admitted_basis: Option<S>,
+) -> Result<FixedFallbackSource<S>, SizingResolutionError<S>> {
+    use super::{PreferredSizeCalcBasis, PreferredSizeView};
+    match value.view() {
+        PreferredSizeView::Auto | PreferredSizeView::MinContent | PreferredSizeView::MaxContent => {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        PreferredSizeView::CalcSize(original, calculation)
+            if admitted_basis.is_none()
+                && matches!(
+                    original,
+                    PreferredSizeCalcBasis::Any | PreferredSizeCalcBasis::FullPercentage
+                )
+                && (original == PreferredSizeCalcBasis::FullPercentage
+                    || calculation.depends_on_percentage_basis) =>
+        {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        _ => {}
+    }
+    let basis = percentage_basis(admitted_basis);
+    fixed_fallback_dispatch(
+        dispatch_preferred_size(value, algorithm, axis, basis),
+        basis,
+    )
+}
+
+/// Qualifies the original minimum, before Auto or measured-minimum substitution.
+pub(crate) fn fixed_fallback_minimum<S: LayoutScalar>(
+    value: &MinSizeOf<S>,
+    algorithm: SizingAlgorithm,
+    axis: PhysicalAxis,
+    admitted_basis: Option<S>,
+) -> Result<FixedFallbackSource<S>, SizingResolutionError<S>> {
+    use super::{MinSizeCalcBasis, MinSizeView};
+    match value.view() {
+        MinSizeView::Auto | MinSizeView::MinContent | MinSizeView::MaxContent => {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        MinSizeView::CalcSize(original, calculation)
+            if admitted_basis.is_none()
+                && matches!(
+                    original,
+                    MinSizeCalcBasis::Any | MinSizeCalcBasis::FullPercentage
+                )
+                && (original == MinSizeCalcBasis::FullPercentage
+                    || calculation.depends_on_percentage_basis) =>
+        {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        _ => {}
+    }
+    let basis = percentage_basis(admitted_basis);
+    fixed_fallback_dispatch(dispatch_minimum_size(value, algorithm, axis, basis), basis)
+}
+
+/// Qualifies the original maximum independently of intrinsic query suppression.
+pub(crate) fn fixed_fallback_maximum<S: LayoutScalar>(
+    value: &MaxSizeOf<S>,
+    algorithm: SizingAlgorithm,
+    axis: PhysicalAxis,
+    admitted_basis: Option<S>,
+) -> Result<FixedFallbackSource<S>, SizingResolutionError<S>> {
+    use super::{MaxSizeCalcBasis, MaxSizeView};
+    match value.view() {
+        MaxSizeView::None | MaxSizeView::MinContent | MaxSizeView::MaxContent => {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        MaxSizeView::CalcSize(original, calculation)
+            if admitted_basis.is_none()
+                && matches!(
+                    original,
+                    MaxSizeCalcBasis::Any | MaxSizeCalcBasis::FullPercentage
+                )
+                && (original == MaxSizeCalcBasis::FullPercentage
+                    || calculation.depends_on_percentage_basis) =>
+        {
+            return Ok(FixedFallbackSource::NoFixedBound);
+        }
+        _ => {}
+    }
+    let basis = percentage_basis(admitted_basis);
+    fixed_fallback_dispatch(dispatch_maximum_size(value, algorithm, axis, basis), basis)
+}

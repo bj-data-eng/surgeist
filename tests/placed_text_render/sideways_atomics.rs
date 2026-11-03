@@ -328,11 +328,14 @@ fn assert_composition(kind: text::InlineBoxKind) {
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(40.0),
-            layout::Available::Definite(40.0),
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), Some(40.0)),
+            layout::FlowAxes::new(layout::WritingMode::SidewaysRl, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     let (child_x, following_y, advance) = match kind {

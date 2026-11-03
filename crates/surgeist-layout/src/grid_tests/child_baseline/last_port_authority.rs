@@ -129,9 +129,26 @@ fn performed_leaf<S: LayoutScalar>(
                     FlowAxes::new(WritingMode::HorizontalTb, direction),
                     ParentFormattingContext::Grid,
                 ),
-                Size::new(
-                    AvailableOf::definite(s::<S>(20.0)),
-                    AvailableOf::definite(s::<S>(40.0)),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(s::<S>(20.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(s::<S>(40.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
                 ),
             ),
         )
@@ -148,7 +165,17 @@ fn root_query<S: LayoutScalar>(direction: Direction) -> ComputeInputOf<S> {
             FlowAxes::new(WritingMode::HorizontalTb, direction),
             ParentFormattingContext::NoParent,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 fn qualify<S: LayoutScalar>(output: ComputeOutputOf<S>, port: LastPort, axes: FlowAxes) {
@@ -260,9 +287,11 @@ fn membership<S: LayoutScalar>(
     cycle: bool,
 ) -> Option<AncestorBaselineMember<u32, S>> {
     ancestor_baseline_member(AncestorBaselineMemberInput {
+        reference: crate::GridBaselineReference::Physical,
         source: 1,
         axis: GridAxisKind::Row,
         ancestor_span: span,
+        alignment_context_reversed: false,
         alignment,
         block_auto_margins: false,
         synthesized_baseline_cycle: cycle,
@@ -273,6 +302,7 @@ fn membership<S: LayoutScalar>(
         start_adjustment: S::ZERO,
         end_adjustment: S::ZERO,
     })
+    .unwrap()
 }
 fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
@@ -289,8 +319,14 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
     let subject = membership(measured, AlignItems::LastBaseline, axes, axes, span, false).unwrap();
     assert_eq!(subject.role(), AncestorBaselineRole::Last);
     assert_eq!(subject.selected_track(), 0);
-    let solo =
-        AncestorBaselineGroup::reduce(0, GridAxisKind::Row, PhysicalAxis::Vertical, 1, [subject]);
+    let solo = AncestorBaselineGroup::reduce(
+        0,
+        GridAxisKind::Row,
+        PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
+        1,
+        [subject],
+    );
     let expected_under = match port {
         LastPort::Missing => 0.0,
         LastPort::Zero => 20.0,
@@ -315,6 +351,7 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         0,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
         1,
         [subject, anchor],
     );
@@ -324,17 +361,23 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         LastPort::Thirteen => (20.0, 20.0),
     };
     assert_eq!(
-        group.placement_offset(subject, s::<S>(40.0), s::<S>(20.0), S::ZERO),
+        group.placement_offset(subject, S::ZERO, s::<S>(40.0)),
         Some(s::<S>(subject_y))
     );
     assert_eq!(
-        group.placement_offset(anchor, s::<S>(40.0), s::<S>(20.0), S::ZERO),
+        group.placement_offset(anchor, S::ZERO, s::<S>(40.0)),
         Some(s::<S>(anchor_y))
     );
     let first = membership(measured, AlignItems::Baseline, axes, axes, span, false).unwrap();
     assert_eq!(first.role(), AncestorBaselineRole::First);
-    let first_group =
-        AncestorBaselineGroup::reduce(0, GridAxisKind::Row, PhysicalAxis::Vertical, 1, [first]);
+    let first_group = AncestorBaselineGroup::reduce(
+        0,
+        GridAxisKind::Row,
+        PhysicalAxis::Vertical,
+        crate::GridBaselineReference::Physical,
+        1,
+        [first],
+    );
     assert_eq!(
         first_group.target_for(first),
         Some(s::<S>(7.0)),
@@ -356,20 +399,31 @@ fn axis_and_cycle<S: LayoutScalar>() {
         let measured = performed_leaf(&mut tree, 1, Direction::Ltr);
         qualify(measured, port, axes);
         let rows = vec![TrackSizingOf::<S>::AUTO; 2];
-        let cycle = synthesized_baseline_would_cycle(
-            AlignItems::LastBaseline,
-            measured.baselines(),
-            axes,
-            &rows,
-        );
+        let cycle = grid_baseline_span_would_cycle(&rows, None)
+            && select_grid_baseline(
+                crate::GridBaselineReference::Physical,
+                AlignItems::LastBaseline,
+                axes,
+                (axes).block_axis(),
+                ComputeOutputOf::from_sizes_and_baselines(
+                    Size::ZERO,
+                    Size::ZERO,
+                    measured.baselines(),
+                ),
+            )
+            .unwrap()
+            .is_some_and(|port| port.synthesized);
         assert_eq!(cycle, matches!(port, LastPort::Missing));
-        let participation = baseline_participation(
+        let participation = grid_baseline_participation(
+            crate::GridBaselineReference::Physical,
             AlignItems::LastBaseline,
             false,
             cycle,
-            measured.baselines(),
+            ComputeOutputOf::from_sizes_and_baselines(Size::ZERO, Size::ZERO, measured.baselines()),
             axes,
-        );
+            (axes).block_axis(),
+        )
+        .unwrap();
         assert_eq!(participation.synthesized, matches!(port, LastPort::Missing));
         let member = membership(
             measured,
@@ -380,12 +434,20 @@ fn axis_and_cycle<S: LayoutScalar>() {
             cycle,
         );
         assert_eq!(member.is_none(), matches!(port, LastPort::Missing));
-        let first_cycle = synthesized_baseline_would_cycle(
-            AlignItems::Baseline,
-            measured.baselines(),
-            axes,
-            &rows,
-        );
+        let first_cycle = grid_baseline_span_would_cycle(&rows, None)
+            && select_grid_baseline(
+                crate::GridBaselineReference::Physical,
+                AlignItems::Baseline,
+                axes,
+                (axes).block_axis(),
+                ComputeOutputOf::from_sizes_and_baselines(
+                    Size::ZERO,
+                    Size::ZERO,
+                    measured.baselines(),
+                ),
+            )
+            .unwrap()
+            .is_some_and(|port| port.synthesized);
         assert!(
             !first_cycle,
             "real First7 remains supplied even while Last is missing"

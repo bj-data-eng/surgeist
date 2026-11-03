@@ -5,9 +5,18 @@ mod prepared_text;
 #[path = "measurement/style.rs"]
 mod style;
 
+#[path = "measurement/root_context.rs"]
+mod root_context;
+use root_context::WireViewport;
+
 use serde::Deserialize;
+
+use crate::{atomic_paragraph_metrics, grid_alignment_reference};
+
 use std::fmt;
-use style::{Dimension, Style};
+#[cfg(test)]
+use style::Dimension;
+use style::Style;
 
 pub(super) type Attributes = Vec<(&'static str, String)>;
 
@@ -149,11 +158,19 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     smart_rounded_layout: Option<WireGeometry>,
     #[serde(default, deserialize_with = "present")]
+    world_rounded_layout: Option<WireGeometry>,
+    #[serde(default, deserialize_with = "present")]
     naively_rounded_layout: Option<WireGeometry>,
     #[serde(default, deserialize_with = "present")]
     inline_segments: Option<Vec<WireSegment>>,
     #[serde(default, deserialize_with = "present")]
     prepared_paragraph: Option<prepared_text::Paragraph>,
+    #[serde(default, deserialize_with = "present")]
+    atomic_paragraph_metrics: Option<atomic_paragraph_metrics::Capture>,
+    #[serde(default, deserialize_with = "present")]
+    grid_alignment_profile: Option<grid_alignment_reference::Profile>,
+    #[serde(default, deserialize_with = "present")]
+    grid_alignment_reference: Option<grid_alignment_reference::Capture>,
     #[serde(default, deserialize_with = "present")]
     prepared_occurrence: Option<usize>,
     #[serde(default, deserialize_with = "present")]
@@ -189,25 +206,6 @@ enum LayoutInput {
 #[serde(rename_all = "kebab-case")]
 enum BrowserBrObservation {
     FontBand,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WireViewport {
-    width: Dimension,
-    height: Dimension,
-    root_context: RootContext,
-    #[serde(default, deserialize_with = "present")]
-    parent_writing_mode: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    parent_direction: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    host_inline_size: Option<f64>,
-}
-#[derive(Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum RootContext {
-    Root,
-    FlexItem,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -365,6 +363,7 @@ pub(super) enum DecodedMeasurement {
 pub(super) struct ValidatedMeasurement {
     use_rounding: bool,
     viewport: Attributes,
+    root_local_positioned: bool,
     root: Box<Node>,
 }
 #[derive(Debug)]
@@ -375,6 +374,7 @@ pub(super) struct Node {
     children: Vec<Node>,
     text: Option<String>,
     observation: Observation,
+    world_rounded_layout: Option<Attributes>,
     atomic: Option<Attributes>,
     bands: Option<Vec<Attributes>>,
     control_expectation: Option<Attributes>,
@@ -453,6 +453,13 @@ pub(super) fn decode(
         });
     }
     let use_rounding = context.required(wire.use_rounding, "useRounding")?;
+    if let Some(viewport) = &wire.viewport {
+        viewport.validate_root_style(wire.style.as_ref(), &context)?;
+    }
+    let root_local_positioned = wire
+        .viewport
+        .as_ref()
+        .is_some_and(WireViewport::root_local_positioned);
     let viewport = wire
         .viewport
         .as_ref()
@@ -464,10 +471,31 @@ pub(super) fn decode(
             )
         })?
         .validate(&context)?;
+    wire.validate_grid_alignment_profile(&context)?;
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
+    if root_local_positioned {
+        let Observation::Geometry {
+            unrounded,
+            selected,
+            ..
+        } = root.observation()
+        else {
+            return Err(context.error(
+                "unroundedLayout",
+                MeasurementErrorKind::ContradictoryFields,
+                "absolute root-local capture requires a root box",
+            ));
+        };
+        context.compatible(
+            unrounded.x == 0.0 && unrounded.y == 0.0 && selected.x == 0.0 && selected.y == 0.0,
+            "unroundedLayout",
+            "absolute root-local observations require root origin (0, 0)",
+        )?;
+    }
     Ok(DecodedMeasurement::Supported(ValidatedMeasurement {
         use_rounding,
         viewport,
+        root_local_positioned,
         root: Box::new(root),
     }))
 }
@@ -522,7 +550,160 @@ impl WireNode {
                 .find_map(Self::unsupported_reason)
         })
     }
+    fn validate_grid_alignment_profile(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        fn visit(
+            node: &WireNode,
+            path: String,
+            in_region: bool,
+            demanded: &mut Vec<String>,
+            context: &Context<'_>,
+        ) -> Result<(), MeasurementError> {
+            context.compatible(
+                path == "/" || node.grid_alignment_profile.is_none(),
+                "gridAlignmentProfile",
+                "Grid reference profile belongs only to the source root",
+            )?;
+            let in_region = in_region || node.layout_ready_inline_root == Some(true);
+            // This predicate demands complete own typography proof; it does not
+            // derive a baseline name. Raw Style owns its normalized own mode.
+            let needs_reference = in_region
+                && node.layout_input == LayoutInput::Box
+                && node.style.as_ref().is_some_and(|style| {
+                    matches!(style.display.as_deref(), Some("grid" | "inline-grid"))
+                        && matches!(style.writing_mode(), "vertical-lr" | "vertical-rl")
+                });
+            context.compatible(
+                node.grid_alignment_reference.is_some() == needs_reference,
+                "gridAlignmentReference",
+                "Grid record coverage disagrees with actual layout-ready region, own box role or writing mode",
+            )?;
+            if needs_reference {
+                demanded.push(path.clone());
+            }
+            for (index, child) in node.children.iter().flatten().enumerate() {
+                let next = if path == "/" {
+                    format!("/{index}")
+                } else {
+                    format!("{path}/{index}")
+                };
+                visit(child, next, in_region, demanded, &context.child(index))?;
+            }
+            Ok(())
+        }
+        let profile =
+            context.required(self.grid_alignment_profile.as_ref(), "gridAlignmentProfile")?;
+        let mut demanded = Vec::new();
+        visit(self, "/".into(), false, &mut demanded, context)?;
+        profile.validate(&demanded).map_err(|detail| {
+            context.error(
+                "gridAlignmentProfile",
+                MeasurementErrorKind::InvalidValue,
+                detail,
+            )
+        })
+    }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        if let Some(capture) = &self.grid_alignment_reference {
+            capture.validate().map_err(|detail| {
+                context.error(
+                    "gridAlignmentReference",
+                    MeasurementErrorKind::InvalidValue,
+                    detail,
+                )
+            })?;
+            let style = context.required(self.style.as_ref(), "style")?;
+            context.compatible(
+                self.layout_input == LayoutInput::Box
+                    && matches!(self.tag_name.as_deref(), Some("div" | "span"))
+                    && style.display.as_deref() == Some(capture.display.as_str())
+                    && style.writing_mode.as_deref() == Some(capture.writing_mode.as_str())
+                    && style.direction.as_deref() == Some(capture.direction.as_str())
+                    && style.has_reference_font(),
+                "gridAlignmentReference",
+                "Grid reference disagrees with its actual own role/frame/font",
+            )?;
+        }
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            if let Err(detail) = capture.validate() {
+                return Err(context.error(
+                    "atomicParagraphMetrics",
+                    MeasurementErrorKind::InvalidValue,
+                    detail,
+                ));
+            }
+            let style = context.required(self.style.as_ref(), "style")?;
+            context.compatible(
+                self.layout_input == LayoutInput::Box
+                    && self.tag_name.as_deref() == Some("div")
+                    && self.prepared_paragraph.is_none()
+                    && self.prepared_occurrence.is_none()
+                    && self.inline_segments.is_none()
+                    && self.text_content.is_none()
+                    && style.display.as_deref() == Some("block")
+                    && style.writing_mode.as_deref() == Some(capture.writing_mode.as_str())
+                    && style.direction.as_deref() == Some(capture.direction.as_str())
+                    && style.vertical_align.as_deref().unwrap_or("baseline")
+                        == capture.vertical_align.as_str()
+                    && style.has_atomic_metric_font(),
+                "atomicParagraphMetrics",
+                "named paragraph certificate disagrees with actual containing box",
+            )?;
+            let children = context.required(self.children.as_ref(), "children")?;
+            context.compatible(
+                children.len() == 3,
+                "atomicParagraphMetrics.order",
+                "certificate requires all three actual atomic/BR occurrences",
+            )?;
+            for (index, row) in capture.order.iter().enumerate() {
+                let child = &children[index];
+                let own = context.required(child.style.as_ref(), "children.style")?;
+                let same_frame = own.writing_mode == style.writing_mode
+                    && own.direction == style.direction
+                    && own.vertical_align.as_deref().unwrap_or("baseline")
+                        == capture.vertical_align.as_str()
+                    && own.has_atomic_metric_font();
+                let empty_box = child.layout_input == LayoutInput::Box
+                    && child.children.as_ref().is_some_and(Vec::is_empty)
+                    && child.text_content.is_none()
+                    && child.prepared_paragraph.is_none()
+                    && child.atomic_paragraph_metrics.is_none();
+                let role = match row {
+                    atomic_paragraph_metrics::Occurrence::Atomic { bidi_level, .. } => {
+                        child.tag_name.as_deref() == Some("span")
+                            && own.display.as_deref() == Some("inline-block")
+                            && child.line_control_participation.is_none()
+                            && child
+                                .atomic_inline_participation
+                                .as_ref()
+                                .is_some_and(|atomic| {
+                                    atomic.bidi_level == u64::from(*bidi_level)
+                                        && atomic.following_break == BreakKind::Prohibited
+                                })
+                    }
+                    atomic_paragraph_metrics::Occurrence::Break { .. } => {
+                        child.tag_name.as_deref() == Some("br")
+                            && own.display.as_deref() == Some("inline")
+                            && child.line_control_participation.is_some()
+                            && child.atomic_inline_participation.is_none()
+                            && own.has_zero_inline_metrics()
+                    }
+                };
+                context.compatible(
+                    same_frame && empty_box && role,
+                    "atomicParagraphMetrics.order",
+                    "certificate does not match actual same-reference atomic/BR child",
+                )?;
+            }
+        }
+
+        context.compatible(
+            self.world_rounded_layout.is_none() || self.layout_input == LayoutInput::Box,
+            "worldRoundedLayout",
+            "world-corner diagnostic requires an actual measured box",
+        )?;
         context.compatible(
             self.browser_br_observation.is_none()
                 || (self.layout_input == LayoutInput::Box
@@ -581,8 +762,12 @@ impl WireNode {
                     && self.text_content.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && self.prepared_paragraph.is_none()
+                    && self.atomic_paragraph_metrics.is_none()
+                    && self.grid_alignment_profile.is_none()
+                    && self.grid_alignment_reference.is_none()
                     && self.prepared_occurrence.is_none()
                     && self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
@@ -635,7 +820,8 @@ impl WireNode {
                 "historical measured observations cannot masquerade as native source observations",
             )?;
             if self.range_rectangles.is_some() || self.range_fragments.is_some() {
-                context.compatible(self.fragments.is_none() && self.unrounded_layout.is_none() && self.smart_rounded_layout.is_none() && self.naively_rounded_layout.is_none() && self.children.as_ref().is_none_or(Vec::is_empty) && self.style.as_ref().is_none_or(|style| !style.has_scroll_fields()), "rangeInks", "Range observations cannot carry geometry, fragments, children, or scroll state")?;
+                context.compatible(self.fragments.is_none() && self.unrounded_layout.is_none() && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none() && self.naively_rounded_layout.is_none() && self.children.as_ref().is_none_or(Vec::is_empty) && self.style.as_ref().is_none_or(|style| !style.has_scroll_fields()), "rangeInks", "Range observations cannot carry geometry, fragments, children, or scroll state")?;
             }
             context.compatible(
                 self.line_control_participation.is_none(),
@@ -667,6 +853,7 @@ impl WireNode {
                     && self.text_content.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && self.inline_segments.is_none()
                     && self.line_control_participation.is_none()
@@ -683,12 +870,6 @@ impl WireNode {
             style.validate_wire(context)?;
         }
         if let Some(viewport) = &self.viewport {
-            viewport
-                .width
-                .validate_viewport_wire(context, "viewport.width")?;
-            viewport
-                .height
-                .validate_viewport_wire(context, "viewport.height")?;
             viewport.validate_alternative(context)?;
         }
         if let Some(boundary) = &self.inline_boundary {
@@ -730,6 +911,36 @@ impl WireNode {
         is_root: bool,
     ) -> Result<Node, MeasurementError> {
         let mut attrs = Vec::new();
+        if let Some(profile) = &self.grid_alignment_profile {
+            let encoded = serde_json::to_string(profile).map_err(|_| {
+                context.error(
+                    "gridAlignmentProfile",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode complete Grid owner profile",
+                )
+            })?;
+            attrs.push(("grid-alignment-profile", encoded));
+        }
+        if let Some(capture) = &self.grid_alignment_reference {
+            let encoded = serde_json::to_string(capture).map_err(|_| {
+                context.error(
+                    "gridAlignmentReference",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode own Grid reference",
+                )
+            })?;
+            attrs.push(("grid-alignment-reference", encoded));
+        }
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            let encoded = serde_json::to_string(capture).map_err(|_| {
+                context.error(
+                    "atomicParagraphMetrics",
+                    MeasurementErrorKind::InvalidValue,
+                    "cannot encode finite metric certificate",
+                )
+            })?;
+            attrs.push(("atomic-paragraph-metrics", encoded));
+        }
         if let Some(tag) = &self.tag_name {
             validate_xml_text(tag, context, "tagName")?;
         }
@@ -748,6 +959,7 @@ impl WireNode {
                 children: Vec::new(),
                 text: None,
                 observation: Observation::Boundary,
+                world_rounded_layout: None,
                 atomic: None,
                 bands: None,
                 control_expectation: None,
@@ -916,6 +1128,15 @@ impl WireNode {
         } else {
             NodeKind::Box
         };
+        let world_rounded_layout = if self.layout_input == LayoutInput::Box {
+            Some(
+                context
+                    .required(self.world_rounded_layout, "worldRoundedLayout")?
+                    .validate_diagnostic(context)?,
+            )
+        } else {
+            None
+        };
         let native_ranges = self.range_fragments.is_some();
         let native_rectangles = self.range_fragments.map(|rows| {
             rows.into_iter()
@@ -927,6 +1148,7 @@ impl WireNode {
                 self.fragments.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && !style.has_scroll_fields(),
                 "rangeInks",
@@ -1208,6 +1430,25 @@ impl WireNode {
             viewport.validate(context)?;
         }
         prepare_control_expectations(&writing_mode, &mut children, context)?;
+        if let Some(capture) = &self.grid_alignment_reference {
+            attrs.extend([
+                ("font-family", capture.font.family.clone()),
+                ("font-size", format!("{}px", number(capture.font.size))),
+            ]);
+        }
+        if let Some(capture) = &self.atomic_paragraph_metrics {
+            // validate_wire bound these exact font facts to the paragraph and
+            // all three actual occurrences. Default compression must not erase
+            // authority required by the independent certificate reader.
+            let font_attrs = [
+                ("font-family", capture.font.family.clone()),
+                ("font-size", format!("{}px", number(capture.font.size))),
+            ];
+            attrs.extend(font_attrs.clone());
+            for child in &mut children {
+                child.attrs.extend(font_attrs.clone());
+            }
+        }
         Ok(Node {
             kind,
             prepared_paragraph,
@@ -1219,6 +1460,7 @@ impl WireNode {
                 self.text_content
             },
             observation,
+            world_rounded_layout,
             atomic,
             bands: shape,
             control_expectation: None,
@@ -1227,6 +1469,56 @@ impl WireNode {
     }
 }
 impl WireGeometry {
+    fn validate_diagnostic(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
+        let mut attrs = Vec::new();
+        for (name, value, extent) in [
+            ("x", self.x, false),
+            ("y", self.y, false),
+            ("width", self.width, true),
+            ("height", self.height, true),
+        ] {
+            let field = format!("worldRoundedLayout.{name}");
+            let value = context.required(value, &field)?;
+            if extent {
+                nonnegative(value, context, &field)?;
+            } else {
+                finite(value, context, &field)?;
+            }
+            attrs.push((name, number(value)));
+        }
+        for (first, second, a, b) in [
+            (
+                "scroll-width",
+                "scroll-height",
+                self.scroll_width,
+                self.scroll_height,
+            ),
+            (
+                "client-width",
+                "client-height",
+                self.client_width,
+                self.client_height,
+            ),
+        ] {
+            context.compatible(
+                a.is_some() == b.is_some(),
+                "worldRoundedLayout",
+                "diagnostic extent pairs must be supplied together",
+            )?;
+            if let (Some(a), Some(b)) = (a, b) {
+                attrs.push((
+                    first,
+                    number(nonnegative(a, context, "worldRoundedLayout")?),
+                ));
+                attrs.push((
+                    second,
+                    number(nonnegative(b, context, "worldRoundedLayout")?),
+                ));
+            }
+        }
+        Ok(attrs)
+    }
+
     fn validate(&self, context: &Context<'_>, prefix: &str) -> Result<Geometry, MeasurementError> {
         self.validate_supplied(context, prefix)?;
         let field = |name: &str| format!("{prefix}.{name}");
@@ -1276,78 +1568,6 @@ impl WireGeometry {
             }
         }
         Ok(())
-    }
-}
-impl WireViewport {
-    fn validate_alternative(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
-        if self.root_context == RootContext::FlexItem {
-            let mode = context.required(
-                self.parent_writing_mode.as_deref(),
-                "viewport.parentWritingMode",
-            )?;
-            style::validate_writing_mode(mode, context, "viewport.parentWritingMode")?;
-            let direction =
-                context.required(self.parent_direction.as_deref(), "viewport.parentDirection")?;
-            context.ensure(
-                matches!(direction, "ltr" | "rtl"),
-                "viewport.parentDirection",
-                "unknown direction",
-            )?;
-            context.required(self.host_inline_size, "viewport.hostInlineSize")?;
-        } else {
-            context.compatible(
-                self.parent_writing_mode.is_none()
-                    && self.parent_direction.is_none()
-                    && self.host_inline_size.is_none(),
-                "viewport.rootContext",
-                "root context cannot carry flex host metadata",
-            )?;
-        }
-        Ok(())
-    }
-    fn validate(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
-        self.width
-            .validate_viewport_semantic(context, "viewport.width")?;
-        self.height
-            .validate_viewport_semantic(context, "viewport.height")?;
-        let mut attrs = vec![
-            ("width", self.width.validate(context, "viewport.width")?),
-            ("height", self.height.validate(context, "viewport.height")?),
-        ];
-        if self.root_context == RootContext::FlexItem {
-            let mode = context.required(
-                self.parent_writing_mode.as_deref(),
-                "viewport.parentWritingMode",
-            )?;
-            style::validate_writing_mode(mode, context, "viewport.parentWritingMode")?;
-            let direction =
-                context.required(self.parent_direction.as_deref(), "viewport.parentDirection")?;
-            context.ensure(
-                matches!(direction, "ltr" | "rtl"),
-                "viewport.parentDirection",
-                "unknown direction",
-            )?;
-            let host = nonnegative(
-                context.required(self.host_inline_size, "viewport.hostInlineSize")?,
-                context,
-                "viewport.hostInlineSize",
-            )?;
-            attrs.extend([
-                ("root-context", "flex-item".into()),
-                ("parent-writing-mode", mode.into()),
-                ("parent-direction", direction.into()),
-                ("host-inline-size", format!("{}px", number(host))),
-            ]);
-        } else {
-            context.compatible(
-                self.parent_writing_mode.is_none()
-                    && self.parent_direction.is_none()
-                    && self.host_inline_size.is_none(),
-                "viewport.rootContext",
-                "root context cannot carry flex host metadata",
-            )?;
-        }
-        Ok(attrs)
     }
 }
 impl WireBoundary {
@@ -1627,6 +1847,13 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn observation_frame(&self) -> &'static str {
+        if self.root_local_positioned {
+            "root-border-local"
+        } else {
+            "root-border"
+        }
+    }
     pub fn use_rounding(&self) -> bool {
         self.use_rounding
     }
@@ -1638,6 +1865,9 @@ impl ValidatedMeasurement {
     }
 }
 impl Node {
+    pub fn world_rounded_layout(&self) -> Option<&Attributes> {
+        self.world_rounded_layout.as_ref()
+    }
     pub fn prepared_paragraph(&self) -> Option<&str> {
         self.prepared_paragraph.as_deref()
     }

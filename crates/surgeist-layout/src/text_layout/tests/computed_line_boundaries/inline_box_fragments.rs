@@ -141,7 +141,14 @@ fn both_checked_constructors_refuse_complete_bodies_for_association_only() {
 fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry() {
     let mut fixture = prepare(scope_input(false, Side::Before, true));
     fixture.binding.inline_box_fragments = Demand::CompleteBodies;
-    let batch = compute::<f64>(&fixture, false, AvailableOf::definite(100.0));
+    let batch = compute::<f64>(
+        &fixture,
+        false,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+    );
     assert_eq!(batch.placed_text().len(), 1);
     let output = &batch.placed_text()[0];
     let fragments = output.inline_box_fragments().unwrap();
@@ -162,7 +169,14 @@ fn complete_bodies_flow_retains_one_binding_family_and_existing_source_geometry(
     assert_originals(&batch, &fixture);
     let mut unrequested = prepare(scope_input(false, Side::Before, true));
     unrequested.binding.inline_box_fragments = Demand::NotRequested;
-    let ordinary = compute::<f64>(&unrequested, false, AvailableOf::definite(100.0));
+    let ordinary = compute::<f64>(
+        &unrequested,
+        false,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+    );
     assert!(ordinary.placed_text()[0].inline_box_fragments().is_none());
 }
 
@@ -195,7 +209,14 @@ fn complete_bodies_accepts_authentic_node_free_semantic_flow() {
 fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recovers() {
     let mut complete = prepare(scope_input(false, Side::Before, true));
     complete.binding.inline_box_fragments = Demand::CompleteBodies;
-    let prior = compute::<f64>(&complete, false, AvailableOf::definite(100.0));
+    let prior = compute::<f64>(
+        &complete,
+        false,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+    );
     let before = prior.placed_text()[0]
         .layout()
         .lines()
@@ -248,7 +269,14 @@ fn unknown_topology_refuses_precisely_without_replacing_prior_output_and_recover
             .collect::<Vec<_>>(),
         before
     );
-    let recovered = compute::<f64>(&complete, false, AvailableOf::definite(100.0));
+    let recovered = compute::<f64>(
+        &complete,
+        false,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(100.0).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+    );
     assert_eq!(
         recovered.placed_text()[0]
             .layout()

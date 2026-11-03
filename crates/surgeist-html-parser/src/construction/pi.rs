@@ -90,6 +90,11 @@ impl SessionStorage {
             HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
             HtmlPiPseudoAttributeReply as Reply,
         };
+        use surgeist_html::bounded::values::{
+            HtmlNameIndex as NameIndex, HtmlNameIndexError as IndexError,
+            HtmlNameIndexHasher as NameHasher, HtmlNameIndexLookup as Lookup,
+            HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
+        };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
             .construction
@@ -99,9 +104,18 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let mut cursor = HtmlParsePendingAssociationCursor::new(pi.data().len());
+        let data_len = pi.data().len();
+        let mut cursor = HtmlParsePendingAssociationCursor::new(data_len);
         let mut name: Option<PendingField> = None;
         let mut value: Option<PendingField> = None;
+        // The index of committed names: a table at most half full of pair numbers plus one,
+        // probed from a randomly keyed hash of the name, so that no input can choose names that
+        // collide. It exists once the first name is complete and is released with the fields.
+        let hasher = NameHasher::new();
+        let mut name_index = NameIndex::new(HtmlParsePendingAssociationCursor::name_index_slots(
+            data_len,
+        ));
+        let mut table: Option<OwnedVec<NameSlot>> = None;
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -162,6 +176,72 @@ impl SessionStorage {
                             &mut pending.maps,
                         )?;
                         Reply::Ack
+                    }
+                    Action::FindName => {
+                        let slots = name_index.slots();
+                        if table.is_none() {
+                            table = Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?);
+                            for _ in 0..slots.get() {
+                                table
+                                    .as_mut()
+                                    .ok_or(SessionError::WrongToken)?
+                                    .try_push_geometric_toward(
+                                        c,
+                                        NameSlot::default(),
+                                        slots.get(),
+                                    )?;
+                            }
+                        }
+                        let current = name
+                            .as_ref()
+                            .ok_or(SessionError::WrongToken)?
+                            .buffer
+                            .units();
+                        for _ in current {
+                            c.charge_unit_inspection()?;
+                        }
+                        let RetainedPayload::PiAttributes { values, .. } =
+                            self.payloads.row(c, map)?
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        let bank = table
+                            .as_mut()
+                            .ok_or(SessionError::WrongToken)?
+                            .as_mut_slice(c)?;
+                        let mut index = NameTable::new(&mut name_index, bank)
+                            .map_err(|_| latch_registry_row(c))?;
+                        let lookup = index.find_or_insert(
+                            hasher.hash(current),
+                            values.len(),
+                            c,
+                            |c| Ok(c.charge(HtmlParseWorkCategory::RecordVisit, 1)?),
+                            |c, pair| {
+                                let existing = values
+                                    .as_slice()
+                                    .get(pair)
+                                    .ok_or(SessionError::WrongToken)?
+                                    .name
+                                    .code_units();
+                                if existing.len() != current.len() {
+                                    return Ok(false);
+                                }
+                                for (left, right) in existing.iter().zip(current) {
+                                    c.charge_unit_inspection()?;
+                                    c.charge_unit_inspection()?;
+                                    if left != right {
+                                        return Ok(false);
+                                    }
+                                }
+                                Ok(true)
+                            },
+                        );
+                        Reply::Pair(match lookup {
+                            Ok(Lookup::Found(pair)) => Some(pair),
+                            Ok(Lookup::Inserted) => None,
+                            Err(IndexError::Consumer(error)) => return Err(error),
+                            Err(_) => return Err(latch_registry_row(c)),
+                        })
                     }
                     Action::NameLength(index) => {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -260,6 +340,9 @@ impl SessionStorage {
         }
         if let Some(field) = value {
             field.release(c)?;
+        }
+        if let Some(bank) = table {
+            bank.release(c)?;
         }
         result
     }

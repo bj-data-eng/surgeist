@@ -94,7 +94,15 @@ fn opposed_parent<S: LayoutScalar>() {
         );
     }
     let ordinary = f.flow();
-    let prior = compute_layout_with_flow(&ordinary, 0, request(n(100.0))).unwrap();
+    let prior = compute_layout_with_flow(
+        &ordinary,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((ordinary).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let expected_wide = [
         (0.0, 0.0),
         (10.0, 0.0),
@@ -112,7 +120,15 @@ fn opposed_parent<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], demanded, Vec::new()).unwrap();
-    let wide = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let wide = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(atom_positions(&wide), expected_wide);
     boundary_position(&wide, 20, 65.0, 0.0, 3.0);
     boundary_position(&wide, 21, 20.0, 0.0, 5.0);
@@ -127,7 +143,15 @@ fn opposed_parent<S: LayoutScalar>() {
     // executed-edge associations, not the logical source-frontier components.
     assert_eq!(edges(c), [(21, 6, InlineBoundaryKind::End, 20.0, 25.0)]);
     assert_eq!(edges(a), [(20, 3, InlineBoundaryKind::Start, 65.0, 68.0)]);
-    let narrow = compute_layout_with_flow(&flow, 0, request(n(30.0))).unwrap();
+    let narrow = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(30.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         atom_positions(&narrow),
         [
@@ -188,7 +212,15 @@ fn empty_zero_bp<S: LayoutScalar>() {
         .native_inline_boxes
         .push(NativeInlineBoxFamilyInput { formatter: 0 });
     let flow = f.flow();
-    let accepted = compute_layout_with_flow(&flow, 0, request(n(100.0))).unwrap();
+    let accepted = compute_layout_with_flow(
+        &flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert!(accepted.placed_text().is_empty());
     assert_eq!(output(&accepted, 10).location, Point::new(S::ZERO, S::ZERO));
     assert_eq!(output(&accepted, 10).size, Size::splat(n(10.0)));
@@ -228,8 +260,15 @@ fn empty_zero_bp<S: LayoutScalar>() {
     };
     edges.after = WrapEdge::Line;
     let forced_flow = LayoutFlowInput::try_new(&f.tree, 0, vec![], forced, Vec::new()).unwrap();
-    let error = compute_layout_with_flow(&forced_flow, 0, request(n(100.0)))
-        .expect_err("an unselected following neighbor cannot witness the empty box's selected gap");
+    let error = compute_layout_with_flow(
+        &forced_flow,
+        0,
+        request(n(100.0), {
+            let root_input = crate::LayoutTree::node_input((forced_flow).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .expect_err("an unselected following neighbor cannot witness the empty box's selected gap");
     assert!(matches!(
         error.kind(),
         crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(

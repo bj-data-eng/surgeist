@@ -8,10 +8,8 @@ pub(crate) use session::FloatChildPacket;
 pub(crate) mod validation;
 
 use crate::error::LayoutResultOf;
-use crate::{
-    CompletedLayoutBatchOf, LayoutRootContextOf, LayoutRootRequestOf, LayoutTree, Traverse,
-};
-pub(crate) use root::{compute_flex_item_root, compute_hidden, compute_root};
+use crate::{CompletedLayoutBatchOf, LayoutRootRequestOf, LayoutTree, Traverse};
+pub(crate) use root::{compute_hidden, compute_root};
 #[cfg(test)]
 pub(crate) use rounding::round_layout;
 #[cfg(test)]
@@ -136,14 +134,7 @@ fn run_session<Tree: LayoutTree>(
     let replay = session.has_text() || session.groups_active();
     let mut rejected_bases: Vec<(_, Option<TextPassBasis<Tree>>, _)> = Vec::new();
     loop {
-        match request.context() {
-            LayoutRootContextOf::Viewport => {
-                compute_root(&mut session, root, request.available())?;
-            }
-            LayoutRootContextOf::FlexItemUnderViewport(context) => {
-                compute_flex_item_root(&mut session, root, request.available(), context)?;
-            }
-        }
+        compute_root(&mut session, root, request)?;
         match request.rounding_mode() {
             crate::LayoutRoundingMode::NearestCssPixel => {
                 rounding::round_layout(&mut session, root)?

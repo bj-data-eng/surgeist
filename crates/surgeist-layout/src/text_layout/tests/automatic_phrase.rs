@@ -353,7 +353,15 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let facts = scope_facts(&batch);
     assert_eq!(facts.len(), 3);
     assert!(facts.iter().all(|fact| fact.0 == f.scope && fact.3 == 0));
@@ -495,7 +503,15 @@ fn compute(
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(&capture, 100, request(500.0)).unwrap()
+    compute_layout_with_flow(
+        &capture,
+        100,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 100);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 
 fn with_cached_sibling(tree: PublicLayoutTreeOf<f64>) -> PublicLayoutTreeOf<f64> {
@@ -601,7 +617,15 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         Vec::new(),
     )
     .unwrap();
-    let wide = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let wide = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     // Ahem advances are10px for all13 original units and20px for each of
     // three generated spaces: occupied width190, RTL start500-190=310.
     // UAX9: paragraph level1 gives strong L Japanese level2; terminal ON
@@ -616,7 +640,15 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
             .collect::<Vec<_>>(),
         [350.0, 400.0, 440.0]
     );
-    let split = compute_layout_with_flow(&capture, 0, request(70.0)).unwrap();
+    let split = compute_layout_with_flow(
+        &capture,
+        0,
+        request(70.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let facts = scope_facts(&split);
     assert_eq!(facts.len(), 3);
     assert!(facts.iter().map(|fact| fact.3).max().unwrap() > 0);
@@ -670,7 +702,16 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
             Vec::new(),
         )
         .unwrap();
-        compute_layout_with_flow_invalidated(&capture, 100, request(500.0), &[102]).unwrap()
+        compute_layout_with_flow_invalidated(
+            &capture,
+            100,
+            request(500.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 100);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+            &[102],
+        )
+        .unwrap()
     };
     let initial = compute_all(&tree, &first);
     initial.apply_to(&mut tree).unwrap();

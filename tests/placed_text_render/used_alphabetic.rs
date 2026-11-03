@@ -290,11 +290,14 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     let batch = layout::compute_layout_with_flow(
         &flow,
         0,
-        layout::LayoutRootRequest::viewport(layout::Size::new(
-            layout::Available::Definite(40.0),
-            layout::Available::Definite(40.0),
-        ))
-        .unwrap(),
+        NativeViewport::new(
+            layout::Size::new(Some(40.0), Some(40.0)),
+            layout::FlowAxes::new(mode, layout::Direction::Ltr),
+        )
+        .request(layout::Size::new(
+            layout::SizingOperation::Normal,
+            layout::SizingOperation::Normal,
+        )),
     )
     .unwrap();
     assert_eq!(batch.placed_text().len(), 1);

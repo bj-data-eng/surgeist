@@ -27,7 +27,12 @@ fn no_strut<S: LayoutScalar>() {
         ),
         observe_tail: false,
         wrapping: None,
-        available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Start,

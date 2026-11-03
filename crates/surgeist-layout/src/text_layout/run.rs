@@ -16,8 +16,8 @@ use crate::inline::{
 };
 use crate::inline::{InlineControlSourceOf, InlineParticipantLayoutKind};
 use crate::{
-    AvailableOf, Direction, FlowAxes, InlineFragmentOutputOf, LayoutScalar, LayoutTextNumericError,
-    Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
+    AxisSizingRequestOf, Direction, FlowAxes, InlineFragmentOutputOf, LayoutScalar,
+    LayoutTextNumericError, Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
 };
 use surgeist_text::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -503,7 +503,7 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
     pub content_insets: crate::Edges<S>,
     pub cursor_block: S,
     pub axes: FlowAxes,
-    pub available: AvailableOf<S>,
+    pub available: AxisSizingRequestOf<S>,
     pub alignment: TextAlign,
     pub wrap_style: crate::TextWrapStyle,
     pub last_alignment: TextAlignLast,
@@ -1248,11 +1248,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         }
     };
     let orientation = frame.orientation();
-    let available = match context.available {
-        AvailableOf::Definite(value) => fit::Available::Definite(value.to_f64()),
-        AvailableOf::MinContent => fit::Available::Minimum,
-        AvailableOf::MaxContent => fit::Available::Maximum,
-    };
+    let available = crate::layout_math::text_axis_request(context.available);
     let wrapping = context
         .wrapping
         .as_ref()
@@ -1944,7 +1940,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         }
         if is_formatted
             && context.tail != fit::TailContext::Unrestricted
-            && matches!(context.available, AvailableOf::Definite(_))
+            && crate::layout_math::normal_available_size(context.available).is_some()
         {
             let selected = line.finalized.selected_line();
             report.lines.push(crate::hyphenation::CommittedInlineLine {
@@ -1956,21 +1952,25 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.hyphenation_state = line.hyphenation_end;
         report.line_box_context = line.line_box_end;
         let feedback = line.finalized.feedback();
-        let contribution = match context.available {
-            AvailableOf::MinContent => line.finalized.measurements().min_content_contribution(),
-            AvailableOf::MaxContent => line.finalized.measurements().max_content_contribution(),
-            AvailableOf::Definite(_) => line.finalized.measurements().fit(),
+        let contribution = match context.available.operation() {
+            crate::SizingOperation::MinContent => {
+                line.finalized.measurements().min_content_contribution()
+            }
+            crate::SizingOperation::MaxContent => {
+                line.finalized.measurements().max_content_contribution()
+            }
+            crate::SizingOperation::Normal => line.finalized.measurements().fit(),
         };
-        let admission = match context.available {
-            AvailableOf::MinContent => line
+        let admission = match context.available.operation() {
+            crate::SizingOperation::MinContent => line
                 .finalized
                 .measurements()
                 .margin_edge_min_content_contribution(),
-            AvailableOf::MaxContent => line
+            crate::SizingOperation::MaxContent => line
                 .finalized
                 .measurements()
                 .margin_edge_max_content_contribution(),
-            AvailableOf::Definite(_) => line.finalized.measurements().margin_edge_fit(),
+            crate::SizingOperation::Normal => line.finalized.measurements().margin_edge_fit(),
         };
         let indent = line.finalized.selected_line().request().context.indent;
         let css_width = fit::css_margin_edge_width(admission, indent)?;

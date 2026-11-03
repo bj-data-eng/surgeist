@@ -1,0 +1,1820 @@
+//! Invocation-owned corpus and assertions; no historical corpus is rewritten.
+
+use std::collections::BTreeMap;
+use std::error::Error;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+use surgeist_generator::browser::{
+    self, AcquisitionMode, BrowserCorpus, BrowserCorpusAdapter, BrowserLocation,
+    BrowserReportSummary, CaseOutcome, CaseSpec, FixtureInput, FixtureSpec, FixtureStatus,
+    GenerationError, GenerationRequest, PreparedFixture, ReportScope,
+};
+use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
+
+use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
+use crate::browser_profile::BrowserManifest;
+
+#[path = "publication.rs"]
+mod publication;
+
+type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum QualificationMode {
+    Regular,
+    StylesheetCustody,
+    FontCustody,
+    NumericDiagnostics,
+    Publish,
+    CheckPublished,
+}
+
+fn select_records(
+    declaration: &mut Declaration,
+    fixture: Option<&str>,
+    mode: QualificationMode,
+) -> Result<()> {
+    match (mode, fixture) {
+        (QualificationMode::StylesheetCustody, None) => {
+            return Err("stylesheet custody qualification requires one declared fixture".into());
+        }
+        (QualificationMode::FontCustody, None) => {
+            return Err("font custody qualification requires one declared fixture".into());
+        }
+        (QualificationMode::NumericDiagnostics, None) => {
+            return Err("numeric diagnostics require one declared fixture".into());
+        }
+        _ => {}
+    }
+    if let Some(source) = fixture {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() == source);
+        if declaration.records.len() != 1 {
+            return Err("focused qualification requires one declared source".into());
+        }
+        if declaration.records[0].relation.is_some() {
+            return Err("paired observations require the complete inventory".into());
+        }
+        if !matches!(
+            &declaration.records[0].expected,
+            ExpectedDisposition::Generated { .. }
+        ) {
+            match mode {
+                QualificationMode::StylesheetCustody => {
+                    return Err(
+                        "stylesheet custody qualification requires a Generated fixture".into(),
+                    );
+                }
+                QualificationMode::FontCustody => {
+                    return Err("font custody qualification requires a Generated fixture".into());
+                }
+                QualificationMode::NumericDiagnostics => {
+                    return Err("numeric diagnostics require a Generated fixture".into());
+                }
+                QualificationMode::Regular => {}
+                QualificationMode::Publish | QualificationMode::CheckPublished => {
+                    return Err("durable modes require the complete inventory".into());
+                }
+            }
+        }
+        let named = declared_named_font_counts(&declaration.records[0]);
+        match mode {
+            QualificationMode::StylesheetCustody if named.is_some() => {
+                return Err(
+                    "stylesheet custody excludes declared named-font sources; use --font-custody"
+                        .into(),
+                );
+            }
+            QualificationMode::FontCustody if named.is_none() => {
+                return Err("font custody requires a declared named-font source".into());
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn declared_atomic_paragraphs(record: &Record) -> Option<usize> {
+    match &record.expected {
+        ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    atomic_paragraphs: Some(count),
+                    ..
+                },
+        } if *count > 0 => Some(*count),
+        _ => None,
+    }
+}
+
+fn declared_named_font_counts(record: &Record) -> Option<(usize, usize)> {
+    let paragraphs = declared_atomic_paragraphs(record).unwrap_or(0);
+    let grids = match &record.expected {
+        ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    grid_reference_owners: Some(owners),
+                    ..
+                },
+        } => owners.len(),
+        _ => 0,
+    };
+    (paragraphs > 0 || grids > 0).then_some((paragraphs, grids))
+}
+
+const DECLARATION: &[u8] = include_bytes!("corpus.toml");
+const CUSTODY_HELPER: &[u8] = include_bytes!("custody.js");
+const INPUTS: &[(&str, &[u8])] = &[
+    (
+        "scripts/gentest/test_helper.js",
+        include_bytes!("../../tests/layout/browser_parity/scripts/gentest/test_helper.js"),
+    ),
+    (
+        "scripts/gentest/test_base_style.css",
+        include_bytes!("../../tests/layout/browser_parity/scripts/gentest/test_base_style.css"),
+    ),
+    (
+        "fonts/Ahem.ttf",
+        include_bytes!("../../tests/layout/browser_parity/fonts/Ahem.ttf"),
+    ),
+    (
+        "browser-owner.toml",
+        include_bytes!("../../tests/layout/browser_parity/corpus.toml"),
+    ),
+];
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Declaration {
+    schema_version: u8,
+    records: Vec<Record>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Record {
+    source: RelativePath,
+    source_sha256: Sha256Digest,
+    source_kind: SourceKind,
+    expected: ExpectedDisposition,
+    #[serde(default)]
+    historical_sha256: BTreeMap<String, Sha256Digest>,
+    relation: Option<PairedObservation>,
+}
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum SourceKind {
+    Original,
+    Authored,
+}
+#[derive(Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+enum ExpectedDisposition {
+    Generated { metadata: ExpectedMetadata },
+    Unsupported { reason: String },
+}
+#[derive(Clone, Deserialize)]
+#[serde(tag = "context", rename_all = "kebab-case", deny_unknown_fields)]
+enum ExpectedMetadata {
+    AbsoluteLocal {
+        hypothetical_display: String,
+        containing_direction: String,
+        hypothetical_direction: String,
+        root_direction: String,
+        root_writing_mode: String,
+        inline_offset: f64,
+        root_size: Option<ExpectedRootSize>,
+    },
+    BlockFlow {
+        parent_direction: String,
+        root_direction: String,
+        root_writing_mode: String,
+        root_position: String,
+        atomic_paragraphs: Option<usize>,
+        grid_reference_owners: Option<Vec<String>>,
+    },
+}
+#[derive(Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+enum ExpectedRootSize {
+    Fixed { width: f64, height: f64 },
+    FlexPair { item_width: f64, item_height: f64 },
+}
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PairedObservation {
+    peer: String,
+    world_phase_change: bool,
+}
+struct ExpectedCase {
+    source: RelativePath,
+    case: CaseSpec,
+    historical: Option<RelativePath>,
+    expected: ExpectedDisposition,
+    relation: Option<PairedObservation>,
+}
+
+struct Inventory {
+    fixtures: Vec<FixtureSpec>,
+    cases: Vec<ExpectedCase>,
+    global_inputs: Vec<RelativePath>,
+    expected_inputs: BTreeMap<RelativePath, Sha256Digest>,
+}
+
+impl Declaration {
+    fn expected(&self) -> Result<BrowserReportSummary> {
+        if self.records.is_empty() {
+            return Err("root-context qualification requires source records".into());
+        }
+        let mut generated = 0usize;
+        let mut unsupported = 0usize;
+        for record in &self.records {
+            let count = match &record.expected {
+                ExpectedDisposition::Generated { .. } => &mut generated,
+                ExpectedDisposition::Unsupported { .. } => &mut unsupported,
+            };
+            *count = count
+                .checked_add(fixture_cases().len())
+                .ok_or("qualification case count overflow")?;
+        }
+        Ok(BrowserReportSummary::new(generated, unsupported, 0, 0, 0)?)
+    }
+}
+
+// The bytes and their parsed source records travel together. A focused run may
+// select records from this declaration, while retaining its complete source bytes.
+struct DeclarationInput<'a> {
+    bytes: &'a [u8],
+    declaration: Declaration,
+}
+
+impl<'a> DeclarationInput<'a> {
+    fn parse(bytes: &'a [u8]) -> Result<Self> {
+        let declaration: Declaration =
+            surgeist_generator::parse_manifest(std::str::from_utf8(bytes)?, "corpus.toml")?;
+        if declaration.schema_version != 3 {
+            return Err("qualification declaration schema_version must be 3".into());
+        }
+        let mut sources = std::collections::BTreeSet::new();
+        for record in &declaration.records {
+            if !sources.insert(record.source.clone()) {
+                return Err(
+                    format!("duplicate qualification source: {}", record.source.as_str()).into(),
+                );
+            }
+        }
+        declaration.expected()?;
+        Ok(Self { bytes, declaration })
+    }
+}
+
+// This intentionally projects only the browser declaration. It does not claim
+// to validate the owning corpus's Taffy import or complete fixture inventory.
+#[derive(Deserialize)]
+struct OwnerBrowserDeclaration {
+    browser: BrowserManifest,
+}
+
+struct QualificationAdapter;
+impl BrowserCorpusAdapter for QualificationAdapter {
+    type Error = AdapterError;
+
+    fn prepare(
+        &self,
+        input: FixtureInput<'_>,
+    ) -> std::result::Result<PreparedFixture, Self::Error> {
+        LayoutAdapter.prepare(input)
+    }
+    fn lower(
+        &self,
+        fixture: &FixtureSpec,
+        measurement: serde_json::Value,
+    ) -> std::result::Result<Vec<CaseOutcome>, Self::Error> {
+        let outcomes = LayoutAdapter.lower(fixture, measurement)?;
+        for outcome in &outcomes {
+            if let CaseOutcome::Unsupported { case_id, reason } = outcome {
+                eprintln!("qualify-root-context: {case_id}: Unsupported: {reason}");
+            }
+        }
+        Ok(outcomes)
+    }
+}
+
+pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if matches!(
+        mode,
+        QualificationMode::Publish | QualificationMode::CheckPublished
+    ) {
+        if fixture.is_some() {
+            return Err("durable modes require the complete inventory".into());
+        }
+        return publication::run(owner, mode);
+    }
+    let mut input = DeclarationInput::parse(DECLARATION)?;
+    select_records(&mut input.declaration, fixture, mode)?;
+    if let Some(source) = fixture {
+        eprintln!(
+            "qualify-root-context: focused declared source {source}; not a full inventory qualification"
+        );
+    }
+    let _ = input.declaration.expected()?;
+    let owner_bytes = INPUTS
+        .iter()
+        .find(|(name, _)| *name == "browser-owner.toml")
+        .expect("browser declaration")
+        .1;
+    let owner_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
+        std::str::from_utf8(owner_bytes)?,
+        "browser-owner.toml",
+    )?;
+    owner_declaration.browser.validate()?;
+    let settings = owner_declaration.browser.settings()?;
+    let browser_path = browser::acquire_browser(owner, &settings, AcquisitionMode::ExistingOnly)?;
+    let invocation = Invocation::new(owner)?;
+    eprintln!(
+        "qualify-root-context: invocation {}",
+        invocation.root.display()
+    );
+    let result = qualify(
+        &invocation.root,
+        owner,
+        settings,
+        browser_path,
+        input,
+        fixture.is_some(),
+        mode,
+    );
+    // Generation owns and joins its supervisor. Never remove outstanding profile
+    // journals, even on an assertion/generation failure: preserve them for recovery.
+    let terminal = invocation.check_terminal();
+    if let Err(error) = terminal {
+        eprintln!(
+            "qualify-root-context: retained {}: {error}",
+            invocation.root.display()
+        );
+        return Err(error);
+    }
+    match result {
+        Ok(()) => fs::remove_dir_all(&invocation.root).map_err(Into::into),
+        Err(error) => {
+            eprintln!(
+                "qualify-root-context: failed corpus retained at {}",
+                invocation.root.display()
+            );
+            Err(error)
+        }
+    }
+}
+
+struct Invocation {
+    root: PathBuf,
+}
+impl Invocation {
+    fn new(owner: &Path) -> Result<Self> {
+        let parent = owner.join("tmp/qualify-root-context");
+        fs::create_dir_all(&parent)?;
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = parent.join(format!("{}-{nonce}", std::process::id()));
+        fs::create_dir(&root)?;
+        Ok(Self { root })
+    }
+    fn check_terminal(&self) -> Result<()> {
+        let profiles = self.root.join(".surgeist-generator/profiles/browser");
+        match fs::read_dir(&profiles) {
+            Ok(mut entries) => {
+                if entries.next().transpose()?.is_some() {
+                    return Err(format!(
+                        "outstanding owned browser profiles at {}",
+                        profiles.display()
+                    )
+                    .into());
+                }
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+fn qualify(
+    root: &Path,
+    owner: &Path,
+    settings: browser::BrowserSettings,
+    browser_path: RelativePath,
+    input: DeclarationInput<'_>,
+    focused: bool,
+    mode: QualificationMode,
+) -> Result<()> {
+    let expected = input.declaration.expected()?;
+    let inventory = prepare_inventory(root, owner, &input, mode)?;
+    let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
+    let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
+    let report = browser::generate(request, QualificationAdapter)?;
+    validate_corpus(
+        root,
+        &inventory,
+        &corpus,
+        expected,
+        &report,
+        Validation {
+            mode,
+            filesystem_tampering: true,
+        },
+    )
+}
+
+fn corpus_for_inventory(
+    root: &Path,
+    owner: &Path,
+    settings: browser::BrowserSettings,
+    inventory: &Inventory,
+    focused: bool,
+    expected: BrowserReportSummary,
+) -> Result<BrowserCorpus> {
+    let mut exact_roots = vec![
+        RelativePath::new("scripts/gentest")?,
+        RelativePath::new("fonts")?,
+    ];
+    if inventory.cases.iter().any(|case| case.historical.is_some()) {
+        exact_roots.push(RelativePath::new("historical")?);
+    }
+    if inventory
+        .expected_inputs
+        .contains_key(&RelativePath::new("origin/source-receipt.json")?)
+    {
+        exact_roots.push(RelativePath::new("origin")?);
+    }
+    Ok(BrowserCorpus::new(
+        BrowserLocation::new(owner, root)?,
+        RelativePath::new("corpus.toml")?,
+        if focused {
+            "surgeist-layout-root-context-focused".into()
+        } else {
+            "surgeist-layout-root-context-qualification".into()
+        },
+        RelativePath::new("xml")?,
+        vec![ReportScope::new(
+            RelativePath::new("generation-reports/all.json")?,
+            None,
+        )?],
+        settings,
+        inventory.fixtures.clone(),
+        inventory.global_inputs.clone(),
+        Vec::new(),
+    )?
+    .with_expected_inputs(inventory.expected_inputs.clone())?
+    .with_exact_input_roots(exact_roots)?
+    .with_expected_counts(expected))
+}
+
+struct Validation {
+    mode: QualificationMode,
+    filesystem_tampering: bool,
+}
+
+fn validate_corpus(
+    root: &Path,
+    inventory: &Inventory,
+    corpus: &BrowserCorpus,
+    expected: BrowserReportSummary,
+    report: &browser::BrowserGenerationReport,
+    validation: Validation,
+) -> Result<()> {
+    let mode = validation.mode;
+    assert_eq!(*report.summary(), expected);
+    assert!(report.filter().is_none());
+    assert_eq!(
+        report.generated().len(),
+        inventory
+            .cases
+            .iter()
+            .filter(|case| matches!(&case.expected, ExpectedDisposition::Generated { .. }))
+            .count()
+    );
+    qualify_dispositions(&report.to_bytes()?, &inventory.cases)?;
+    assert_eq!(
+        fs::read(root.join("xml/generation-reports/all.json"))?,
+        report.to_bytes()?
+    );
+    assert_eq!(
+        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
+        report.to_bytes()?
+    );
+
+    // Qualify every retained observation before requiring the new certificate.
+    // Historical fields are assertion inputs only; none enter Layout or capture.
+    for artifact in report.generated() {
+        let case = inventory
+            .cases
+            .iter()
+            .find(|case| case.case.id() == artifact.name())
+            .expect("declared generated case");
+        assert_eq!(artifact.source(), &case.source);
+        assert_eq!(artifact.output(), case.case.output());
+        assert_eq!(artifact.variant(), case.case.variant());
+        let bytes = fs::read(root.join(artifact.output().as_str()))?;
+        assert_eq!(Sha256Digest::from_bytes(&bytes), *artifact.output_sha256());
+        if let Some(historical) = &case.historical {
+            let historical = fs::read_to_string(root.join(historical.as_str()))?;
+            qualify_historical_geometry(std::str::from_utf8(&bytes)?, &historical, case.case.id())?;
+        }
+    }
+    eprintln!(
+        "qualify-root-context: all {} source-bound historical expectation trees preserved",
+        inventory
+            .cases
+            .iter()
+            .filter(|case| case.historical.is_some())
+            .count()
+    );
+    let mut native_errors = Vec::new();
+    let mut numeric = NumericDiagnostics::default();
+    for artifact in report.generated() {
+        let case = inventory
+            .cases
+            .iter()
+            .find(|case| case.case.id() == artifact.name())
+            .expect("declared generated case");
+        let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
+        // Source certificates and parsing remain fatal in every mode.
+        qualify_xml(&xml, case)?;
+        let golden = crate::parity_support::Golden::parse(&xml)?;
+        if let ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    grid_reference_owners: Some(owners),
+                    ..
+                },
+        } = &case.expected
+        {
+            qualify_grid_reference_census(&golden.root, owners)?;
+            crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
+        }
+        if mode == QualificationMode::NumericDiagnostics {
+            match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
+                Ok(mismatches) => numeric.record_case(mismatches)?,
+                Err(error) => {
+                    let diagnostic = format!("{}: {error}", case.case.id());
+                    eprintln!(
+                        "qualify-root-context: fatal numeric comparison failure: {diagnostic}"
+                    );
+                    native_errors.push(diagnostic);
+                }
+            }
+        } else if let Err(error) = crate::parity_support::assert_surgeist_matches(&golden) {
+            let diagnostic = format!("{}: {error}", case.case.id());
+            eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
+            native_errors.push(diagnostic);
+        }
+    }
+    qualify_pairs(root, &inventory.cases)?;
+    let tamper_count = if let Some(first) = inventory.cases.iter().find(|case| {
+        validation.filesystem_tampering
+            && matches!(case.expected, ExpectedDisposition::Generated { .. })
+    }) {
+        qualify_tampering(root, corpus, &first.source, first.case.output())?;
+        3
+    } else {
+        0
+    };
+    assert_eq!(
+        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
+        report.to_bytes()?
+    );
+    if mode == QualificationMode::NumericDiagnostics {
+        eprintln!(
+            "qualify-root-context: raw numeric diagnostics: {} of {} Generated cases completed, {} mismatches, {} fatal comparison failures; source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; no classification or conformance approval",
+            numeric.completed_cases,
+            report.summary().generated(),
+            numeric.mismatches,
+            native_errors.len(),
+        );
+        return numeric.finish(report.summary().generated(), &native_errors);
+    }
+    if !native_errors.is_empty() {
+        eprintln!(
+            "qualify-root-context: {} Native comparison failures across {} Generated cases; declared pairs, source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; Native conformance failed",
+            native_errors.len(),
+            report.summary().generated(),
+        );
+        return Err(format!(
+            "{} strict Native comparisons failed:\n{}",
+            native_errors.len(),
+            native_errors.join("\n"),
+        )
+        .into());
+    }
+    eprintln!(
+        "qualify-root-context: {} Generated and {} Unsupported V4 cases, declared pairs, historical geometry and {tamper_count} filesystem tamper refusals qualified",
+        report.summary().generated(),
+        report.summary().unsupported()
+    );
+    match mode {
+        QualificationMode::StylesheetCustody => eprintln!(
+            "qualify-root-context: focused real-browser stylesheet custody checks completed on a declaration without named-font custody; original fixture, dispositions and strict observations retained"
+        ),
+        QualificationMode::FontCustody => eprintln!(
+            "qualify-root-context: focused real-browser loaded-font custody checks completed; original loaded identity, declarations and strict observations retained"
+        ),
+        QualificationMode::Regular
+        | QualificationMode::NumericDiagnostics
+        | QualificationMode::Publish
+        | QualificationMode::CheckPublished => {}
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct NumericDiagnostic<'a> {
+    kind: &'static str,
+    case: &'a str,
+    source: &'a str,
+    variant: &'a str,
+    path: &'a str,
+    field: &'static str,
+    browser: surgeist_layout::Scalar,
+    native: surgeist_layout::Scalar,
+}
+
+fn collect_numeric_case(
+    golden: &crate::parity_support::Golden,
+    case: &ExpectedCase,
+    output: &mut impl Write,
+) -> Result<usize> {
+    // The reader returns a complete result only after all category, topology,
+    // source and capability checks succeed. Failed cases emit no partial set.
+    let mismatches = crate::parity_support::collect_surgeist_numeric_mismatches(golden)?;
+    for mismatch in &mismatches {
+        let diagnostic = NumericDiagnostic {
+            kind: "numeric-mismatch",
+            case: case.case.id(),
+            source: case.source.as_str(),
+            variant: case.case.variant(),
+            path: mismatch.path(),
+            field: mismatch.field().as_str(),
+            browser: mismatch.browser_value(),
+            native: mismatch.native_value(),
+        };
+        serde_json::to_writer(&mut *output, &diagnostic)?;
+        output.write_all(b"\n")?;
+    }
+    output.flush()?;
+    Ok(mismatches.len())
+}
+
+#[derive(Default)]
+struct NumericDiagnostics {
+    completed_cases: usize,
+    mismatches: usize,
+}
+
+impl NumericDiagnostics {
+    fn record_case(&mut self, mismatches: usize) -> Result<()> {
+        self.completed_cases = self
+            .completed_cases
+            .checked_add(1)
+            .ok_or("numeric diagnostic case count overflow")?;
+        self.mismatches = self
+            .mismatches
+            .checked_add(mismatches)
+            .ok_or("numeric diagnostic mismatch count overflow")?;
+        Ok(())
+    }
+
+    fn finish(&self, generated: usize, fatal_errors: &[String]) -> Result<()> {
+        if !fatal_errors.is_empty() {
+            return Err(format!(
+                "numeric diagnostics incomplete: {} of {generated} Generated cases completed, {} numeric mismatches, {} fatal comparison failures:\n{}",
+                self.completed_cases, self.mismatches, fatal_errors.len(), fatal_errors.join("\n"),
+            ).into());
+        }
+        if self.completed_cases != generated {
+            return Err("numeric diagnostics did not complete every Generated case".into());
+        }
+        if self.mismatches != 0 {
+            return Err(format!(
+                "numeric diagnostics found {} raw numeric mismatches across {generated} Generated cases; no classification or conformance approval",
+                self.mismatches,
+            ).into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+enum InputAccess {
+    Prepare,
+    ReadOnly,
+}
+
+fn inventory_input(
+    root: &Path,
+    path: &RelativePath,
+    bytes: &[u8],
+    expected: &mut BTreeMap<RelativePath, Sha256Digest>,
+    access: InputAccess,
+) -> Result<()> {
+    let destination = root.join(path.as_str());
+    match access {
+        InputAccess::Prepare => {
+            fs::create_dir_all(destination.parent().expect("input parent"))?;
+            fs::write(destination, bytes)?;
+        }
+        InputAccess::ReadOnly => {
+            publication::require_regular_input(root, path)?;
+            if fs::read(&destination)? != bytes {
+                return Err(
+                    format!("stale or changed publication input: {}", path.as_str()).into(),
+                );
+            }
+        }
+    }
+    assert!(
+        expected
+            .insert(path.clone(), Sha256Digest::from_bytes(bytes))
+            .is_none(),
+        "duplicate qualification input"
+    );
+    Ok(())
+}
+
+fn prepare_inventory(
+    root: &Path,
+    owner: &Path,
+    input: &DeclarationInput<'_>,
+    mode: QualificationMode,
+) -> Result<Inventory> {
+    inventory(root, owner, input, mode, InputAccess::Prepare)
+}
+
+fn inventory(
+    root: &Path,
+    owner: &Path,
+    input: &DeclarationInput<'_>,
+    mode: QualificationMode,
+    access: InputAccess,
+) -> Result<Inventory> {
+    let mut inventory = Inventory {
+        fixtures: Vec::new(),
+        cases: Vec::new(),
+        global_inputs: Vec::new(),
+        expected_inputs: BTreeMap::new(),
+    };
+    let records = &input.declaration.records;
+    let custody_installation = match mode {
+        QualificationMode::StylesheetCustody => {
+            Some("installCustodyProbe('stylesheet', 0, 0);".to_owned())
+        }
+        QualificationMode::FontCustody => {
+            let [record] = records.as_slice() else {
+                return Err("font custody requires one selected declaration".into());
+            };
+            let (paragraphs, grids) = declared_named_font_counts(record)
+                .ok_or("font custody requires a declared named-font source")?;
+            Some(format!(
+                "installCustodyProbe('font', {paragraphs}, {grids});"
+            ))
+        }
+        QualificationMode::Regular
+        | QualificationMode::NumericDiagnostics
+        | QualificationMode::Publish
+        | QualificationMode::CheckPublished => None,
+    };
+    for (name, bytes) in INPUTS
+        .iter()
+        .copied()
+        .chain(std::iter::once(("corpus.toml", input.bytes)))
+    {
+        let path = RelativePath::new(name)?;
+        // Instrument only this invocation's real helper input. Register its exact
+        // augmented bytes before the shared generator authenticates any job.
+        let augmented = if name == "scripts/gentest/test_helper.js" {
+            custody_installation
+                .as_deref()
+                .map(|install| [bytes, b"\n", CUSTODY_HELPER, b"\n", install.as_bytes()].concat())
+        } else {
+            None
+        };
+        let bytes = augmented.as_deref().unwrap_or(bytes);
+        inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
+        if name != "corpus.toml" {
+            inventory.global_inputs.push(path);
+        }
+    }
+    let original = owner.join("tests/layout/browser_parity");
+    let authored = owner.join("examples/qualify-root-context");
+    for record in records {
+        let source_owner = match record.source_kind {
+            SourceKind::Original => &original,
+            SourceKind::Authored => &authored,
+        };
+        publication::require_regular_input(source_owner, &record.source)?;
+        let source = fs::read(source_owner.join(record.source.as_str()))?;
+        if Sha256Digest::from_bytes(&source) != record.source_sha256 {
+            return Err(format!("declared source changed: {}", record.source.as_str()).into());
+        }
+        inventory_input(
+            root,
+            &record.source,
+            &source,
+            &mut inventory.expected_inputs,
+            access,
+        )?;
+        let family = record
+            .source
+            .as_str()
+            .strip_prefix("html/")
+            .and_then(|path| path.strip_suffix(".html"))
+            .ok_or("qualification source must be an html/*.html path")?;
+        let stem = family.rsplit('/').next().ok_or("missing source stem")?;
+        match record.source_kind {
+            SourceKind::Original => {
+                assert!(matches!(
+                    &record.expected,
+                    ExpectedDisposition::Generated { .. }
+                ));
+                assert_eq!(record.historical_sha256.len(), fixture_cases().len());
+            }
+            SourceKind::Authored => assert!(record.historical_sha256.is_empty()),
+        }
+        if record.relation.is_some() {
+            assert!(matches!(
+                &record.expected,
+                ExpectedDisposition::Generated { .. }
+            ));
+        }
+        let mut cases = Vec::new();
+        for (variant, _) in fixture_cases() {
+            let output = RelativePath::new(format!("xml/{family}__{variant}.xml"))?;
+            let historical = if matches!(record.source_kind, SourceKind::Original) {
+                let historical = RelativePath::new(format!("historical/{family}__{variant}.xml"))?;
+                publication::require_regular_input(&original, &output)?;
+                let bytes = fs::read(original.join(output.as_str()))?;
+                let digest = record
+                    .historical_sha256
+                    .get(variant)
+                    .ok_or("missing historical variant digest")?;
+                if &Sha256Digest::from_bytes(&bytes) != digest {
+                    return Err(
+                        format!("historical observation changed: {}", output.as_str()).into(),
+                    );
+                }
+                inventory_input(
+                    root,
+                    &historical,
+                    &bytes,
+                    &mut inventory.expected_inputs,
+                    access,
+                )?;
+                inventory.global_inputs.push(historical.clone());
+                Some(historical)
+            } else {
+                None
+            };
+            let case = CaseSpec::new(format!("{stem}__{variant}"), variant.into(), output)?;
+            inventory.cases.push(ExpectedCase {
+                source: record.source.clone(),
+                case: case.clone(),
+                historical,
+                expected: record.expected.clone(),
+                relation: record.relation.clone(),
+            });
+            cases.push(case);
+        }
+        inventory.fixtures.push(FixtureSpec::new(
+            stem.into(),
+            record.source.clone(),
+            cases,
+            FixtureStatus::Active,
+        )?);
+    }
+    Ok(inventory)
+}
+
+fn qualify_historical_geometry(current: &str, historical: &str, case_id: &str) -> Result<()> {
+    let current = roxmltree::Document::parse(current)?;
+    let historical = roxmltree::Document::parse(historical)?;
+    assert_eq!(current.root_element().attribute("name"), Some(case_id));
+    assert_eq!(historical.root_element().attribute("name"), Some(case_id));
+    assert_eq!(
+        current.root_element().attribute("use-rounding"),
+        historical.root_element().attribute("use-rounding")
+    );
+    let current = current
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .expect("current expectations");
+    let historical = historical
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .expect("historical expectations");
+    compare_observation_tree(current, historical, case_id);
+    Ok(())
+}
+
+fn compare_observation_tree(
+    current: roxmltree::Node<'_, '_>,
+    historical: roxmltree::Node<'_, '_>,
+    path: &str,
+) {
+    assert_eq!(
+        current.tag_name().name(),
+        historical.tag_name().name(),
+        "{path}: observation category"
+    );
+    assert_eq!(
+        current.tag_name().namespace(),
+        historical.tag_name().namespace(),
+        "{path}: observation namespace"
+    );
+    let attributes = |node: roxmltree::Node<'_, '_>| {
+        node.attributes()
+            .map(|attribute| (attribute.name().to_owned(), attribute.value().to_owned()))
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(
+        attributes(current),
+        attributes(historical),
+        "{path}: exact historical observation fields"
+    );
+    for node in [current, historical] {
+        assert!(
+            node.children()
+                .filter(roxmltree::Node::is_text)
+                .all(|text| text.text().is_none_or(|value| value.trim().is_empty())),
+            "{path}: unexpected observation text"
+        );
+    }
+    let current = current
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let historical = historical
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        current.len(),
+        historical.len(),
+        "{path}: observation cardinality"
+    );
+    for (index, (current, historical)) in current.into_iter().zip(historical).enumerate() {
+        compare_observation_tree(current, historical, &format!("{path}/{index}"));
+    }
+}
+
+fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
+    let document = roxmltree::Document::parse(xml)?;
+    let test = document.root_element();
+    assert!(test.has_tag_name("test"));
+    assert_eq!(test.attribute("name"), Some(case.case.id()));
+    assert_eq!(test.attribute("measurement-version"), Some("4"));
+    let viewport = test
+        .children()
+        .find(|node| node.has_tag_name("viewport"))
+        .ok_or("missing viewport")?;
+    let ExpectedDisposition::Generated { metadata } = &case.expected else {
+        return Err("Unsupported case unexpectedly emitted XML".into());
+    };
+    let (root_direction, root_writing_mode, root_position) = match metadata {
+        ExpectedMetadata::AbsoluteLocal {
+            hypothetical_display,
+            containing_direction,
+            hypothetical_direction,
+            root_direction,
+            root_writing_mode,
+            inline_offset,
+            root_size,
+        } => {
+            assert_eq!(
+                test.attribute("observation-frame"),
+                Some("root-border-local")
+            );
+            assert_eq!(
+                viewport.attribute("root-context"),
+                Some("absolute-root-local")
+            );
+            assert_eq!(
+                viewport.attribute("containing-direction"),
+                Some(containing_direction.as_str())
+            );
+            assert_eq!(
+                viewport.attribute("hypothetical-direction"),
+                Some(hypothetical_direction.as_str())
+            );
+            assert_eq!(
+                viewport.attribute("hypothetical-display"),
+                Some(hypothetical_display.as_str())
+            );
+            assert_eq!(
+                viewport.attribute("hypothetical-anchor"),
+                Some("inline-start")
+            );
+            assert_eq!(
+                px_attribute(viewport, "hypothetical-inline-offset")?,
+                *inline_offset
+            );
+            for (containing, fallback) in [
+                ("containing-width", "fallback-icb-width"),
+                ("containing-height", "fallback-icb-height"),
+            ] {
+                assert_eq!(
+                    px_attribute(viewport, containing)?,
+                    px_attribute(viewport, fallback)?
+                );
+            }
+            for field in ["parent-inline-extent", "parent-direction"] {
+                assert_eq!(
+                    viewport.attribute(field),
+                    None,
+                    "absolute context has no BlockFlow field"
+                );
+            }
+            qualify_root_size(
+                test,
+                viewport,
+                root_size.as_ref(),
+                *inline_offset,
+                case.case.id(),
+            )?;
+            (
+                root_direction.as_str(),
+                root_writing_mode.as_str(),
+                "absolute",
+            )
+        }
+        ExpectedMetadata::BlockFlow {
+            parent_direction,
+            root_direction,
+            root_writing_mode,
+            root_position,
+            atomic_paragraphs: _,
+            grid_reference_owners: _,
+        } => {
+            // The zero-edge Htb Auto body owns only its actual inline extent.
+            // No used/root height is promoted into a body percentage basis or
+            // a hypothetical static-position rectangle. The reader independently
+            // validates the actual Native body-origin placement.
+            assert_eq!(test.attribute("observation-frame"), Some("root-border"));
+            assert_eq!(viewport.attribute("root-context"), Some("block-flow-auto"));
+            assert_eq!(
+                viewport.attribute("parent-direction"),
+                Some(parent_direction.as_str())
+            );
+            assert_eq!(
+                px_attribute(viewport, "parent-inline-extent")?,
+                px_attribute(viewport, "fallback-icb-width")?
+            );
+            for field in [
+                "containing-width",
+                "containing-height",
+                "containing-direction",
+                "hypothetical-direction",
+                "hypothetical-display",
+                "hypothetical-anchor",
+                "hypothetical-inline-offset",
+                "parent-block-extent",
+            ] {
+                assert_eq!(
+                    viewport.attribute(field),
+                    None,
+                    "Auto body has no definite block/hypothetical authority"
+                );
+            }
+            (
+                root_direction.as_str(),
+                root_writing_mode.as_str(),
+                root_position.as_str(),
+            )
+        }
+    };
+    assert_eq!(
+        viewport.attribute("fallback-nearest-scrollport"),
+        Some("none")
+    );
+    for field in [
+        "fallback-containing-width-limit",
+        "fallback-containing-height-limit",
+    ] {
+        assert_eq!(viewport.attribute(field), Some("unbounded"));
+    }
+    for field in ["fallback-icb-width", "fallback-icb-height"] {
+        assert!(px_attribute(viewport, field)? >= 0.0);
+    }
+    let input = test
+        .children()
+        .find(|node| node.has_tag_name("input"))
+        .ok_or("missing root input")?;
+    let expected_atomic_paragraphs = match metadata {
+        ExpectedMetadata::BlockFlow {
+            atomic_paragraphs, ..
+        } => *atomic_paragraphs,
+        ExpectedMetadata::AbsoluteLocal { .. } => None,
+    };
+    qualify_atomic_metric_census(input, expected_atomic_paragraphs, case.case.id())?;
+    let root = input
+        .children()
+        .find(roxmltree::Node::is_element)
+        .ok_or("missing root node")?;
+    // Relative and HorizontalTb are the protocol's explicit elision defaults.
+    assert_eq!(
+        root.attribute("position").unwrap_or("relative"),
+        root_position
+    );
+    assert_eq!(
+        root.attribute("writing-mode").unwrap_or("horizontal-tb"),
+        root_writing_mode
+    );
+    let root_direction = if root_direction == "variant" {
+        if case.case.variant().ends_with("_rtl") {
+            "rtl"
+        } else {
+            "ltr"
+        }
+    } else {
+        root_direction
+    };
+    assert_eq!(root.attribute("direction"), Some(root_direction));
+    Ok(())
+}
+
+fn qualify_grid_reference_census(
+    root: &crate::parity_support::Node,
+    expected: &[String],
+) -> Result<()> {
+    fn visit(
+        node: &crate::parity_support::Node,
+        path: String,
+        actual: &mut Vec<String>,
+    ) -> Result<()> {
+        if node.style.get("grid-alignment-reference").is_some() {
+            if !matches!(node.style.get("display"), Some("grid" | "inline-grid")) {
+                return Err(format!(
+                    "Grid reference certificate belongs to non-Grid source at {path}"
+                )
+                .into());
+            }
+            actual.push(path.clone());
+        }
+        for (index, child) in node.children.iter().enumerate() {
+            let child_path = if path == "/" {
+                format!("/{index}")
+            } else {
+                format!("{path}/{index}")
+            };
+            visit(child, child_path, actual)?;
+        }
+        Ok(())
+    }
+    let mut actual = Vec::new();
+    visit(root, "/".into(), &mut actual)?;
+    if actual != expected {
+        return Err(format!(
+            "actual source-bound Grid reference census: expected {expected:?}, got {actual:?}"
+        )
+        .into());
+    }
+    eprintln!(
+        "qualify-root-context: {} actual own-Grid reference records qualified",
+        actual.len()
+    );
+    Ok(())
+}
+
+fn qualify_atomic_metric_census(
+    input: roxmltree::Node<'_, '_>,
+    expected: Option<usize>,
+    case: &str,
+) -> Result<()> {
+    let captures = input
+        .descendants()
+        .filter_map(|node| node.attribute("atomic-paragraph-metrics"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        captures.len(),
+        expected.unwrap_or(0),
+        "{case}: actual named paragraph census"
+    );
+    for raw in captures {
+        let value: serde_json::Value = serde_json::from_str(raw)?;
+        assert_eq!(value["profile"], 1);
+        assert_eq!(
+            value["font"]["sha256"],
+            "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c"
+        );
+        assert_eq!(value["font"]["loaded"], true);
+        assert_eq!(value["font"]["size"].as_f64(), Some(10.0));
+        assert_eq!(value["reference"], "central");
+        assert!(["auto", "baseline"].contains(&value["alignmentBaseline"].as_str().unwrap_or("")));
+        assert_eq!(value["verticalAlign"], "baseline");
+        assert_eq!(value["before"].as_f64(), Some(0.0));
+        assert_eq!(value["after"].as_f64(), Some(0.0));
+        let order = value["order"]
+            .as_array()
+            .ok_or("missing actual atomic order")?;
+        assert_eq!(order.len(), 3);
+        assert_eq!(order[1]["kind"], "break");
+        assert_eq!(order[1]["reference"], "central");
+        assert_eq!(order[1]["before"].as_f64(), Some(0.0));
+        assert_eq!(order[1]["after"].as_f64(), Some(0.0));
+    }
+    if let Some(count) = expected {
+        eprintln!(
+            "qualify-root-context: {case}: {count} actual loaded-font Central paragraph/BR certificates qualified"
+        );
+    }
+    Ok(())
+}
+
+fn qualify_dispositions(bytes: &[u8], cases: &[ExpectedCase]) -> Result<()> {
+    let report: serde_json::Value = serde_json::from_slice(bytes)?;
+    let unsupported = report
+        .get("unsupported")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("browser report omitted Unsupported dispositions")?;
+    for case in cases {
+        if let ExpectedDisposition::Unsupported { reason } = &case.expected {
+            let actual = unsupported
+                .iter()
+                .find(|entry| {
+                    entry.get("name").and_then(serde_json::Value::as_str) == Some(case.case.id())
+                })
+                .ok_or_else(|| {
+                    format!("{}: missing declared Unsupported refusal", case.case.id())
+                })?;
+            assert_eq!(
+                actual.get("source").and_then(serde_json::Value::as_str),
+                Some(case.source.as_str())
+            );
+            assert_eq!(
+                actual.get("variant").and_then(serde_json::Value::as_str),
+                Some(case.case.variant())
+            );
+            assert_eq!(
+                actual.get("reason").and_then(serde_json::Value::as_str),
+                Some(reason.as_str()),
+                "{}: semantic/provenance refusal",
+                case.case.id()
+            );
+        }
+    }
+    Ok(())
+}
+fn number_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> Result<f64> {
+    let value: f64 = node
+        .attribute(name)
+        .ok_or_else(|| format!("missing {name}"))?
+        .parse()?;
+    if !value.is_finite() {
+        return Err(format!("nonfinite {name}").into());
+    }
+    Ok(value)
+}
+fn px_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> Result<f64> {
+    let raw = node
+        .attribute(name)
+        .and_then(|value| value.strip_suffix("px"))
+        .ok_or_else(|| format!("missing pixel {name}"))?;
+    let value: f64 = raw.parse()?;
+    if !value.is_finite() {
+        return Err(format!("nonfinite {name}").into());
+    }
+    Ok(value)
+}
+fn qualify_root_size(
+    test: roxmltree::Node<'_, '_>,
+    viewport: roxmltree::Node<'_, '_>,
+    root_size: Option<&ExpectedRootSize>,
+    inline_offset: f64,
+    case_id: &str,
+) -> Result<()> {
+    let Some(expected) = root_size else {
+        return Ok(());
+    };
+    assert_eq!(test.attribute("use-rounding"), Some("true"));
+    let (width, height) = match expected {
+        ExpectedRootSize::Fixed { width, height } => (*width, *height),
+        ExpectedRootSize::FlexPair {
+            item_width,
+            item_height,
+        } => {
+            // Two genuine unshrinkable native children: MC=itemWidth,
+            // MAX=2*itemWidth. The source-authenticated CB and indent are
+            // operands; the eventual observed root rectangle is not.
+            let available = (px_attribute(viewport, "containing-width")? - inline_offset).max(0.0);
+            let width = available.max(*item_width).min(2.0 * item_width);
+            (
+                width,
+                if width < 2.0 * item_width {
+                    2.0 * item_height
+                } else {
+                    *item_height
+                },
+            )
+        }
+    };
+    let expectations = test
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .ok_or("missing expectations")?;
+    let root = expectations
+        .children()
+        .find(roxmltree::Node::is_element)
+        .ok_or("missing root observation")?;
+    assert_eq!(number_attribute(root, "x")?, 0.0, "{case_id}: local root x");
+    assert_eq!(number_attribute(root, "y")?, 0.0, "{case_id}: local root y");
+    assert_eq!(
+        number_attribute(root, "width")?,
+        (width + 0.5).floor(),
+        "{case_id}: authored/shrink width"
+    );
+    assert_eq!(
+        number_attribute(root, "height")?,
+        (height + 0.5).floor(),
+        "{case_id}: actual native wrap height"
+    );
+    Ok(())
+}
+fn observation_section<'doc, 'input>(
+    document: &'doc roxmltree::Document<'input>,
+    name: &str,
+) -> Result<roxmltree::Node<'doc, 'input>> {
+    document
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name(name))
+        .ok_or_else(|| format!("missing {name}").into())
+}
+fn world_observations<'doc, 'input>(
+    document: &'doc roxmltree::Document<'input>,
+) -> Result<BTreeMap<String, roxmltree::Node<'doc, 'input>>> {
+    let mut rows = BTreeMap::new();
+    for node in observation_section(document, "diagnostics")?
+        .children()
+        .filter(roxmltree::Node::is_element)
+    {
+        assert!(node.has_tag_name("world-rounded-layout"));
+        let path = node
+            .attribute("node-path")
+            .ok_or("world node path")?
+            .to_owned();
+        assert!(rows.insert(path, node).is_none(), "duplicate world path");
+    }
+    Ok(rows)
+}
+fn qualify_pairs(root: &Path, cases: &[ExpectedCase]) -> Result<()> {
+    for case in cases {
+        let Some(relation) = &case.relation else {
+            continue;
+        };
+        let peer_name = format!("{}__{}", relation.peer, case.case.variant());
+        let peer = cases
+            .iter()
+            .find(|other| other.case.id() == peer_name)
+            .ok_or("undeclared paired source/variant")?;
+        assert!(matches!(
+            &peer.expected,
+            ExpectedDisposition::Generated { .. }
+        ));
+        let left_xml = fs::read_to_string(root.join(case.case.output().as_str()))?;
+        let right_xml = fs::read_to_string(root.join(peer.case.output().as_str()))?;
+        let left = roxmltree::Document::parse(&left_xml)?;
+        let right = roxmltree::Document::parse(&right_xml)?;
+        // Every generated tree has already undergone the maintained strict Native
+        // comparison. Pair equality includes the complete rounded local tree,
+        // not just root dimensions or a subset of scroll observations.
+        compare_observation_tree(
+            observation_section(&left, "expectations")?,
+            observation_section(&right, "expectations")?,
+            &format!("{}~{}", case.case.id(), peer.case.id()),
+        );
+        if relation.world_phase_change {
+            let left_world = world_observations(&left)?;
+            let right_world = world_observations(&right)?;
+            assert_eq!(
+                left_world.keys().collect::<Vec<_>>(),
+                right_world.keys().collect::<Vec<_>>()
+            );
+            // Both actual root and child have authored10.5px height at the same
+            // world phase. A half-pixel translation changes their world-corner
+            // rounded heights together while their local tree stays identical.
+            for path in ["0", "0.0"] {
+                let l = *left_world.get(path).ok_or("missing shared-phase box")?;
+                let r = *right_world
+                    .get(path)
+                    .ok_or("missing paired shared-phase box")?;
+                assert_ne!(
+                    number_attribute(l, "height")?,
+                    number_attribute(r, "height")?,
+                    "{path}: missing real world phase change"
+                );
+            }
+            assert_eq!(
+                number_attribute(left_world["0"], "height")?,
+                number_attribute(left_world["0.0"], "height")?
+            );
+            assert_eq!(
+                number_attribute(right_world["0"], "height")?,
+                number_attribute(right_world["0.0"], "height")?
+            );
+        }
+    }
+    Ok(())
+}
+
+fn qualify_tampering(
+    root: &Path,
+    corpus: &BrowserCorpus,
+    source: &RelativePath,
+    output: &RelativePath,
+) -> Result<()> {
+    for path in [source, output] {
+        let path = root.join(path.as_str());
+        let original = fs::read(&path)?;
+        let mut modified = original.clone();
+        modified.push(b'\n');
+        fs::write(&path, modified)?;
+        let result = browser::check_corpus(corpus, &LayoutAdapter);
+        fs::write(&path, original)?;
+        assert_invalid_inventory(result);
+    }
+    let undeclared = root.join("scripts/gentest/undeclared.js");
+    fs::write(&undeclared, b"// undeclared input\n")?;
+    let result = browser::check_corpus(corpus, &LayoutAdapter);
+    fs::remove_file(undeclared)?;
+    assert_invalid_inventory(result);
+    Ok(())
+}
+
+fn assert_invalid_inventory(
+    result: std::result::Result<browser::BrowserGenerationReport, GenerationError<AdapterError>>,
+) {
+    match result {
+        Err(GenerationError::Generator(error)) => assert_eq!(
+            error.kind(),
+            GeneratorErrorKind::InvalidInventory,
+            "{error}"
+        ),
+        other => panic!("expected typed input/output inventory refusal, received {other:?}"),
+    }
+}
+
+#[cfg(test)]
+mod numeric_diagnostic_tests {
+    use super::*;
+
+    fn declaration() -> Declaration {
+        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
+            .unwrap()
+    }
+
+    #[test]
+    fn numeric_diagnostics_require_a_generated_declared_source_with_four_variants() {
+        let mut declaration = declaration();
+        let source = declaration
+            .records
+            .iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        select_records(
+            &mut declaration,
+            Some(&source),
+            QualificationMode::NumericDiagnostics,
+        )
+        .unwrap();
+        let expected = declaration.expected().unwrap();
+        assert_eq!(expected.generated(), 4);
+        assert_eq!(expected.unsupported(), 0);
+        assert_eq!(declaration.records[0].source.as_str(), source);
+    }
+
+    #[test]
+    fn numeric_diagnostics_refuse_unsupported_only_without_changing_regular_focus() {
+        let mut numeric = declaration();
+        let source = numeric
+            .records
+            .iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Unsupported { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut numeric,
+                Some(&source),
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "numeric diagnostics require a Generated fixture"
+        );
+        let mut regular = declaration();
+        select_records(&mut regular, Some(&source), QualificationMode::Regular).unwrap();
+        assert_eq!(regular.expected().unwrap().unsupported(), 4);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                None,
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "numeric diagnostics require one declared fixture"
+        );
+    }
+
+    #[test]
+    fn numeric_diagnostics_keep_paired_observation_inventory_authority() {
+        let mut declaration = declaration();
+        let source = declaration
+            .records
+            .iter()
+            .find(|record| record.relation.is_some())
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut declaration,
+                Some(&source),
+                QualificationMode::NumericDiagnostics
+            )
+            .unwrap_err()
+            .to_string(),
+            "paired observations require the complete inventory"
+        );
+    }
+
+    fn fixture_golden() -> crate::parity_support::Golden {
+        crate::parity_support::Golden::parse(r#"<test name="numeric-transport" measurement-version="4" observation-frame="root-border" use-rounding="false">
+<viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+<input><div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="block" position="relative" direction="ltr" width="20px" height="10px"><div display="block" width="10px" height="5px"/></div></input>
+<expectations><node x="0" y="0" width="20" height="10"><node x="0" y="0" width="10" height="5"/></node></expectations>
+<diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="20" height="10"/><world-rounded-layout node-path="0.0" x="0" y="0" width="10" height="5"/></diagnostics></test>"#).unwrap()
+    }
+
+    fn case() -> ExpectedCase {
+        let record = declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+            })
+            .unwrap();
+        ExpectedCase {
+            source: record.source,
+            case: CaseSpec::new(
+                "numeric-transport__content_box_ltr".into(),
+                "content_box_ltr".into(),
+                RelativePath::new("xml/numeric-transport.xml").unwrap(),
+            )
+            .unwrap(),
+            historical: None,
+            expected: record.expected,
+            relation: None,
+        }
+    }
+
+    #[test]
+    fn numeric_diagnostics_emit_every_real_kernel_record_and_fail_on_any_difference() {
+        let mut golden = fixture_golden();
+        let case = case();
+        let mut output = Vec::new();
+        assert_eq!(
+            collect_numeric_case(&golden, &case, &mut output).unwrap(),
+            0
+        );
+        assert!(output.is_empty());
+        golden.expectations.x = Some(1.0);
+        golden.expectations.width = Some(21.0);
+        golden.expectations.children[0].height = Some(6.0);
+        let count = collect_numeric_case(&golden, &case, &mut output).unwrap();
+        let rows: Vec<serde_json::Value> = std::str::from_utf8(&output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let expected: Vec<_> = [
+            ("numeric-transport", "x", 1.0, 0.0),
+            ("numeric-transport", "width", 21.0, 20.0),
+            ("numeric-transport/0", "height", 6.0, 5.0),
+        ]
+        .into_iter()
+        .map(|(path, field, browser, native)| {
+            serde_json::json!({
+                "kind": "numeric-mismatch", "case": case.case.id(),
+                "source": case.source.as_str(), "variant": "content_box_ltr",
+                "path": path, "field": field, "browser": browser, "native": native,
+            })
+        })
+        .collect();
+        assert_eq!(rows, expected);
+        let mut diagnostics = NumericDiagnostics::default();
+        diagnostics.record_case(count).unwrap();
+        assert!(diagnostics.finish(1, &[]).is_err());
+        let mut matching = NumericDiagnostics::default();
+        matching.record_case(0).unwrap();
+        matching.finish(1, &[]).unwrap();
+    }
+
+    #[test]
+    fn numeric_diagnostics_never_emit_partial_records_for_fatal_cases() {
+        let mut golden = fixture_golden();
+        golden.expectations.x = Some(1.0);
+        golden
+            .expectations
+            .children
+            .push(golden.expectations.children[0].clone());
+        let mut output = Vec::new();
+        let error = collect_numeric_case(&golden, &case(), &mut output).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "numeric-transport: expected 2 children, got 1"
+        );
+        assert!(output.is_empty());
+        let mut unsupported = fixture_golden();
+        unsupported.expectations.children[0].fragments = Some(Vec::new());
+        assert_eq!(
+            collect_numeric_case(&unsupported, &case(), &mut output)
+                .unwrap_err()
+                .to_string(),
+            "numeric-transport/0: numeric collection supports only box geometry and scroll observations"
+        );
+        assert!(output.is_empty());
+        let diagnostics = NumericDiagnostics::default();
+        assert!(diagnostics.finish(1, &[error.to_string()]).is_err());
+        assert!(diagnostics.finish(1, &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod custody_applicability_tests {
+    use super::*;
+
+    fn declaration() -> Declaration {
+        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
+            .unwrap()
+    }
+
+    fn source(named: bool) -> String {
+        declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Generated { .. })
+                    && declared_named_font_counts(record).is_some() == named
+            })
+            .expect("actual declared Generated source for this custody profile")
+            .source
+            .as_str()
+            .to_owned()
+    }
+
+    #[test]
+    fn custody_modes_require_one_actual_declared_generated_fixture() {
+        for (mode, expected) in [
+            (
+                QualificationMode::StylesheetCustody,
+                "stylesheet custody qualification requires one declared fixture",
+            ),
+            (
+                QualificationMode::FontCustody,
+                "font custody qualification requires one declared fixture",
+            ),
+        ] {
+            assert_eq!(
+                select_records(&mut declaration(), None, mode)
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+        }
+        let unsupported = declaration()
+            .records
+            .into_iter()
+            .find(|record| {
+                record.relation.is_none()
+                    && matches!(&record.expected, ExpectedDisposition::Unsupported { .. })
+            })
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&unsupported),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "font custody qualification requires a Generated fixture"
+        );
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some("html/undeclared.html"),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "focused qualification requires one declared source"
+        );
+    }
+
+    #[test]
+    fn destructive_stylesheet_checks_refuse_declared_named_font_custody() {
+        let named = source(true);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&named),
+                QualificationMode::StylesheetCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "stylesheet custody excludes declared named-font sources; use --font-custody"
+        );
+        let mut selected = declaration();
+        select_records(&mut selected, Some(&named), QualificationMode::FontCustody).unwrap();
+        assert!(declared_named_font_counts(&selected.records[0]).is_some());
+        assert_eq!(selected.expected().unwrap().generated(), 4);
+        assert_eq!(selected.expected().unwrap().unsupported(), 0);
+        for mode in [
+            QualificationMode::Regular,
+            QualificationMode::NumericDiagnostics,
+        ] {
+            let mut selected = declaration();
+            select_records(&mut selected, Some(&named), mode).unwrap();
+            assert_eq!(selected.expected().unwrap().generated(), 4);
+        }
+    }
+
+    #[test]
+    fn font_custody_refuses_a_declaration_without_named_certificates() {
+        let unnamed = source(false);
+        assert_eq!(
+            select_records(
+                &mut declaration(),
+                Some(&unnamed),
+                QualificationMode::FontCustody
+            )
+            .unwrap_err()
+            .to_string(),
+            "font custody requires a declared named-font source"
+        );
+        let mut selected = declaration();
+        select_records(
+            &mut selected,
+            Some(&unnamed),
+            QualificationMode::StylesheetCustody,
+        )
+        .unwrap();
+        assert_eq!(selected.expected().unwrap().generated(), 4);
+        assert_eq!(selected.expected().unwrap().unsupported(), 0);
+    }
+
+    #[test]
+    fn custody_modes_keep_the_existing_complete_pair_requirement() {
+        let paired = declaration()
+            .records
+            .into_iter()
+            .find(|record| record.relation.is_some())
+            .unwrap()
+            .source
+            .as_str()
+            .to_owned();
+        for mode in [
+            QualificationMode::StylesheetCustody,
+            QualificationMode::FontCustody,
+        ] {
+            assert_eq!(
+                select_records(&mut declaration(), Some(&paired), mode)
+                    .unwrap_err()
+                    .to_string(),
+                "paired observations require the complete inventory"
+            );
+        }
+    }
+}

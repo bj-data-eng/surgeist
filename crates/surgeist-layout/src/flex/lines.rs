@@ -1,5 +1,5 @@
 use super::items::CollectedFlexItem;
-use super::{AvailableOf, Constants, LayoutScalar};
+use super::{Constants, LayoutScalar};
 use crate::inline_wrapping::{AvoidClass, EdgePreferences, WrappingScopeError};
 
 #[derive(Clone, Copy, Debug)]
@@ -88,14 +88,18 @@ where
 
     let container_main_size = match flex_line_collection_size(constants) {
         Some(size) => size,
-        None => match constants.available_main {
-            AvailableOf::Definite(size) => size,
-            AvailableOf::MinContent => {
+        None => match (
+            constants.available_main.operation(),
+            constants.available_main.space(),
+        ) {
+            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(size)) => size.get(),
+            (crate::SizingOperation::MinContent, _) => {
                 return Ok((0..items.len())
                     .map(|index| FlexLine::new(index, index + 1))
                     .collect());
             }
-            AvailableOf::MaxContent => {
+            (crate::SizingOperation::MaxContent, _)
+            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
                 let mut lines = Vec::new();
                 let mut start = 0;
                 for cut in 1..items.len() {
@@ -110,7 +114,7 @@ where
         },
     };
 
-    let has_avoid = constants.available_main != AvailableOf::MinContent
+    let has_avoid = constants.available_main.operation() != crate::SizingOperation::MinContent
         && items
             .windows(2)
             .any(|pair| pair[0].wrap_after.avoided || pair[1].wrap_before.avoided);

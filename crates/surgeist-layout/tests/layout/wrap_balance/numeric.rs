@@ -106,12 +106,22 @@ fn partition_tree<S: l::LayoutScalar>(
 }
 fn numeric_compute<S: l::LayoutScalar>(
     tree: &Tree<S>,
-    available: l::AvailableOf<S>,
+    available: surgeist_layout::SizingRequestOf<S>,
     changed: &[u32],
 ) -> l::CompletedLayoutBatchOf<u32, S> {
-    let request =
-        l::LayoutRootRequestOf::viewport(l::Size::new(available, l::AvailableOf::MAX_CONTENT))
-            .unwrap();
+    let request = {
+        let sizing_request = available;
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(tree, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(tree, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    };
     let batch = l::compute_layout_invalidated(tree, 0, request, changed).unwrap();
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
@@ -123,7 +133,7 @@ fn numeric_compute<S: l::LayoutScalar>(
 fn numeric_style<S: l::LayoutScalar>(
     tree: &mut Tree<S>,
     style: l::TextWrapStyle,
-    available: l::AvailableOf<S>,
+    available: surgeist_layout::SizingRequestOf<S>,
 ) -> l::CompletedLayoutBatchOf<u32, S> {
     let old = tree.inputs[0].as_box().cloned().unwrap();
     tree.inputs[0] = l::LayoutInputOf::box_input(l::NodeInputOf {
@@ -249,7 +259,13 @@ fn numeric_partition_transition<S: l::LayoutScalar>(direction: l::Direction, gro
         tree.inputs[0].as_box().unwrap().text_wrap_style,
         l::TextWrapStyle::Auto
     );
-    let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+    let capacity = crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
+    );
     let auto = numeric_compute(&tree, capacity, &[]);
     assert_partition(&auto, direction, groups, false);
     let balanced = numeric_style(&mut tree, l::TextWrapStyle::Balance, capacity);
@@ -280,7 +296,13 @@ fn balance_numeric_groups_keep_their_real_forced_control_and_count() {
 
 fn prohibited_transition<S: l::LayoutScalar>(direction: l::Direction) {
     let mut tree = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Prohibited);
-    let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+    let capacity = crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
+    );
     let auto = numeric_compute(&tree, capacity, &[]);
     let balanced = numeric_style(&mut tree, l::TextWrapStyle::Balance, capacity);
     let restored = numeric_style(&mut tree, l::TextWrapStyle::Auto, capacity);
@@ -334,7 +356,13 @@ fn numeric_custody<S: l::LayoutScalar>(direction: l::Direction) {
     ];
     for (case, (participants, height)) in cases.into_iter().enumerate() {
         let mut tree = numeric_tree::<S>(direction, participants);
-        let capacity = l::AvailableOf::definite(S::from_f64(60.0));
+        let capacity = crate::layout::native_request::sizing(
+            surgeist_layout::Size::new(Some(S::from_f64(60.0)), None),
+            surgeist_layout::Size::new(
+                surgeist_layout::SizingOperation::Normal,
+                surgeist_layout::SizingOperation::Normal,
+            ),
+        );
         let auto = numeric_compute(&tree, capacity, &[]);
         let balanced = numeric_style(&mut tree, l::TextWrapStyle::Balance, capacity);
         let restored = numeric_style(&mut tree, l::TextWrapStyle::Auto, capacity);
@@ -379,9 +407,21 @@ fn numeric_intrinsic<S: l::LayoutScalar>(direction: l::Direction) {
             ..old
         });
         let available = if minimum {
-            l::AvailableOf::MIN_CONTENT
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MinContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            )
         } else {
-            l::AvailableOf::MAX_CONTENT
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MaxContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            )
         };
         let auto = numeric_compute(&tree, available, &[]);
         let balanced = numeric_style(&mut tree, l::TextWrapStyle::Balance, available);

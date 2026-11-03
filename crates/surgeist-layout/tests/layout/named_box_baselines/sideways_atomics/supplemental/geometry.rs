@@ -154,8 +154,16 @@ fn constraints<S: l::LayoutScalar>() {
             (20.0, 10.0, 20.0)
         };
         for (space, width, height) in [
-            (l::AvailableOf::MIN_CONTENT, min_width, min_height),
-            (l::AvailableOf::MAX_CONTENT, 10.0, max_height),
+            (
+                surgeist_layout::SizingOperation::MinContent,
+                min_width,
+                min_height,
+            ),
+            (
+                surgeist_layout::SizingOperation::MaxContent,
+                10.0,
+                max_height,
+            ),
         ] {
             let (mut host, bindings) = scene::<S>(&parent, &child, kind, l::Direction::Ltr, 40.0);
             host.change(0, |input| {
@@ -165,7 +173,10 @@ fn constraints<S: l::LayoutScalar>() {
                 &host,
                 bindings,
                 &[],
-                l::Size::new(l::AvailableOf::MAX_CONTENT, space),
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, space),
+                ),
             )
             .unwrap();
             assert_eq!(

@@ -225,7 +225,18 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let prior = compute_layout_with_flow(
         &baseline,
         0,
-        request_at(AvailableOf::definite(S::from_f64(40.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(prior.final_entries().len(), 1);
@@ -262,7 +273,18 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let valid_batch = compute_layout_with_flow(
         &valid,
         0,
-        request_at(AvailableOf::definite(S::from_f64(40.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((valid).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(valid_batch.final_entries(), prior.final_entries());
@@ -309,7 +331,18 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let replay = compute_layout_with_flow(
         &baseline,
         0,
-        request_at(AvailableOf::definite(S::from_f64(40.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(replay.final_entries(), prior.final_entries());
