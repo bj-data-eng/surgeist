@@ -23,10 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return result.map_err(Into::into);
     }
     let arguments: Vec<_> = std::env::args().skip(1).collect();
-    let fixture = match arguments.as_slice() {
-        [] => None,
-        [flag, source] if flag == "--fixture" => Some(source.as_str()),
-        _ => return Err("usage: qualify-root-context [--fixture <declared-source>]".into()),
+    let (fixture, stylesheet_custody) = match arguments.as_slice() {
+        [] => (None, false),
+        [flag, source] if flag == "--fixture" => (Some(source.as_str()), false),
+        [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
+            (Some(source.as_str()), true)
+        }
+        _ => return Err("usage: qualify-root-context [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source>".into()),
     };
-    support::run(fixture)
+    support::run(fixture, stylesheet_custody)
 }

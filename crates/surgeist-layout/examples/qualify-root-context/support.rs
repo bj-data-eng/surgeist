@@ -20,6 +20,7 @@ use crate::browser_profile::BrowserManifest;
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
+const STYLESHEET_CUSTODY: &[u8] = include_bytes!("stylesheet_custody.js");
 const INPUTS: &[(&str, &[u8])] = &[
     (
         "scripts/gentest/test_helper.js",
@@ -166,7 +167,10 @@ impl BrowserCorpusAdapter for QualificationAdapter {
     }
 }
 
-pub(super) fn run(fixture: Option<&str>) -> Result<()> {
+pub(super) fn run(fixture: Option<&str>, stylesheet_custody: bool) -> Result<()> {
+    if stylesheet_custody && fixture.is_none() {
+        return Err("stylesheet custody qualification requires one declared fixture".into());
+    }
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut declaration: Declaration =
         surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION)?, "corpus.toml")?;
@@ -180,6 +184,14 @@ pub(super) fn run(fixture: Option<&str>) -> Result<()> {
         }
         if declaration.records[0].relation.is_some() {
             return Err("paired observations require the complete inventory".into());
+        }
+        if stylesheet_custody
+            && !matches!(
+                &declaration.records[0].expected,
+                ExpectedDisposition::Generated { .. }
+            )
+        {
+            return Err("stylesheet custody qualification requires a Generated fixture".into());
         }
         eprintln!(
             "qualify-root-context: focused declared source {source}; not a full inventory qualification"
@@ -210,6 +222,7 @@ pub(super) fn run(fixture: Option<&str>) -> Result<()> {
         browser_path,
         declaration,
         fixture.is_some(),
+        stylesheet_custody,
     );
     // Generation owns and joins its supervisor. Never remove outstanding profile
     // journals, even on an assertion/generation failure: preserve them for recovery.
@@ -271,9 +284,10 @@ fn qualify(
     browser_path: RelativePath,
     declaration: Declaration,
     focused: bool,
+    stylesheet_custody: bool,
 ) -> Result<()> {
     let expected = declaration.expected()?;
-    let inventory = prepare_inventory(root, owner, &declaration.records)?;
+    let inventory = prepare_inventory(root, owner, &declaration.records, stylesheet_custody)?;
     let mut exact_roots = vec![
         RelativePath::new("scripts/gentest")?,
         RelativePath::new("fonts")?,
@@ -401,6 +415,11 @@ fn qualify(
         report.summary().generated(),
         report.summary().unsupported()
     );
+    if stylesheet_custody {
+        eprintln!(
+            "qualify-root-context: focused real-browser stylesheet custody checks completed; original fixture, dispositions and strict observations retained"
+        );
+    }
     Ok(())
 }
 
@@ -422,7 +441,12 @@ fn write_input(
     Ok(())
 }
 
-fn prepare_inventory(root: &Path, owner: &Path, records: &[Record]) -> Result<Inventory> {
+fn prepare_inventory(
+    root: &Path,
+    owner: &Path,
+    records: &[Record],
+    stylesheet_custody: bool,
+) -> Result<Inventory> {
     let mut inventory = Inventory {
         fixtures: Vec::new(),
         cases: Vec::new(),
@@ -435,6 +459,14 @@ fn prepare_inventory(root: &Path, owner: &Path, records: &[Record]) -> Result<In
         .chain(std::iter::once(("corpus.toml", DECLARATION)))
     {
         let path = RelativePath::new(name)?;
+        // Instrument only this invocation's real helper input. Register its exact
+        // augmented bytes before the shared generator authenticates any job.
+        let augmented = if stylesheet_custody && name == "scripts/gentest/test_helper.js" {
+            Some([bytes, b"\n", STYLESHEET_CUSTODY].concat())
+        } else {
+            None
+        };
+        let bytes = augmented.as_deref().unwrap_or(bytes);
         write_input(root, &path, bytes, &mut inventory.expected_inputs)?;
         if name != "corpus.toml" {
             inventory.global_inputs.push(path);
