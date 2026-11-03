@@ -133,15 +133,12 @@ fn the_root_of_a_value_is_admitted_before_its_components_are_collected() {
 }
 
 #[test]
-fn a_unit_that_begins_with_no_break_space_and_holds_an_at_rule_is_dropped_by_the_heuristic_of_its_rule()
- {
-    // Characterization of a heuristic that reads the raw text of the unit:
-    // `str::trim_start` removes U+00A0, which the tokenizer reads as an
-    // identifier. The palette, profile and feature bodies judge a unit that
-    // begins with `@` after trimming to be an at-rule; the counter body judges
-    // by its first token, so it is a descriptor. A unit that begins with an
-    // identifier is a descriptor in all four. The step that replaces the text
-    // heuristics changes this.
+fn a_unit_that_begins_with_no_break_space_is_not_judged_as_an_at_rule_in_every_descriptor_body() {
+    // Syntax 3 section 4.2: whitespace is a newline, a tab or a space, so
+    // U+00A0 is not whitespace and is not skipped before the unit. The unit
+    // begins with U+00A0, not with the at-keyword that follows it, and a
+    // descriptor body does not drop it as an at-rule. A unit that begins with
+    // an identifier and holds the same text after it is dropped as a descriptor.
     let action = |source: &str| {
         CssParser::default()
             .parse_sheet(source)
@@ -150,49 +147,21 @@ fn a_unit_that_begins_with_no_break_space_and_holds_an_at_rule_is_dropped_by_the
             .find(|diagnostic| diagnostic.error().code() == CssErrorCode::UnexpectedToken)
             .map(|diagnostic| diagnostic.action())
     };
-    for (head, body, expected) in [
-        (
-            "@font-palette-values --p",
-            "\u{a0} @x {}",
-            CssRecoveryAction::DropAtRule,
-        ),
-        (
-            "@color-profile --c",
-            "\u{a0} @x {}",
-            CssRecoveryAction::DropAtRule,
-        ),
-        (
-            "@counter-style x",
-            "\u{a0} @x {}",
-            CssRecoveryAction::DropDescriptor,
-        ),
-        (
-            "@font-feature-values A",
-            "\u{a0} @x {}",
-            CssRecoveryAction::DropAtRule,
-        ),
-        (
-            "@font-palette-values --p",
-            "a @x {}",
-            CssRecoveryAction::DropDescriptor,
-        ),
-        (
-            "@color-profile --c",
-            "a @x {}",
-            CssRecoveryAction::DropDescriptor,
-        ),
-        (
-            "@counter-style x",
-            "a @x {}",
-            CssRecoveryAction::DropDescriptor,
-        ),
-        (
-            "@font-feature-values A",
-            "a @x {}",
-            CssRecoveryAction::DropDescriptor,
-        ),
+    for head in [
+        "@font-palette-values --p",
+        "@color-profile --c",
+        "@counter-style x",
+        "@font-feature-values A",
     ] {
-        let source = format!("{head} {{ {body} }}");
-        assert_eq!(action(&source), Some(expected), "{source:?}");
+        let source = format!("{head} {{ \u{a0} @x {{}} }}");
+        let dropped = action(&source);
+        assert!(dropped.is_some(), "{source:?}");
+        assert_ne!(dropped, Some(CssRecoveryAction::DropAtRule), "{source:?}");
+        let source = format!("{head} {{ a @x {{}} }}");
+        assert_eq!(
+            action(&source),
+            Some(CssRecoveryAction::DropDescriptor),
+            "{source:?}"
+        );
     }
 }

@@ -737,18 +737,27 @@ where
                 )
             })
             .unwrap_or(dropped.error);
-        let action = if context.at_rule_first && text.trim_start().starts_with('@') {
-            CssRecoveryAction::DropAtRule
-        } else if is_declaration_recovery_unit(text) {
-            context.declaration
-        } else if text.trim_start().starts_with('@') {
-            CssRecoveryAction::DropAtRule
-        } else {
-            CssRecoveryAction::DropQualifiedRule
-        };
-        if let Some(diagnostic) =
-            structural_rule_diagnostic(snapshot, error, text, dropped.start, dropped.end, action)
-        {
+        let action =
+            if context.at_rule_first && crate::diagnostic::error::begins_with_at_keyword(text) {
+                CssRecoveryAction::DropAtRule
+            } else if is_declaration_recovery_unit(text) {
+                context.declaration
+            } else if crate::diagnostic::error::begins_with_at_keyword(text) {
+                CssRecoveryAction::DropAtRule
+            } else {
+                CssRecoveryAction::DropQualifiedRule
+            };
+        let terminated =
+            super::structure::ends_with_semicolon(failed.start(), dropped.start + text.len());
+        if let Some(diagnostic) = structural_rule_diagnostic(
+            context.recovery,
+            error,
+            text,
+            terminated,
+            dropped.start,
+            dropped.end,
+            action,
+        ) {
             sink.borrow_mut().push(diagnostic);
         }
     });
@@ -903,7 +912,7 @@ where
         // The span starts where the dropped unit does, whatever part of it the
         // text names.
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(snapshot, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(recovery, dropped.error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }

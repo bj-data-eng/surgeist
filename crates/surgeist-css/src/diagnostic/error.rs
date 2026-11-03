@@ -1,6 +1,7 @@
 pub(crate) mod property;
 pub(crate) mod retained_backing;
 pub(crate) mod source_resolution;
+pub(crate) mod token_navigation;
 use crate::color::CssColorComponentName;
 use crate::property::CssPropertyName;
 use crate::query::media::CssMediaFeatureName;
@@ -1833,8 +1834,27 @@ pub(crate) fn lexer_at(text: &str, offset: usize) -> Option<Lexer<'_>> {
     ))
 }
 
+/// The diagnostic `error` names, qualified by the tokens of `source`, which
+/// are lexed when the qualification asks for them.
 pub(crate) fn from_parse_error(source: &str, error: NativeError) -> CssError {
-    (*error.error).resolve_source(source)
+    (*error.error).resolve_source(&token_navigation::LexedText::new(source))
+}
+
+/// The diagnostic `error` names, qualified by `tokens`.
+pub(crate) fn from_native_error(
+    tokens: &impl token_navigation::TokenContext,
+    error: NativeError,
+) -> CssError {
+    (*error.error).resolve_source(tokens)
+}
+
+/// The diagnostic `error` names, qualified by the tokens of the text of
+/// `document`.
+pub(crate) fn from_parse_error_in<P>(
+    document: &surgeist_css_parser::Document<'_, P>,
+    error: NativeError,
+) -> CssError {
+    (*error.error).resolve_source(document)
 }
 
 pub(crate) fn is_nesting_limit_error(error: &NativeError) -> bool {
@@ -1984,13 +2004,48 @@ fn contains_curly_block(unit: &str) -> bool {
     false
 }
 
+/// The byte length of the whitespace tokens (Syntax 3 section 4.2) `text`
+/// begins with.
+fn whitespace_prefix(text: &str) -> usize {
+    let Some(mut lexer) = lexer_at(text, 0) else {
+        return 0;
+    };
+    let mut end = 0;
+    while let Some(lexeme) = lexer.next_lexeme() {
+        if !matches!(lexeme.token(), surgeist_css_parser::Token::Whitespace) {
+            break;
+        }
+        end = lexeme.range().end.value();
+    }
+    end
+}
+
+/// Whether the first token of `text` that is no whitespace is an at-keyword,
+/// which alone begins an at-rule (Syntax 3 sections 5.5.1 and 5.5.5): a `@`
+/// that starts no at-keyword is a delimiter, and a unit it begins is a
+/// qualified rule.
+pub(crate) fn begins_with_at_keyword(text: &str) -> bool {
+    let Some(mut lexer) = lexer_at(text, whitespace_prefix(text)) else {
+        return false;
+    };
+    matches!(
+        lexer.next_lexeme().map(|lexeme| lexeme.token()),
+        Some(surgeist_css_parser::Token::AtKeyword(_))
+    )
+}
+
+/// The diagnostic of the rule `failed_unit` names `error` for, with the unit's
+/// own kind read into it. `semicolon_terminated` says the unit ends with a
+/// `;` token of its list (Syntax 3 section 5.4.8), which a `;` inside a
+/// string, comment, URL or block does not make.
 pub(crate) fn from_rule_parse_error(
-    source: &str,
+    tokens: &impl token_navigation::TokenContext,
     failed_unit: &str,
+    semicolon_terminated: bool,
     error: NativeError,
 ) -> CssError {
-    let mut error = from_parse_error(source, error);
-    let unit = failed_unit.trim_start();
+    let mut error = (*error.error).resolve_source(tokens);
+    let unit = &failed_unit[whitespace_prefix(failed_unit)..];
     // The adopted conditional grammar owns its prelude and terminal component
     // failures. Only a valid prelude's basic missing-body failure is contextualized.
     // The decoded at-keyword is the unit's name, so escaped at-keywords keep the
@@ -2019,9 +2074,9 @@ pub(crate) fn from_rule_parse_error(
         }
         return error;
     }
-    if unit.starts_with('@') {
+    if begins_with_at_keyword(unit) {
         if let Some(name) = at_keyword
-            && unit.trim_end().ends_with(';')
+            && semicolon_terminated
             && at_rule_requires_block(name)
         {
             error.kind = ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {

@@ -12,7 +12,7 @@ use super::property_input::StreamExt;
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
 use super::syntax_types::{Mark, Site, Stream, SyntaxError};
 use crate::diagnostic::error::{
-    from_parse_error, invalid_selector_at, selector_component_error, selector_encountered_at,
+    invalid_selector_at, selector_component_error, selector_encountered_at,
 };
 use crate::diagnostic::{CssFeatureId, CssTokenSummary};
 use crate::numeric::expression::NumericInputContext;
@@ -246,7 +246,7 @@ impl<'a> SelectorRecovery<'a> {
         ordinary_action: crate::diagnostic::CssRecoveryAction,
     ) {
         let action = recovery_action_for_error(&error, ordinary_action);
-        let error = from_parse_error(self.source, error);
+        let error = super::qualified(&self.state, error);
         let Some(span) = comma_member_span(
             |offset| self.state.source_position(offset),
             member_start,

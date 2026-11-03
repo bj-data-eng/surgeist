@@ -231,7 +231,7 @@ pub(super) fn drive_margin_body<'i>(
         // text names: a rejected prelude names less than the unit, which runs
         // to the end of its block.
         if let Some(diagnostic) =
-            block_item_diagnostic_from_start(snapshot, dropped.error, dropped.start, end, action)
+            block_item_diagnostic_from_start(recovery, dropped.error, dropped.start, end, action)
         {
             diagnostics.push(diagnostic);
         }

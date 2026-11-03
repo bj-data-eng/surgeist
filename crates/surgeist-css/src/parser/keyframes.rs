@@ -171,14 +171,20 @@ pub(super) fn drive_declarations<'i>(
             .unwrap_or(dropped.error);
         let action = if is_declaration_recovery_unit(text) {
             crate::diagnostic::CssRecoveryAction::DropDeclaration
-        } else if text.trim_start().starts_with('@') {
+        } else if crate::diagnostic::error::begins_with_at_keyword(text) {
             crate::diagnostic::CssRecoveryAction::DropAtRule
         } else {
             crate::diagnostic::CssRecoveryAction::DropQualifiedRule
         };
-        if let Some(diagnostic) =
-            structural_rule_diagnostic(snapshot, error, text, dropped.start, dropped.end, action)
-        {
+        if let Some(diagnostic) = structural_rule_diagnostic(
+            recovery,
+            error,
+            text,
+            super::structure::ends_with_semicolon(failed.start(), dropped.start + text.len()),
+            dropped.start,
+            dropped.end,
+            action,
+        ) {
             diagnostics.push(diagnostic);
         }
     });

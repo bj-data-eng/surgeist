@@ -31,8 +31,10 @@ use super::typography::{
 };
 use super::url::parse_url;
 use super::values::parse_nonnegative_percentage;
+use crate::diagnostic::error::token_navigation::Scoped;
 use crate::diagnostic::error::{
-    descriptor_name_error, from_parse_error, unexpected_at, with_descriptor_context,
+    descriptor_name_error, from_native_error, from_parse_error, unexpected_at,
+    with_descriptor_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::NumericInputContext;
@@ -605,8 +607,17 @@ fn parse_font_face_source_list<'i>(
                     &error,
                     crate::diagnostic::CssRecoveryAction::DropFontSourceListItem,
                 );
-                let error =
-                    from_parse_error(source, with_descriptor_context(error, "font-face", "src"));
+                let error = with_descriptor_context(error, "font-face", "src");
+                let error = match numeric.ordinary() {
+                    NumericInputContext::Parsed(snapshot) => from_native_error(
+                        &Scoped {
+                            document: input.site().document(),
+                            text: snapshot.as_str(),
+                        },
+                        error,
+                    ),
+                    _ => from_parse_error(source, error),
+                };
                 if let Some(span) = comma_member_span(
                     |offset| numeric.position_in(source, offset),
                     member_start,

@@ -309,7 +309,6 @@ pub(super) fn parse_at_rule_prelude<'i>(
         "counter-style" => {
             reject_with_style_ancestor(context, input, recovery, "counter-style")?;
             Ok(AtRulePrelude::CounterStyle(parse_counter_style_prelude(
-                source,
                 input,
                 recovery.source_snapshot(),
             )?))
@@ -323,7 +322,6 @@ pub(super) fn parse_at_rule_prelude<'i>(
                 ));
             }
             Ok(AtRulePrelude::Page(parse_page_prelude(
-                source,
                 input,
                 recovery.source_snapshot(),
             )?))
@@ -618,7 +616,7 @@ pub(crate) fn recover_rule_list<'i, G, S>(
             && unit_state.qualified_resource_error.is_none();
         if declaration_unit {
             if let Some(diagnostic) = block_item_diagnostic(
-                &snapshot,
+                grammar.recovery(),
                 facts.error,
                 facts.text,
                 facts.unit_end,
@@ -636,10 +634,15 @@ pub(crate) fn recover_rule_list<'i, G, S>(
             } else {
                 facts.error
             };
+            let terminated = super::structure::ends_with_semicolon(
+                failed.start(),
+                facts.unit_start + facts.text.len(),
+            );
             if let Some(diagnostic) = structural_rule_diagnostic(
-                &snapshot,
+                grammar.recovery(),
                 error,
                 facts.text,
+                terminated,
                 facts.unit_start,
                 facts.unit_end,
                 grammar.drop_action(facts.text),
@@ -717,12 +720,14 @@ fn report_returned_nothing<'i, G: RuleListGrammar<'i>>(
         let (Some(from), Some(to)) = (document.site(list, start), document.site(list, end)) else {
             return;
         };
+        let terminated = super::structure::ends_with_semicolon(from, offset_of(to));
         let (from, to) = (offset_of(from), offset_of(to));
         let error = crate::diagnostic::error::invalid_syntax(location_at(&snapshot, from));
         if let Some(diagnostic) = structural_rule_diagnostic(
-            &snapshot,
+            grammar.recovery(),
             error,
             &source[from..to],
+            terminated,
             from,
             to,
             crate::diagnostic::CssRecoveryAction::DropQualifiedRule,

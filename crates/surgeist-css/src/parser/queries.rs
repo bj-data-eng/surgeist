@@ -206,7 +206,7 @@ pub(super) fn media_query_list<'i>(
                     first_non_trivia_position(source, member_start, member_end, |offset| {
                         recovery.source_position(offset)
                     });
-                let error = from_parse_error(source, error);
+                let error = super::qualified(recovery, error);
                 let Some(diagnostic) =
                     crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
                 else {
